@@ -66,7 +66,7 @@ export function CameraCapture({
   }, [onCapture]);
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-ink text-on-accent">
+    <div className="fixed inset-0 z-40 flex flex-col bg-media text-on-media">
       <div className="relative min-h-0 flex-1 overflow-hidden">
         <video
           ref={videoRef}
@@ -80,7 +80,7 @@ export function CameraCapture({
               type="button"
               aria-label="Cerrar"
               onClick={onClose}
-              className="inline-flex size-11 items-center justify-center rounded-full bg-ink/60"
+              className="inline-flex size-11 items-center justify-center rounded-full bg-media/60"
             >
               <X size={20} weight="light" aria-hidden />
             </button>
@@ -93,7 +93,7 @@ export function CameraCapture({
           </p>
         ) : null}
       </div>
-      <div className="flex flex-col items-center gap-4 bg-ink px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
+      <div className="flex flex-col items-center gap-4 bg-media px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
         <p className="text-small">
           Toma la foto ahora.
         </p>
@@ -118,9 +118,9 @@ export function CameraCapture({
               aria-label="Tomar foto"
               disabled={mode !== "live"}
               onClick={snap}
-              className="flex size-[76px] items-center justify-center rounded-full border-[3px] border-on-accent disabled:opacity-50"
+              className="flex size-[76px] items-center justify-center rounded-full border-[3px] border-on-media disabled:opacity-50"
             >
-              <span className="size-[62px] rounded-full bg-on-accent" />
+              <span className="size-[62px] rounded-full bg-on-media" />
             </button>
           )}
           {mode === "live" ? (
@@ -128,7 +128,7 @@ export function CameraCapture({
               type="button"
               aria-label="Cambiar de cámara"
               onClick={() => setFacing((f) => (f === "environment" ? "user" : "environment"))}
-              className="absolute right-0 inline-flex size-11 items-center justify-center rounded-full bg-on-accent/15"
+              className="absolute right-0 inline-flex size-11 items-center justify-center rounded-full bg-on-media/15"
             >
               <ArrowsClockwise size={20} weight="light" aria-hidden />
             </button>

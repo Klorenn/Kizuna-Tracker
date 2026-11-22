@@ -30,7 +30,7 @@ export function Sheet({
         aria-label="Cerrar"
         tabIndex={-1}
         onClick={onClose}
-        className="absolute inset-0 bg-ink/35"
+        className="absolute inset-0 bg-scrim"
       />
       <div
         role="dialog"

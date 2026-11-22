@@ -1,6 +1,54 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
 
+/* `dark:` follows the theme cookie (<html data-theme>): "dark", or "system" + an OS in dark mode.
+   Prefer tokens (they already flip); use this only for the odd per-theme tweak. */
+@custom-variant dark {
+  &:where([data-theme="dark"], [data-theme="dark"] *) {
+    @slot;
+  }
+  @media (prefers-color-scheme: dark) {
+    &:where([data-theme="system"], [data-theme="system"] *) {
+      @slot;
+    }
+  }
+}
+
+/* Habit identity color, scoped: <el data-habit-color="salvia"> exposes --habit and --habit-soft
+   to its subtree (bg-(--habit), fill-(--habit), border-(--habit)...). */
+[data-habit-color="salvia"] {
+  --habit: var(--habit-salvia);
+  --habit-soft: var(--habit-salvia-soft);
+}
+[data-habit-color="durazno"] {
+  --habit: var(--habit-durazno);
+  --habit-soft: var(--habit-durazno-soft);
+}
+[data-habit-color="lavanda"] {
+  --habit: var(--habit-lavanda);
+  --habit-soft: var(--habit-lavanda-soft);
+}
+[data-habit-color="arena"] {
+  --habit: var(--habit-arena);
+  --habit-soft: var(--habit-arena-soft);
+}
+[data-habit-color="cielo"] {
+  --habit: var(--habit-cielo);
+  --habit-soft: var(--habit-cielo-soft);
+}
+[data-habit-color="rosa"] {
+  --habit: var(--habit-rosa);
+  --habit-soft: var(--habit-rosa-soft);
+}
+[data-habit-color="oliva"] {
+  --habit: var(--habit-oliva);
+  --habit-soft: var(--habit-oliva-soft);
+}
+[data-habit-color="indigo"] {
+  --habit: var(--habit-indigo);
+  --habit-soft: var(--habit-indigo-soft);
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);

@@ -1,6 +1,6 @@
 import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
@@ -19,6 +19,7 @@ import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
+import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Perfil" };
 
@@ -90,6 +91,7 @@ export default async function PerfilPage() {
 
   const name = `${profile.first_name} ${profile.last_name}`;
   const shareUrl = profileShareUrl(siteOrigin(await headers()), profile.username);
+  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
@@ -136,6 +138,7 @@ export default async function PerfilPage() {
             lastName={profile.last_name}
             reminderTime={String(profile.reminder_time).slice(0, 5)}
             timezone={profile.timezone}
+            theme={theme}
           />
         </div>
       </Card>

@@ -1,4 +1,6 @@
-/* Calm Utility tokens. Mirror of the Figma collection "Kizuna" (file ASUwZ8Ervs6LkHtR7IA0sw). */
+/* Calm Utility tokens. Mirror of the Figma collection "Kizuna" (file ASUwZ8Ervs6LkHtR7IA0sw).
+   Light values live in @theme; the dark theme overrides the same variables further down
+   (tests/unit/theme-tokens.test.ts checks AA contrast for both). */
 @theme {
   --color-*: initial;
 
@@ -6,11 +8,17 @@
   --color-paper: #fafafa;
   --color-bg: #fafafa;
   --color-surface: #ffffff;
+  --color-raised: #ffffff; /* selected segment, sits on field */
   --color-field: #f0f0f0;
   --color-ink-soft: #f1f1f0;
   --color-accent-soft: #efeff9;
   --color-alert-soft: #fdecec;
   --color-cream: #f6ebd8; /* only the cat's weights */
+  --color-knob: #ffffff; /* switch thumb when off */
+  --color-scrim: rgb(17 17 17 / 0.35);
+  /* camera and photo review stay dark in both themes */
+  --color-media: #111111;
+  --color-on-media: #ffffff;
 
   /* lines and text */
   --color-line: #e6e6e6;
@@ -66,4 +74,110 @@
   --space-md: 16px;
   --space-lg: 24px;
   --space-xl: 32px;
+}
+
+/* Habit identity palette (src/domain/habit-colors.ts). Identity only: UI chrome stays accent.
+   Every color is >= 3:1 on surface and carries --habit-on text at >= 4.5:1. Soft = empty cells. */
+:root {
+  color-scheme: light;
+  --habit-on: #111111;
+  --habit-soft-mix: 16%;
+  --habit-salvia: #6b9881;
+  --habit-durazno: #b86f44;
+  --habit-lavanda: #a481b5;
+  --habit-arena: #9f8b68;
+  --habit-cielo: #4d8eb1;
+  --habit-rosa: #ac6c7e;
+  --habit-oliva: #83823e;
+  --habit-indigo: #6e73d0;
+  --habit-salvia-soft: color-mix(in oklab, var(--habit-salvia) var(--habit-soft-mix), transparent);
+  --habit-durazno-soft: color-mix(in oklab, var(--habit-durazno) var(--habit-soft-mix), transparent);
+  --habit-lavanda-soft: color-mix(in oklab, var(--habit-lavanda) var(--habit-soft-mix), transparent);
+  --habit-arena-soft: color-mix(in oklab, var(--habit-arena) var(--habit-soft-mix), transparent);
+  --habit-cielo-soft: color-mix(in oklab, var(--habit-cielo) var(--habit-soft-mix), transparent);
+  --habit-rosa-soft: color-mix(in oklab, var(--habit-rosa) var(--habit-soft-mix), transparent);
+  --habit-oliva-soft: color-mix(in oklab, var(--habit-oliva) var(--habit-soft-mix), transparent);
+  --habit-indigo-soft: color-mix(in oklab, var(--habit-indigo) var(--habit-soft-mix), transparent);
+}
+
+/* "Sistema": form controls and scrollbars follow the OS until the media query below kicks in. */
+:root[data-theme="system"] {
+  color-scheme: light dark;
+}
+
+/* ---------- Dark theme ----------
+   Ink background, stepped surfaces, hairlines instead of shadows, accent lifted for contrast.
+   Keep the two blocks identical (the test compares them). */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-paper: #0f0f10;
+  --color-bg: #0f0f10;
+  --color-surface: #161618;
+  --color-raised: #2a2a2f;
+  --color-field: #1c1c1f;
+  --color-ink-soft: #232327;
+  --color-accent-soft: #222238;
+  --color-alert-soft: #2e1a1b;
+  --color-knob: #ededed;
+  --color-scrim: rgb(0 0 0 / 0.6);
+  --color-line: #2a2a2e;
+  --color-outline-strong: #77777e;
+  --color-ink: #ededed;
+  --color-text: #ededed;
+  --color-muted: #9a9aa0;
+  --color-on-accent: #0f0f10;
+  --color-accent: #8c8cf0;
+  --color-accent-hover: #a3a3f5;
+  --color-accent2: #9ba6d9;
+  --color-accent2-hover: #b3bce3;
+  --color-alert: #f2555a;
+  --shadow-card: none;
+  --habit-on: #0f0f10;
+  --habit-soft-mix: 24%;
+  --habit-salvia: #8db7a1;
+  --habit-durazno: #d28e67;
+  --habit-lavanda: #be9ecf;
+  --habit-arena: #c0ad8c;
+  --habit-cielo: #71abcb;
+  --habit-rosa: #c58999;
+  --habit-oliva: #9f9f63;
+  --habit-indigo: #878ee3;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root[data-theme="system"] {
+    color-scheme: dark;
+    --color-paper: #0f0f10;
+    --color-bg: #0f0f10;
+    --color-surface: #161618;
+    --color-raised: #2a2a2f;
+    --color-field: #1c1c1f;
+    --color-ink-soft: #232327;
+    --color-accent-soft: #222238;
+    --color-alert-soft: #2e1a1b;
+    --color-knob: #ededed;
+    --color-scrim: rgb(0 0 0 / 0.6);
+    --color-line: #2a2a2e;
+    --color-outline-strong: #77777e;
+    --color-ink: #ededed;
+    --color-text: #ededed;
+    --color-muted: #9a9aa0;
+    --color-on-accent: #0f0f10;
+    --color-accent: #8c8cf0;
+    --color-accent-hover: #a3a3f5;
+    --color-accent2: #9ba6d9;
+    --color-accent2-hover: #b3bce3;
+    --color-alert: #f2555a;
+    --shadow-card: none;
+    --habit-on: #0f0f10;
+    --habit-soft-mix: 24%;
+    --habit-salvia: #8db7a1;
+    --habit-durazno: #d28e67;
+    --habit-lavanda: #be9ecf;
+    --habit-arena: #c0ad8c;
+    --habit-cielo: #71abcb;
+    --habit-rosa: #c58999;
+    --habit-oliva: #9f9f63;
+    --habit-indigo: #878ee3;
+  }
 }

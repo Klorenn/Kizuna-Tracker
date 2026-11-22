@@ -26,8 +26,8 @@ export function Toggle({
     >
       <span
         aria-hidden
-        className={`absolute top-0.5 size-[27px] rounded-full bg-surface shadow-card transition-[left] duration-[120ms] ${
-          checked ? "left-[22px]" : "left-0.5"
+        className={`absolute top-0.5 size-[27px] rounded-full shadow-card transition-[left] duration-[120ms] ${
+          checked ? "left-[22px] bg-on-accent" : "left-0.5 bg-knob"
         }`}
       />
     </button>

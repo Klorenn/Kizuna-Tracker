@@ -8,7 +8,7 @@ const PLACEMENT = {
 } as const;
 
 /**
- * 絆 a pincel, muy tenue (tinta al 3 %), detrás del contenido.
+ * 絆 a pincel, muy tenue (tinta al 3 %; 4,5 % en oscuro), detrás del contenido.
  * Decorativo: aria-hidden y sin eventos; se oculta en pantallas bajas (teclado abierto),
  * con contraste alto, transparencia reducida y forced-colors (.kanji-watermark en globals.css).
  */
@@ -18,7 +18,7 @@ export function KanjiWatermark({ placement = "bottom" }: { placement?: keyof typ
       aria-hidden="true"
       className="kanji-watermark pointer-events-none absolute inset-0 -z-10 overflow-hidden"
     >
-      <Kanji className={`absolute h-auto text-ink/[0.03] ${PLACEMENT[placement]}`} />
+      <Kanji className={`absolute h-auto text-ink/[0.03] dark:text-ink/[0.045] ${PLACEMENT[placement]}`} />
     </div>
   );
 }
