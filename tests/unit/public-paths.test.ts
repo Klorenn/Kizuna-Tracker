@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { isPublicPath, safeNextPath } from '@/lib/supabase/public-paths'
 
 describe('isPublicPath', () => {
-  it.each(['/bienvenida', '/login', '/registro', '/legal/terminos', '/invite/abc', '/u/pau_k', '/@pau_k'])(
+  it.each(['/bienvenida', '/login', '/registro', '/legal/terminos', '/invite/abc', '/u/pau_k', '/@pau_k', '/api/cron/close-periods'])(
     '%s is public',
     (p) => expect(isPublicPath(p)).toBe(true),
   )

@@ -25,5 +25,13 @@ const clp = new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP' 
 
 export function formatCLP(amount: number): string {
   // Normalize NBSP variants Intl may emit between symbol and digits.
-  return clp.format(amount).replace(/\s/g, '')
+  // Intl puts the minus after the symbol ("$-5.000"); we want "-$5.000".
+  const text = clp.format(Math.abs(amount)).replace(/\s/g, '')
+  return amount < 0 ? `-${text}` : text
+}
+
+/** `+$3.000` / `-$1.500` / `$0`. Sign is always explicit for non-zero amounts. */
+export function formatSignedCLP(amount: number): string {
+  if (amount === 0) return formatCLP(0)
+  return amount > 0 ? `+${formatCLP(amount)}` : formatCLP(amount)
 }

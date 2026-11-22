@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { netBalances, formatCLP } from '@/domain/ledger'
+import { netBalances, formatCLP, formatSignedCLP } from '@/domain/ledger'
 
 describe('ledger', () => {
   test('compensa deudas cruzadas', () => {
@@ -19,5 +19,12 @@ describe('ledger', () => {
   })
   test('formatCLP', () => {
     expect(formatCLP(5000)).toBe('$5.000')
+    expect(formatCLP(-5000)).toBe('-$5.000')
+    expect(formatCLP(0)).toBe('$0')
+  })
+  test('formatSignedCLP', () => {
+    expect(formatSignedCLP(3000)).toBe('+$3.000')
+    expect(formatSignedCLP(-1500)).toBe('-$1.500')
+    expect(formatSignedCLP(0)).toBe('$0')
   })
 })

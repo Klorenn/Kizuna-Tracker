@@ -782,6 +782,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      call_cron_endpoints: { Args: never; Returns: undefined }
       cancel_challenges_between: {
         Args: { p_other: string }
         Returns: undefined
