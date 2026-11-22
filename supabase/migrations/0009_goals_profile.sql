@@ -15,6 +15,25 @@ create table public.goals (
   constraint goals_deadline_only_total check (kind = 'total' or deadline is null),
   constraint goals_weekly_max check (kind = 'total' or target <= 7)
 );
+-- starts_on is the owner's LOCAL date (the column default is the UTC date, overridden here).
+create function public.goals_set_starts_on()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  new.starts_on := (
+    pg_catalog.now() at time zone (select p.timezone from public.profiles p where p.id = new.user_id)
+  )::date;
+  return new;
+end;
+$$;
+revoke execute on function public.goals_set_starts_on() from public, anon, authenticated;
+create trigger goals_set_starts_on
+  before insert on public.goals
+  for each row execute function public.goals_set_starts_on();
+
 create index goals_user_idx on public.goals (user_id);
 create index goals_habit_idx on public.goals (habit_id);
 alter table public.goals enable row level security;

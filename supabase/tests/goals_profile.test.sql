@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(15);
+select plan(17);
 
 insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
@@ -16,6 +16,21 @@ insert into public.habits (id, user_id, name, icon, frequency_type) values
   ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Gym B', 'barbell', 'daily');
 insert into public.goals (id, user_id, habit_id, kind, target) values
   ('90000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000002', 'weekly', 3);
+
+-- starts_on follows the owner's timezone, not the UTC date
+insert into auth.users (id) values ('a0000000-0000-0000-0000-000000000005');
+insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
+  ('a0000000-0000-0000-0000-000000000005', 'user_k', 'K', 'Test', '1990-01-01', now(), 'Pacific/Kiritimati');
+insert into public.habits (id, user_id, name, icon, frequency_type) values
+  ('b0000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000005', 'Gym K', 'barbell', 'daily');
+insert into public.goals (id, user_id, habit_id, kind, target, starts_on) values
+  ('90000000-0000-0000-0000-000000000005', 'a0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000005', 'total', 10, '2000-01-01'),
+  ('90000000-0000-0000-0000-000000000006', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000001', 'total', 10, '2000-01-01');
+select is((select starts_on from public.goals where id = '90000000-0000-0000-0000-000000000005'),
+  (now() at time zone 'Pacific/Kiritimati')::date, 'starts_on uses Pacific/Kiritimati local date');
+select is((select starts_on from public.goals where id = '90000000-0000-0000-0000-000000000006'),
+  (now() at time zone 'America/Santiago')::date, 'starts_on uses America/Santiago local date');
+delete from public.goals where id = '90000000-0000-0000-0000-000000000006';
 
 -- check constraints (as postgres)
 select throws_ok(
