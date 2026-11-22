@@ -26,8 +26,11 @@ describe('parseIdentifier', () => {
 function deps() {
   return {
     registerAttempt: vi.fn<LoginDeps['registerAttempt']>(async () => true),
-    emailForUsername: vi.fn(async (u: string): Promise<string | null> =>
-      u === 'pau_k' ? 'pau@kizuna.app' : null,
+    resolveAccount: vi.fn(
+      async (id: { kind: 'email' | 'username'; value: string }): Promise<{ userId: string; email: string } | null> =>
+        id.value === 'pau_k' || id.value === 'pau@kizuna.app'
+          ? { userId: 'uid-1', email: 'pau@kizuna.app' }
+          : null,
     ),
     signInWithPassword: vi.fn(async (_e: string, p: string) => ({ ok: p === 'kizuna-2026' })),
   } satisfies LoginDeps
@@ -61,21 +64,50 @@ describe('loginWith', () => {
     const res = await loginWith(d, { identifier: '@pau_k', password: 'kizuna-2026' }, ip)
     expect(res).toEqual({ ok: false, error: LOGIN_RATE_LIMITED_ERROR })
     expect(d.signInWithPassword).not.toHaveBeenCalled()
-    expect(d.emailForUsername).not.toHaveBeenCalled()
+    expect(d.resolveAccount).not.toHaveBeenCalled()
   })
 
   it('registers id and ip keys', async () => {
     const d = deps()
     await loginWith(d, { identifier: '@Pau_K', password: 'kizuna-2026' }, ip)
-    expect(d.registerAttempt).toHaveBeenCalledWith(['id:pau_k', 'ip:203.0.113.7'])
+    expect(d.registerAttempt).toHaveBeenNthCalledWith(1, ['id:pau_k', 'ip:203.0.113.7'])
   })
 
   it('email login keys by normalized email', async () => {
     const d = deps()
     await loginWith(d, { identifier: 'Pau@Kizuna.app', password: 'kizuna-2026' }, ip)
-    expect(d.registerAttempt).toHaveBeenCalledWith(['id:pau@kizuna.app', 'ip:203.0.113.7'])
+    expect(d.registerAttempt).toHaveBeenNthCalledWith(1, ['id:pau@kizuna.app', 'ip:203.0.113.7'])
     expect(d.signInWithPassword).toHaveBeenCalledWith('pau@kizuna.app', 'kizuna-2026')
-    expect(d.emailForUsername).not.toHaveBeenCalled()
+  })
+
+  it('email and handle share the per-account counter', async () => {
+    const byHandle = deps()
+    const byEmail = deps()
+    await loginWith(byHandle, { identifier: '@pau_k', password: 'x' }, ip)
+    await loginWith(byEmail, { identifier: 'pau@kizuna.app', password: 'x' }, ip)
+    expect(byHandle.registerAttempt).toHaveBeenNthCalledWith(2, ['uid:uid-1'])
+    expect(byEmail.registerAttempt).toHaveBeenNthCalledWith(2, ['uid:uid-1'])
+  })
+
+  it('unknown accounts count uid:<normalized identifier> and still sign in', async () => {
+    const d = deps()
+    await loginWith(d, { identifier: '@Nadie', password: 'x' }, ip)
+    expect(d.registerAttempt).toHaveBeenNthCalledWith(2, ['uid:nadie'])
+    expect(d.signInWithPassword).toHaveBeenCalledTimes(1)
+  })
+
+  it('blocks when the account counter is exceeded, without signing in', async () => {
+    const d = deps()
+    d.registerAttempt.mockResolvedValueOnce(true).mockResolvedValueOnce(false)
+    const res = await loginWith(d, { identifier: 'pau@kizuna.app', password: 'kizuna-2026' }, ip)
+    expect(res).toEqual({ ok: false, error: LOGIN_RATE_LIMITED_ERROR })
+    expect(d.signInWithPassword).not.toHaveBeenCalled()
+  })
+
+  it('skips the ip key when the ip is unknown', async () => {
+    const d = deps()
+    await loginWith(d, { identifier: '@pau_k', password: 'kizuna-2026' }, null)
+    expect(d.registerAttempt).toHaveBeenNthCalledWith(1, ['id:pau_k'])
   })
 
   it('succeeds', async () => {

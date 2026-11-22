@@ -1,6 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
+import { shouldSignOut } from "./profile-gate";
 import { isPublicPath, safeNextPath } from "./public-paths";
 
 const AUTH_PAGES = ["/bienvenida", "/login", "/registro"];
@@ -62,14 +63,16 @@ export async function updateSession(request: NextRequest) {
   // Signed in: public pages other than the auth pages and invites need no profile.
   if (isPublic && !isAuthPage && !isInvite) return response;
 
-  const { data: profile } = await supabase
+  const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id")
     .eq("id", user.id)
     .is("deleted_at", null)
     .maybeSingle();
 
-  if (!profile) {
+  // A failed query (outage, timeout) must not log the user out: let the request through.
+  if (profileError) return response;
+  if (shouldSignOut({ data: profile, error: profileError })) {
     await supabase.auth.signOut();
     return redirectTo(request, "/login", response, "?error=perfil");
   }

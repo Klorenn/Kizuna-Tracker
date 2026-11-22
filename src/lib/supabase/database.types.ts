@@ -645,6 +645,13 @@ export type Database = {
       }
     }
     Functions: {
+      account_for_login: {
+        Args: { p_kind: string; p_value: string }
+        Returns: {
+          email: string
+          user_id: string
+        }[]
+      }
       create_checkin: {
         Args: { p_habit_id: string }
         Returns: {

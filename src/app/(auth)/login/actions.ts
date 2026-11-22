@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { LOGIN_GENERIC_ERROR, loginWith } from "@/lib/login";
+import { clientIp } from "@/lib/request-ip";
 
 export async function signIn(input: {
   identifier: string;
@@ -18,8 +19,7 @@ export async function signIn(input: {
   ) {
     return { ok: false, error: LOGIN_GENERIC_ERROR };
   }
-  const forwarded = (await headers()).get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
+  const ip = clientIp(await headers());
   const admin = createAdminClient();
   const supabase = await createServerClient();
 
@@ -32,11 +32,15 @@ export async function signIn(input: {
         // Fail closed: if the limiter is down nobody gets to try.
         return !error && data === true;
       },
-      async emailForUsername(username) {
-        const { data, error } = await admin.rpc("email_for_username", {
-          p_username: username,
+      async resolveAccount(id) {
+        const { data, error } = await admin.rpc("account_for_login", {
+          p_kind: id.kind,
+          p_value: id.value,
         });
-        return error || typeof data !== "string" ? null : data;
+        const row = error ? null : data?.[0];
+        return row && row.user_id && row.email
+          ? { userId: row.user_id, email: row.email }
+          : null;
       },
       async signInWithPassword(email, password) {
         const { error } = await supabase.auth.signInWithPassword({ email, password });

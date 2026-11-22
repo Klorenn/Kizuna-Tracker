@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(28);
+select plan(39);
 
 -- ===== handle_new_user trigger (runs as postgres, like GoTrue) =====
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -33,6 +33,21 @@ select throws_ok(
   $$ insert into auth.users (id, email, raw_user_meta_data) values ('a1000000-0000-0000-0000-000000000005', 'ok3@kizuna.app',
      '{"first_name":"M","last_name":"N","birth_date":"1990-01-01","username":"adult_3","timezone":"Mars/Base","terms_accepted":true}') $$,
   'P0001', 'invalid_timezone', 'unknown timezone is rejected');
+
+select throws_ok(
+  $$ insert into auth.users (id, email, raw_user_meta_data) values ('a1000000-0000-0000-0000-000000000011', 'old1@kizuna.app',
+     '{"first_name":"M","last_name":"N","birth_date":"1899-12-31","username":"adult_4","timezone":"UTC","terms_accepted":true}') $$,
+  'P0001', 'invalid_birth_date', 'birth dates before 1900 are rejected');
+
+select throws_ok(
+  $$ insert into auth.users (id, email, raw_user_meta_data) values ('a1000000-0000-0000-0000-000000000012', 'old2@kizuna.app',
+     '{"first_name":"M","last_name":"N","birth_date":"infinity","username":"adult_5","timezone":"UTC","terms_accepted":true}') $$,
+  'P0001', 'invalid_birth_date', 'infinity birth date is rejected');
+
+select throws_ok(
+  $$ insert into auth.users (id, email, raw_user_meta_data) values ('a1000000-0000-0000-0000-000000000013', 'old3@kizuna.app',
+     '{"first_name":"M","last_name":"N","birth_date":"not-a-date","username":"adult_6","timezone":"UTC","terms_accepted":true}') $$,
+  'P0001', 'invalid_birth_date', 'unparseable birth date is rejected');
 
 select throws_ok(
   $$ insert into auth.users (id, email, raw_user_meta_data) values ('a1000000-0000-0000-0000-000000000006', 'dup@kizuna.app',
@@ -74,6 +89,8 @@ select is(public.username_available('gone_1'), false, 'deleted username is unava
 select is(public.username_available('libre_1'), true, 'free username is available');
 select is(public.username_available('AB'), false, 'invalid username format is unavailable');
 select throws_ok($$ select public.email_for_username('user_a') $$, '42501', null, 'anon cannot resolve usernames to emails');
+select is(public.username_available(null), false, 'null username is unavailable, not null');
+select throws_ok($$ select * from public.account_for_login('username', 'user_a') $$, '42501', null, 'anon cannot resolve accounts');
 reset role;
 
 -- ===== service_role =====
@@ -81,6 +98,13 @@ set local role service_role;
 select is(public.email_for_username('user_a'), 'user_a@kizuna.app', 'service role resolves username to email');
 select is(public.email_for_username('gone_1'), null, 'deleted user resolves to null');
 select is(public.email_for_username('nadie_1'), null, 'unknown user resolves to null');
+select is((select user_id from public.account_for_login('username', 'USER_A')), 'a1000000-0000-0000-0000-000000000009'::uuid, 'handle resolves to the user id');
+select is((select user_id from public.account_for_login('email', 'User_A@Kizuna.app')), 'a1000000-0000-0000-0000-000000000009'::uuid, 'email resolves to the same user id');
+select is((select count(*)::int from public.account_for_login('username', 'gone_1')), 0, 'deleted handle does not resolve');
+select is((select count(*)::int from public.account_for_login('email', 'nadie@kizuna.app')), 0, 'unknown email does not resolve');
+select is((select count(*) filter (where r)::int from (select public.register_login_attempt(array['chk:203.0.113.9']) as r from generate_series(1, 60)) s),
+  60, 'a chk key allows 60 attempts');
+select is(public.register_login_attempt(array['chk:203.0.113.9']), false, 'the 61st chk attempt is blocked');
 
 select is((select count(*) filter (where r)::int from (select public.register_login_attempt(array['id:pau']) as r from generate_series(1, 10)) s),
   10, 'first 10 attempts for an id key are allowed');

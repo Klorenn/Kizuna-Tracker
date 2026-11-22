@@ -18,7 +18,7 @@ import {
 } from "@/lib/signup";
 import { checkUsername, signUp } from "./actions";
 
-type Availability = "idle" | "checking" | "available" | "taken";
+type Availability = "idle" | "checking" | "available" | "taken" | "limited";
 
 const TITLES: Record<SignupStep, string> = {
   1: "¿Cómo te llamas?",
@@ -155,7 +155,7 @@ export default function RegistroPage() {
     let cancelled = false;
     const t = setTimeout(async () => {
       const res = await checkUsername(username);
-      if (!cancelled) setAvailability(res.available ? "available" : "taken");
+      if (!cancelled) setAvailability(res.rateLimited ? "limited" : res.available ? "available" : "taken");
     }, 300);
     return () => {
       cancelled = true;
@@ -286,6 +286,8 @@ export default function RegistroPage() {
               error={
                 form.username !== "" && !check.ok
                   ? check.error
+                  : availability === "limited"
+                    ? "Demasiadas consultas. Espera un momento e inténtalo de nuevo."
                   : availability === "taken"
                     ? `@${username} ya está en uso. Prueba @${username.slice(0, 18)}_1.`
                     : null

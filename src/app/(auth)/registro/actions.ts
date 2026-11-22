@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { localDate } from "@/domain/dates";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { clientIp } from "@/lib/request-ip";
 import { createServerClient } from "@/lib/supabase/server";
 import { normalizeUsername, validateSignup, type SignupInput } from "@/lib/signup";
 
@@ -15,10 +16,18 @@ const USERNAME_TAKEN_ERROR = "Ese usuario ya está en uso.";
 
 export async function checkUsername(
   username: string,
-): Promise<{ available: boolean }> {
+): Promise<{ available: boolean; rateLimited?: boolean }> {
   if (typeof username !== "string") return { available: false };
   const normalized = normalizeUsername(username);
   if (!/^[a-z0-9_]{3,20}$/.test(normalized)) return { available: false };
+  const ip = clientIp(await headers());
+  if (ip) {
+    const { data: ok, error: limitError } = await createAdminClient().rpc(
+      "register_login_attempt",
+      { p_keys: [`chk:${ip}`] },
+    );
+    if (limitError || ok !== true) return { available: false, rateLimited: true };
+  }
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("username_available", {
     p_username: normalized,
@@ -58,13 +67,14 @@ export async function signUp(
   const checked = validateSignup(clean, todayIn(clean.timezone));
   if (!checked.ok) return { ok: false, error: checked.error };
 
-  const forwarded = (await headers()).get("x-forwarded-for");
-  const ip = forwarded?.split(",")[0]?.trim() || "unknown";
-  const { data: allowed, error: limitError } = await createAdminClient().rpc(
-    "register_login_attempt",
-    { p_keys: [`signup:${ip}`] },
-  );
-  if (limitError || allowed !== true) return { ok: false, error: RATE_LIMITED_ERROR };
+  const ip = clientIp(await headers());
+  if (ip) {
+    const { data: allowed, error: limitError } = await createAdminClient().rpc(
+      "register_login_attempt",
+      { p_keys: [`signup:${ip}`] },
+    );
+    if (limitError || allowed !== true) return { ok: false, error: RATE_LIMITED_ERROR };
+  }
 
   const supabase = await createServerClient();
   const { data: free } = await supabase.rpc("username_available", {

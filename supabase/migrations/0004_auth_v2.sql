@@ -78,7 +78,8 @@ begin
   exception when others then
     raise exception 'invalid_birth_date' using errcode = 'P0001';
   end;
-  if v_birth is null then
+  -- also rejects infinity and anything before 1900
+  if v_birth is null or v_birth not between date '1900-01-01' and date '9999-12-31' then
     raise exception 'invalid_birth_date' using errcode = 'P0001';
   end if;
 
@@ -118,11 +119,14 @@ stable
 security definer
 set search_path = ''
 as $$
-  select p_username ~ '^[a-z0-9_]{3,20}$'
-    and not exists (
-      select 1 from public.profiles p
-      where p.username operator(extensions.=) p_username::extensions.citext
-    );
+  select coalesce(
+    p_username ~ '^[a-z0-9_]{3,20}$'
+      and not exists (
+        select 1 from public.profiles p
+        where p.username operator(extensions.=) p_username::extensions.citext
+      ),
+    false
+  );
 $$;
 revoke execute on function public.username_available(text) from public;
 grant execute on function public.username_available(text) to anon, authenticated;
@@ -143,6 +147,30 @@ $$;
 revoke execute on function public.email_for_username(text) from public, anon, authenticated;
 grant execute on function public.email_for_username(text) to service_role;
 
+-- Resolves a login identifier to the auth user (id + email) so the limiter can key on
+-- the account whichever way it is named. Handles skip deleted profiles.
+create function public.account_for_login(p_kind text, p_value text)
+returns table (user_id uuid, email text)
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  (select u.id, u.email::text
+   from auth.users u
+   where p_kind = 'email' and lower(u.email::text) = lower(p_value)
+   limit 1)
+  union all
+  (select p.id, u.email::text
+   from public.profiles p
+   join auth.users u on u.id = p.id
+   where p_kind = 'username' and p.deleted_at is null
+     and p.username operator(extensions.=) p_value::extensions.citext
+   limit 1);
+$$;
+revoke execute on function public.account_for_login(text, text) from public, anon, authenticated;
+grant execute on function public.account_for_login(text, text) to service_role;
+
 -- ------------------------------------------------------ login attempts
 create table public.login_attempts (
   id bigint generated always as identity primary key,
@@ -155,7 +183,7 @@ alter table public.login_attempts enable row level security;
 revoke all on public.login_attempts from anon, authenticated;
 
 -- One attempt is recorded per key (also when blocked, so hammering keeps the lock).
--- Returns false when any key is over its 15 minute limit: ip:* 30, everything else 10.
+-- Returns false when any key is over its 15 minute limit: ip:* 30, chk:* 60, rest 10.
 create function public.register_login_attempt(p_keys text[])
 returns boolean
 language plpgsql
@@ -174,7 +202,11 @@ begin
     select count(*)::int into v_count
     from public.login_attempts a
     where a.key = k and a.created_at > pg_catalog.now() - interval '15 minutes';
-    v_limit := case when k like 'ip:%' then 30 else 10 end;
+    v_limit := case
+      when k like 'ip:%' then 30
+      when k like 'chk:%' then 60
+      else 10
+    end;
     if v_count > v_limit then
       v_ok := false;
     end if;
