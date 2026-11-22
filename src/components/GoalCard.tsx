@@ -5,6 +5,7 @@ import { useState, useTransition } from "react";
 import { archiveGoal } from "@/app/(app)/metas/actions";
 import { IconButton } from "@/components/ui/IconButton";
 import { ProgressRing } from "@/components/ui/ProgressRing";
+import type { HabitColor } from "@/domain/habit-colors";
 
 export type GoalView = {
   id: string;
@@ -13,6 +14,8 @@ export type GoalView = {
   current: number;
   target: number;
   status: "in_progress" | "done" | "overdue";
+  /** Identity color of the goal's habit. */
+  color: HabitColor;
   /** Short text under the title for total goals ("37 de 100 · faltan 63 · hasta el 30 jun 2027"). */
   detail?: string;
   /** Right-hand label for weekly goals ("1 de 4"). */
@@ -43,7 +46,7 @@ export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivab
   ) : null;
 
   return (
-    <div className="flex flex-col gap-1 py-3">
+    <div className="flex flex-col gap-1 py-3" data-habit-color={goal.color}>
       {goal.kind === "weekly" ? (
         <div className="flex items-center gap-2">
           <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
@@ -62,7 +65,7 @@ export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivab
               aria-valuenow={Math.min(goal.current, goal.target)}
               className="h-[6px] overflow-hidden rounded-full bg-ink-soft"
             >
-              <div className="h-[6px] rounded-[3px] bg-accent" style={{ width: `${pct}%` }} />
+              <div className="h-[6px] rounded-[3px] bg-(--habit)" style={{ width: `${pct}%` }} />
             </div>
           </div>
           {archiveButton}
@@ -76,7 +79,7 @@ export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivab
               {status ? ` · ${status}` : ""}
             </p>
           </div>
-          <ProgressRing value={pct} label={`${Math.round(pct)}% de ${goal.title}`} />
+          <ProgressRing value={pct} label={`${Math.round(pct)}% de ${goal.title}`} color={goal.color} />
           {archiveButton}
         </div>
       )}

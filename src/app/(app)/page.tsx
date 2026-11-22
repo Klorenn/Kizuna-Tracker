@@ -34,7 +34,7 @@ export default async function Home() {
   const [habits, items, checkins, itemChecks] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week")
+      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week")
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),

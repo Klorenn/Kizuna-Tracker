@@ -40,12 +40,16 @@ export function HabitRow({ row }: { row: TodayRow }) {
 
   const text = (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-      <Link
-        href={`/habitos/${row.id}`}
-        className={`truncate text-body ${done ? "text-muted line-through" : "text-ink"}`}
-      >
-        {row.name}
-      </Link>
+      <span className="flex min-w-0 items-center gap-2">
+        {/* identity color: decorative, the name carries the meaning */}
+        <span aria-hidden data-habit-color={row.color} className="size-2 shrink-0 rounded-full bg-(--habit)" />
+        <Link
+          href={`/habitos/${row.id}`}
+          className={`truncate text-body ${done ? "text-muted line-through" : "text-ink"}`}
+        >
+          {row.name}
+        </Link>
+      </span>
       <span className="flex items-center gap-1 text-small text-muted">
         <VisibilityIcon value={row.visibility} />
         {habitSubtitle(row)}

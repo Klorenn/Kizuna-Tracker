@@ -1,5 +1,7 @@
 "use client";
 
+import type { ReactNode } from "react";
+
 export function Segmented<T extends string>({
   label,
   options,
@@ -7,7 +9,7 @@ export function Segmented<T extends string>({
   onChange,
 }: {
   label: string;
-  options: readonly { value: T; label: string }[];
+  options: readonly { value: T; label: string; leading?: ReactNode }[];
   value: T;
   onChange: (v: T) => void;
 }) {
@@ -30,7 +32,14 @@ export function Segmented<T extends string>({
               selected ? "bg-raised text-ink shadow-card" : "text-muted"
             }`}
           >
-            {o.label}
+            {o.leading ? (
+              <span className="flex min-w-0 items-center justify-center gap-1.5">
+                {o.leading}
+                <span className="truncate">{o.label}</span>
+              </span>
+            ) : (
+              o.label
+            )}
           </button>
         );
       })}

@@ -11,6 +11,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
+import { toHabitColor } from "@/domain/habit-colors";
 import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency } from "@/domain/types";
@@ -41,13 +42,14 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
 
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,archived_at")
+    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
     .maybeSingle();
   if (!habit) notFound();
 
+  const color = toHabitColor(habit.color);
   const today = localDate(new Date(), profile.timezone);
   // bounded by date and rows (the API caps a query at 1000 rows)
   const { from, limit } = streakWindow(today);
@@ -90,8 +92,12 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
           Hoy
         </Link>
       </div>
-      <div className="flex items-center gap-3">
-        <span className="flex size-12 shrink-0 items-center justify-center rounded-md bg-field">
+      <div className="flex items-center gap-3" data-habit-color={color}>
+        {/* identity tile: soft fill + solid hairline in the habit color, icon stays ink */}
+        <span
+          aria-hidden
+          className="flex size-12 shrink-0 items-center justify-center rounded-md bg-(--habit-soft) text-ink ring-[1.5px] ring-inset ring-(--habit)"
+        >
           <HabitIcon name={habit.icon as IconKey} size={24} />
         </span>
         <div className="min-w-0 flex-1">
@@ -104,7 +110,7 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
       </div>
 
       <div className="flex gap-3">
-        <Card accent className="flex-1 p-4 pl-[19px]">
+        <Card accent accentColor={color} className="flex-1 p-4 pl-[19px]">
           <p className="text-small text-muted">Racha actual</p>
           <p className="flex items-baseline gap-1.5">
             <span className="font-mono text-[40px] font-semibold leading-none tracking-[-0.02em] text-ink">
@@ -133,12 +139,13 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
           month={month}
           today={today}
           doneDates={dates.filter((d) => d.startsWith(month.slice(0, 7)))}
+          color={color}
         />
       </Card>
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">
-        <WeeklyBars data={weeklyCounts(dates, 8, today)} target={target} />
+        <WeeklyBars data={weeklyCounts(dates, 8, today)} target={target} color={color} />
         <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
       </Card>
 

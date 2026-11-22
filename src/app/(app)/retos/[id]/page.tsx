@@ -10,6 +10,7 @@ import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { canReject, periodsFor, REJECT_WINDOW_MS } from "@/domain/challenges";
 import { localDate } from "@/domain/dates";
+import { toHabitColor, type HabitColor } from "@/domain/habit-colors";
 import { formatCLP, netBalances } from "@/domain/ledger";
 import { REJECT_LABEL, type RejectReason } from "@/lib/challenge-form";
 import {
@@ -29,11 +30,12 @@ export const metadata: Metadata = { title: "Reto" };
 
 const SIGNED_SECONDS = 300;
 
-function Segments({ done, total }: { done: number; total: number }) {
+/** Period progress in the player's habit color (empty segments stay neutral). */
+function Segments({ done, total, color }: { done: number; total: number; color: HabitColor }) {
   return (
-    <div className="flex gap-[6px]">
+    <div className="flex gap-[6px]" data-habit-color={color}>
       {Array.from({ length: total }, (_, i) => (
-        <span key={i} className={`h-[6px] flex-1 rounded-[3px] ${i < done ? "bg-accent" : "bg-ink-soft"}`} />
+        <span key={i} className={`h-[6px] flex-1 rounded-[3px] ${i < done ? "bg-(--habit)" : "bg-ink-soft"}`} />
       ))}
     </div>
   );
@@ -64,7 +66,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }] =
     await Promise.all([
       supabase.from("public_profiles").select("display_name").eq("id", otherId).maybeSingle(),
-      supabase.from("habits").select("id,name").in("id", habitIds),
+      supabase.from("habits").select("id,name,color").in("id", habitIds),
       c.starts_on
         ? supabase
             .from("checkins")
@@ -81,6 +83,8 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const other = firstName(profile?.display_name);
   const myHabitName = (habits ?? []).find((h) => h.id === myHabitId)?.name ?? "Hábito";
   const theirHabitName = (habits ?? []).find((h) => h.id === theirHabitId)?.name ?? myHabitName;
+  const myColor = toHabitColor((habits ?? []).find((h) => h.id === myHabitId)?.color);
+  const theirColor = toHabitColor((habits ?? []).find((h) => h.id === theirHabitId)?.color);
   const f = challengeFrequency(c);
   const now = new Date();
   const today = localDate(now, c.timezone);
@@ -191,8 +195,8 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       <SectionHeader label={f.type === "weekly" ? "Esta semana" : "Hoy"} action={closesLabel} />
       <Card accent className="flex flex-col gap-4 p-4 pl-[19px]">
         {[
-          { name: "Tú", done: mineNow },
-          { name: other, done: theirsNow },
+          { name: "Tú", done: mineNow, color: myColor },
+          { name: other, done: theirsNow, color: theirColor },
         ].map((row) => (
           <div key={row.name} className="flex items-center gap-3">
             <Avatar name={row.name} />
@@ -203,7 +207,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
                   {row.done} de {target}
                 </p>
               </div>
-              <Segments done={row.done} total={target} />
+              <Segments done={row.done} total={target} color={row.color} />
             </div>
           </div>
         ))}

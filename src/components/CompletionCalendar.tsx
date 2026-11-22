@@ -1,17 +1,20 @@
 import { addDays } from "@/domain/dates";
+import type { HabitColor } from "@/domain/habit-colors";
 
 const WEEKDAYS = ["L", "M", "M", "J", "V", "S", "D"];
 
-/** Month grid, weeks Monday to Sunday. Done days are filled, today has a ring. */
+/** Month grid, weeks Monday to Sunday. Done days are filled with the habit color, today has a ring. */
 export function CompletionCalendar({
   month,
   today,
   doneDates,
+  color,
 }: {
   /** First day of the month, `YYYY-MM-01`. */
   month: string;
   today: string;
   doneDates: string[];
+  color: HabitColor;
 }) {
   const done = new Set(doneDates);
   const [y, m] = month.split("-").map(Number);
@@ -24,7 +27,7 @@ export function CompletionCalendar({
   while (cells.length % 7 !== 0) cells.push(null);
 
   return (
-    <div className="flex flex-col gap-2">
+    <div className="flex flex-col gap-2" data-habit-color={color}>
       <div className="section-label grid grid-cols-7 text-center text-muted" aria-hidden>
         {WEEKDAYS.map((d, i) => (
           <span key={i}>{d}</span>
@@ -42,9 +45,9 @@ export function CompletionCalendar({
               <span
                 className={`flex size-[34px] items-center justify-center rounded-full text-small ${
                   isDone
-                    ? "bg-accent font-semibold text-on-accent"
+                    ? "bg-(--habit) font-semibold text-(--habit-on)"
                     : isToday
-                      ? "border-[1.5px] border-accent font-semibold text-accent"
+                      ? "border-[1.5px] border-(--habit) font-semibold text-ink"
                       : future
                         ? "text-outline-strong"
                         : "text-ink"
@@ -59,11 +62,11 @@ export function CompletionCalendar({
       </div>
       <div className="flex items-center gap-4 text-small text-muted">
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="size-2.5 rounded-full bg-accent" />
+          <span aria-hidden className="size-2.5 rounded-full bg-(--habit)" />
           Hecho
         </span>
         <span className="flex items-center gap-1.5">
-          <span aria-hidden className="size-2.5 rounded-full border-[1.5px] border-accent" />
+          <span aria-hidden className="size-2.5 rounded-full border-[1.5px] border-(--habit)" />
           Hoy
         </span>
         <span className="flex items-center gap-1.5">

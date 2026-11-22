@@ -1,6 +1,7 @@
 import { TZDate } from '@date-fns/tz'
 import { format } from 'date-fns'
 import { addDays, weekStart } from './dates'
+import { toHabitColor, type HabitColor } from './habit-colors'
 import type { IconKey, Visibility } from './presets'
 import { dailyStreak, weeklyStreak } from './streaks'
 import type { Frequency, LocalDate } from './types'
@@ -13,6 +14,7 @@ export type HabitInput = {
   requires_photo: boolean
   frequency_type: string
   target_per_week: number | null
+  color?: string | null
 }
 export type ItemInput = {
   id: string
@@ -35,6 +37,7 @@ export type TodayRow = {
   id: string
   name: string
   icon: IconKey
+  color: HabitColor
   visibility: Visibility
   requiresPhoto: boolean
   frequency: Frequency
@@ -87,6 +90,7 @@ export function buildToday(input: {
       id: h.id,
       name: h.name,
       icon: h.icon as IconKey,
+      color: toHabitColor(h.color),
       visibility: h.visibility as Visibility,
       requiresPhoto: h.requires_photo,
       frequency,
