@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { KanjiWatermark } from "@/components/auth/KanjiWatermark";
+import { CatLift } from "@/components/brand/CatLift";
 import { Lockup } from "@/components/brand/Logo";
 import { ButtonLink } from "@/components/ui/Button";
 
@@ -8,11 +9,11 @@ export const metadata: Metadata = { title: "Bienvenida" };
 /** Figma A0 Bienvenida (820:2305). */
 export default function BienvenidaPage() {
   return (
-    <main className="relative isolate mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),24px)] pt-[clamp(48px,14dvh,132px)]">
+    <main className="relative isolate mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),24px)] pt-[clamp(40px,10dvh,96px)]">
       <KanjiWatermark placement="middle" />
       <section className="flex flex-col gap-4">
         <div className="flex flex-col items-start gap-3">
-          <Lockup catWidth={136} lift />
+          <Lockup cat={<CatLift width={172} />} />
           <p className="text-small text-muted">
             <span lang="ja">絆</span>, <i>kizuna</i>: el lazo entre amigos.
           </p>

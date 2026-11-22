@@ -49,43 +49,24 @@ body {
   }
 }
 
-/* Owner's cat lift (Figma "Logo/Cat Indigo"): two lifts in 2 s, played once. */
-@keyframes cat-bob {
-  0%, 22.5%, 37.5%, 52.5%, 70%, 100% { transform: translateY(0); }
-  15%, 30%, 45%, 60% { transform: translateY(-1.094px); }
+/* Owner's animated cat (CatLift): the GIF is the mask, the token is the paint. */
+.cat-lift-mask {
+  -webkit-mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+  mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+  /* white body = paint, dark line details = holes: keeps the eyes and dumbbell lines crisp */
+  mask-mode: luminance;
 }
-@keyframes cat-arm-l {
-  0%, 15%, 45%, 70%, 100% { transform: translateY(0) rotate(0deg); }
-  30%, 60% { transform: translateY(-1.094px) rotate(9deg); }
-}
-@keyframes cat-arm-r {
-  0%, 30%, 60%, 100% { transform: translateY(0) rotate(0deg); }
-  15%, 45% { transform: translateY(-1.094px) rotate(-8deg); }
-}
-@keyframes cat-marks-l {
-  0%, 40%, 69%, 100% { opacity: 0; }
-  30%, 60% { opacity: 1; }
-}
-@keyframes cat-marks-r {
-  0%, 25%, 55%, 100% { opacity: 0; }
-  15%, 45% { opacity: 1; }
-}
-.cat-lift g {
-  transform-box: view-box;
-  animation-duration: 2s;
-  animation-delay: 300ms;
-  animation-timing-function: ease-in-out;
-  animation-fill-mode: both;
-}
-.cat-lift .cat-bob { animation-name: cat-bob; }
-.cat-lift .cat-arm-l { animation-name: cat-arm-l; transform-origin: 59.82px 64.9px; }
-.cat-lift .cat-arm-r { animation-name: cat-arm-r; transform-origin: 85.6px 64.9px; }
-.cat-lift .cat-marks-l { animation-name: cat-marks-l; }
-.cat-lift .cat-marks-r { animation-name: cat-marks-r; }
 
 @media (prefers-reduced-motion: reduce) {
-  .auth-step,
-  .cat-lift g {
+  .auth-step {
     animation: none;
+  }
+  .cat-lift-mask {
+    -webkit-mask-image: url(/brand/cat-lift-still.png);
+    mask-image: url(/brand/cat-lift-still.png);
+    -webkit-mask-size: var(--cat-still-size, contain);
+    mask-size: var(--cat-still-size, contain);
+    -webkit-mask-position: var(--cat-still-pos, center);
+    mask-position: var(--cat-still-pos, center);
   }
 }

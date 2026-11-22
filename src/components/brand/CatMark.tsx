@@ -15,22 +15,19 @@ const W = 120.4;
 const H = 135.45;
 
 /**
- * Gato índigo con pesas: cuerpo accent, pesas accent2, directo sobre el fondo.
- * `lift` reproduce una vez la animación de Figma (dos levantadas, 2 s) y queda quieto;
- * con prefers-reduced-motion no se mueve.
+ * Gato índigo con pesas, estático: cuerpo accent, pesas accent2, directo sobre el fondo.
+ * Para el gato animado usa CatLift (GIF del dueño).
  */
 export function CatMark({
   className,
   width = 140,
-  lift = false,
 }: {
   className?: string;
   width?: number;
-  lift?: boolean;
 }) {
   return (
     <svg
-      className={`${lift ? "cat-lift" : ""} ${className ?? ""}`}
+      className={className}
       width={width}
       height={(width * H) / W}
       viewBox={`0 0 ${W} ${H}`}
@@ -39,21 +36,21 @@ export function CatMark({
       focusable="false"
       overflow="visible"
     >
-      <g className="cat-bob">
+      <g>
         <svg x={0} y={0} width={106.357} height={133.19} viewBox={CAT_BODY_VIEWBOX} overflow="visible">
           <CatBodyPaths />
         </svg>
-        <g className="cat-arm-l">
+        <g>
           <svg x={14.67} y={19.75} width={90.3} height={90.3} viewBox={CAT_ARM_VIEWBOX} overflow="visible">
             <CatArmLPaths />
           </svg>
         </g>
-        <g className="cat-arm-r">
+        <g>
           <svg x={40.45} y={19.75} width={90.3} height={90.3} viewBox={CAT_ARM_VIEWBOX} overflow="visible">
             <CatArmRPaths />
           </svg>
         </g>
-        <g className="cat-marks-l" opacity={0}>
+        <g opacity={0}>
           <svg
             x={W * 0.089}
             y={H * 0.431}
@@ -66,7 +63,7 @@ export function CatMark({
             <CatMarksLPaths />
           </svg>
         </g>
-        <g className="cat-marks-r" opacity={0}>
+        <g opacity={0}>
           <svg
             x={W * 0.8066}
             y={H * 0.1349}

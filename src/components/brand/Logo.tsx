@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { CatMark } from "./CatMark";
 import { Seal } from "./Seal";
 
@@ -40,10 +41,10 @@ export function Wordmark({
  * Marca de bienvenida (Figma "Marca (in-app)" 827:2817): gato centrado sobre KIZUNA + sello.
  * Figma: gato 120 px, wordmark 151 × 26, sello 34, separación 16 / 12.
  */
-export function Lockup({ catWidth = 120, lift = false }: { catWidth?: number; lift?: boolean }) {
+export function Lockup({ cat }: { cat?: ReactNode }) {
   return (
     <div className="flex flex-col items-center gap-4">
-      <CatMark width={catWidth} lift={lift} />
+      {cat ?? <CatMark width={120} />}
       <div className="flex items-center gap-3" role="img" aria-label="Kizuna 絆">
         <Wordmark width={151} decorative />
         <Seal size={34} decorative />
@@ -57,7 +58,7 @@ export function BrandHeader({ className = "" }: { className?: string }) {
   return (
     <div className={`flex h-8 items-center justify-between ${className}`}>
       <div className="flex items-center gap-2" role="img" aria-label="Kizuna">
-        <CatMark width={25} />
+        <CatMark width={26} />
         <Wordmark width={78} decorative />
       </div>
       <Seal size={22} decorative />
