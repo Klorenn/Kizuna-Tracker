@@ -1,0 +1,57 @@
+# Calm Utility (Fuzz style `calm-utility`)
+
+Interfaces that disappear. Detail that doesn't. Source: Fuzz `apply_style(calm-utility, tailwind)`, condensed.
+
+## Tokens
+| Token | Value | Use |
+|---|---|---|
+| bg / neutral | #FAFAFA | page background |
+| surface | #FFFFFF | cards, panels |
+| text / on-surface | #111111 | main text |
+| muted | #6F6F6F | metadata, captions |
+| line / outline | #E6E6E6 | decorative dividers only |
+| outline-strong | #8D8D8D | input, checkbox, toggle borders |
+| accent / primary | #5A5AC2 (hover #4C4CA5) | focus, selection, primary action only; text on it #FFFFFF |
+| accent2 / secondary | #2E3A5E (hover #273150) | chips, secondary emphasis; text on it #FFFFFF |
+| alert / error | #E5484D | errors only; text on it #000000 |
+
+Radius: sm 5px, md 10px (default), lg 15px (cards), full 9999px. Spacing unit 4px: xs 4, sm 8, md 16, lg 24, xl 32; mobile margin 20px.
+Shadow (single effect): `0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04)`.
+Borders: buttons, cards, chips 1px solid #E6E6E6; inputs 1px solid #8D8D8D.
+
+## Typography
+- Inter for headings and body; Geist Mono for labels and numbers. Max two families.
+- Headlines weight 600, tracking -0.02em (32px md on mobile). Body 15px/1.5, small 13px/1.45.
+- Labels Geist Mono 11–14px, tracking 0.04em. Sentence case everywhere.
+
+## Components
+- button-primary: accent fill, white label, radius 10, height 48.
+- button-secondary: surface fill, flips to accent2 on hover.
+- card: surface, radius 15, padding 16, 1px #E6E6E6.
+- input: neutral fill, height 44, 1px #8D8D8D.
+- chip: accent2 pill, Geist Mono 11px.
+- Icons: Phosphor light (`@phosphor-icons/react`, weight "light"), 20px. No emoji, no second icon library.
+
+## Motion
+micro 120ms cubic-bezier(.2,0,0,1) (hover, press); standard 200ms cubic-bezier(.32,.72,0,1) (popovers); spatial 350ms (sheets). Honor prefers-reduced-motion. Motion only explains a change.
+
+## Accessibility
+WCAG 2.2 AA. Focus ring 2px solid #5A5AC2, 2px offset, on :focus-visible. Tap targets ≥ 44×44. Text ≥ 11px, body ≥ 12px. Never convey state by color alone.
+
+## Never
+- No all-caps labels.
+- No more than 2 gradients per screen; only tonal accent/accent2/bg; no gradient text.
+- No single word highlighted in a headline.
+- No small label over a heading that only repeats it.
+- No invented ratings, user counts, quotes or placeholder people.
+- No raw hex, #000/#fff, stock Tailwind indigo/violet/slate in components: tokens only.
+- No emoji as icons.
+- No "Thanks!", "Sent", "You're in" without a real request behind it.
+- No `transition: all`, no animated width/height/top/left, no animation without reduced-motion fallback.
+- No 100vh heroes.
+- Accent only for focus, selection and the primary action; never decoration, icons or headings.
+- No looping or decorative animation.
+- No cards inside cards.
+
+## Copy voice
+Plain, precise, friendly, brief. No hype, jargon or exclamations.

@@ -3,3 +3,12 @@ node_modules/
 .next/
 .env*
 !.env.example
+
+# misc
+.DS_Store
+*.pem
+/coverage
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+/out/

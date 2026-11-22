@@ -1,0 +1,29 @@
+/* Calm Utility tokens. Source of truth: DESIGN.md */
+@theme {
+  --color-*: initial;
+  --color-bg: #fafafa;
+  --color-surface: #ffffff;
+  --color-line: #e6e6e6;
+  --color-text: #111111;
+  --color-muted: #6f6f6f;
+  --color-outline-strong: #8d8d8d;
+  --color-accent: #5a5ac2;
+  --color-accent-hover: #4c4ca5;
+  --color-accent2: #2e3a5e;
+  --color-accent2-hover: #273150;
+  --color-alert: #e5484d;
+
+  --radius-sm: 5px;
+  --radius-md: 10px;
+  --radius-lg: 15px;
+
+  --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.04);
+}
+
+:root {
+  --radius: 10px;
+}
