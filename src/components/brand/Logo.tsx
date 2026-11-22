@@ -1,16 +1,25 @@
+import type { ReactNode } from "react";
 import { CatMark } from "./CatMark";
 import { Seal } from "./Seal";
 
-export function Wordmark({ className }: { className?: string }) {
+/** Wordmark KIZUNA en tinta. `width` escala el alto en proporción. */
+export function Wordmark({
+  className,
+  width = 130,
+  decorative = false,
+}: {
+  className?: string;
+  width?: number;
+  decorative?: boolean;
+}) {
   return (
     <svg
       className={className}
-      width="130"
-      height="22"
+      width={width}
+      height={(width * 22.2857) / 129.82}
       viewBox="0 0 129.82 22.2857"
       fill="none"
-      role="img"
-      aria-label="Kizuna"
+      {...(decorative ? { "aria-hidden": true } : { role: "img", "aria-label": "Kizuna" })}
     >
 <g>
 <path d="M99.0099 1.84873C99.1426 1.18073 99.1153 0.98157 99.5823 0.54454C100.469 0.2398 102.159 0.111505 103.004 0.461129C104.307 1.04081 104.045 3.89395 104.016 5.06984C103.898 9.82393 104.078 14.5669 104.047 19.3201C104.034 21.2788 103.326 21.9859 101.363 21.7115C100.682 21.7364 99.5969 21.8167 99.1335 21.2836C95.6355 17.2611 92.581 12.4105 89.2298 8.28152C89.3314 9.78596 89.4192 11.2915 89.493 12.7976C89.5702 14.4337 89.9082 20.1593 89.087 21.3392C87.9867 22.0021 85.986 22.041 85.0469 21.0833C84.3179 19.2227 84.6804 11.5542 84.724 9.35801C84.7791 6.58664 83.2487 -0.982797 87.9253 0.277049C90.5511 0.984474 92.9999 5.22358 94.6077 7.41128C95.1194 8.10362 95.9062 9.10179 96.3551 9.79831C97.2564 10.8943 98.2577 12.4657 99.2807 13.7376C99.4861 11.9482 99.2498 10.1354 99.1626 8.32804C99.0554 6.16996 99.0045 4.00953 99.0099 1.84873Z" style={{ fill: "var(--color-ink)" }}/>
@@ -28,15 +37,31 @@ export function Wordmark({ className }: { className?: string }) {
   );
 }
 
-/** Gato + KIZUNA + sello, directo sobre el fondo. */
-export function Lockup() {
+/**
+ * Marca de bienvenida (Figma "Marca (in-app)" 827:2817): gato centrado sobre KIZUNA + sello.
+ * Figma: gato 120 px, wordmark 151 × 26, sello 34, separación 16 / 12.
+ */
+export function Lockup({ cat }: { cat?: ReactNode }) {
   return (
-    <div className="flex flex-col items-start gap-4">
-      <CatMark width={112} />
-      <div className="flex items-center gap-[10px]">
-        <Wordmark />
-        <Seal size={29} />
+    <div className="flex flex-col items-center gap-4">
+      {cat ?? <CatMark width={120} />}
+      <div className="flex items-center gap-3" role="img" aria-label="Kizuna 絆">
+        <Wordmark width={151} decorative />
+        <Seal size={34} decorative />
       </div>
+    </div>
+  );
+}
+
+/** Cabecera compacta de marca para pantallas de cuenta: gato + KIZUNA a la izquierda, sello a la derecha. */
+export function BrandHeader({ className = "" }: { className?: string }) {
+  return (
+    <div className={`flex h-8 items-center justify-between ${className}`}>
+      <div className="flex items-center gap-2" role="img" aria-label="Kizuna">
+        <CatMark width={26} />
+        <Wordmark width={78} decorative />
+      </div>
+      <Seal size={22} decorative />
     </div>
   );
 }

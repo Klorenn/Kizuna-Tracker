@@ -26,9 +26,64 @@ body {
   text-transform: uppercase;
 }
 
+/* ---------- Auth screens ---------- */
+
+/* Step content enters with a short fade + slide (standard 200 ms). */
+@keyframes auth-step-in {
+  from {
+    opacity: 0;
+    transform: translateX(var(--step-from, 12px));
+  }
+}
+.auth-step {
+  animation: auth-step-in 200ms cubic-bezier(0.32, 0.72, 0, 1) both;
+}
+.auth-step[data-dir="back"] {
+  --step-from: -12px;
+}
+
+/* Kanji watermark: decorative, so it steps aside whenever it could hurt legibility. */
+@media (max-height: 600px), (prefers-contrast: more), (prefers-reduced-transparency: reduce), (forced-colors: active) {
+  .kanji-watermark {
+    display: none;
+  }
+}
+
+/* Owner's animated cat (CatLift): the GIF is the mask, the token is the paint. */
+.cat-lift-mask {
+  -webkit-mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+  mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+  /* white body = paint, dark line details = holes: keeps the eyes and dumbbell lines crisp */
+  mask-mode: luminance;
+}
+
 /* Reduced-motion cat (Figma 19b): static frame, 300 ms fade-in. */
 @keyframes cat-fade {
   from { opacity: 0; }
   to { opacity: 1; }
 }
-.cat-fade { animation: cat-fade 300ms ease-out; }
+
+/* Resting (single pass done, `once`) and reduced motion both show the still frame. */
+.cat-lift-mask[data-cat-rest] {
+  -webkit-mask-image: url(/brand/cat-lift-still.png);
+  mask-image: url(/brand/cat-lift-still.png);
+  -webkit-mask-size: var(--cat-still-size, contain);
+  mask-size: var(--cat-still-size, contain);
+  -webkit-mask-position: var(--cat-still-pos, center);
+  mask-position: var(--cat-still-pos, center);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-step {
+    animation: none;
+  }
+  .cat-lift-mask {
+    animation: cat-fade 300ms ease-out;
+    -webkit-mask-image: url(/brand/cat-lift-still.png);
+    mask-image: url(/brand/cat-lift-still.png);
+    -webkit-mask-size: var(--cat-still-size, contain);
+    mask-size: var(--cat-still-size, contain);
+    -webkit-mask-position: var(--cat-still-pos, center);
+    mask-position: var(--cat-still-pos, center);
+  }
+}

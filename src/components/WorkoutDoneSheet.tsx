@@ -4,7 +4,7 @@ import { Flame } from "@phosphor-icons/react/dist/ssr";
 import { useEffect, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
-import { CatLift } from "./CatLift";
+import { CatLift } from "@/components/brand/CatLift";
 
 /** Auto-close delay. The cat's GIF pass (6 s) is longer: the sheet closes mid-lift unless the user interacts. */
 export const WORKOUT_SHEET_MS = 3000;
@@ -65,7 +65,7 @@ export function WorkoutDoneSheet({
           }}
         >
           <div className="flex items-center gap-4">
-            <CatLift size="lg" />
+            <CatLift width={160} once />
             <div className="flex min-w-0 flex-1 flex-col gap-1">
               {streakLabel ? (
                 <p className="flex items-center gap-1.5 font-mono text-[17px] font-medium text-ink">

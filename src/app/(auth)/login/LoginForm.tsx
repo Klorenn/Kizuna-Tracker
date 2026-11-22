@@ -2,8 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { Eye, EyeSlash } from "@phosphor-icons/react";
+import { useRef, useState, useTransition } from "react";
+import { PasswordToggle } from "@/components/auth/PasswordToggle";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { safeNextPath } from "@/lib/supabase/public-paths";
@@ -24,9 +24,17 @@ export function LoginForm({
     profileMissing ? "No encontramos tu perfil. Inicia sesión de nuevo o crea una cuenta." : null,
   );
   const [pending, startTransition] = useTransition();
+  const passwordRef = useRef<HTMLInputElement>(null);
 
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    if (pending) return;
+    // Enter on the first field moves on instead of submitting half a form.
+    if (identifier.trim() !== "" && password === "") {
+      passwordRef.current?.focus();
+      return;
+    }
+    if (identifier.trim() === "" || password === "") return;
     setError(null);
     startTransition(async () => {
       const res = await signIn({ identifier, password });
@@ -35,6 +43,7 @@ export function LoginForm({
         router.refresh();
       } else {
         setError(res.error);
+        passwordRef.current?.select();
       }
     });
   }
@@ -45,40 +54,45 @@ export function LoginForm({
       <Input
         label="Correo o @usuario"
         name="identifier"
+        type="text"
+        inputMode="email"
         autoComplete="username"
         autoCapitalize="none"
         autoCorrect="off"
         spellCheck={false}
+        enterKeyHint="next"
+        autoFocus
         value={identifier}
         onChange={(e) => setIdentifier(e.target.value)}
-        className={flagged ? "!border-alert" : ""}
+        invalid={flagged}
       />
       <Input
+        ref={passwordRef}
         label="Contraseña"
         name="password"
         type={show ? "text" : "password"}
         autoComplete="current-password"
+        enterKeyHint="go"
         value={password}
         onChange={(e) => setPassword(e.target.value)}
         error={error}
-        className={flagged ? "!border-alert" : ""}
-        trailing={
-          <button
-            type="button"
-            aria-label={show ? "Ocultar contraseña" : "Mostrar contraseña"}
-            onClick={() => setShow((v) => !v)}
-            className="inline-flex size-8 shrink-0 items-center justify-center rounded-sm text-muted"
-          >
-            {show ? <EyeSlash size={20} weight="light" /> : <Eye size={20} weight="light" />}
-          </button>
-        }
+        invalid={flagged}
+        trailing={<PasswordToggle shown={show} onToggle={() => setShow((v) => !v)} />}
       />
-      <Button type="submit" disabled={pending || identifier.trim() === "" || password === ""}>
+      <Button
+        type="submit"
+        className="mt-2"
+        aria-disabled={pending || undefined}
+        disabled={pending || identifier.trim() === "" || password === ""}
+      >
         {pending ? "Entrando…" : "Iniciar sesión"}
       </Button>
-      <p className="flex min-h-11 items-center justify-center gap-1 text-body">
+      <p className="flex items-center justify-center gap-1 text-body">
         <span className="text-muted">¿No tienes cuenta?</span>
-        <Link href="/registro" className="font-medium text-accent">
+        <Link
+          href="/registro"
+          className="-mx-2 inline-flex min-h-11 items-center rounded-md px-2 font-medium text-accent hover:underline hover:underline-offset-4"
+        >
           Crea una
         </Link>
       </p>
