@@ -14,9 +14,9 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
       const { data, error } = await db
         .from('challenges')
         .select(
-          'id,creator_id,rival_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,fine_amount,starts_on,timezone',
+          'id,creator_id,rival_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,fine_amount,starts_on,timezone,cancelled_at',
         )
-        .eq('status', 'active')
+        .or('status.eq.active,and(status.eq.cancelled,cancelled_at.not.is.null)')
         .not('starts_on', 'is', null)
         .not('rival_habit_id', 'is', null)
       if (error) fail('activeChallenges', error)
@@ -34,6 +34,7 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
                 fineAmount: c.fine_amount,
                 startsOn: c.starts_on,
                 timezone: c.timezone,
+                cancelledAt: c.cancelled_at ? new Date(c.cancelled_at) : null,
               },
             ]
           : [],
@@ -62,17 +63,17 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
       return (data ?? []).map((k) => k.local_date)
     },
 
-    async photoCheckinCreatedAts(habitIds, from, to) {
+    async photoCheckins(habitIds, from, to) {
       const { data, error } = await db
         .from('checkins')
-        .select('created_at')
+        .select('local_date,created_at')
         .in('habit_id', habitIds)
         .is('rejected_at', null)
         .not('photo_path', 'is', null)
         .gte('local_date', from)
         .lte('local_date', to)
-      if (error) fail('photoCheckinCreatedAts', error)
-      return (data ?? []).map((k) => new Date(k.created_at))
+      if (error) fail('photoCheckins', error)
+      return (data ?? []).map((k) => ({ localDate: k.local_date, createdAt: new Date(k.created_at) }))
     },
 
     async insertPeriod(challengeId, period, closedAt) {

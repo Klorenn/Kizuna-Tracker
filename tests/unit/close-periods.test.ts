@@ -19,6 +19,7 @@ function challenge(over: Partial<ActiveChallenge> = {}): ActiveChallenge {
     fineAmount: 4500,
     startsOn: '2026-11-23',
     timezone: 'America/Santiago',
+    cancelledAt: null,
     ...over,
   }
 }
@@ -39,6 +40,7 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
   const debts = new Map<string, { debtorId: string; creditorId: string; amount: number }>()
   const notifications: { userId: string; type: string; payload: Record<string, unknown> }[] = []
   const finished: string[] = []
+  const calls = { photo: 0 }
   const repo: ClosePeriodsRepo = {
     activeChallenges: async () => challenges.filter((c) => !finished.includes(c.id)),
     closedPeriodStarts: async (id) =>
@@ -47,10 +49,12 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
       checkins
         .filter((k) => k.habitId === habitId && !k.rejected && k.localDate >= from && k.localDate <= to)
         .map((k) => k.localDate),
-    photoCheckinCreatedAts: async (habitIds, from, to) =>
-      checkins
+    photoCheckins: async (habitIds, from, to) => {
+      calls.photo++
+      return checkins
         .filter((k) => habitIds.includes(k.habitId) && k.photo && !k.rejected && k.localDate >= from && k.localDate <= to)
-        .map((k) => k.createdAt),
+        .map((k) => ({ localDate: k.localDate, createdAt: k.createdAt }))
+    },
     insertPeriod: async (id, p) => {
       const key = `${id}|${p.start}`
       if (periods.has(key)) return false
@@ -70,7 +74,7 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
       notifications.push({ userId, type, payload })
     },
   }
-  return { repo, periods, debts, notifications, finished }
+  return { repo, periods, debts, notifications, finished, calls }
 }
 
 const NOW = new Date('2026-12-01T12:00:00Z') // first week (23 nov to 29 nov) is over, second is not
@@ -155,11 +159,62 @@ describe('closeDuePeriods', () => {
     m.repo.insertPeriod = async () => {
       throw new Error('boom')
     }
-    await expect(closeDuePeriods(m.repo, NOW)).rejects.toThrow('boom')
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 2 })
+    log.mockRestore()
     m.repo.insertPeriod = original
     await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 1, debtsCreated: 0 })
     expect(m.debts.size).toBe(2)
     expect(m.notifications).toHaveLength(2)
+  })
+})
+
+describe('cancelled challenges', () => {
+  it('still bills a period that ended before the cancel, never finishes it', async () => {
+    // cancelled 30 nov 12:00 Santiago; week 1 (23-29 nov) had ended, week 2 was in progress
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-30T15:00:00Z') })], [])
+    await expect(closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))).resolves.toEqual({ closed: 1, debtsCreated: 2 })
+    expect([...m.periods]).toEqual([`${CH}|2026-11-23`])
+    expect(m.finished).toEqual([])
+  })
+
+  it('bills nothing when cancelled during the first period', async () => {
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-25T15:00:00Z') })], [])
+    await expect(closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))).resolves.toEqual({ closed: 0, debtsCreated: 0 })
+  })
+})
+
+describe('cron cost and isolation', () => {
+  it('does no per-challenge queries for periods that have not ended', async () => {
+    const m = memoryRepo([challenge()], [])
+    await closeDuePeriods(m.repo, new Date('2026-11-25T12:00:00Z'))
+    expect(m.calls.photo).toBe(0)
+  })
+
+  it('fetches check-ins and photos once per challenge', async () => {
+    const m = memoryRepo([challenge()], [])
+    await closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))
+    expect(m.calls.photo).toBe(1)
+  })
+
+  it('one failing challenge does not stop the others', async () => {
+    const m = memoryRepo([challenge({ id: 'bad' }), challenge({ id: 'good' })], [])
+    const orig = m.repo.checkinDates
+    const log = vi.spyOn(console, 'error').mockImplementation(() => {})
+    // only the first challenge throws
+    let first = true
+    m.repo.checkinDates = async (...a) => {
+      if (first) {
+        first = false
+        throw new Error('db down')
+      }
+      return orig(...a)
+    }
+    const r = await closeDuePeriods(m.repo, NOW)
+    expect(r.debtsCreated).toBe(2)
+    expect([...m.periods]).toEqual(['good|2026-11-23'])
+    expect(log).toHaveBeenCalled()
+    log.mockRestore()
   })
 })
 

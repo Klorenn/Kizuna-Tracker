@@ -10,6 +10,30 @@
 -- Until both secrets exist the job is a silent no-op, so `supabase db reset` and local
 -- development work without them.
 
+-- ------------------------------------------------------------ cancelled_at
+-- Debts for periods that ENDED before a challenge was cancelled (mutual cancel, unfriend,
+-- ...) are still owed. A trigger stamps the moment status becomes 'cancelled', so every
+-- path (RPCs today, account deletion later) is covered and the cron can tell which periods
+-- had already ended.
+alter table public.challenges add column cancelled_at timestamptz;
+
+create function public.challenges_stamp_cancelled()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if new.status = 'cancelled' and old.status is distinct from 'cancelled' then
+    new.cancelled_at := now();
+  end if;
+  return new;
+end;
+$$;
+
+create trigger challenges_stamp_cancelled
+  before update of status on public.challenges
+  for each row execute function public.challenges_stamp_cancelled();
+
 do $$
 begin
   if exists (select 1 from pg_available_extensions where name = 'pg_cron') then
@@ -33,11 +57,13 @@ declare
   v_path text;
 begin
   if to_regclass('vault.decrypted_secrets') is null or to_regprocedure('net.http_post(text,jsonb,jsonb,jsonb,integer)') is null then
+    raise log 'call_cron_endpoints: vault or pg_net unavailable, skipping';
     return;
   end if;
   select decrypted_secret into v_url from vault.decrypted_secrets where name = 'app_url' limit 1;
   select decrypted_secret into v_secret from vault.decrypted_secrets where name = 'cron_secret' limit 1;
   if coalesce(v_url, '') = '' or coalesce(v_secret, '') = '' then
+    raise log 'call_cron_endpoints: vault secrets app_url / cron_secret not set, skipping';
     return;
   end if;
   v_url := regexp_replace(v_url, '/+$', '');

@@ -72,6 +72,7 @@ export type Database = {
       challenges: {
         Row: {
           cancel_requested_by: string | null
+          cancelled_at: string | null
           created_at: string
           creator_habit_id: string
           creator_id: string
@@ -89,6 +90,7 @@ export type Database = {
         }
         Insert: {
           cancel_requested_by?: string | null
+          cancelled_at?: string | null
           created_at?: string
           creator_habit_id: string
           creator_id: string
@@ -106,6 +108,7 @@ export type Database = {
         }
         Update: {
           cancel_requested_by?: string | null
+          cancelled_at?: string | null
           created_at?: string
           creator_habit_id?: string
           creator_id?: string

@@ -154,8 +154,9 @@ export default async function DeudasPage() {
                       <p className="text-small text-muted">{sub}</p>
                     </div>
                   </div>
-                  {f.owedToMe.length > 0 ? (
-                    <DebtButton debtIds={f.owedToMe.map((d) => d.id)} paid label="Marcar como pagada" />
+                  {/* Only when it is unambiguous: they owe me net, through exactly one debt. Otherwise per row in Historial. */}
+                  {f.balance > 0 && f.owedToMe.length === 1 ? (
+                    <DebtButton debtIds={[f.owedToMe[0].id]} paid label="Marcar como pagada" />
                   ) : null}
                 </div>
               );
@@ -189,6 +190,7 @@ export default async function DeudasPage() {
                   {mineCredit && d.paid_at ? (
                     <DebtButton debtIds={[d.id]} paid={false} label="Desmarcar como pagada" variant="ghost" />
                   ) : null}
+                  {mineCredit && !d.paid_at ? <DebtButton debtIds={[d.id]} paid label="Marcar como pagada" /> : null}
                 </div>
               );
             })}
