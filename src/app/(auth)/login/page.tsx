@@ -1,27 +1,37 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useState } from "react";
+import { useSearchParams } from "next/navigation";
+import { safeNextPath } from "@/lib/supabase/public-paths";
 import { GoogleLogo } from "@phosphor-icons/react";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 const btn =
   "flex h-12 w-full items-center justify-center gap-2 rounded-md border border-line text-[15px] font-medium transition-colors duration-[120ms] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-export default function LoginPage() {
+function LoginForm() {
+  const params = useSearchParams();
+  const next = safeNextPath(params.get("next"));
+  const authFailed = params.get("error") === "auth";
+  const [redirecting, setRedirecting] = useState(false);
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const redirectTo = () => `${window.location.origin}/auth/callback`;
+  const redirectTo = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
 
   async function google() {
     setError(null);
+    setRedirecting(true);
     const { error } = await createBrowserClient().auth.signInWithOAuth({
       provider: "google",
       options: { redirectTo: redirectTo() },
     });
-    if (error) setError("No pudimos iniciar sesión con Google.");
+    if (error) {
+      setRedirecting(false);
+      setError("No pudimos iniciar sesión con Google.");
+    }
   }
 
   async function magicLink(e: React.FormEvent) {
@@ -52,7 +62,8 @@ export default function LoginPage() {
       <button
         type="button"
         onClick={google}
-        className={`${btn} bg-accent text-surface hover:bg-accent-hover`}
+        disabled={redirecting}
+        className={`${btn} bg-accent text-surface hover:bg-accent-hover disabled:opacity-60`}
       >
         <GoogleLogo size={20} weight="light" aria-hidden />
         Continuar con Google
@@ -83,11 +94,24 @@ export default function LoginPage() {
       <p role="status" className="min-h-5 text-[13px] text-muted">
         {message}
       </p>
+      {authFailed && !error && (
+        <p role="alert" className="text-[13px] text-alert">
+          No pudimos iniciar sesión. Probá de nuevo.
+        </p>
+      )}
       {error && (
         <p role="alert" className="text-[13px] text-alert">
           {error}
         </p>
       )}
     </main>
+  );
+}
+
+export default function LoginPage() {
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from "next/server";
+import { safeNextPath } from "@/lib/supabase/public-paths";
 import { createServerClient } from "@/lib/supabase/server";
 
 export async function GET(request: NextRequest) {
@@ -7,7 +8,9 @@ export async function GET(request: NextRequest) {
   if (code) {
     const supabase = await createServerClient();
     const { error } = await supabase.auth.exchangeCodeForSession(code);
-    if (!error) return NextResponse.redirect(`${origin}/`);
+    if (!error) return NextResponse.redirect(
+        `${origin}${safeNextPath(searchParams.get("next"))}`,
+      );
   }
   return NextResponse.redirect(`${origin}/login?error=auth`);
 }

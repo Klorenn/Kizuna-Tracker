@@ -10,6 +10,16 @@ import {
 export async function completeOnboarding(
   input: OnboardingInput,
 ): Promise<OnboardingResult> {
+  if (
+    !input ||
+    typeof input.username !== "string" ||
+    typeof input.displayName !== "string" ||
+    typeof input.timezone !== "string" ||
+    input.isAdult !== true ||
+    input.acceptTerms !== true
+  ) {
+    return { ok: false, error: "Datos inválidos" };
+  }
   const checked = validateOnboarding(input);
   if (!checked.ok) return checked;
 
@@ -28,7 +38,13 @@ export async function completeOnboarding(
   });
   if (error) {
     if (error.code === "23505") {
-      return { ok: false, error: "Ese usuario ya existe" };
+      const detail = `${error.message} ${error.details ?? ""}`;
+      return {
+        ok: false,
+        error: detail.includes("profiles_pkey")
+          ? "Tu cuenta ya tiene un perfil."
+          : "Ese usuario ya existe",
+      };
     }
     return { ok: false, error: "No pudimos crear tu perfil. Probá de nuevo." };
   }

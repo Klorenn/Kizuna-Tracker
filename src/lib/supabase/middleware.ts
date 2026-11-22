@@ -1,13 +1,17 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
+import { isPublicPath } from "./public-paths";
 
-const PUBLIC_PREFIXES = ["/login", "/auth"];
-
-function redirectTo(request: NextRequest, path: string, from: NextResponse) {
+function redirectTo(
+  request: NextRequest,
+  path: string,
+  from: NextResponse,
+  next?: string,
+) {
   const url = request.nextUrl.clone();
   url.pathname = path;
-  url.search = "";
+  url.search = next ? `?next=${encodeURIComponent(next)}` : "";
   const res = NextResponse.redirect(url);
   from.cookies.getAll().forEach((c) => res.cookies.set(c));
   return res;
@@ -36,12 +40,18 @@ export async function updateSession(request: NextRequest) {
     data: { user },
   } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
-  const isPublic = PUBLIC_PREFIXES.some((p) => path.startsWith(p));
+  const isPublic = isPublicPath(path);
 
   if (!user) {
-    return isPublic ? response : redirectTo(request, "/login", response);
+    if (path.startsWith("/invite/")) {
+      return redirectTo(request, "/login", response, path);
+    }
+    if (isPublic) return response;
+    return redirectTo(request, "/login", response);
   }
-  if (path.startsWith("/auth")) return response;
+  if (isPublic && path !== "/login" && !path.startsWith("/invite/")) {
+    return response;
+  }
 
   const { data: profile } = await supabase
     .from("profiles")
