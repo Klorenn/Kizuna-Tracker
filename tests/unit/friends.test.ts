@@ -134,7 +134,7 @@ describe('friend actions', () => {
 
   it('removeFriend cancels challenges before deleting the row', async () => {
     await expect(removeFriend(U2)).resolves.toEqual({ ok: true })
-    expect(cancel).toHaveBeenCalledWith('me', U2)
+    expect(cancel).toHaveBeenCalledWith(U2)
     expect(order).toEqual(['cancelChallengesBetween', 'friendships.delete'])
   })
 })

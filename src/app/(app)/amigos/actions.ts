@@ -113,7 +113,7 @@ export async function removeFriend(userId: string): Promise<Result> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
   if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
-  await cancelChallengesBetween(uid, userId);
+  await cancelChallengesBetween(userId);
   const { data, error } = await supabase
     .from("friendships")
     .delete()

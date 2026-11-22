@@ -782,6 +782,10 @@ export type Database = {
           user_id: string
         }[]
       }
+      cancel_challenges_between: {
+        Args: { p_other: string }
+        Returns: undefined
+      }
       check_item: {
         Args: { p_item_id: string }
         Returns: {
@@ -807,6 +811,15 @@ export type Database = {
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
       public_profile: { Args: { p_username: string }; Returns: Json }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
+      reject_checkin: {
+        Args: { p_checkin_id: string; p_reason: string }
+        Returns: undefined
+      }
+      request_cancel: { Args: { p_id: string }; Returns: boolean }
+      respond_challenge: {
+        Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
+        Returns: undefined
+      }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
       username_available: { Args: { p_username: string }; Returns: boolean }
     }
