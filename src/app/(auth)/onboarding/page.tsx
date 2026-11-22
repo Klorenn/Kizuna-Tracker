@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { useRouter } from "next/navigation";
+import { Suspense, useEffect, useState, useTransition } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
+import { safeNextPath } from "@/lib/supabase/public-paths";
 import { completeOnboarding } from "./actions";
 
 const field =
   "h-11 rounded-md border border-outline-strong bg-bg px-3 text-[15px] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 
-export default function OnboardingPage() {
+function OnboardingForm() {
   const router = useRouter();
+  const params = useSearchParams();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [username, setUsername] = useState("");
@@ -31,7 +33,7 @@ export default function OnboardingPage() {
         isAdult,
         acceptTerms,
       });
-      if (res.ok) router.replace("/");
+      if (res.ok) router.replace(safeNextPath(params.get("next")));
       else setError(res.error);
     });
   }
@@ -106,5 +108,13 @@ export default function OnboardingPage() {
         </button>
       </form>
     </main>
+  );
+}
+
+export default function OnboardingPage() {
+  return (
+    <Suspense>
+      <OnboardingForm />
+    </Suspense>
   );
 }

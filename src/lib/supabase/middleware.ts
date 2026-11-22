@@ -1,7 +1,7 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
 import type { Database } from "./database.types";
-import { isPublicPath } from "./public-paths";
+import { isPublicPath, safeNextPath } from "./public-paths";
 
 function redirectTo(
   request: NextRequest,
@@ -61,7 +61,13 @@ export async function updateSession(request: NextRequest) {
     .maybeSingle();
 
   if (!profile && path !== "/onboarding") {
-    return redirectTo(request, "/onboarding", response);
+    const next = safeNextPath(path);
+    return redirectTo(
+      request,
+      "/onboarding",
+      response,
+      next === "/" ? undefined : next,
+    );
   }
   if (profile && (path === "/onboarding" || path === "/login")) {
     return redirectTo(request, "/", response);

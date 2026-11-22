@@ -2,7 +2,7 @@
 
 import { Suspense, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import { safeNextPath } from "@/lib/supabase/public-paths";
+import { buildAuthRedirect } from "@/lib/supabase/public-paths";
 import { GoogleLogo } from "@phosphor-icons/react";
 import { createBrowserClient } from "@/lib/supabase/client";
 
@@ -11,7 +11,7 @@ const btn =
 
 function LoginForm() {
   const params = useSearchParams();
-  const next = safeNextPath(params.get("next"));
+  const next = params.get("next");
   const authFailed = params.get("error") === "auth";
   const [redirecting, setRedirecting] = useState(false);
   const [email, setEmail] = useState("");
@@ -19,7 +19,7 @@ function LoginForm() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const redirectTo = () => `${window.location.origin}/auth/callback?next=${encodeURIComponent(next)}`;
+  const redirectTo = () => buildAuthRedirect(window.location.origin, next);
 
   async function google() {
     setError(null);

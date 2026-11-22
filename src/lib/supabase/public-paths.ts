@@ -16,3 +16,12 @@ export function safeNextPath(next: string | null | undefined): string {
   }
   return "/";
 }
+
+export function buildAuthRedirect(
+  origin: string,
+  next: string | null | undefined,
+): string {
+  const safe = safeNextPath(next);
+  const base = `${origin}/auth/callback`;
+  return safe === "/" ? base : `${base}?next=${encodeURIComponent(safe)}`;
+}

@@ -21,3 +21,21 @@ describe("safeNextPath", () => {
     expect(safeNextPath(null)).toBe("/");
   });
 });
+
+import { buildAuthRedirect } from "@/lib/supabase/public-paths";
+
+describe("buildAuthRedirect", () => {
+  const origin = "http://localhost:3000";
+  it("omits next when absent or root", () => {
+    expect(buildAuthRedirect(origin, null)).toBe(`${origin}/auth/callback`);
+    expect(buildAuthRedirect(origin, "/")).toBe(`${origin}/auth/callback`);
+  });
+  it("encodes invite next", () => {
+    expect(buildAuthRedirect(origin, "/invite/abc")).toBe(
+      `${origin}/auth/callback?next=%2Finvite%2Fabc`,
+    );
+  });
+  it("drops unsafe next", () => {
+    expect(buildAuthRedirect(origin, "//evil.com")).toBe(`${origin}/auth/callback`);
+  });
+});
