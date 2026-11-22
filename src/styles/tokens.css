@@ -1,25 +1,69 @@
-/* Calm Utility tokens. Source of truth: DESIGN.md */
+/* Calm Utility tokens. Mirror of the Figma collection "Kizuna" (file ASUwZ8Ervs6LkHtR7IA0sw). */
 @theme {
   --color-*: initial;
+
+  /* surfaces */
+  --color-paper: #fafafa;
   --color-bg: #fafafa;
   --color-surface: #ffffff;
+  --color-field: #f0f0f0;
+  --color-ink-soft: #f1f1f0;
+  --color-accent-soft: #efeff9;
+  --color-alert-soft: #fdecec;
+  --color-cream: #f6ebd8; /* only the cat's weights */
+
+  /* lines and text */
   --color-line: #e6e6e6;
+  --color-outline-strong: #8d8d8d;
+  --color-ink: #111111;
   --color-text: #111111;
   --color-muted: #6f6f6f;
-  --color-outline-strong: #8d8d8d;
+  --color-on-accent: #ffffff;
+
+  /* brand */
   --color-accent: #5a5ac2;
   --color-accent-hover: #4c4ca5;
   --color-accent2: #2e3a5e;
   --color-accent2-hover: #273150;
   --color-alert: #e5484d;
+  /* shu lives only inside src/components/brand/Seal.tsx */
 
-  --radius-sm: 5px;
+  /* radii 6 / 10 / 15 / 999 */
+  --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 15px;
+  --radius-full: 999px;
+
+  /* text styles */
+  --text-display: 32px;
+  --text-display--line-height: 1.15;
+  --text-display--letter-spacing: -0.02em;
+  --text-heading: 28px;
+  --text-heading--line-height: 1.15;
+  --text-heading--letter-spacing: -0.02em;
+  --text-title: 22px;
+  --text-title--line-height: 1.25;
+  --text-title--letter-spacing: -0.02em;
+  --text-body: 15px;
+  --text-body--line-height: 1.5;
+  --text-small: 13px;
+  --text-small--line-height: 1.45;
+  --text-label: 12px;
+  --text-label--line-height: 1.3;
 
   --font-heading: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-sans: var(--font-inter), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
 
   --shadow-card: 0 1px 2px rgb(0 0 0 / 0.06), 0 4px 12px rgb(0 0 0 / 0.04);
+}
+
+/* Figma spacing scale 4 / 8 / 16 / 24 / 32. Plain variables: registering them as
+   --spacing-* would make max-w-md and friends resolve to 16px. Use gap-1/2/4/6/8. */
+:root {
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 16px;
+  --space-lg: 24px;
+  --space-xl: 32px;
 }

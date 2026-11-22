@@ -470,6 +470,24 @@ export type Database = {
           },
         ]
       }
+      login_attempts: {
+        Row: {
+          created_at: string
+          id: number
+          key: string
+        }
+        Insert: {
+          created_at?: string
+          id?: never
+          key: string
+        }
+        Update: {
+          created_at?: string
+          id?: never
+          key?: string
+        }
+        Relationships: []
+      }
       notifications: {
         Row: {
           created_at: string
@@ -515,35 +533,47 @@ export type Database = {
       profiles: {
         Row: {
           avatar_path: string | null
+          birth_date: string | null
           created_at: string
           deleted_at: string | null
-          display_name: string
+          display_name: string | null
+          first_name: string
           id: string
-          is_adult: boolean
+          last_name: string
           reminder_time: string
+          terms_accepted_at: string
           timezone: string
+          timezone_changed_at: string | null
           username: string
         }
         Insert: {
           avatar_path?: string | null
+          birth_date?: string | null
           created_at?: string
           deleted_at?: string | null
-          display_name: string
+          display_name?: string | null
+          first_name: string
           id: string
-          is_adult: boolean
+          last_name: string
           reminder_time?: string
+          terms_accepted_at: string
           timezone: string
+          timezone_changed_at?: string | null
           username: string
         }
         Update: {
           avatar_path?: string | null
+          birth_date?: string | null
           created_at?: string
           deleted_at?: string | null
-          display_name?: string
+          display_name?: string | null
+          first_name?: string
           id?: string
-          is_adult?: boolean
+          last_name?: string
           reminder_time?: string
+          terms_accepted_at?: string
           timezone?: string
+          timezone_changed_at?: string | null
           username?: string
         }
         Relationships: []
@@ -622,7 +652,10 @@ export type Database = {
           created: boolean
         }[]
       }
+      email_for_username: { Args: { p_username: string }; Returns: string }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
+      register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
+      username_available: { Args: { p_username: string }; Returns: boolean }
     }
     Enums: {
       [_ in never]: never

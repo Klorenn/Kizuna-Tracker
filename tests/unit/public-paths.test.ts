@@ -1,41 +1,27 @@
-import { describe, expect, it } from "vitest";
-import { isPublicPath, safeNextPath } from "@/lib/supabase/public-paths";
+import { describe, expect, it } from 'vitest'
+import { isPublicPath, safeNextPath } from '@/lib/supabase/public-paths'
 
-describe("isPublicPath", () => {
-  it.each(["/login", "/auth/callback", "/legal/terminos", "/invite/abc"])(
-    "%s is public",
+describe('isPublicPath', () => {
+  it.each(['/bienvenida', '/login', '/registro', '/legal/terminos', '/invite/abc', '/u/pau_k', '/@pau_k'])(
+    '%s is public',
     (p) => expect(isPublicPath(p)).toBe(true),
-  );
-  it.each(["/loginfoo", "/hoy", "/", "/authx", "/invites"])(
-    "%s is not public",
+  )
+  it.each(['/registros', '/loginfoo', '/hoy', '/', '/auth/callback', '/authx', '/invites', '/bienvenidas'])(
+    '%s is not public',
     (p) => expect(isPublicPath(p)).toBe(false),
-  );
-});
+  )
+})
 
-describe("safeNextPath", () => {
-  it("accepts invite paths only", () => {
-    expect(safeNextPath("/invite/abc")).toBe("/invite/abc");
-    expect(safeNextPath("//evil.com")).toBe("/");
-    expect(safeNextPath("https://evil.com")).toBe("/");
-    expect(safeNextPath("/hoy")).toBe("/");
-    expect(safeNextPath(null)).toBe("/");
-  });
-});
-
-import { buildAuthRedirect } from "@/lib/supabase/public-paths";
-
-describe("buildAuthRedirect", () => {
-  const origin = "http://localhost:3000";
-  it("omits next when absent or root", () => {
-    expect(buildAuthRedirect(origin, null)).toBe(`${origin}/auth/callback`);
-    expect(buildAuthRedirect(origin, "/")).toBe(`${origin}/auth/callback`);
-  });
-  it("encodes invite next", () => {
-    expect(buildAuthRedirect(origin, "/invite/abc")).toBe(
-      `${origin}/auth/callback?next=%2Finvite%2Fabc`,
-    );
-  });
-  it("drops unsafe next", () => {
-    expect(buildAuthRedirect(origin, "//evil.com")).toBe(`${origin}/auth/callback`);
-  });
-});
+describe('safeNextPath', () => {
+  it('accepts invite and handle paths only', () => {
+    expect(safeNextPath('/invite/abc')).toBe('/invite/abc')
+    expect(safeNextPath('/@pau_k')).toBe('/@pau_k')
+    expect(safeNextPath('/@../x')).toBe('/')
+    expect(safeNextPath('/@pau_k/extra')).toBe('/')
+    expect(safeNextPath('/@Pau')).toBe('/')
+    expect(safeNextPath('//evil.com')).toBe('/')
+    expect(safeNextPath('https://evil.com')).toBe('/')
+    expect(safeNextPath('/hoy')).toBe('/')
+    expect(safeNextPath(null)).toBe('/')
+  })
+})

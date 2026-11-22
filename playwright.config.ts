@@ -9,7 +9,7 @@ export default defineConfig({
   },
   webServer: {
     command: "pnpm dev",
-    url: "http://localhost:3000/login",
+    url: "http://localhost:3000/bienvenida",
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {
@@ -17,6 +17,8 @@ export default defineConfig({
         process.env.NEXT_PUBLIC_SUPABASE_URL ?? "http://127.0.0.1:54321",
       NEXT_PUBLIC_SUPABASE_ANON_KEY:
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ?? "placeholder-anon-key",
+      SUPABASE_SERVICE_ROLE_KEY:
+        process.env.SUPABASE_SERVICE_ROLE_KEY ?? "placeholder-service-key",
     },
   },
 });

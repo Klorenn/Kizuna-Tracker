@@ -6,9 +6,9 @@ select plan(14);
 insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
   ('a0000000-0000-0000-0000-000000000002');
-insert into public.profiles (id, username, display_name, timezone, is_adult) values
-  ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'America/Santiago', true),
-  ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'America/Santiago', true);
+insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
+  ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago');
 insert into public.habits (id, user_id, name, icon, frequency_type, requires_photo) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Gym', 'barbell', 'daily', true),
   ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Gym', 'barbell', 'daily', true);
@@ -39,12 +39,12 @@ select throws_ok(
   '23514', null, 'self friendship is rejected');
 
 select throws_ok(
-  $$ insert into public.profiles (id, username, display_name, timezone, is_adult) values (gen_random_uuid(), 'no_auth_user', 'X', 'UTC', true) $$,
+  $$ insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values (gen_random_uuid(), 'no_auth_user', 'X', 'Y', '1990-01-01', now(), 'UTC') $$,
   '23503', null, 'profile must reference an auth user (fk checked)');
 
 select throws_ok(
   $$ insert into auth.users (id) values ('a0000000-0000-0000-0000-000000000009');
-     insert into public.profiles (id, username, display_name, timezone, is_adult) values ('a0000000-0000-0000-0000-000000000009', 'Bad_Name', 'X', 'UTC', true) $$,
+     insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values ('a0000000-0000-0000-0000-000000000009', 'Bad_Name', 'X', 'Y', '1990-01-01', now(), 'UTC') $$,
   '23514', null, 'uppercase username is rejected (citext regex is case-insensitive, so cast to text)');
 
 select throws_ok(
@@ -67,8 +67,8 @@ select is((select is_duplicate from public.checkins where local_date = '2026-11-
 
 select throws_ok(
   $$ insert into auth.users (id) values ('a0000000-0000-0000-0000-000000000008');
-     insert into public.profiles (id, username, display_name, timezone, is_adult) values ('a0000000-0000-0000-0000-000000000008', 'minor_user', 'X', 'UTC', false) $$,
-  '23514', null, 'is_adult must be true');
+     insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values ('a0000000-0000-0000-0000-000000000008', 'no_birth', 'X', 'Y', null, now(), 'UTC') $$,
+  '23514', null, 'active profile requires birth_date');
 
 select throws_ok(
   $$ insert into public.checkins (habit_id, user_id, local_date, photo_path) values ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', '2026-11-20', 'a0000000-0000-0000-0000-000000000001/x.jpg') $$,

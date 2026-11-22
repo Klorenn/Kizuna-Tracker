@@ -20,6 +20,7 @@ const TABS = [
 
 export function BottomNav() {
   const pathname = usePathname();
+  if (pathname === "/listo") return null;
   return (
     <nav
       aria-label="Principal"

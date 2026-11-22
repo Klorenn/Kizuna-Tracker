@@ -18,11 +18,11 @@ insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000002'),
   ('a0000000-0000-0000-0000-000000000003'),
   ('a0000000-0000-0000-0000-000000000004');
-insert into public.profiles (id, username, display_name, timezone, is_adult) values
-  ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'America/Santiago', true),
-  ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'America/Santiago', true),
-  ('a0000000-0000-0000-0000-000000000003', 'user_c', 'C', 'America/Santiago', true),
-  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'America/Santiago', true);
+insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
+  ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  ('a0000000-0000-0000-0000-000000000003', 'user_c', 'C', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago');
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'accepted'),
   ('a0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'pending');
