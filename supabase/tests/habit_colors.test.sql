@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(20);
+select plan(21);
 
 -- A and B are strangers; A owns two habits, B one (public, for the profile RPC)
 insert into auth.users (id) values
@@ -81,6 +81,7 @@ select is((public.public_profile('color_b') -> 'habits' -> 0 ->> 'color'), 'aren
   'the public profile exposes the color of public habits');
 select is((public.public_profile('color_b') -> 'habits' -> 0 ->> 'name'), 'Leer', 'the public profile still lists the habit');
 select ok(not ((public.public_profile('color_b') -> 'habits' -> 0) ? 'id'), 'the public profile does not expose habit ids');
+select ok(public.public_profile('color_b') ? 'avatarUpdatedAt', 'the public profile carries the avatar version for its cache-buster');
 
 select * from finish();
 rollback;

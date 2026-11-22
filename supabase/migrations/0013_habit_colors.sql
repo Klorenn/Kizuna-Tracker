@@ -34,7 +34,8 @@ update public.habits set color = public.habit_preset_color(preset) where preset 
 grant insert (color) on public.habits to authenticated;
 grant update (color) on public.habits to authenticated;
 
--- Public profile: same whitelist as 0006 plus the color key of each public habit.
+-- Public profile: same whitelist as 0006 plus the color key of each public habit and the avatar
+-- version (cache-buster for the public avatar URL; the privacy policy says the avatar is public).
 create or replace function public.public_profile(p_username text)
 returns jsonb
 language plpgsql
@@ -46,7 +47,7 @@ declare
   v_profile record;
   v_habits jsonb;
 begin
-  select p.id, p.username::text as username, p.display_name, p.avatar_path
+  select p.id, p.username::text as username, p.display_name, p.avatar_path, p.avatar_updated_at
     into v_profile
   from public.profiles p
   where p.username = p_username::extensions.citext and p.deleted_at is null;
@@ -80,6 +81,7 @@ begin
     'username', v_profile.username,
     'displayName', v_profile.display_name,
     'avatarPath', v_profile.avatar_path,
+    'avatarUpdatedAt', v_profile.avatar_updated_at,
     'habits', v_habits
   );
 end;

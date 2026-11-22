@@ -8,6 +8,8 @@ export type PublicProfileRow = {
   username: string;
   displayName: string;
   avatarPath: string | null;
+  /** Cache-buster for the public avatar URL (0013); older rows may lack it. */
+  avatarUpdatedAt?: string | null;
   habits: {
     name: string;
     icon: string;
@@ -23,6 +25,7 @@ export type PublicProfileView = {
   username: string;
   displayName: string;
   avatarPath: string | null;
+  avatarUpdatedAt: string | null;
   habits: {
     name: string;
     icon: string;
@@ -46,6 +49,7 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
     username: row.username,
     displayName: row.displayName,
     avatarPath: row.avatarPath ?? null,
+    avatarUpdatedAt: row.avatarUpdatedAt ?? null,
     habits: row.habits.map((h) => {
       const done = new Set(h.dates);
       const first = addDays(weekStart(today), -7 * (HEATMAP_WEEKS - 1));
