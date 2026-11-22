@@ -1,0 +1,146 @@
+import type { Frequency } from './types'
+
+export type Visibility = 'private' | 'friends' | 'public'
+export type PresetKey = 'gym' | 'water' | 'study' | 'read' | 'walk' | 'sleep' | 'eat_well'
+
+export const HABIT_ICONS = [
+  'barbell',
+  'drop',
+  'book-open',
+  'book',
+  'sneaker-move',
+  'moon',
+  'fork-knife',
+  'flame',
+  'target',
+  'clock',
+  'calendar-blank',
+  'bell',
+  'camera',
+  'pencil-simple',
+  'gear',
+  'trophy',
+  'chart-bar',
+  'house',
+  'users',
+  'globe-simple',
+  'image',
+  'receipt',
+  'flag',
+  'check',
+] as const
+export type IconKey = (typeof HABIT_ICONS)[number]
+
+export type HabitItemDraft = { label: string; requiresPhoto: boolean }
+export type HabitDraft = {
+  name: string
+  icon: IconKey
+  frequency: Frequency
+  requiresPhoto: boolean
+  items: HabitItemDraft[]
+  visibility: Visibility
+  preset: PresetKey | null
+}
+
+export const MAX_ITEMS = 12
+export const MAX_NAME = 60
+export const MAX_ITEM_LABEL = 40
+
+const base = () => ({ visibility: 'friends' as Visibility, requiresPhoto: false, items: [] as HabitItemDraft[] })
+const daily: Frequency = { type: 'daily' }
+
+export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
+  gym: {
+    ...base(),
+    name: 'Gimnasio',
+    icon: 'barbell',
+    frequency: { type: 'weekly', target: 4 },
+    requiresPhoto: true,
+    preset: 'gym',
+  },
+  water: { ...base(), name: 'Agua', icon: 'drop', frequency: daily, preset: 'water' },
+  study: {
+    ...base(),
+    name: 'Estudiar',
+    icon: 'book-open',
+    frequency: { type: 'weekly', target: 5 },
+    preset: 'study',
+  },
+  read: { ...base(), name: 'Leer', icon: 'book', frequency: daily, preset: 'read' },
+  walk: { ...base(), name: 'Caminar', icon: 'sneaker-move', frequency: daily, preset: 'walk' },
+  sleep: { ...base(), name: 'Dormir 8 h', icon: 'moon', frequency: daily, preset: 'sleep' },
+  eat_well: {
+    ...base(),
+    name: 'Comer bien',
+    icon: 'fork-knife',
+    frequency: daily,
+    items: ['Desayuno', 'Almuerzo', 'Once', 'Cena'].map((label) => ({ label, requiresPhoto: false })),
+    preset: 'eat_well',
+  },
+}
+
+export const PRESET_KEYS = Object.keys(PRESETS) as PresetKey[]
+
+function copy(d: HabitDraft): HabitDraft {
+  return {
+    ...d,
+    frequency: { ...d.frequency },
+    items: d.items.map((i) => ({ ...i })),
+  }
+}
+
+export function presetDraft(key: PresetKey): HabitDraft {
+  return copy(PRESETS[key])
+}
+
+/** "Otro": a blank habit. */
+export function customDraft(): HabitDraft {
+  return {
+    name: '',
+    icon: 'target',
+    frequency: { type: 'daily' },
+    requiresPhoto: false,
+    items: [],
+    visibility: 'friends',
+    preset: null,
+  }
+}
+
+export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; error: string } {
+  const fail = (error: string) => ({ ok: false as const, error })
+  const name = d.name.trim()
+  if (name.length === 0) return fail('Ponle un nombre al hábito.')
+  if (name.length > MAX_NAME) return fail(`El nombre puede tener hasta ${MAX_NAME} caracteres.`)
+  if (!(HABIT_ICONS as readonly string[]).includes(d.icon)) return fail('Elige un ícono.')
+  if (!['private', 'friends', 'public'].includes(d.visibility)) return fail('Elige quién puede ver el hábito.')
+  if (d.preset !== null && !(d.preset in PRESETS)) return fail('Hábito predefinido no válido.')
+  if (d.frequency.type === 'weekly') {
+    const t = d.frequency.target
+    if (!Number.isInteger(t) || t < 1 || t > 7) return fail('Elige entre 1 y 7 veces por semana.')
+  } else if (d.frequency.type !== 'daily') {
+    return fail('Elige la frecuencia del hábito.')
+  }
+  if (d.items.length > MAX_ITEMS) return fail(`Puedes agregar hasta ${MAX_ITEMS} pasos.`)
+  if (d.items.length > 0 && d.requiresPhoto) {
+    return fail('Un hábito con pasos pide la foto en cada paso, no en el hábito.')
+  }
+  const seen = new Set<string>()
+  for (const item of d.items) {
+    const label = item.label.trim()
+    if (label.length === 0) return fail('Cada paso necesita un nombre.')
+    if (label.length > MAX_ITEM_LABEL) {
+      return fail(`El nombre de un paso puede tener hasta ${MAX_ITEM_LABEL} caracteres.`)
+    }
+    const key = label.toLocaleLowerCase('es')
+    if (seen.has(key)) return fail('Los pasos no pueden repetirse.')
+    seen.add(key)
+  }
+  return { ok: true }
+}
+
+/** The day counts when every active item is checked (and there is at least one). */
+export function dayComplete(activeItemIds: string[], checkedItemIds: string[]): boolean {
+  if (activeItemIds.length === 0) return false
+  const checked = new Set(checkedItemIds)
+  return activeItemIds.every((id) => checked.has(id))
+}

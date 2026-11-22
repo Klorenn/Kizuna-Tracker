@@ -180,6 +180,71 @@ export type Database = {
           },
         ]
       }
+      checkin_items: {
+        Row: {
+          created_at: string
+          habit_id: string
+          id: string
+          is_duplicate: boolean
+          item_id: string
+          local_date: string
+          photo_path: string | null
+          photo_sha256: string | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          habit_id: string
+          id?: string
+          is_duplicate?: boolean
+          item_id: string
+          local_date: string
+          photo_path?: string | null
+          photo_sha256?: string | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          habit_id?: string
+          id?: string
+          is_duplicate?: boolean
+          item_id?: string
+          local_date?: string
+          photo_path?: string | null
+          photo_sha256?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "checkin_items_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_items_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "habit_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "checkin_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       checkins: {
         Row: {
           created_at: string
@@ -380,6 +445,61 @@ export type Database = {
           },
         ]
       }
+      habit_items: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          habit_id: string
+          id: string
+          label: string
+          position: number
+          requires_photo: boolean
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          habit_id: string
+          id?: string
+          label: string
+          position: number
+          requires_photo?: boolean
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          habit_id?: string
+          id?: string
+          label?: string
+          position?: number
+          requires_photo?: boolean
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "habit_items_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "habit_items_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       habits: {
         Row: {
           archived_at: string | null
@@ -388,9 +508,11 @@ export type Database = {
           icon: string
           id: string
           name: string
+          preset: string | null
           requires_photo: boolean
           target_per_week: number | null
           user_id: string
+          visibility: string
         }
         Insert: {
           archived_at?: string | null
@@ -399,9 +521,11 @@ export type Database = {
           icon: string
           id?: string
           name: string
+          preset?: string | null
           requires_photo?: boolean
           target_per_week?: number | null
           user_id: string
+          visibility?: string
         }
         Update: {
           archived_at?: string | null
@@ -410,9 +534,11 @@ export type Database = {
           icon?: string
           id?: string
           name?: string
+          preset?: string | null
           requires_photo?: boolean
           target_per_week?: number | null
           user_id?: string
+          visibility?: string
         }
         Relationships: [
           {
@@ -652,6 +778,18 @@ export type Database = {
           user_id: string
         }[]
       }
+      check_item: {
+        Args: { p_item_id: string }
+        Returns: {
+          checkin_item_id: string
+          created: boolean
+          day_completed: boolean
+        }[]
+      }
+      complete_day_from_items: {
+        Args: { p_date: string; p_habit_id: string; p_user_id: string }
+        Returns: boolean
+      }
       create_checkin: {
         Args: { p_habit_id: string }
         Returns: {
@@ -662,6 +800,7 @@ export type Database = {
       email_for_username: { Args: { p_username: string }; Returns: string }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
+      uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
       username_available: { Args: { p_username: string }; Returns: boolean }
     }
     Enums: {

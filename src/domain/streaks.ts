@@ -1,7 +1,5 @@
 import { addDays, weekStart } from './dates'
-import type { LocalDate } from './types'
-
-export type StreakFrequency = { type: 'daily' } | { type: 'weekly'; target: number }
+import type { Frequency, LocalDate } from './types'
 
 export function dailyStreak(dates: LocalDate[], today: LocalDate): number {
   const set = new Set(dates)
@@ -35,7 +33,7 @@ export function weeklyStreak(dates: LocalDate[], target: number, today: LocalDat
   return count
 }
 
-export function bestStreak(dates: LocalDate[], frequency: StreakFrequency): number {
+export function bestStreak(dates: LocalDate[], frequency: Frequency): number {
   if (frequency.type === 'daily') {
     const sorted = [...new Set(dates)].sort()
     let best = 0

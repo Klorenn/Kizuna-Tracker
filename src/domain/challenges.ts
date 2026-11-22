@@ -1,7 +1,7 @@
 import { addDays, localDate, weekStart } from './dates'
-import type { LocalDate } from './types'
+import type { Frequency, LocalDate } from './types'
 
-export type Frequency = { type: 'daily' } | { type: 'weekly'; target: number }
+export type { Frequency }
 export type Period = { start: LocalDate; end: LocalDate }
 
 export const REJECT_WINDOW_MS = 24 * 60 * 60 * 1000
