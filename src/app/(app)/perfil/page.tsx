@@ -9,7 +9,6 @@ import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { SettingsRows } from "@/components/SettingsRows";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
-import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
