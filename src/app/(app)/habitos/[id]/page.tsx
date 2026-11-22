@@ -2,6 +2,8 @@ import { CaretLeft, PencilSimple, Trophy } from "@phosphor-icons/react/dist/ssr"
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { WeeklyBars } from "@/components/charts/WeeklyBars";
+import { GoalCard } from "@/components/GoalCard";
 import { CompletionCalendar } from "@/components/CompletionCalendar";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
@@ -12,6 +14,8 @@ import { localDate } from "@/domain/dates";
 import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency } from "@/domain/types";
+import { loadGoals } from "@/lib/goals-data";
+import { weeklyCounts } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Hábito" };
@@ -64,6 +68,8 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
   const unit = (n: number) =>
     frequency.type === "daily" ? (n === 1 ? "día" : "días") : n === 1 ? "semana" : "semanas";
 
+  const target = frequency.type === "weekly" ? frequency.target : 7;
+  const goals = await loadGoals(supabase, user.id, today, id);
   const month = `${today.slice(0, 7)}-01`;
   const monthLabel = `${MONTHS[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}`;
   const meta = [
@@ -125,6 +131,23 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
           doneDates={dates.filter((d) => d.startsWith(month.slice(0, 7)))}
         />
       </Card>
+
+      <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
+      <Card className="flex flex-col gap-2 p-4">
+        <WeeklyBars data={weeklyCounts(dates, 8, today)} target={target} />
+        <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
+      </Card>
+
+      {goals.length > 0 ? (
+        <>
+          <SectionHeader label="Meta" action="Ver metas" href="/metas" />
+          <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">
+            {goals.map((g) => (
+              <GoalCard key={g.id} goal={g} archivable={false} />
+            ))}
+          </Card>
+        </>
+      ) : null}
 
       <SectionHeader label="Ajustes" />
       <HabitSettings habitId={habit.id} visibility={habit.visibility as Visibility} />

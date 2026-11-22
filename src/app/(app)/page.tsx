@@ -68,7 +68,7 @@ export default async function Home() {
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
       <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Hoy</h1>
-      <SectionHeader label={label} />
+      <SectionHeader label={label} action="Ver metas" href="/metas" />
       {view.total === 0 ? (
         <>
           <Card>

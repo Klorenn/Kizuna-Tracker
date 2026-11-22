@@ -12,4 +12,8 @@ describe('dates', () => {
     expect(addDays('2026-11-30', 1)).toBe('2026-12-01')
     expect(addDays('2026-11-01', -1)).toBe('2026-10-31')
   })
+  test('localDate cruza el cambio de hora de Chile (domingo 2026-09-06, 04:00 UTC)', () => {
+    expect(localDate(new Date('2026-09-06T03:30:00Z'), 'America/Santiago')).toBe('2026-09-05')
+    expect(localDate(new Date('2026-09-06T04:30:00Z'), 'America/Santiago')).toBe('2026-09-06')
+  })
 })

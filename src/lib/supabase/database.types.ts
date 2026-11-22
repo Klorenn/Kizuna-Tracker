@@ -448,6 +448,64 @@ export type Database = {
           },
         ]
       }
+      goals: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          deadline: string | null
+          habit_id: string
+          id: string
+          kind: string
+          starts_on: string
+          target: number
+          user_id: string
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          habit_id: string
+          id?: string
+          kind: string
+          starts_on?: string
+          target: number
+          user_id: string
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          deadline?: string | null
+          habit_id?: string
+          id?: string
+          kind?: string
+          starts_on?: string
+          target?: number
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "goals_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "goals_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       habit_items: {
         Row: {
           archived_at: string | null
@@ -825,6 +883,7 @@ export type Database = {
         Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
         Returns: undefined
       }
+      set_timezone: { Args: { p_tz: string }; Returns: undefined }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
       username_available: { Args: { p_username: string }; Returns: boolean }
     }

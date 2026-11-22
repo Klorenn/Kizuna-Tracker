@@ -24,4 +24,12 @@ describe('streaks', () => {
   test('mejor racha diaria', () => {
     expect(bestStreak(['2026-11-01','2026-11-02','2026-11-03','2026-11-10'], { type: 'daily' })).toBe(3)
   })
+  test('racha semanal con meta 0 devuelve 0', () => {
+    expect(weeklyStreak(['2026-11-17'], 0, '2026-11-18')).toBe(0)
+  })
+  test('mejor racha semanal', () => {
+    expect(
+      bestStreak(['2026-11-02', '2026-11-04', '2026-11-09', '2026-11-10', '2026-11-16'], { type: 'weekly', target: 2 }),
+    ).toBe(2)
+  })
 })

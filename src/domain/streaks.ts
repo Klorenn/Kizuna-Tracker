@@ -22,6 +22,7 @@ function weekCounts(dates: LocalDate[]): Map<LocalDate, number> {
 }
 
 export function weeklyStreak(dates: LocalDate[], target: number, today: LocalDate): number {
+  if (target <= 0) return 0
   const counts = weekCounts(dates)
   let cursor = weekStart(today)
   if ((counts.get(cursor) ?? 0) < target) cursor = addDays(cursor, -7)

@@ -3,9 +3,20 @@ export function initials(name: string): string {
   return ((parts[0]?.[0] ?? "") + (parts[1]?.[0] ?? "")).toUpperCase() || "?";
 }
 
-/** Initials avatar. M = 40, L = 72 (photos are not supported yet, initials only). */
-export function Avatar({ name, size = "M" }: { name: string; size?: "M" | "L" }) {
+/** Initials avatar, or the photo when `src` is given. M = 40, L = 72. */
+export function Avatar({ name, size = "M", src }: { name: string; size?: "M" | "L"; src?: string | null }) {
   const big = size === "L";
+  if (src) {
+    return (
+      // eslint-disable-next-line @next/next/no-img-element
+      <img
+        src={src}
+        alt=""
+        aria-hidden
+        className={`shrink-0 rounded-full border border-line bg-ink-soft object-cover ${big ? "size-[72px]" : "size-10"}`}
+      />
+    );
+  }
   return (
     <span
       aria-hidden
