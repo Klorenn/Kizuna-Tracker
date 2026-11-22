@@ -26,6 +26,7 @@ create policy goals_insert_owner on public.goals
   for insert to authenticated
   with check (
     user_id = (select auth.uid())
+    and exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.deleted_at is null)
     and exists (
       select 1 from public.habits h
       where h.id = habit_id and h.user_id = (select auth.uid()) and h.archived_at is null
@@ -36,7 +37,17 @@ create policy goals_update_owner on public.goals
   using (user_id = (select auth.uid()))
   with check (user_id = (select auth.uid()));
 grant select on public.goals to authenticated;
-grant insert (user_id, habit_id, kind, target, starts_on, deadline) on public.goals to authenticated;
+-- starts_on is not insertable: the database default stamps it
+grant insert (user_id, habit_id, kind, target, deadline) on public.goals to authenticated;
+
+-- a deleted account can no longer create habits
+drop policy habits_insert_owner on public.habits;
+create policy habits_insert_owner on public.habits
+  for insert to authenticated
+  with check (
+    user_id = (select auth.uid())
+    and exists (select 1 from public.profiles p where p.id = (select auth.uid()) and p.deleted_at is null)
+  );
 grant update (archived_at) on public.goals to authenticated;
 
 -- --------------------------------------------------------------- timezone
@@ -81,22 +92,13 @@ grant execute on function public.set_timezone(text) to authenticated;
 -- A profile only ever points at its own {id}.jpg.
 alter table public.profiles
   add constraint profiles_avatar_path_shape check (avatar_path is null or avatar_path = id::text || '.jpg');
+-- Cache-buster for the fixed avatar path (set by the upload route).
+alter table public.profiles add column avatar_updated_at timestamptz;
 
 -- Public bucket (avatars are not private). Path: {user_id}.jpg
+-- No client write policies: uploads are server-side with the service role (like proofs).
 insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
 values ('avatars', 'avatars', true, 1048576, array['image/jpeg'])
 on conflict (id) do update
   set public = true, file_size_limit = excluded.file_size_limit,
       allowed_mime_types = excluded.allowed_mime_types;
-
--- Writes only on the caller's own path (the app uploads server-side with the service role).
-create policy avatars_insert_own on storage.objects
-  for insert to authenticated
-  with check (bucket_id = 'avatars' and name = (select auth.uid())::text || '.jpg');
-create policy avatars_update_own on storage.objects
-  for update to authenticated
-  using (bucket_id = 'avatars' and name = (select auth.uid())::text || '.jpg')
-  with check (bucket_id = 'avatars' and name = (select auth.uid())::text || '.jpg');
-create policy avatars_delete_own on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'avatars' and name = (select auth.uid())::text || '.jpg');

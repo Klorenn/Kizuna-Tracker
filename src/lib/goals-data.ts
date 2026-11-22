@@ -1,5 +1,5 @@
 import type { GoalView } from "@/components/GoalCard";
-import { goalProgress, type Goal } from "@/domain/goals";
+import { goalProgressFromCount, goalWindow, type Goal } from "@/domain/goals";
 import type { createServerClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
@@ -21,27 +21,39 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
   if (goals.length === 0) return [] as GoalView[];
 
   const habitIds = [...new Set(goals.map((g) => g.habit_id))];
-  const [{ data: habits }, { data: checkins }] = await Promise.all([
-    supabase.from("habits").select("id,name").in("id", habitIds),
-    supabase.from("checkins").select("habit_id,local_date").in("habit_id", habitIds).is("rejected_at", null),
-  ]);
+  // goals on archived habits are hidden
+  const { data: habits } = await supabase.from("habits").select("id,name").in("id", habitIds).is("archived_at", null);
   const names = new Map((habits ?? []).map((h) => [h.id, h.name]));
-  const datesOf = (id: string) => (checkins ?? []).filter((c) => c.habit_id === id).map((c) => c.local_date);
 
-  const views: GoalView[] = goals.map((g) => {
-    const goal: Goal =
-      g.kind === "weekly"
-        ? { id: g.id, habitId: g.habit_id, kind: "weekly", target: g.target }
-        : { id: g.id, habitId: g.habit_id, kind: "total", target: g.target, startsOn: g.starts_on, deadline: g.deadline };
-    const p = goalProgress(goal, datesOf(g.habit_id), today);
-    const name = names.get(g.habit_id) ?? "Hábito";
-    if (g.kind === "weekly") {
-      return { id: g.id, title: name, kind: "weekly", ...p, progressLabel: `${p.current} de ${p.target}` };
-    }
-    const parts = [`${p.current} de ${p.target}`];
-    if (p.current < p.target) parts.push(`faltan ${p.target - p.current}`);
-    parts.push(g.deadline ? `hasta el ${shortDate(g.deadline)}` : "sin fecha límite");
-    return { id: g.id, title: `${g.target} · ${name}`, kind: "total", ...p, detail: parts.join(" · ") };
-  });
+  const views: GoalView[] = (
+    await Promise.all(
+      goals
+        .filter((g) => names.has(g.habit_id))
+        .map(async (g): Promise<GoalView> => {
+          const goal: Goal =
+            g.kind === "weekly"
+              ? { id: g.id, habitId: g.habit_id, kind: "weekly", target: g.target }
+              : { id: g.id, habitId: g.habit_id, kind: "total", target: g.target, startsOn: g.starts_on, deadline: g.deadline };
+          // One row per habit and day: a bounded head count never hits the API row cap.
+          const { from, to } = goalWindow(goal, today);
+          const { count } = await supabase
+            .from("checkins")
+            .select("id", { count: "exact", head: true })
+            .eq("habit_id", g.habit_id)
+            .is("rejected_at", null)
+            .gte("local_date", from)
+            .lte("local_date", to);
+          const p = goalProgressFromCount(goal, count ?? 0, today);
+          const name = names.get(g.habit_id) ?? "Hábito";
+          if (g.kind === "weekly") {
+            return { id: g.id, title: name, kind: "weekly", ...p, progressLabel: `${p.current} de ${p.target}` };
+          }
+          const parts = [`${p.current} de ${p.target}`];
+          if (p.current < p.target) parts.push(`faltan ${p.target - p.current}`);
+          parts.push(g.deadline ? `hasta el ${shortDate(g.deadline)}` : "sin fecha límite");
+          return { id: g.id, title: `${g.target} · ${name}`, kind: "total", ...p, detail: parts.join(" · ") };
+        }),
+    )
+  ).filter(Boolean);
   return views.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "weekly" ? -1 : 1));
 }

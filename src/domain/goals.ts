@@ -7,24 +7,34 @@ export type Goal =
 
 export type GoalStatus = 'in_progress' | 'done' | 'overdue'
 
+/** Inclusive date range whose check-ins count toward the goal (weekly: this Monday-Sunday week). */
+export function goalWindow(goal: Goal, today: LocalDate): { from: LocalDate; to: LocalDate } {
+  if (goal.kind === 'weekly') {
+    const from = weekStart(today)
+    return { from, to: addDays(from, 6) }
+  }
+  return { from: goal.startsOn, to: goal.deadline ?? today }
+}
+
+/** Progress from the number of distinct check-in days inside `goalWindow` (one row per habit and day). */
+export function goalProgressFromCount(
+  goal: Goal,
+  current: number,
+  today: LocalDate,
+): { current: number; target: number; status: GoalStatus } {
+  if (current >= goal.target) return { current, target: goal.target, status: 'done' }
+  const overdue = goal.kind === 'total' && goal.deadline !== null && today > goal.deadline
+  return { current, target: goal.target, status: overdue ? 'overdue' : 'in_progress' }
+}
+
 export function goalProgress(
   goal: Goal,
   dates: LocalDate[],
   today: LocalDate,
 ): { current: number; target: number; status: GoalStatus } {
-  const unique = new Set(dates)
-  if (goal.kind === 'weekly') {
-    const from = weekStart(today)
-    const to = addDays(from, 6)
-    const current = [...unique].filter((d) => d >= from && d <= to).length
-    return { current, target: goal.target, status: current >= goal.target ? 'done' : 'in_progress' }
-  }
-  const current = [...unique].filter(
-    (d) => d >= goal.startsOn && (goal.deadline === null || d <= goal.deadline),
-  ).length
-  if (current >= goal.target) return { current, target: goal.target, status: 'done' }
-  const overdue = goal.deadline !== null && today > goal.deadline
-  return { current, target: goal.target, status: overdue ? 'overdue' : 'in_progress' }
+  const { from, to } = goalWindow(goal, today)
+  const current = [...new Set(dates)].filter((d) => d >= from && d <= to).length
+  return goalProgressFromCount(goal, current, today)
 }
 
 export function validateGoal(

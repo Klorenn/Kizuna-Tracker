@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { monthlyCounts, recordFromRows, weeklyCounts } from '@/lib/stats'
+import { monthlyCounts, profileStreaks, recordFromRows, streakWindow, weeklyCounts } from '@/lib/stats'
 
 describe('weeklyCounts', () => {
   test('incluye semanas en cero y termina en la semana actual', () => {
@@ -44,5 +44,31 @@ describe('recordFromRows', () => {
       { challenge_id: 'c4', debtor_id: 'x' }, // activo: no cuenta
     ]
     expect(recordFromRows('me', rows, debts)).toEqual({ won: 1, lost: 1 })
+  })
+})
+
+describe('streakWindow', () => {
+  test('acota por fecha y por filas, siempre bajo el tope de la API', () => {
+    const w = streakWindow('2026-11-25')
+    expect(w.from).toBe('2025-10-21')
+    expect(w.limit).toBeLessThan(1000)
+  })
+})
+
+describe('profileStreaks', () => {
+  const today = '2026-11-25'
+  test('considera hábitos semanales y elige el más largo en días equivalentes', () => {
+    const daily = { frequency_type: 'daily', target_per_week: null, dates: ['2026-11-24', '2026-11-25'] }
+    const weekly = {
+      frequency_type: 'weekly',
+      target_per_week: 1,
+      dates: ['2026-11-02', '2026-11-09', '2026-11-16', '2026-11-23'],
+    }
+    const r = profileStreaks([daily, weekly], today)
+    expect(r.current).toEqual({ value: 4, unit: 'weeks' })
+    expect(r.best).toEqual({ value: 4, unit: 'weeks' })
+  })
+  test('sin hábitos es 0 días', () => {
+    expect(profileStreaks([], today).current).toEqual({ value: 0, unit: 'days' })
   })
 })

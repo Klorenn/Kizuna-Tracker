@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(14);
+select plan(15);
 
 insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
@@ -8,6 +8,9 @@ insert into auth.users (id) values
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
   ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
   ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago');
+insert into auth.users (id) values ('a0000000-0000-0000-0000-000000000004');
+insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at) values
+  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago', now());
 insert into public.habits (id, user_id, name, icon, frequency_type) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Gym A', 'barbell', 'daily'),
   ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Gym B', 'barbell', 'daily');
@@ -38,6 +41,15 @@ end $f$;
 grant usage on schema tests to authenticated;
 grant execute on function tests.n(text) to authenticated;
 
+-- ===== D: deleted account =====
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000004","role":"authenticated"}', true);
+select throws_ok(
+  $$ insert into public.habits (user_id, name, icon, frequency_type)
+     values ('a0000000-0000-0000-0000-000000000004', 'Nuevo', 'book', 'daily') $$,
+  '42501', null, 'a deleted account cannot create habits');
+reset role;
+
 -- ===== A =====
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
@@ -65,9 +77,9 @@ select is((select p.timezone from public.profiles p where p.id = 'a0000000-0000-
 select throws_ok(
   $$ insert into storage.objects (bucket_id, name, owner) values ('avatars', 'a0000000-0000-0000-0000-000000000002.jpg', 'a0000000-0000-0000-0000-000000000001') $$,
   '42501', null, 'a user cannot upload to someone elses avatar path');
-select lives_ok(
+select throws_ok(
   $$ insert into storage.objects (bucket_id, name, owner) values ('avatars', 'a0000000-0000-0000-0000-000000000001.jpg', 'a0000000-0000-0000-0000-000000000001') $$,
-  'a user can upload to their own avatar path');
+  '42501', null, 'clients cannot write avatars at all (server-only uploads)');
 
 select * from finish();
 rollback;

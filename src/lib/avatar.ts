@@ -15,7 +15,9 @@ export function processAvatar(
 }
 
 /** Public URL of an avatar in the public `avatars` bucket (client and server safe). */
-export function avatarUrl(path: string | null | undefined): string | null {
+export function avatarUrl(path: string | null | undefined, updatedAt?: string | null): string | null {
   const base = process.env.NEXT_PUBLIC_SUPABASE_URL?.replace(/\/+$/, "");
-  return path && base ? `${base}/storage/v1/object/public/avatars/${path}` : null;
+  if (!path || !base) return null;
+  const v = updatedAt ? Date.parse(updatedAt) : NaN;
+  return `${base}/storage/v1/object/public/avatars/${path}${Number.isNaN(v) ? "" : `?v=${v}`}`;
 }

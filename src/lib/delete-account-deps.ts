@@ -3,15 +3,21 @@ import type { DeleteAccountDeps } from "@/lib/delete-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const CHUNK = 500;
+/** Every key registro/actions.ts sends as signup metadata. */
+export const SIGNUP_METADATA_KEYS = ["username", "first_name", "last_name", "birth_date", "timezone", "terms_accepted"] as const;
 
 /**
  * Service-role adapter for deleteAccountWith. Habits that a challenge still references
  * cannot be deleted (foreign key) and their check-in dates are what the cron bills ended
- * periods with, so those are kept: habits are archived and renamed, check-ins lose their photos.
+ * periods with, so those are kept: habits are archived and renamed. Their check-ins stay
+ * untouched (photo_path included: the cron counts photo check-ins to know when a period is
+ * closable, and the path holds no personal data; the object itself is already deleted).
  */
-export function supabaseDeleteDeps(): DeleteAccountDeps {
-  const admin = createAdminClient();
-
+export function supabaseDeleteDeps(
+  admin: ReturnType<typeof createAdminClient> = createAdminClient(),
+  /** The caller's access token: GoTrue's admin sign-out revokes every session of the token's user. */
+  accessToken?: string,
+): DeleteAccountDeps {
   async function challengeHabitIds(userId: string): Promise<string[]> {
     const { data: mine } = await admin.from("habits").select("id").eq("user_id", userId);
     const ids = (mine ?? []).map((h) => h.id);
@@ -58,13 +64,6 @@ export function supabaseDeleteDeps(): DeleteAccountDeps {
         let q = admin.from("checkins").delete().eq("user_id", userId);
         if (kept.length) q = q.not("habit_id", "in", `(${kept.join(",")})`);
         must((await q).error);
-        if (kept.length) {
-          const { error } = await admin
-            .from("checkins")
-            .update({ photo_path: null, photo_sha256: null })
-            .eq("user_id", userId);
-          must(error);
-        }
         return;
       }
       let q = admin.from("habits").delete().eq("user_id", userId);
@@ -95,12 +94,21 @@ export function supabaseDeleteDeps(): DeleteAccountDeps {
     async scrubProfile(userId, patch) {
       must((await admin.from("profiles").update(patch).eq("id", userId)).error);
     },
+    async revokeSessions() {
+      if (!accessToken) return;
+      try {
+        await admin.auth.admin.signOut(accessToken, "global");
+      } catch {
+        // best effort: the ban below blocks refreshes anyway
+      }
+    },
     async banAndFreeEmail(userId, freedEmail) {
       const { error } = await admin.auth.admin.updateUserById(userId, {
         email: freedEmail,
         email_confirm: true,
         ban_duration: "876000h",
-        user_metadata: {},
+        // GoTrue merges metadata: a key is only removed by sending null
+        user_metadata: Object.fromEntries(SIGNUP_METADATA_KEYS.map((k) => [k, null])),
       });
       must(error);
     },

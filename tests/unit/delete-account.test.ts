@@ -29,6 +29,9 @@ function fake(files: Record<string, string[]> = {}) {
     async scrubProfile(userId, patch) {
       log(`scrub:${userId}:${JSON.stringify(patch)}`)
     },
+    async revokeSessions(userId) {
+      log(`revoke:${userId}`)
+    },
     async banAndFreeEmail(userId, email) {
       log(`ban:${userId}:${email}`)
     },
@@ -66,7 +69,7 @@ describe('deleteAccountWith', () => {
     await deleteAccountWith(deps, UID, NOW)
     const scrub = calls.find((c) => c.startsWith('scrub:'))!
     expect(JSON.parse(scrub.slice(`scrub:${UID}:`.length))).toEqual({
-      username: 'deleted_12345678',
+      username: 'deleted_12345678aaaa',
       first_name: 'Cuenta',
       last_name: 'eliminada',
       birth_date: null,
@@ -74,6 +77,12 @@ describe('deleteAccountWith', () => {
       deleted_at: NOW.toISOString(),
     })
     expect(calls).toContain(`ban:${UID}:deleted-${UID}@invalid.kizuna`)
+  })
+
+  test('revoca sesiones justo antes de bloquear', async () => {
+    const { deps, calls } = fake()
+    await deleteAccountWith(deps, UID, NOW)
+    expect(calls.slice(-2)).toEqual([`revoke:${UID}`, `ban:${UID}:deleted-${UID}@invalid.kizuna`])
   })
 
   test('el perfil y el login se bloquean al final', async () => {

@@ -21,7 +21,9 @@ export interface DeleteAccountDeps {
       deleted_at: string
     },
   ): Promise<void>
-  /** Blocks login and frees the email for a new signup. */
+  /** Signs the user out everywhere (global scope). Best effort: the ban below also stops refreshes. */
+  revokeSessions(userId: string): Promise<void>
+  /** Blocks login, frees the email and clears every signup metadata key. */
   banAndFreeEmail(userId: string, freedEmail: string): Promise<void>
 }
 
@@ -44,12 +46,14 @@ export async function deleteAccountWith(deps: DeleteAccountDeps, userId: string,
   }
   await deps.purgeSocial(userId)
   await deps.scrubProfile(userId, {
-    username: `deleted_${userId.slice(0, 8)}`,
+    // `deleted_` + 12 hex chars = 20, the username limit; re-running writes the same value
+    username: `deleted_${userId.replace(/-/g, '').slice(0, 12)}`,
     first_name: 'Cuenta',
     last_name: 'eliminada',
     birth_date: null,
     avatar_path: null,
     deleted_at: now.toISOString(),
   })
+  await deps.revokeSessions(userId)
   await deps.banAndFreeEmail(userId, `deleted-${userId}@invalid.kizuna`)
 }

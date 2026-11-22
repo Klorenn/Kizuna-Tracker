@@ -15,7 +15,7 @@ import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency } from "@/domain/types";
 import { loadGoals } from "@/lib/goals-data";
-import { weeklyCounts } from "@/lib/stats";
+import { streakWindow, weeklyCounts } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Hábito" };
@@ -48,14 +48,18 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
     .maybeSingle();
   if (!habit) notFound();
 
+  const today = localDate(new Date(), profile.timezone);
+  // bounded by date and rows (the API caps a query at 1000 rows)
+  const { from, limit } = streakWindow(today);
   const { data: checkins } = await supabase
     .from("checkins")
     .select("local_date")
     .eq("habit_id", id)
-    .is("rejected_at", null);
+    .is("rejected_at", null)
+    .gte("local_date", from)
+    .order("local_date", { ascending: false })
+    .limit(limit);
   const dates = (checkins ?? []).map((c) => c.local_date);
-
-  const today = localDate(new Date(), profile.timezone);
   const frequency: Frequency =
     habit.frequency_type === "weekly"
       ? { type: "weekly", target: habit.target_per_week ?? 1 }

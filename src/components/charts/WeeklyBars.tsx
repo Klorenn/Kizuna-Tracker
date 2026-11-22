@@ -32,7 +32,7 @@ export function WeeklyBars({ data, target }: Props) {
             {rows.map((r) => (
               <Cell key={r.weekStart} className={r.count >= target ? "fill-accent" : "fill-outline-strong"} />
             ))}
-            <LabelList dataKey="count" position="top" className="fill-muted text-[13px]" />
+            <LabelList dataKey="count" position="top" className="fill-muted font-mono text-[13px]" />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

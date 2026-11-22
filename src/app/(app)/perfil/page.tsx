@@ -12,14 +12,13 @@ import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { addDays, localDate } from "@/domain/dates";
+import { localDate } from "@/domain/dates";
 import { formatSignedCLP, netBalances } from "@/domain/ledger";
-import { bestStreak, dailyStreak } from "@/domain/streaks";
 import { avatarUrl } from "@/lib/avatar";
 import { loadGoals } from "@/lib/goals-data";
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
-import { challengeRecord } from "@/lib/stats";
+import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Perfil" };
@@ -33,7 +32,8 @@ function Stat({ label, value, border }: { label: string; value: string; border?:
   );
 }
 
-const days = (n: number) => `${n} ${n === 1 ? "día" : "días"}`;
+const streakLabel = (s: { value: number; unit: "days" | "weeks" }) =>
+  s.unit === "weeks" ? `${s.value} ${s.value === 1 ? "semana" : "semanas"}` : `${s.value} ${s.value === 1 ? "día" : "días"}`;
 
 export default async function PerfilPage() {
   const supabase = await createServerClient();
@@ -43,35 +43,39 @@ export default async function PerfilPage() {
   if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username,first_name,last_name,avatar_path,timezone,reminder_time")
+    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,reminder_time")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
 
   const today = localDate(new Date(), profile.timezone);
   const [{ data: habits }, goals, record, { data: debtRows }] = await Promise.all([
-    supabase.from("habits").select("id").eq("user_id", user.id).is("archived_at", null).eq("frequency_type", "daily"),
+    supabase
+      .from("habits")
+      .select("id,frequency_type,target_per_week")
+      .eq("user_id", user.id)
+      .is("archived_at", null),
     loadGoals(supabase, user.id, today),
     challengeRecord(user.id),
     supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
   ]);
 
-  const ids = (habits ?? []).map((h) => h.id);
-  const { data: checkins } = ids.length
-    ? await supabase
+  // History per habit, bounded by date and row count (the API caps a query at 1000 rows)
+  const { from, limit } = streakWindow(today);
+  const history = await Promise.all(
+    (habits ?? []).map(async (h) => {
+      const { data } = await supabase
         .from("checkins")
-        .select("habit_id,local_date")
-        .in("habit_id", ids)
+        .select("local_date")
+        .eq("habit_id", h.id)
         .is("rejected_at", null)
-        .gte("local_date", addDays(today, -400))
-    : { data: [] as { habit_id: string; local_date: string }[] };
-  let current = 0;
-  let best = 0;
-  for (const id of ids) {
-    const dates = (checkins ?? []).filter((c) => c.habit_id === id).map((c) => c.local_date);
-    current = Math.max(current, dailyStreak(dates, today));
-    best = Math.max(best, bestStreak(dates, { type: "daily" }));
-  }
+        .gte("local_date", from)
+        .order("local_date", { ascending: false })
+        .limit(limit);
+      return { ...h, dates: (data ?? []).map((c) => c.local_date) };
+    }),
+  );
+  const { current, best } = profileStreaks(history, today);
 
   const balances = netBalances(
     (debtRows ?? []).map((d) => ({
@@ -91,12 +95,12 @@ export default async function PerfilPage() {
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
       <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Perfil</h1>
-      <ProfileAvatar name={name} username={profile.username} src={avatarUrl(profile.avatar_path)} />
+      <ProfileAvatar name={name} username={profile.username} src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)} />
 
       <Card>
         <div className="flex border-b border-line">
-          <Stat label="Racha actual" value={days(current)} border="border-r border-line" />
-          <Stat label="Mejor racha" value={days(best)} />
+          <Stat label="Racha actual" value={streakLabel(current)} border="border-r border-line" />
+          <Stat label="Mejor racha" value={streakLabel(best)} />
         </div>
         <div className="flex">
           <Stat label="Retos ganados" value={String(record.won)} border="border-r border-line" />

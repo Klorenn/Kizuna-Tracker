@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import { addDays } from '@/domain/dates'
-import { goalProgress, validateGoal } from '@/domain/goals'
+import { goalProgress, goalProgressFromCount, goalWindow, validateGoal } from '@/domain/goals'
 
 const today = '2026-11-25' // miércoles
 
@@ -69,5 +69,24 @@ describe('validateGoal', () => {
   test('válidas', () => {
     expect(validateGoal({ kind: 'weekly', target: 5, deadline: null }, today)).toEqual({ ok: true })
     expect(validateGoal({ kind: 'total', target: 100, deadline: today }, today)).toEqual({ ok: true })
+  })
+})
+
+describe('goalWindow', () => {
+  test('semanal: lunes a domingo de la semana actual', () => {
+    expect(goalWindow({ id: 'g', habitId: 'h', kind: 'weekly', target: 3 }, today)).toEqual({
+      from: '2026-11-23',
+      to: '2026-11-29',
+    })
+  })
+  test('total: desde startsOn hasta la fecha límite, o hasta hoy sin ella', () => {
+    const g = { id: 'g', habitId: 'h', kind: 'total' as const, target: 5, startsOn: '2026-08-01' }
+    expect(goalWindow({ ...g, deadline: '2026-12-31' }, today)).toEqual({ from: '2026-08-01', to: '2026-12-31' })
+    expect(goalWindow({ ...g, deadline: null }, today)).toEqual({ from: '2026-08-01', to: today })
+  })
+  test('progreso desde un conteo coincide con el de fechas', () => {
+    const g = { id: 'g', habitId: 'h', kind: 'total' as const, target: 100, startsOn: '2026-08-01', deadline: '2026-11-20' }
+    expect(goalProgressFromCount(g, 37, today)).toEqual({ current: 37, target: 100, status: 'overdue' })
+    expect(goalProgressFromCount(g, 100, today).status).toBe('done')
   })
 })

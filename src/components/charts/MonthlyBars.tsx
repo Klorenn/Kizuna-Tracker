@@ -25,7 +25,7 @@ export function MonthlyBars({ data }: { data: { month: string; count: number }[]
         <BarChart data={rows} margin={{ top: 16, right: 0, bottom: 0, left: 0 }} barCategoryGap={8}>
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={<Tick />} interval={0} />
           <Bar dataKey="count" radius={[4, 4, 0, 0]} className="fill-accent" isAnimationActive={false}>
-            <LabelList dataKey="count" position="top" className="fill-muted text-[13px]" />
+            <LabelList dataKey="count" position="top" className="fill-muted font-mono text-[13px]" />
           </Bar>
         </BarChart>
       </ResponsiveContainer>

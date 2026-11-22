@@ -1,4 +1,5 @@
 import { addDays, weekStart } from '@/domain/dates'
+import { bestStreak, dailyStreak, weeklyStreak } from '@/domain/streaks'
 import type { LocalDate } from '@/domain/types'
 
 /** The last `weeks` Monday-to-Sunday weeks (oldest first, current last), zeros included. Distinct dates only. */
@@ -74,4 +75,36 @@ export async function challengeRecord(userId: string): Promise<{ won: number; lo
     .select('challenge_id,debtor_id')
     .in('challenge_id', rows.map((c) => c.id))
   return recordFromRows(userId, rows, debts ?? [])
+}
+
+/** Streak history is read per habit: this many days back, newest first, always under the API row cap. */
+export const STREAK_DAYS = 400
+export function streakWindow(today: LocalDate): { from: LocalDate; limit: number } {
+  return { from: addDays(today, -STREAK_DAYS), limit: STREAK_DAYS + 7 }
+}
+
+type HabitFreq = { frequency_type: string; target_per_week: number | null }
+
+/**
+ * Longest current and best streak across habits. Daily habits count days, weekly ones weeks;
+ * they are ranked by days (a week = 7) and shown in their own unit.
+ */
+export function profileStreaks(
+  habits: (HabitFreq & { dates: LocalDate[] })[],
+  today: LocalDate,
+): { current: { value: number; unit: 'days' | 'weeks' }; best: { value: number; unit: 'days' | 'weeks' } } {
+  type Streak = { value: number; unit: 'days' | 'weeks' }
+  let current: Streak = { value: 0, unit: 'days' }
+  let best: Streak = { value: 0, unit: 'days' }
+  const days = (x: { value: number; unit: 'days' | 'weeks' }) => (x.unit === 'weeks' ? x.value * 7 : x.value)
+  for (const h of habits) {
+    const weekly = h.frequency_type === 'weekly'
+    const unit = weekly ? ('weeks' as const) : ('days' as const)
+    const target = h.target_per_week ?? 1
+    const c = { value: weekly ? weeklyStreak(h.dates, target, today) : dailyStreak(h.dates, today), unit }
+    const b = { value: bestStreak(h.dates, weekly ? { type: 'weekly', target } : { type: 'daily' }), unit }
+    if (days(c) > days(current)) current = c
+    if (days(b) > days(best)) best = b
+  }
+  return { current, best }
 }

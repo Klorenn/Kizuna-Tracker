@@ -34,7 +34,6 @@ export async function createGoal(input: {
     habit_id: input.habitId,
     kind: input.kind,
     target: input.target,
-    starts_on: today,
     deadline,
   });
   if (error) return { ok: false, error: GENERIC };

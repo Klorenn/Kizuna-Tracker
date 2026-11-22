@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { deleteAccountWith } from "@/lib/delete-account";
 import { supabaseDeleteDeps } from "@/lib/delete-account-deps";
-import { MAX_AVATAR_BYTES, processAvatar } from "@/lib/avatar";
+import { processAvatar } from "@/lib/avatar";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -42,7 +42,7 @@ export async function updateSettings(input: {
 
 const TZ_ERRORS: Record<string, string> = {
   timezone_recently_changed: "Ya cambiaste tu zona horaria. Puedes volver a cambiarla en 7 días.",
-  invalid_timezone: "Esa zona horaria no es válida.",
+  invalid_timezone: "Esa zona horaria no está disponible.",
 };
 
 export async function setTimezone(tz: string): Promise<{ ok: true } | { ok: false; error: string }> {
@@ -65,7 +65,6 @@ export async function uploadAvatar(file: File): Promise<Result> {
   const { uid } = await currentUserId();
   if (!uid) return { ok: false, error: LOGIN };
   if (!(file instanceof File)) return { ok: false, error: "Falta la foto." };
-  if (file.size > MAX_AVATAR_BYTES * 4) return { ok: false, error: "La foto pesa demasiado." };
   const clean = processAvatar(await file.arrayBuffer(), file.type);
   if (!clean.ok) return clean;
 
@@ -75,7 +74,7 @@ export async function uploadAvatar(file: File): Promise<Result> {
     .from("avatars")
     .upload(path, clean.bytes, { contentType: "image/jpeg", upsert: true, cacheControl: "60" });
   if (error) return { ok: false, error: "No pudimos subir la foto. Inténtalo de nuevo." };
-  const { error: profileError } = await admin.from("profiles").update({ avatar_path: path }).eq("id", uid);
+  const { error: profileError } = await admin.from("profiles").update({ avatar_path: path, avatar_updated_at: new Date().toISOString() }).eq("id", uid);
   if (profileError) return { ok: false, error: GENERIC };
   revalidatePath("/perfil");
   return { ok: true };
@@ -90,7 +89,8 @@ export async function deleteAccount(confirmUsername: string): Promise<Result> {
     return { ok: false, error: "Escribe tu @usuario tal como aparece para confirmar." };
   }
   try {
-    await deleteAccountWith(supabaseDeleteDeps(), uid, new Date());
+    const { data: session } = await supabase.auth.getSession();
+    await deleteAccountWith(supabaseDeleteDeps(createAdminClient(), session.session?.access_token), uid, new Date());
   } catch {
     return { ok: false, error: "No pudimos borrar tu cuenta. Inténtalo de nuevo." };
   }
