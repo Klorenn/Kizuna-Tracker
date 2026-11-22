@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { CatMark } from "@/components/brand/CatMark";
+import { CatLift } from "@/components/CatLift";
 import { ButtonLink } from "@/components/ui/Button";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -22,7 +22,7 @@ export default async function ListoPage() {
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-full max-w-md flex-col px-5 pt-24">
       <div className="flex justify-center">
-        <CatMark width={140} />
+        <CatLift size="sm" />
       </div>
       <section className="mt-10 flex flex-col gap-2">
         <h1 className="text-display font-semibold text-ink">

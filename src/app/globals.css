@@ -25,3 +25,10 @@ body {
   letter-spacing: 0.1em;
   text-transform: uppercase;
 }
+
+/* Reduced-motion cat (Figma 19b): static frame, 300 ms fade-in. */
+@keyframes cat-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.cat-fade { animation: cat-fade 300ms ease-out; }
