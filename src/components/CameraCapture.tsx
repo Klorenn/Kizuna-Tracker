@@ -1,11 +1,7 @@
 "use client";
 
-import { ArrowsClockwise, Clock, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowsClockwise, X } from "@phosphor-icons/react/dist/ssr";
 import { useCallback, useEffect, useRef, useState } from "react";
-
-function clock(timeZone: string) {
-  return new Intl.DateTimeFormat("es-CL", { hour: "2-digit", minute: "2-digit", hour12: false, timeZone }).format(new Date());
-}
 
 /**
  * Live camera (Figma 06). `getUserMedia` into a <video>, snapshot to a <canvas>.
@@ -13,12 +9,10 @@ function clock(timeZone: string) {
  */
 export function CameraCapture({
   title,
-  timeZone,
   onCapture,
   onClose,
 }: {
   title: string;
-  timeZone: string;
   onCapture: (blob: Blob) => void;
   onClose: () => void;
 }) {
@@ -26,13 +20,6 @@ export function CameraCapture({
   const streamRef = useRef<MediaStream | null>(null);
   const [facing, setFacing] = useState<"environment" | "user">("environment");
   const [mode, setMode] = useState<"starting" | "live" | "fallback">("starting");
-  const [time, setTime] = useState(() => clock(timeZone));
-
-  useEffect(() => {
-    const id = setInterval(() => setTime(clock(timeZone)), 15_000);
-    return () => clearInterval(id);
-  }, [timeZone]);
-
   useEffect(() => {
     let cancelled = false;
     async function start() {
@@ -99,10 +86,6 @@ export function CameraCapture({
             </button>
             <h1 className="flex-1 pr-11 text-center text-body font-medium">{title} · foto en vivo</h1>
           </div>
-          <p className="inline-flex items-center gap-2 rounded-full bg-ink/60 px-4 py-2 text-small">
-            <Clock size={16} weight="light" aria-hidden />
-            Vale la hora del servidor · {time}
-          </p>
         </div>
         {mode === "fallback" ? (
           <p className="absolute inset-x-0 top-1/2 px-8 text-center text-body">
@@ -112,7 +95,7 @@ export function CameraCapture({
       </div>
       <div className="flex flex-col items-center gap-4 bg-ink px-5 pb-[calc(1.5rem+env(safe-area-inset-bottom))] pt-5">
         <p className="text-small">
-          {mode === "fallback" ? "Toma la foto ahora." : "Solo fotos tomadas ahora, sin galería."}
+          Toma la foto ahora.
         </p>
         <div className="relative flex w-full items-center justify-center">
           {mode === "fallback" ? (

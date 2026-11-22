@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import {
-  MAX_PHOTO_BYTES,
+  contentLengthError,
   photoCheckin,
   type PhotoCheckinDeps,
   type PhotoCheckinResult,
@@ -39,10 +39,12 @@ function supabaseDeps(): PhotoCheckinDeps {
     async getItem(itemId) {
       const { data } = await admin
         .from("habit_items")
-        .select("id,habit_id,user_id,requires_photo,archived_at")
+        .select("id,habit_id,user_id,requires_photo,archived_at,habits!inner(user_id,archived_at)")
         .eq("id", itemId)
         .maybeSingle();
-      return data;
+      if (!data) return null;
+      const { habits, ...item } = data;
+      return { ...item, habit_user_id: habits.user_id, habit_archived_at: habits.archived_at };
     },
     async findCheckin(target, date) {
       const q =
@@ -97,17 +99,23 @@ function supabaseDeps(): PhotoCheckinDeps {
 }
 
 export async function POST(request: Request) {
+  try {
+    return await handle(request);
+  } catch {
+    return json({ status: 502, error: "No pudimos guardar la foto. Inténtalo de nuevo." });
+  }
+}
+
+async function handle(request: Request) {
   const supabase = await createServerClient();
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) return json({ status: 401, error: "Inicia sesión para continuar." });
 
-  // refuse oversized bodies before buffering them
-  const declared = Number(request.headers.get("content-length") ?? 0);
-  if (declared > MAX_PHOTO_BYTES + 64 * 1024) {
-    return json({ status: 413, error: "La foto pesa demasiado. El máximo es 5 MB." });
-  }
+  // a body without a valid Content-Length (e.g. chunked) is refused before buffering
+  const tooBig = contentLengthError(request.headers.get("content-length"));
+  if (tooBig) return json(tooBig);
 
   let form: FormData;
   try {

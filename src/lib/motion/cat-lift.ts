@@ -7,6 +7,7 @@ export const CAT_LIFT = {
   canvas: { w: 360, h: 360 },
   /** frame 0 cropped to the cat: 195x214 placed at (91,70) on the canvas */
   stillBox: { w: 195, h: 214, x: 91, y: 70 },
+  /** one full pass of the GIF; the workout sheet (3 s) closes before it ends */
   playMs: 6000,
 } as const
 

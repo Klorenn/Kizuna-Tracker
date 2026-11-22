@@ -25,7 +25,7 @@ export function PhotoCheckinFlow({
 }) {
   const router = useRouter();
   const [blob, setBlob] = useState<Blob | null>(null);
-  const [celebrate, setCelebrate] = useState<{ streakLabel: string | null } | null>(null);
+  const [celebrate, setCelebrate] = useState<{ streakLabel: string | null; note: string } | null>(null);
 
   const leave = useCallback(() => {
     router.replace("/");
@@ -49,13 +49,18 @@ export function PhotoCheckinFlow({
               if (info.streak > 0) streakLabel = `Racha de ${info.streak} ${info.unit}`;
               else if (info.weekly) streakLabel = `${info.weekly.count} de ${info.weekly.target} esta semana`;
             }
-            setCelebrate({ streakLabel });
+            const note = info.ok && info.weekly
+              ? `Hecho. Vas ${info.weekly.count} de ${info.weekly.target} esta semana.`
+              : "Hecho. Mañana toca de nuevo.";
+            setCelebrate({ streakLabel, note });
           }}
         />
       ) : (
-        <CameraCapture title={title} timeZone={timeZone} onCapture={setBlob} onClose={leave} />
+        <CameraCapture title={title} onCapture={setBlob} onClose={leave} />
       )}
-      <WorkoutDoneSheet open={celebrate !== null} streakLabel={celebrate?.streakLabel ?? null} onClose={leave} />
+      <WorkoutDoneSheet open={celebrate !== null} streakLabel={celebrate?.streakLabel ?? null}
+        note={celebrate?.note ?? ""}
+        onClose={leave} />
     </>
   );
 }

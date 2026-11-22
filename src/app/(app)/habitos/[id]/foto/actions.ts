@@ -13,7 +13,11 @@ export async function habitStreak(habitId: string): Promise<StreakInfo> {
   const supabase = await createServerClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user) return { ok: false, error: "Inicia sesión para continuar." };
-  const { data: profile } = await supabase.from("profiles").select("timezone").single();
+  const { data: profile } = await supabase
+    .from("profiles")
+    .select("timezone")
+    .eq("id", auth.user.id)
+    .maybeSingle();
   const { data: habit } = await supabase
     .from("habits")
     .select("frequency_type,target_per_week")
