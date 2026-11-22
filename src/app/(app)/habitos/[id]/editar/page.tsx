@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { HabitForm } from "@/components/HabitForm";
 import { TopBar } from "@/components/ui/TopBar";
+import { toHabitColor } from "@/domain/habit-colors";
 import type { HabitDraft, IconKey, PresetKey, Visibility } from "@/domain/presets";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -16,7 +17,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
   if (!user) redirect("/bienvenida");
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset")
+    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
@@ -40,6 +41,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
     items: (items ?? []).map((i) => ({ label: i.label, requiresPhoto: i.requires_photo })),
     visibility: habit.visibility as Visibility,
     preset: habit.preset as PresetKey | null,
+    color: toHabitColor(habit.color),
   };
 
   return (
