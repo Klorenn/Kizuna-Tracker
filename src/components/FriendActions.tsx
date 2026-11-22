@@ -11,10 +11,13 @@ export function AddFriendButton({
   username,
   initial = "idle",
   compact = false,
+  incoming = false,
 }: {
   username: string;
   initial?: "idle" | "pending" | "accepted";
   compact?: boolean;
+  /** They already sent you a request: the button accepts it. */
+  incoming?: boolean;
 }) {
   const [status, setStatus] = useState(initial);
   const [error, setError] = useState<string | null>(null);
@@ -46,7 +49,7 @@ export function AddFriendButton({
         }
       >
         <UserPlus size={20} weight="light" aria-hidden />
-        Agregar{compact ? "" : " amigo"}
+        {incoming ? (compact ? "Aceptar" : "Aceptar solicitud") : compact ? "Agregar" : "Agregar amigo"}
       </Button>
       {error ? (
         <p role="alert" className="flex items-start gap-[6px] text-small text-ink">

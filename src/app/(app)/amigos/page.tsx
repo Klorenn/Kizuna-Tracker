@@ -34,9 +34,10 @@ function whenLabel(instant: Date, now: Date, tz: string): string {
 export default async function AmigosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; n?: string }>;
+  searchParams: Promise<{ q?: string; n?: string; amigo?: string }>;
 }) {
-  const { q = "", n } = await searchParams;
+  const { q = "", n, amigo } = await searchParams;
+  const justAdded = amigo && /^[a-z0-9_]{3,20}$/.test(amigo) ? amigo : null;
   const limit = Math.min(MAX, Math.max(PAGE, Number.parseInt(n ?? "", 10) || PAGE));
   const supabase = await createServerClient();
   const {
@@ -59,7 +60,7 @@ export default async function AmigosPage({
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
   const incoming = rows.filter((f) => f.status === "pending" && f.addressee_id === user.id);
   const friends = rows.filter((f) => f.status === "accepted");
-  const related = new Map(rows.map((f) => [other(f), f.status]));
+  const related = new Map(rows.map((f) => [other(f), f]));
 
   const hits = q.trim() ? await searchUsers(q) : [];
 
@@ -108,6 +109,12 @@ export default async function AmigosPage({
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
       <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Amigos</h1>
 
+      {justAdded ? (
+        <p role="status" className="rounded-md bg-accent-soft px-4 py-3 text-small text-ink">
+          Ya son amigos con @{justAdded}.
+        </p>
+      ) : null}
+
       <form action="/amigos" role="search" className="flex">
         <label className="flex h-12 w-full items-center gap-3 rounded-lg bg-field px-4 focus-within:shadow-[inset_0_0_0_2px_var(--color-accent)]">
           <MagnifyingGlass size={20} weight="light" className="shrink-0 text-muted" aria-hidden />
@@ -130,7 +137,8 @@ export default async function AmigosPage({
             <p className="p-4 text-body text-muted">No encontramos a nadie con ese usuario.</p>
           ) : (
             hits.map((h) => {
-              const status = related.get(h.id);
+              const f = related.get(h.id);
+              const isIncoming = f?.status === "pending" && f.addressee_id === user.id;
               return (
                 <div key={h.id} className="flex items-center gap-3 p-4">
                   <Avatar name={h.displayName} />
@@ -141,7 +149,10 @@ export default async function AmigosPage({
                   <AddFriendButton
                     username={h.username}
                     compact
-                    initial={status === "accepted" ? "accepted" : status === "pending" ? "pending" : "idle"}
+                    incoming={isIncoming}
+                    initial={
+                      f?.status === "accepted" ? "accepted" : f && !isIncoming ? "pending" : "idle"
+                    }
                   />
                 </div>
               );

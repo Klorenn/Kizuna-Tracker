@@ -1,5 +1,61 @@
 -- Social: invite redemption and the anonymous-safe public profile.
 
+-- Invites are server-made only: clients cannot insert (so they cannot pick expires_at).
+-- Policy: a code lives 7 days, is usable by up to 20 acceptances (`uses`), and a user may
+-- hold at most 5 active (unexpired, not used up) codes.
+alter table public.invites add column uses int not null default 0;
+revoke insert on public.invites from authenticated;
+revoke insert (inviter_id, expires_at) on public.invites from authenticated;
+
+create function public.create_invite()
+returns text
+language plpgsql
+volatile
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := (select auth.uid());
+  v_code text;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated';
+  end if;
+  if (select count(*) from public.invites i
+      where i.inviter_id = v_uid and i.expires_at > now() and i.uses < 20) >= 5 then
+    raise exception 'invite_limit';
+  end if;
+  insert into public.invites (inviter_id, expires_at)
+  values (v_uid, now() + interval '7 days')
+  returning code into v_code;
+  return v_code;
+end;
+$$;
+revoke execute on function public.create_invite() from public, anon;
+grant execute on function public.create_invite() to authenticated;
+
+-- Read-only preview for the confirmation screen: only who invited. Null when the code is
+-- unknown, expired, used up or the inviter was deleted.
+create function public.invite_preview(p_code text)
+returns jsonb
+language sql
+stable
+security definer
+set search_path = ''
+as $$
+  select jsonb_build_object(
+    'username', p.username::text,
+    'displayName', p.display_name,
+    'avatarPath', p.avatar_path
+  )
+  from public.invites i
+  join public.profiles p on p.id = i.inviter_id and p.deleted_at is null
+  where i.code = p_code and i.expires_at > now() and i.uses < 20
+    and (select auth.uid()) is not null;
+$$;
+revoke execute on function public.invite_preview(text) from public, anon;
+grant execute on function public.invite_preview(text) to authenticated;
+
 -- Redeems an invite code for the caller. Definer so a stranger can read the invite and
 -- write the friendship without table access; codes cannot be enumerated (exact match only).
 create function public.accept_invite(p_code text)
@@ -24,7 +80,7 @@ begin
   if not found then
     raise exception 'invite_not_found';
   end if;
-  if v_invite.expires_at <= now() then
+  if v_invite.expires_at <= now() or v_invite.uses >= 20 then
     raise exception 'invite_expired';
   end if;
   if v_invite.inviter_id = v_uid then
@@ -38,8 +94,10 @@ begin
   if not found then
     insert into public.friendships (requester_id, addressee_id, status)
     values (v_invite.inviter_id, v_uid, 'accepted');
+    update public.invites set uses = uses + 1 where id = v_invite.id;
   elsif v_friendship.status = 'pending' then
     update public.friendships set status = 'accepted' where id = v_friendship.id;
+    update public.invites set uses = uses + 1 where id = v_invite.id;
   end if;
   return v_invite.inviter_id;
 end;

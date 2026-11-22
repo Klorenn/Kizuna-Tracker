@@ -2,21 +2,17 @@
 
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
+import { redirect } from "next/navigation";
+import { INVITE_ERRORS, INVITE_GENERIC, inviteErrorKey } from "@/lib/invites";
+import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
 import { cancelChallengesBetween } from "../retos/actions";
 
 type Result = { ok: true } | { ok: false; error: string };
 type RequestResult = { ok: true; status: "pending" | "accepted" } | { ok: false; error: string };
 
-const GENERIC = "No pudimos completar la acción. Inténtalo de nuevo.";
+const GENERIC = INVITE_GENERIC;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const INVITE_DAYS = 7;
-const INVITE_ERRORS: Record<string, string> = {
-  invite_not_found: "No encontramos esta invitación.",
-  invite_expired: "Esta invitación venció.",
-  invite_self: "Esta invitación es tuya. Compártela con un amigo.",
-  not_authenticated: "Inicia sesión para continuar.",
-};
 
 function refresh() {
   revalidatePath("/amigos");
@@ -50,7 +46,7 @@ export async function searchUsers(q: string): Promise<UserHit[]> {
   );
 }
 
-export async function sendFriendRequest(userId: string): Promise<RequestResult> {
+export async function sendFriendRequest(userId: string, retried = false): Promise<RequestResult> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
   if (userId === uid) return { ok: false, error: "No puedes agregarte a ti mismo." };
@@ -84,6 +80,8 @@ export async function sendFriendRequest(userId: string): Promise<RequestResult> 
   const { error } = await supabase
     .from("friendships")
     .insert({ requester_id: uid, addressee_id: userId, status: "pending" });
+  // unique pair index: someone created the row in between, read it again
+  if (error?.code === "23505" && !retried) return sendFriendRequest(userId, true);
   if (error) return { ok: false, error: GENERIC };
   refresh();
   return { ok: true, status: "pending" };
@@ -102,10 +100,11 @@ export async function addFriendByUsername(username: string): Promise<RequestResu
 export async function respondFriendRequest(id: string, accept: boolean): Promise<Result> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
-  const { error } = accept
-    ? await supabase.from("friendships").update({ status: "accepted" }).eq("id", id)
-    : await supabase.from("friendships").delete().eq("id", id).eq("status", "pending");
+  const { data, error } = accept
+    ? await supabase.from("friendships").update({ status: "accepted" }).eq("id", id).select("id")
+    : await supabase.from("friendships").delete().eq("id", id).eq("status", "pending").select("id");
   if (error) return { ok: false, error: GENERIC };
+  if (!data || data.length === 0) return { ok: false, error: "Esta solicitud ya no existe." };
   refresh();
   return { ok: true };
 }
@@ -115,50 +114,45 @@ export async function removeFriend(userId: string): Promise<Result> {
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
   if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
   await cancelChallengesBetween(uid, userId);
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("friendships")
     .delete()
     .or(
       `and(requester_id.eq.${uid},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${uid})`,
-    );
+    )
+    .select("id");
   if (error) return { ok: false, error: GENERIC };
+  if (!data || data.length === 0) return { ok: false, error: "Esta persona ya no está en tus amigos." };
   refresh();
   return { ok: true };
 }
 
-async function requestOrigin(): Promise<string> {
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  return `${proto}://${host}`;
-}
-
-/** Creates a 7-day invite. Returns `{ ok, url }` (union, never throws). */
+/** Creates a server-side 7-day invite (create_invite RPC). Union, never throws. */
 export async function createInvite(): Promise<{ ok: true; url: string } | { ok: false; error: string }> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
-  const expires = new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000).toISOString();
-  const { data, error } = await supabase
-    .from("invites")
-    .insert({ inviter_id: uid, expires_at: expires })
-    .select("code")
-    .single();
-  if (error || !data) return { ok: false, error: GENERIC };
-  return { ok: true, url: `${await requestOrigin()}/invite/${data.code}` };
+  const { data: code, error } = await supabase.rpc("create_invite");
+  if (error || !code) {
+    const key = inviteErrorKey(error?.message);
+    return { ok: false, error: key ? INVITE_ERRORS[key] : GENERIC };
+  }
+  return { ok: true, url: `${siteOrigin(await headers())}/invite/${code}` };
 }
 
-export async function acceptInvite(
-  code: string,
-): Promise<{ ok: true; inviterUsername: string } | { ok: false; error: string }> {
+type AcceptResult =
+  | { ok: true; inviterUsername: string }
+  | { ok: false; error: string; key: string | null };
+
+async function acceptInviteCore(code: string): Promise<AcceptResult> {
   if (typeof code !== "string" || !/^[A-Za-z0-9_-]{1,64}$/.test(code)) {
-    return { ok: false, error: INVITE_ERRORS.invite_not_found };
+    return { ok: false, error: INVITE_ERRORS.invite_not_found, key: "invite_not_found" };
   }
   const { supabase, uid } = await currentUserId();
-  if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
+  if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated, key: "not_authenticated" };
   const { data: inviterId, error } = await supabase.rpc("accept_invite", { p_code: code });
   if (error || !inviterId) {
-    const key = Object.keys(INVITE_ERRORS).find((k) => error?.message?.includes(k));
-    return { ok: false, error: key ? INVITE_ERRORS[key] : GENERIC };
+    const key = inviteErrorKey(error?.message);
+    return { ok: false, error: key ? INVITE_ERRORS[key] : GENERIC, key };
   }
   const { data: inviter } = await supabase
     .from("public_profiles")
@@ -167,4 +161,20 @@ export async function acceptInvite(
     .maybeSingle();
   refresh();
   return { ok: true, inviterUsername: inviter?.username ?? "" };
+}
+
+export async function acceptInvite(
+  code: string,
+): Promise<{ ok: true; inviterUsername: string } | { ok: false; error: string }> {
+  const r = await acceptInviteCore(code);
+  return r.ok ? r : { ok: false, error: r.error };
+}
+
+/** Form action behind "Aceptar invitación" (POST, Origin-checked by Next). Never runs on GET. */
+export async function acceptInviteAction(code: string): Promise<void> {
+  const r = await acceptInviteCore(code);
+  if (r.ok) {
+    redirect(r.inviterUsername ? `/amigos?amigo=${encodeURIComponent(r.inviterUsername)}` : "/amigos");
+  }
+  redirect(`/invite/${encodeURIComponent(code)}?error=${r.key ?? "generic"}`);
 }

@@ -17,6 +17,7 @@ import {
   toPublicProfileView,
   type PublicProfileRow,
 } from "@/lib/public-profile";
+import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
 
 // Hidden from search engines until the legal review is done.
@@ -42,7 +43,7 @@ function Unavailable() {
 
 export default async function PublicProfilePage({ params }: { params: Promise<{ username: string }> }) {
   const { username: raw } = await params;
-  const username = decodeURIComponent(raw).toLowerCase();
+  const username = raw.toLowerCase();
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return <Unavailable />;
 
   const supabase = await createServerClient();
@@ -54,6 +55,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   } = await supabase.auth.getUser();
   let timezone = "UTC";
   let initial: "idle" | "pending" | "accepted" = "idle";
+  let incoming = false;
   let isMe = false;
   if (user) {
     const { data: viewer } = await supabase
@@ -72,21 +74,22 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       if (target?.id) {
         const { data: f } = await supabase
           .from("friendships")
-          .select("status")
+          .select("status,addressee_id")
           .or(
             `and(requester_id.eq.${user.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${user.id})`,
           )
           .maybeSingle();
-        if (f) initial = f.status === "accepted" ? "accepted" : "pending";
+        if (f?.status === "accepted") initial = "accepted";
+        else if (f) {
+          incoming = f.addressee_id === user.id;
+          initial = incoming ? "idle" : "pending";
+        }
       }
     }
   }
 
   const view = toPublicProfileView(data as unknown as PublicProfileRow, localDate(new Date(), timezone));
-  const h = await headers();
-  const host = h.get("x-forwarded-host") ?? h.get("host") ?? "localhost:3000";
-  const proto = h.get("x-forwarded-proto") ?? (host.startsWith("localhost") ? "http" : "https");
-  const shareUrl = profileShareUrl(`${proto}://${host}`, view.username);
+  const shareUrl = profileShareUrl(siteOrigin(await headers()), view.username);
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
@@ -101,7 +104,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       <div className="flex gap-3">
         <div className="flex-1">
           {isMe ? null : user ? (
-            <AddFriendButton username={view.username} initial={initial} />
+            <AddFriendButton username={view.username} initial={initial} incoming={incoming} />
           ) : (
             <ButtonLink href={`/login?next=${encodeURIComponent(`/@${view.username}`)}`}>
               Agregar amigo
@@ -121,9 +124,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       ) : (
         view.habits.map((hab) => {
           const weekly = hab.frequencyType === "weekly";
-          const doneCount = hab.calendar.filter((d) => d.done).length;
+          const doneCount = hab.weeks.flat().filter((d) => d.done).length;
           return (
-            <Card key={hab.name} className="flex flex-col gap-3 p-4">
+            <Card key={hab.id} className="flex flex-col gap-3 p-4">
               <div className="flex items-center gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-field text-ink">
                   <HabitIcon name={hab.icon as IconKey} />
@@ -141,17 +144,28 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
                   </p>
                 </div>
               </div>
-              <div
-                role="img"
-                aria-label={`${doneCount} de ${hab.calendar.length} días hechos`}
-                className="flex flex-wrap gap-1"
-              >
-                {hab.calendar.map((d) => (
-                  <span
-                    key={d.date}
-                    className={`size-[9px] rounded-[2px] ${d.done ? "bg-accent" : "bg-ink-soft"}`}
-                  />
-                ))}
+              <div role="img" aria-label={`${doneCount} días hechos en las últimas 26 semanas`}>
+                <div aria-hidden className="grid grid-flow-col grid-rows-1 gap-[2px]" style={{ gridTemplateColumns: "repeat(26, minmax(0, 1fr))" }}>
+                  {hab.monthLabels.map((m, i) => (
+                    <span key={i} className="relative h-3 font-mono text-[10px] leading-3 text-muted">
+                      {m ? <span className="absolute left-0 whitespace-nowrap">{m}</span> : null}
+                    </span>
+                  ))}
+                </div>
+                <div aria-hidden className="mt-1 grid gap-[2px]" style={{ gridTemplateColumns: "repeat(26, minmax(0, 1fr))" }}>
+                  {hab.weeks.map((col, i) => (
+                    <div key={i} className="grid gap-[2px]">
+                      {col.map((d) => (
+                        <span
+                          key={d.date}
+                          className={`aspect-square rounded-[2px] ${
+                            d.future ? "bg-transparent" : d.done ? "bg-accent" : "bg-line"
+                          }`}
+                        />
+                      ))}
+                    </div>
+                  ))}
+                </div>
               </div>
             </Card>
           );

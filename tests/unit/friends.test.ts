@@ -29,12 +29,12 @@ const client = {
     update: (payload: unknown) => {
       writes.push({ table, op: 'update', payload })
       order.push(`${table}.update`)
-      return chain(`${table}.update`, () => reads[`${table}.update`] ?? { error: null })
+      return chain(`${table}.update`, () => reads[`${table}.update`] ?? { data: [{ id: 'x' }], error: null })
     },
     delete: () => {
       writes.push({ table, op: 'delete' })
       order.push(`${table}.delete`)
-      return chain(`${table}.delete`, () => ({ error: null }))
+      return chain(`${table}.delete`, () => reads[`${table}.delete`] ?? { data: [{ id: 'x' }], error: null })
     },
   }),
 }
@@ -101,6 +101,30 @@ describe('friend actions', () => {
   it('maps an expired invite', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'invite_expired' } })
     await expect(acceptInvite('code')).resolves.toEqual({ ok: false, error: 'Esta invitación venció.' })
+  })
+
+  it('reports a request that no longer exists', async () => {
+    reads['friendships.delete'] = { data: [], error: null }
+    await expect(respondFriendRequest('f1', false)).resolves.toEqual({
+      ok: false,
+      error: 'Esta solicitud ya no existe.',
+    })
+  })
+
+  it('re-reads after a unique-violation race', async () => {
+    let call = 0
+    reads['friendships.insert'] = { error: { message: 'dup', code: '23505' } } as never
+    const orig = reads['friendships.select']
+    void orig
+    // first read: nothing; after the failed insert the row exists
+    Object.defineProperty(reads, 'friendships.select', {
+      configurable: true,
+      get: () =>
+        call++ === 0
+          ? { data: [], error: null }
+          : { data: [{ id: 'f9', requester_id: U2, addressee_id: 'me', status: 'pending' }], error: null },
+    })
+    await expect(sendFriendRequest(U2)).resolves.toEqual({ ok: true, status: 'accepted' })
   })
 
   it('declining a request deletes it', async () => {

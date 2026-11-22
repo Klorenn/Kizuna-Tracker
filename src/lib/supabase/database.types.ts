@@ -564,6 +564,7 @@ export type Database = {
           expires_at: string
           id: string
           inviter_id: string
+          uses: number
         }
         Insert: {
           code?: string
@@ -571,6 +572,7 @@ export type Database = {
           expires_at: string
           id?: string
           inviter_id: string
+          uses?: number
         }
         Update: {
           code?: string
@@ -578,6 +580,7 @@ export type Database = {
           expires_at?: string
           id?: string
           inviter_id?: string
+          uses?: number
         }
         Relationships: [
           {
@@ -798,7 +801,9 @@ export type Database = {
           created: boolean
         }[]
       }
+      create_invite: { Args: never; Returns: string }
       email_for_username: { Args: { p_username: string }; Returns: string }
+      invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
       public_profile: { Args: { p_username: string }; Returns: Json }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }

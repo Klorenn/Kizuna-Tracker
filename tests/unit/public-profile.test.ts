@@ -9,6 +9,7 @@ describe('public profile view', () => {
     photo_path: 'x/y.jpg',
     habits: [
       {
+        id: 'h1',
         name: 'Leer',
         icon: 'book',
         frequencyType: 'daily',
@@ -19,13 +20,27 @@ describe('public profile view', () => {
     ],
   }
 
-  it('builds streak and a 35-day calendar ending today, whitelisting fields', () => {
-    const v = toPublicProfileView(row as never, '2026-11-23')
-    expect(v.habits[0].streak).toBe(2)
-    expect(v.habits[0].calendar).toHaveLength(35)
-    expect(v.habits[0].calendar.at(-1)).toEqual({ date: '2026-11-23', done: false })
-    expect(v.habits[0].calendar.at(-2)).toEqual({ date: '2026-11-22', done: true })
+  it('builds streak and a 26-week Monday-first heatmap, whitelisting fields', () => {
+    const v = toPublicProfileView(row as never, '2026-11-25') // Wednesday
+    const h = v.habits[0]
+    expect(h.id).toBe('h1')
+    expect(h.streak).toBe(0)
+    expect(h.weeks).toHaveLength(26)
+    for (const col of h.weeks) expect(col).toHaveLength(7)
+    const last = h.weeks.at(-1)!
+    expect(last[0].date).toBe('2026-11-23') // Monday of today's week
+    expect(last[2]).toEqual({ date: '2026-11-25', done: false, future: false })
+    expect(last[3].future).toBe(true)
+    expect(h.weeks[0][0].date).toBe('2026-06-01')
+    expect(h.weeks.at(-2)?.[6]).toEqual({ date: '2026-11-22', done: true, future: false })
+    expect(h.monthLabels).toHaveLength(26)
+    expect(h.monthLabels.at(-1)).toBe(null)
+    expect(h.monthLabels.filter(Boolean)).toContain('nov')
     expect(JSON.stringify(v)).not.toMatch(/photo/)
+  })
+
+  it('counts the daily streak up to today', () => {
+    expect(toPublicProfileView(row as never, '2026-11-23').habits[0].streak).toBe(2)
   })
 
   it('uses weekly streaks for weekly habits', () => {

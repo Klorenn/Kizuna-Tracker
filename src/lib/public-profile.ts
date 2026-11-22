@@ -1,4 +1,4 @@
-import { addDays } from "@/domain/dates";
+import { addDays, weekStart } from "@/domain/dates";
 import { dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { LocalDate } from "@/domain/types";
 
@@ -8,6 +8,7 @@ export type PublicProfileRow = {
   displayName: string;
   avatarPath: string | null;
   habits: {
+    id: string;
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
@@ -21,16 +22,21 @@ export type PublicProfileView = {
   displayName: string;
   avatarPath: string | null;
   habits: {
+    id: string;
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
     targetPerWeek: number | null;
     streak: number;
-    calendar: { date: LocalDate; done: boolean }[];
+    /** 26 columns (weeks, Monday to Sunday), oldest first; days after today are `future`. */
+    weeks: { date: LocalDate; done: boolean; future: boolean }[][];
+    /** Month label (mono, short) on the first column that starts a month; else null. */
+    monthLabels: (string | null)[];
   }[];
 };
 
-const CALENDAR_DAYS = 35;
+export const HEATMAP_WEEKS = 26;
+const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 
 /** Explicit whitelist: nothing else from the row (photos included) can reach the view. */
 export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): PublicProfileView {
@@ -40,7 +46,26 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
     avatarPath: row.avatarPath ?? null,
     habits: row.habits.map((h) => {
       const done = new Set(h.dates);
+      const first = addDays(weekStart(today), -7 * (HEATMAP_WEEKS - 1));
+      const weeks = Array.from({ length: HEATMAP_WEEKS }, (_, w) =>
+        Array.from({ length: 7 }, (_, d) => {
+          const date = addDays(first, w * 7 + d);
+          return { date, done: done.has(date), future: date > today };
+        }),
+      );
+      let lastMonth = -1;
+      const monthLabels = weeks.map((col) => {
+        // label the column holding the 1st of a month, or the very first column
+        const startsMonth = col.find((c) => c.date.endsWith("-01"));
+        const m = Number((startsMonth ?? col[0]).date.slice(5, 7)) - 1;
+        const label = (startsMonth || lastMonth === -1) && m !== lastMonth ? MONTHS[m] : null;
+        if (label) lastMonth = m;
+        return label;
+      });
+      // adjacent labels would overlap: keep the later one
+      if (monthLabels[1]) monthLabels[0] = null;
       return {
+        id: h.id,
         name: h.name,
         icon: h.icon,
         frequencyType: h.frequencyType,
@@ -49,10 +74,8 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
           h.frequencyType === "weekly"
             ? weeklyStreak(h.dates, h.targetPerWeek ?? 1, today)
             : dailyStreak(h.dates, today),
-        calendar: Array.from({ length: CALENDAR_DAYS }, (_, i) => {
-          const date = addDays(today, i - (CALENDAR_DAYS - 1));
-          return { date, done: done.has(date) };
-        }),
+        weeks,
+        monthLabels,
       };
     }),
   };

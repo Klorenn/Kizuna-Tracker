@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(16);
+select plan(27);
 
 insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
@@ -58,6 +58,34 @@ select is((select status from public.friendships where requester_id = 'a0000000-
 
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 select throws_ok($$ select public.accept_invite('valid_code') $$, 'P0001', 'invite_self', 'own invite');
+
+-- ===== hardening: server-made invites =====
+select throws_ok($$ insert into public.invites (inviter_id, expires_at) values ('a0000000-0000-0000-0000-000000000001', '2999-01-01') $$,
+  '42501', null, 'clients cannot insert invites');
+select ok((select public.invite_preview('valid_code')->>'username') = 'user_a', 'preview shows the inviter');
+select is(public.invite_preview('old_code'), null, 'preview of an expired invite is null');
+select is(public.invite_preview('nope'), null, 'preview of an unknown invite is null');
+select ok(public.invite_preview('valid_code')::text !~* 'birth|photo|id"', 'preview exposes only whitelisted fields');
+
+reset role;
+-- used-up code behaves like an expired one
+insert into public.invites (code, inviter_id, expires_at, uses)
+  values ('full_code', 'a0000000-0000-0000-0000-000000000001', now() + interval '1 day', 20);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select throws_ok($$ select public.accept_invite('full_code') $$, 'P0001', 'invite_expired', 'used-up invite');
+-- B had a pending request to A: accepting A's invite upgrades that row
+select is(public.accept_invite('valid_code'), 'a0000000-0000-0000-0000-000000000001'::uuid, 'pending row is upgraded');
+select is((select status from public.friendships where requester_id = 'a0000000-0000-0000-0000-000000000002'
+  and addressee_id = 'a0000000-0000-0000-0000-000000000001'), 'accepted', 'pending friendship became accepted');
+
+-- create_invite: server-set expiry and per-user cap
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000003","role":"authenticated"}', true);
+select ok(length(public.create_invite()) > 0, 'create_invite returns a code');
+select ok((select expires_at from public.invites where inviter_id = 'a0000000-0000-0000-0000-000000000003') between now() + interval '6 days 23 hours' and now() + interval '7 days 1 hour',
+  'expiry is 7 days, set by the server');
+select count(public.create_invite()) from generate_series(1, 4);
+select throws_ok($$ select public.create_invite() $$, 'P0001', 'invite_limit', 'at most 5 active invites');
 
 select * from finish();
 rollback;
