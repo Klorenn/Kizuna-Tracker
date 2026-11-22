@@ -1,5 +1,5 @@
 import { addDays, localDate, weekStart } from '@/domain/dates'
-import type { ReminderCandidate } from '@/lib/reminders'
+import type { DueReminder, ReminderCandidate } from '@/lib/reminders'
 import type { createAdminClient } from '@/lib/supabase/admin'
 
 type Db = ReturnType<typeof createAdminClient>
@@ -52,15 +52,16 @@ export async function loadReminderCandidates(db: Db, now: Date): Promise<Reminde
   })
 }
 
-/** Users who already got today's reminder (idempotency across overlapping cron runs). */
-export async function alreadyReminded(db: Db, userIds: string[], now: Date): Promise<Set<string>> {
-  if (userIds.length === 0) return new Set()
+/** Claims today's reminder slot per user; returns only the users this call won (never double-sends). */
+export async function claimReminders(db: Db, due: DueReminder[]): Promise<string[]> {
+  if (due.length === 0) return []
   const { data, error } = await db
-    .from('notifications')
+    .from('reminder_log')
+    .upsert(
+      due.map((d) => ({ user_id: d.id, local_date: d.localDate })),
+      { onConflict: 'user_id,local_date', ignoreDuplicates: true },
+    )
     .select('user_id')
-    .eq('type', 'reminder')
-    .in('user_id', userIds)
-    .gte('created_at', new Date(now.getTime() - 20 * 3600_000).toISOString())
   if (error) throw error
-  return new Set((data ?? []).map((r) => r.user_id))
+  return (data ?? []).map((r) => r.user_id)
 }

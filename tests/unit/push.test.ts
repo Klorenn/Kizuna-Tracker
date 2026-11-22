@@ -40,4 +40,21 @@ describe('sendPush', () => {
     await expect(sendPush('u1', payload, d)).resolves.toBeUndefined()
     expect(d.deleteSubscription).not.toHaveBeenCalled()
   })
+  it('limits how many sends run at once', async () => {
+    let active = 0
+    let peak = 0
+    const many = Array.from({ length: 40 }, (_, i) => sub(`https://push/${i}`))
+    const d = deps({
+      listSubscriptions: vi.fn(async () => many),
+      send: vi.fn(async () => {
+        active++
+        peak = Math.max(peak, active)
+        await new Promise((r) => setTimeout(r, 1))
+        active--
+      }),
+    })
+    await sendPush('u1', payload, d)
+    expect(d.send).toHaveBeenCalledTimes(40)
+    expect(peak).toBeLessThanOrEqual(10)
+  })
 })

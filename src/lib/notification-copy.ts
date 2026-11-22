@@ -46,14 +46,9 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         url: str(payload.challenge_id) ? `/retos/${payload.challenge_id}` : '/retos',
       }
     }
-    case 'new_debt': {
-      const amount = typeof payload.amount === 'number' ? formatCLP(payload.amount) : null
-      return {
-        title: amount ? `Nueva deuda: ${amount}` : 'Tienes una nueva deuda',
-        body: 'Cerró un período de tu reto. Revisa tus deudas.',
-        url: '/deudas',
-      }
-    }
+    case 'new_debt':
+      // Neutral on purpose: push text shows on lock screens, so no amount or names.
+      return { title: 'Tienes una nueva multa registrada', body: 'Revisa tus deudas en Kizuna.', url: '/deudas' }
     case 'reminder':
       return {
         title: 'Aún te faltan hábitos hoy',

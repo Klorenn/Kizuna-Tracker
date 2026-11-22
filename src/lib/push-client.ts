@@ -46,3 +46,31 @@ export async function enablePush(): Promise<"granted" | "denied" | "unavailable"
     return "error";
   }
 }
+
+/**
+ * Sign-out hygiene: unsubscribe this device (so it stops notifying the account that is leaving),
+ * delete its server row while the session is still valid, and drop runtime caches. Best effort.
+ */
+export async function cleanupOnSignOut(): Promise<void> {
+  try {
+    if ("serviceWorker" in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      const sub = await reg?.pushManager?.getSubscription();
+      if (sub) {
+        await fetch("/api/push/subscribe", {
+          method: "DELETE",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ endpoint: sub.endpoint }),
+        }).catch(() => {});
+        await sub.unsubscribe().catch(() => {});
+      }
+      reg?.active?.postMessage({ type: "CLEAR_CACHES" });
+    }
+    if ("caches" in window) {
+      const names = await caches.keys();
+      await Promise.all(names.filter((n) => !n.includes("precache")).map((n) => caches.delete(n)));
+    }
+  } catch {
+    // never block the sign-out
+  }
+}

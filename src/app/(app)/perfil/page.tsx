@@ -1,13 +1,13 @@
-import { CaretRight, Receipt, SignOut } from "@phosphor-icons/react/dist/ssr";
+import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { signOut } from "@/app/(auth)/login/actions";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { GoalCard } from "@/components/GoalCard";
 import { ProfileAvatar } from "@/components/ProfileAvatar";
 import { SettingsRows } from "@/components/SettingsRows";
+import { SignOutButton } from "@/components/SignOutButton";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -141,12 +141,7 @@ export default async function PerfilPage() {
         </div>
       </Card>
 
-      <form action={signOut}>
-        <Button type="submit" variant="secondary">
-          <SignOut size={20} weight="light" aria-hidden />
-          Cerrar sesión
-        </Button>
-      </form>
+      <SignOutButton />
       <DeleteAccountButton username={profile.username} />
       <p className="text-center text-small text-muted">
         Se borran tus fotos y datos. Tus amigos conservan el historial de deudas como &quot;cuenta eliminada&quot;.

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { defaultCache } from '@serwist/turbopack/worker'
-import { Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
+import { CacheFirst, NetworkOnly, Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
+import { isStaticAsset, STATIC_CACHE_NAME } from '../lib/sw-cache'
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -14,8 +14,20 @@ new Serwist({
   skipWaiting: true,
   clientsClaim: true,
   navigationPreload: true,
-  runtimeCaching: defaultCache,
+  runtimeCaching: [
+    { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME }) },
+    // pages, RSC, /api, Supabase: never cached
+    { matcher: () => true, handler: new NetworkOnly() },
+  ],
 }).addEventListeners()
+
+// Sign-out: drop every runtime cache (the precache is public app shell and stays).
+self.addEventListener('message', (event) => {
+  if ((event.data as { type?: string } | null)?.type !== 'CLEAR_CACHES') return
+  event.waitUntil(
+    caches.keys().then((names) => Promise.all(names.filter((n) => !n.includes('precache')).map((n) => caches.delete(n)))),
+  )
+})
 
 self.addEventListener('push', (event) => {
   let data: { title?: string; body?: string; url?: string } = {}
@@ -36,7 +48,8 @@ self.addEventListener('push', (event) => {
 
 self.addEventListener('notificationclick', (event) => {
   event.notification.close()
-  const url = new URL((event.notification.data as { url?: string } | undefined)?.url ?? '/', self.location.origin).href
+  const target = new URL((event.notification.data as { url?: string } | undefined)?.url ?? '/', self.location.origin)
+  const url = (target.origin === self.location.origin ? target : new URL('/', self.location.origin)).href
   event.waitUntil(
     (async () => {
       const windows = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })

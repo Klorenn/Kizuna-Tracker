@@ -1,6 +1,6 @@
 import type { Json } from '@/lib/supabase/database.types'
 import { notificationView, type NotificationType } from '@/lib/notification-copy'
-import { sendPush } from '@/lib/push'
+import { MAX_CONCURRENCY, sendPush } from '@/lib/push'
 
 type Row = { id: string; user_id: string; type: string; payload: Json }
 
@@ -11,6 +11,8 @@ function asPayload(p: Json): Record<string, unknown> {
 /**
  * Claims rows (pushed_at null -> now) and pushes the ones this call won. The conditional
  * update is the idempotency guard: two concurrent senders can never both push the same row.
+ * Delivery is at-most-once by design: pushed_at is stamped BEFORE sending, so a crash mid-send
+ * drops that push (the in-app notification row still exists) instead of ever sending it twice.
  */
 async function claimAndPush(db: Awaited<ReturnType<typeof admin>>, ids: string[]): Promise<void> {
   if (ids.length === 0) return
@@ -20,9 +22,12 @@ async function claimAndPush(db: Awaited<ReturnType<typeof admin>>, ids: string[]
     .in('id', ids)
     .is('pushed_at', null)
     .select('id,user_id,type,payload')
-  await Promise.all(
-    ((data ?? []) as Row[]).map((r) => sendPush(r.user_id, notificationView(r.type, asPayload(r.payload)))),
-  )
+  const rows = (data ?? []) as Row[]
+  for (let i = 0; i < rows.length; i += MAX_CONCURRENCY) {
+    await Promise.all(
+      rows.slice(i, i + MAX_CONCURRENCY).map((r) => sendPush(r.user_id, notificationView(r.type, asPayload(r.payload)))),
+    )
+  }
 }
 
 async function admin() {
@@ -32,12 +37,15 @@ async function admin() {
 
 /**
  * Stores an in-app notification and pushes it to the user's devices. Never throws: a
- * failed notification must not undo the action that caused it.
+ * failed notification must not undo the action that caused it. With `defer`, only the row
+ * insert is awaited; the push runs after the response (next/server `after`), so a slow push
+ * service never delays a user action. Anything lost is swept by the reminders cron.
  */
 export async function notify(
   userId: string,
   type: NotificationType,
   payload: Record<string, unknown>,
+  opts: { defer?: boolean } = {},
 ): Promise<void> {
   try {
     const db = await admin()
@@ -47,7 +55,18 @@ export async function notify(
       .select('id')
       .single()
     if (error || !data) throw error ?? new Error('no row')
-    await claimAndPush(db, [data.id])
+    const push = () => claimAndPush(db, [data.id]).catch((e) => console.error('push failed', e))
+    if (opts.defer) {
+      try {
+        const { after } = await import('next/server')
+        after(push)
+        return
+      } catch {
+        void push() // outside a request scope: fire and forget
+        return
+      }
+    }
+    await push()
   } catch (e) {
     console.error('notify failed', type, e)
   }

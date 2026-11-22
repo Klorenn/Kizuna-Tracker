@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dueReminders } from '@/lib/reminders'
+import { dueReminderEntries, dueReminders } from '@/lib/reminders'
 
 const user = (over: Record<string, unknown> = {}) => ({
   id: 'u1',
@@ -34,5 +34,19 @@ describe('dueReminders', () => {
   it('respects each timezone', () => {
     const tokyo = user({ id: 'u2', timezone: 'Asia/Tokyo' }) // 20:07 JST = 11:07Z
     expect(dueReminders([user(), tokyo], at('11:07'))).toEqual(['u2'])
+  })
+  it('handles windows that cross midnight', () => {
+    const late = user({ reminderTime: '23:55' })
+    // 00:05 Santiago on the 23rd = 03:05Z
+    expect(dueReminders([late], new Date('2026-11-23T03:05:00Z'))).toEqual(['u1'])
+    expect(dueReminders([late], new Date('2026-11-23T03:15:00Z'))).toEqual([])
+  })
+})
+
+describe('dueReminderEntries', () => {
+  it('stamps the local date the reminder belongs to, even after midnight', () => {
+    const late = user({ reminderTime: '23:55' })
+    expect(dueReminderEntries([late], new Date('2026-11-23T03:05:00Z'))).toEqual([{ id: 'u1', localDate: '2026-11-22' }])
+    expect(dueReminderEntries([user()], new Date('2026-11-22T23:07:00Z'))).toEqual([{ id: 'u1', localDate: '2026-11-22' }])
   })
 })

@@ -92,7 +92,7 @@ export async function sendFriendRequest(userId: string, retried = false): Promis
     from_id: uid,
     from_username: me?.username ?? null,
     from_name: me?.display_name ?? null,
-  });
+  }, { defer: true });
   refresh();
   return { ok: true, status: "pending" };
 }

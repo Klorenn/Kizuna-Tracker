@@ -1,9 +1,10 @@
 "use client";
 
-import { Bell, DownloadSimple, Export, House, PlusSquare } from "@phosphor-icons/react";
+import { Bell, DownloadSimple, Export, House, PlusSquare, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { IconButton } from "@/components/ui/IconButton";
 import { Sheet } from "@/components/ui/Sheet";
 import { enablePush, isIosSafari, isStandalone } from "@/lib/push-client";
 
@@ -124,6 +125,11 @@ export function InstallPrompt() {
           <Button className="w-auto!" onClick={install}>
             Instalar
           </Button>
+        ) : null}
+        {mode === "ios" || mode === "android" ? (
+          <IconButton label="Ahora no" onClick={dismiss}>
+            <X size={20} weight="light" aria-hidden />
+          </IconButton>
         ) : null}
         {mode === "notifications" ? (
           <Button className="w-auto!" onClick={turnOn}>

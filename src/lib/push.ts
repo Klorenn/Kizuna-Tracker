@@ -7,6 +7,8 @@ export type PushDeps = {
   send(sub: PushSubscriptionRow, body: string): Promise<void>
 }
 
+export const MAX_CONCURRENCY = 10
+
 export function vapidConfigured(): boolean {
   return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY && process.env.VAPID_SUBJECT)
 }
@@ -37,7 +39,7 @@ async function defaultDeps(): Promise<PushDeps> {
       await webpush.sendNotification(
         { endpoint: sub.endpoint, keys: { p256dh: sub.p256dh, auth: sub.auth } },
         body,
-        { TTL: 60 * 60 * 12 },
+        { timeout: 5000, TTL: 3600, urgency: 'normal' },
       )
     },
   }
@@ -54,17 +56,19 @@ export async function sendPush(userId: string, payload: PushPayload, deps?: Push
     const d = deps ?? (await defaultDeps())
     const subs = await d.listSubscriptions(userId)
     const body = JSON.stringify(payload)
-    await Promise.all(
-      subs.map(async (sub) => {
-        try {
-          await d.send(sub, body)
-        } catch (e) {
-          const status = (e as { statusCode?: number }).statusCode
-          if (status === 404 || status === 410) await d.deleteSubscription(sub.endpoint)
-          else console.error('push failed', status ?? e)
-        }
-      }),
-    )
+    for (let i = 0; i < subs.length; i += MAX_CONCURRENCY) {
+      await Promise.all(
+        subs.slice(i, i + MAX_CONCURRENCY).map(async (sub) => {
+          try {
+            await d.send(sub, body)
+          } catch (e) {
+            const status = (e as { statusCode?: number }).statusCode
+            if (status === 404 || status === 410) await d.deleteSubscription(sub.endpoint)
+            else console.error('push failed', status ?? e)
+          }
+        }),
+      )
+    }
   } catch (e) {
     console.error('sendPush failed', e)
   }

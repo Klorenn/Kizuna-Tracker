@@ -101,7 +101,7 @@ export async function proposeChallenge(
     habit_name: habit.name,
     target: input.frequency.type === "weekly" ? input.frequency.target : null,
     fine_amount: input.fineAmount,
-  });
+  }, { defer: true });
   refresh();
   return { ok: true, id: data.id };
 }

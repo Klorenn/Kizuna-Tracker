@@ -816,6 +816,39 @@ export type Database = {
           },
         ]
       }
+      reminder_log: {
+        Row: {
+          created_at: string
+          local_date: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          local_date: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          local_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       public_profiles: {

@@ -14,7 +14,7 @@ export async function NotificationBell() {
     <Link
       href="/notificaciones"
       aria-label={unread > 0 ? `Notificaciones, ${unread} sin leer` : "Notificaciones"}
-      className="relative inline-flex size-10 shrink-0 items-center justify-center rounded-full border-[1.5px] border-accent text-ink hover:bg-accent-soft"
+      className="relative inline-flex size-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-accent text-ink hover:bg-accent-soft"
     >
       <Bell size={20} weight="light" aria-hidden />
       {unread > 0 ? (
