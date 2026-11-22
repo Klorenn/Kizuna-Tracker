@@ -10,15 +10,15 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Konjo",
-  description: "Habit streaks with friend challenges.",
+  description: "Rachas de hábitos con desafíos entre amigos.",
 };
 
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en">
-      <body className={`${inter.variable} ${geistMono.variable} antialiased`}>
+    <html lang="es" className={`${inter.variable} ${geistMono.variable}`}>
+      <body className="antialiased">
         {children}
       </body>
     </html>
