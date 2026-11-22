@@ -9,7 +9,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Konjo",
+  title: { default: "Kizuna Tracker", template: "%s · Kizuna" },
   description: "Rachas de hábitos con desafíos entre amigos.",
 };
 
