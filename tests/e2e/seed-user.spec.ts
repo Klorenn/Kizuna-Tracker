@@ -12,6 +12,7 @@ test("seeded user_a logs in by @usuario and sees habits, debt and no horizontal 
   await page.goto("/deudas");
   await expect(page.getByRole("heading", { name: "Deudas" })).toBeVisible();
   await expect(page.getByText("Beto").first()).toBeVisible();
+  await expect(page.getByText("$2.500").first()).toBeVisible();
 
   await expectNoHorizontalScroll(page, ["/", "/amigos", "/retos", "/resumen", "/perfil", "/metas", "/deudas", "/notificaciones"]);
 });

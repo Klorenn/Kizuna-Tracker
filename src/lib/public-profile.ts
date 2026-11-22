@@ -8,7 +8,6 @@ export type PublicProfileRow = {
   displayName: string;
   avatarPath: string | null;
   habits: {
-    id: string;
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
@@ -22,7 +21,6 @@ export type PublicProfileView = {
   displayName: string;
   avatarPath: string | null;
   habits: {
-    id: string;
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
@@ -65,7 +63,6 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
       // adjacent labels would overlap: keep the later one
       if (monthLabels[1]) monthLabels[0] = null;
       return {
-        id: h.id,
         name: h.name,
         icon: h.icon,
         frequencyType: h.frequencyType,

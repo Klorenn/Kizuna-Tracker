@@ -20,3 +20,5 @@ Seeded data: Ana and Beto are friends. Ana has Leer (public, 10-day streak) and 
 - `pnpm test` (unit), `pnpm typecheck`, `pnpm lint`.
 - `supabase test db` (pgTAP; each file clears the seed inside its own rolled-back transaction).
 - `pnpm e2e`: Playwright at 390x844. With the local stack running, the config reads the keys from `supabase status` at runtime (nothing is written to disk). Explicit env vars win. If a dev server is already running on port 3000 it is reused, so start it with the same env or stop it first. Specs needing Supabase skip when it is not reachable. Run `supabase db reset` first so the seeded specs find their data.
+
+`supabase db reset` also wipes the users, habits and challenges the e2e specs leave behind; run it whenever you want a clean demo state.

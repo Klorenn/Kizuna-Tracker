@@ -9,7 +9,6 @@ describe('public profile view', () => {
     photo_path: 'x/y.jpg',
     habits: [
       {
-        id: 'h1',
         name: 'Leer',
         icon: 'book',
         frequencyType: 'daily',
@@ -23,7 +22,6 @@ describe('public profile view', () => {
   it('builds streak and a 26-week Monday-first heatmap, whitelisting fields', () => {
     const v = toPublicProfileView(row as never, '2026-11-25') // Wednesday
     const h = v.habits[0]
-    expect(h.id).toBe('h1')
     expect(h.streak).toBe(0)
     expect(h.weeks).toHaveLength(26)
     for (const col of h.weeks) expect(col).toHaveLength(7)

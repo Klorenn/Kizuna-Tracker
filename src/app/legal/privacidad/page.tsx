@@ -35,7 +35,7 @@ export default function PrivacidadPage() {
         {
           title: "Perfil público",
           body: [
-            "Tu perfil público, la página con tu @usuario, muestra tu nombre, tu @usuario y la racha de tus hábitos públicos. Nunca muestra fotos, fecha de nacimiento ni correo.",
+            "Tu perfil público, la página con tu @usuario, muestra tu nombre, tu @usuario y la racha de tus hábitos públicos. Si tienes foto de perfil, también se ve en tu perfil público. Las fotos de prueba de tus hábitos nunca se muestran. Tampoco se muestran tu fecha de nacimiento ni tu correo.",
             "Para retirar un hábito del perfil público, cambia su visibilidad a Amigos o Solo yo desde su detalle. Si no tienes hábitos públicos, tu perfil queda sin contenido.",
           ],
         },
@@ -43,6 +43,14 @@ export default function PrivacidadPage() {
           title: "Dónde se guardan las fotos",
           body: [
             "Las fotos se guardan en un almacenamiento privado. Se comprimen y se les quitan los datos de ubicación y de cámara antes de guardarlas. Quien tiene permiso para verlas accede con un enlace temporal de unos cinco minutos.",
+          ],
+        },
+        {
+          title: "Cookies y almacenamiento del dispositivo",
+          body: [
+            "Usamos una cookie de sesión para mantenerte con la sesión iniciada. Más adelante usaremos otra cookie para recordar tu tema (claro u oscuro).",
+            "Si instalas Kizuna como app, tu dispositivo guarda una copia de archivos estáticos (íconos, estilos y código) para que abra más rápido. No guarda tus datos ni tus fotos.",
+            "Si activas los avisos, tu navegador guarda una suscripción de avisos y nosotros guardamos su dato técnico. Para quitarla, desactiva los permisos de notificaciones de Kizuna en el navegador o en los ajustes de tu dispositivo; también se borra al eliminar tu cuenta.",
           ],
         },
         {
