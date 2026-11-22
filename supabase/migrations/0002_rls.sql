@@ -16,6 +16,7 @@ alter table public.push_subscriptions enable row level security;
 revoke all on all tables in schema public from anon, authenticated;
 revoke all on all functions in schema public from public, anon;
 grant execute on function public.is_friend(uuid, uuid) to authenticated;
+grant execute on function public.create_checkin(uuid) to authenticated;
 -- trigger function: never called directly by clients
 revoke execute on function public.checkins_mark_duplicate() from authenticated;
 
@@ -41,7 +42,8 @@ grant update (username, display_name, avatar_path, timezone, reminder_time)
 -- security_invoker would re-apply profiles RLS and break @username search.
 -- anon gets nothing; authenticated can read it.
 create view public.public_profiles as
-  select id, username, display_name, avatar_path from public.profiles;
+  select id, username, display_name, avatar_path from public.profiles
+  where deleted_at is null;
 -- views get default grants (incl. INSERT/UPDATE on an auto-updatable view): strip them
 revoke all on public.public_profiles from anon, authenticated;
 grant select on public.public_profiles to authenticated;
@@ -72,7 +74,8 @@ create policy invites_owner on public.invites
   for all to authenticated
   using (inviter_id = (select auth.uid())) with check (inviter_id = (select auth.uid()));
 grant select, delete on public.invites to authenticated;
-grant insert (code, inviter_id, expires_at) on public.invites to authenticated;
+-- code has a server-side random default and is not client-writable
+grant insert (inviter_id, expires_at) on public.invites to authenticated;
 
 -- ----------------------------------------------------------------- habits
 create policy habits_select_owner_or_friend on public.habits
@@ -92,32 +95,17 @@ grant update (name, icon, frequency_type, target_per_week, requires_photo, archi
   on public.habits to authenticated;
 
 -- --------------------------------------------------------------- checkins
--- rejected_at/by/reason and is_duplicate are NOT in any owner grant: rejection
--- goes through the reject_checkin RPC (Task 9, security definer) and the
--- duplicate flag is computed by the checkins_mark_duplicate trigger.
+-- Clients never INSERT/UPDATE checkins. Photo-less check-ins: create_checkin() RPC
+-- (server-computed date). Photo check-ins: server with service role (Task 7), which
+-- hashes the image. Rejection: reject_checkin RPC (Task 9). Duplicate flag: trigger.
 create policy checkins_select_owner_or_friend on public.checkins
   for select to authenticated
   using (user_id = (select auth.uid()) or public.is_friend((select auth.uid()), user_id));
-create policy checkins_insert_owner on public.checkins
-  for insert to authenticated
-  with check (
-    user_id = (select auth.uid())
-    and exists (
-      select 1 from public.habits h
-      where h.id = habit_id and h.user_id = (select auth.uid())
-    )
-  );
-create policy checkins_update_owner on public.checkins
-  for update to authenticated
-  using (user_id = (select auth.uid())) with check (user_id = (select auth.uid()));
 -- undo is allowed only while the check-in has not been rejected
 create policy checkins_delete_owner on public.checkins
   for delete to authenticated
   using (user_id = (select auth.uid()) and rejected_at is null);
 grant select, delete on public.checkins to authenticated;
-grant insert (habit_id, user_id, local_date, photo_path, photo_sha256)
-  on public.checkins to authenticated;
-grant update (photo_path, photo_sha256) on public.checkins to authenticated;
 
 -- ------------------------------------------------------------- challenges
 -- Readable by participants (independent of friendship). Creator may propose

@@ -1,6 +1,13 @@
 -- Kizuna Tracker: core schema. RLS and grants live in 0002, storage in 0003.
 
 create extension if not exists citext with schema extensions;
+create extension if not exists pgcrypto with schema extensions;
+
+-- New objects in public must not be reachable by API roles unless granted explicitly.
+alter default privileges in schema public revoke all on tables from anon, authenticated;
+alter default privileges in schema public revoke all on sequences from anon, authenticated;
+alter default privileges in schema public revoke all on functions from anon, authenticated;
+alter default privileges revoke execute on functions from public;
 
 -- profiles: created during onboarding (no trigger on auth.users).
 create table public.profiles (
@@ -11,7 +18,7 @@ create table public.profiles (
   avatar_path text,
   timezone text not null,
   reminder_time time not null default '20:00',
-  is_adult boolean not null,
+  is_adult boolean not null constraint profiles_must_be_adult check (is_adult),
   deleted_at timestamptz,
   created_at timestamptz not null default now()
 );
@@ -33,7 +40,7 @@ create index friendships_requester_idx on public.friendships (requester_id);
 
 create table public.invites (
   id uuid primary key default gen_random_uuid(),
-  code text not null unique,
+  code text not null unique default encode(extensions.gen_random_bytes(9), 'hex'),
   inviter_id uuid not null references public.profiles (id),
   expires_at timestamptz not null,
   created_at timestamptz not null default now()
@@ -66,6 +73,10 @@ create table public.checkins (
   reject_reason text check (reject_reason in ('not_habit', 'duplicate', 'unclear', 'other')),
   created_at timestamptz not null default now(),
   constraint checkins_habit_day_key unique (habit_id, local_date),
+  -- proofs live at {user_id}/{checkin_id}.jpg, nowhere else
+  constraint checkins_photo_path_shape check (
+    photo_path is null or photo_path = user_id::text || '/' || id::text || '.jpg'
+  ),
   -- a rejection is all-or-nothing: who, when and why
   constraint checkins_rejection_complete check (
     (rejected_at is null and rejected_by is null and reject_reason is null)
@@ -92,7 +103,12 @@ create table public.challenges (
   starts_on date,
   cancel_requested_by uuid references public.profiles (id),
   created_at timestamptz not null default now(),
-  constraint challenges_not_self check (creator_id <> rival_id)
+  constraint challenges_not_self check (creator_id <> rival_id),
+  constraint challenges_fine_max check (fine_amount <= 10000000),
+  constraint challenges_frequency_target check (
+    (frequency_type = 'daily' and target_per_week is null)
+    or (frequency_type = 'weekly' and target_per_week is not null and target_per_week between 1 and 7)
+  )
 );
 create index challenges_creator_idx on public.challenges (creator_id);
 create index challenges_rival_idx on public.challenges (rival_id);
@@ -146,7 +162,9 @@ create index push_subscriptions_user_idx on public.push_subscriptions (user_id);
 -- Accepted friendship in either direction.
 -- SECURITY DEFINER so RLS policies on other tables can evaluate it without
 -- granting read access to friendships rows; search_path pinned to ''.
--- Note: callable by any authenticated user for any pair of ids (returns only a boolean).
+-- Guard: only answers for pairs that include the caller (auth.uid()), so it cannot be
+-- used through /rpc to probe other people's social graph. Server code running with the
+-- service role (auth.uid() null) must query friendships directly.
 create function public.is_friend(a uuid, b uuid)
 returns boolean
 language sql
@@ -157,6 +175,7 @@ as $$
   select exists (
     select 1 from public.friendships f
     where f.status = 'accepted'
+      and (select auth.uid()) in (a, b)
       and ((f.requester_id = a and f.addressee_id = b)
         or (f.requester_id = b and f.addressee_id = a))
   );
@@ -186,5 +205,53 @@ end;
 $$;
 
 create trigger checkins_mark_duplicate
-before insert or update of photo_sha256 on public.checkins
+before insert or update of photo_sha256, photo_path on public.checkins
 for each row execute function public.checkins_mark_duplicate();
+
+-- Photo-less check-in. The date is computed server-side in the user's timezone, so
+-- clients can neither backdate nor future-date. Photo check-ins are created by the
+-- server (service role, Task 7), which also hashes the image itself.
+create function public.create_checkin(p_habit_id uuid)
+returns table (checkin_id uuid, created boolean)
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_tz text;
+  v_requires_photo boolean;
+  v_date date;
+  v_id uuid;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  select h.requires_photo into v_requires_photo
+  from public.habits h
+  where h.id = p_habit_id and h.user_id = v_uid and h.archived_at is null;
+  if not found then
+    raise exception 'habit_not_found';
+  end if;
+  if v_requires_photo then
+    raise exception 'photo_required';
+  end if;
+
+  select p.timezone into v_tz from public.profiles p where p.id = v_uid;
+  v_date := (now() at time zone v_tz)::date;
+
+  insert into public.checkins as c (habit_id, user_id, local_date)
+  values (p_habit_id, v_uid, v_date)
+  on conflict (habit_id, local_date) do nothing
+  returning c.id into v_id;
+
+  if v_id is not null then
+    return query select v_id, true;
+  else
+    return query
+      select c.id, false from public.checkins c
+      where c.habit_id = p_habit_id and c.local_date = v_date;
+  end if;
+end;
+$$;

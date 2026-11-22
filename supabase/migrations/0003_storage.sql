@@ -21,20 +21,6 @@ create policy proofs_select_owner_or_friend on storage.objects
     )
   );
 
--- Write: only into the caller's own folder, with the exact {user_id}/{uuid}.jpg shape.
-create policy proofs_insert_own_folder on storage.objects
-  for insert to authenticated
-  with check (
-    bucket_id = 'proofs'
-    and name ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\.jpg$'
-    and (storage.foldername(name))[1] = (select auth.uid())::text
-  );
-
-create policy proofs_update_own_folder on storage.objects
-  for update to authenticated
-  using (bucket_id = 'proofs' and (storage.foldername(name))[1] = (select auth.uid())::text)
-  with check (bucket_id = 'proofs' and (storage.foldername(name))[1] = (select auth.uid())::text);
-
-create policy proofs_delete_own_folder on storage.objects
-  for delete to authenticated
-  using (bucket_id = 'proofs' and (storage.foldername(name))[1] = (select auth.uid())::text);
+-- No client INSERT/UPDATE/DELETE policies: uploads are done by the server with the
+-- service role (it hashes and names the file), so clients can neither write nor rename
+-- objects. Without a policy, RLS denies those operations.

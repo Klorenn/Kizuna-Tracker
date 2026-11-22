@@ -440,7 +440,7 @@ export type Database = {
           inviter_id: string
         }
         Insert: {
-          code: string
+          code?: string
           created_at?: string
           expires_at: string
           id?: string
@@ -615,6 +615,13 @@ export type Database = {
       }
     }
     Functions: {
+      create_checkin: {
+        Args: { p_habit_id: string }
+        Returns: {
+          checkin_id: string
+          created: boolean
+        }[]
+      }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
     }
     Enums: {

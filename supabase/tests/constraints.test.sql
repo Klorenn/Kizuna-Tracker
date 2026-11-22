@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(10);
+select plan(14);
 
 -- fixtures (run as postgres; bypasses RLS)
 insert into auth.users (id) values
@@ -64,6 +64,23 @@ insert into public.checkins (habit_id, user_id, local_date, photo_sha256) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', '2026-11-22', 'abc');
 select is((select is_duplicate from public.checkins where local_date = '2026-11-22'), true,
   'same sha256 by same user is flagged duplicate by trigger');
+
+select throws_ok(
+  $$ insert into auth.users (id) values ('a0000000-0000-0000-0000-000000000008');
+     insert into public.profiles (id, username, display_name, timezone, is_adult) values ('a0000000-0000-0000-0000-000000000008', 'minor_user', 'X', 'UTC', false) $$,
+  '23514', null, 'is_adult must be true');
+
+select throws_ok(
+  $$ insert into public.checkins (habit_id, user_id, local_date, photo_path) values ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', '2026-11-20', 'a0000000-0000-0000-0000-000000000001/x.jpg') $$,
+  '23514', null, 'photo_path must be {user_id}/{checkin_id}.jpg');
+
+select throws_ok(
+  $$ update public.challenges set frequency_type = 'weekly', target_per_week = null $$,
+  '23514', null, 'weekly challenge requires target_per_week');
+
+select throws_ok(
+  $$ update public.challenges set fine_amount = 10000001 $$,
+  '23514', null, 'fine_amount capped at 10,000,000');
 
 select * from finish();
 rollback;
