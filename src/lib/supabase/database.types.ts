@@ -771,6 +771,7 @@ export type Database = {
       }
     }
     Functions: {
+      accept_invite: { Args: { p_code: string }; Returns: string }
       account_for_login: {
         Args: { p_kind: string; p_value: string }
         Returns: {
@@ -799,6 +800,7 @@ export type Database = {
       }
       email_for_username: { Args: { p_username: string }; Returns: string }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
+      public_profile: { Args: { p_username: string }; Returns: Json }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
       username_available: { Args: { p_username: string }; Returns: boolean }
