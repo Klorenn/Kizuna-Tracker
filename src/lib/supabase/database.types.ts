@@ -683,6 +683,7 @@ export type Database = {
           created_at: string
           id: string
           payload: Json
+          pushed_at: string | null
           read_at: string | null
           type: string
           user_id: string
@@ -691,6 +692,7 @@ export type Database = {
           created_at?: string
           id?: string
           payload?: Json
+          pushed_at?: string | null
           read_at?: string | null
           type: string
           user_id: string
@@ -699,6 +701,7 @@ export type Database = {
           created_at?: string
           id?: string
           payload?: Json
+          pushed_at?: string | null
           read_at?: string | null
           type?: string
           user_id?: string

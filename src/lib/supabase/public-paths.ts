@@ -1,5 +1,5 @@
 // /api/cron/* authenticate with their own bearer secret (pg_cron has no session).
-const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron"];
+const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/serwist"];
 
 export function isPublicPath(path: string): boolean {
   if (path.startsWith("/@")) return true;

@@ -29,6 +29,7 @@ const client = {
 }
 
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
+vi.mock('@/lib/notify', () => ({ notify: vi.fn(async () => {}) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import {

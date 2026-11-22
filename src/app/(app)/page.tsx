@@ -4,6 +4,8 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { HabitRow } from "@/components/HabitRow";
+import { InstallPrompt } from "@/components/InstallPrompt";
+import { NotificationBell } from "@/components/NotificationBell";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -67,7 +69,11 @@ export default async function Home() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
-      <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Hoy</h1>
+      <div className="flex items-start justify-between gap-4">
+        <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Hoy</h1>
+        <NotificationBell />
+      </div>
+      <InstallPrompt />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
       {view.total === 0 ? (
         <>

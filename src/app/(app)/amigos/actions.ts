@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { INVITE_ERRORS, INVITE_GENERIC, inviteErrorKey } from "@/lib/invites";
+import { notify } from "@/lib/notify";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -82,6 +83,16 @@ export async function sendFriendRequest(userId: string, retried = false): Promis
   // unique pair index: someone created the row in between, read it again
   if (error?.code === "23505" && !retried) return sendFriendRequest(userId, true);
   if (error) return { ok: false, error: GENERIC };
+  const { data: me } = await supabase
+    .from("public_profiles")
+    .select("username,display_name")
+    .eq("id", uid)
+    .maybeSingle();
+  await notify(userId, "friend_request", {
+    from_id: uid,
+    from_username: me?.username ?? null,
+    from_name: me?.display_name ?? null,
+  });
   refresh();
   return { ok: true, status: "pending" };
 }

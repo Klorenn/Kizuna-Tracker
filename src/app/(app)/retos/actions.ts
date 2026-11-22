@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { REJECT_REASONS, type ChallengeInput, type RejectReason, validateChallengeInput } from "@/lib/challenge-form";
+import { notify } from "@/lib/notify";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -67,14 +68,14 @@ export async function proposeChallenge(
 
   const { data: habit } = await supabase
     .from("habits")
-    .select("visibility,requires_photo,archived_at")
+    .select("name,visibility,requires_photo,archived_at")
     .eq("id", input.habitId)
     .eq("user_id", uid)
     .maybeSingle();
   if (!habit || habit.archived_at) return { ok: false, error: "No encontramos ese hábito." };
   if (habit.visibility === "private") return { ok: false, error: PRIVATE_HABIT };
 
-  const { data: me } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
+  const { data: me } = await supabase.from("profiles").select("timezone,first_name").eq("id", uid).maybeSingle();
   if (!me) return { ok: false, error: GENERIC };
 
   const { data, error } = await supabase
@@ -93,6 +94,14 @@ export async function proposeChallenge(
     .select("id")
     .single();
   if (error || !data) return { ok: false, error: error?.code === "42501" ? PRIVATE_HABIT : GENERIC };
+  await notify(input.rivalId, "challenge_proposed", {
+    challenge_id: data.id,
+    from_id: uid,
+    from_name: me.first_name,
+    habit_name: habit.name,
+    target: input.frequency.type === "weekly" ? input.frequency.target : null,
+    fine_amount: input.fineAmount,
+  });
   refresh();
   return { ok: true, id: data.id };
 }

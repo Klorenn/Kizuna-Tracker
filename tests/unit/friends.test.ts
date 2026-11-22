@@ -40,6 +40,7 @@ const client = {
 }
 
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
+vi.mock('@/lib/notify', () => ({ notify: vi.fn(async () => {}) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ host: 'kizuna.app', 'x-forwarded-proto': 'https' }) }))
 

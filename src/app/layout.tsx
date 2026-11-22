@@ -11,10 +11,13 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: { default: "Kizuna Tracker", template: "%s · Kizuna" },
   description: "Rachas de hábitos con desafíos entre amigos.",
+  applicationName: "Kizuna Tracker",
+  appleWebApp: { capable: true, title: "Kizuna", statusBarStyle: "default" },
 };
 
 export const viewport: Viewport = {
   width: "device-width",
+  themeColor: "#FAFAFA",
   initialScale: 1,
   // the keyboard shrinks the layout viewport so fixed bottom buttons sit above it
   interactiveWidget: "resizes-content",

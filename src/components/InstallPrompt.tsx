@@ -1,0 +1,160 @@
+"use client";
+
+import { Bell, DownloadSimple, Export, House, PlusSquare } from "@phosphor-icons/react";
+import { useCallback, useEffect, useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Card } from "@/components/ui/Card";
+import { Sheet } from "@/components/ui/Sheet";
+import { enablePush, isIosSafari, isStandalone } from "@/lib/push-client";
+
+type InstallEvent = Event & { prompt: () => Promise<void>; userChoice: Promise<{ outcome: string }> };
+type Mode = "none" | "ios" | "android" | "notifications";
+
+const DISMISS_KEY = "kizuna.install.dismissed";
+
+function readDismissed(): boolean {
+  try {
+    return localStorage.getItem(DISMISS_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const STEPS = [
+  { Icon: Export, text: "Toca Compartir en Safari" },
+  { Icon: PlusSquare, text: 'Elige "Agregar a inicio"' },
+  { Icon: House, text: "Abre Kizuna desde tu inicio" },
+];
+
+/**
+ * Install nudge (iOS instructions sheet / Android prompt) and, only inside the installed app,
+ * a button that asks for notification permission. Permission is requested from a click only.
+ */
+export function InstallPrompt() {
+  const [mode, setMode] = useState<Mode>("none");
+  const [sheet, setSheet] = useState(false);
+  const [event, setEvent] = useState<InstallEvent | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
+
+  const refresh = useCallback(() => {
+    if (isStandalone()) {
+      const canPush =
+        !!process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY &&
+        "Notification" in window &&
+        "PushManager" in window &&
+        Notification.permission === "default";
+      setMode(canPush ? "notifications" : "none");
+    } else if (!readDismissed() && isIosSafari()) {
+      setMode("ios");
+    }
+  }, []);
+
+  useEffect(() => {
+    refresh();
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      if (isStandalone() || readDismissed()) return;
+      setEvent(e as InstallEvent);
+      setMode("android");
+    };
+    const onInstalled = () => {
+      setEvent(null);
+      refresh();
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, [refresh]);
+
+  const dismiss = () => {
+    try {
+      localStorage.setItem(DISMISS_KEY, "1");
+    } catch {
+      // storage unavailable: dismissal lasts for this visit only
+    }
+    setSheet(false);
+    setMode("none");
+  };
+
+  async function install() {
+    if (!event) return;
+    await event.prompt();
+    await event.userChoice;
+    setEvent(null);
+    setMode("none");
+  }
+
+  async function turnOn() {
+    const result = await enablePush();
+    if (result === "granted") {
+      setMessage("Listo. Te avisaremos de tus recordatorios.");
+      setMode("none");
+    } else if (result === "denied") {
+      setMessage("Los avisos están bloqueados. Actívalos en los ajustes del dispositivo.");
+      setMode("none");
+    } else {
+      setMessage("No pudimos activar los avisos. Inténtalo de nuevo.");
+    }
+  }
+
+  if (mode === "none" && !message) return null;
+
+  return (
+    <>
+      <Card className="flex items-center gap-3 p-4">
+        {mode === "notifications" ? <Bell size={20} weight="light" aria-hidden className="shrink-0" /> : null}
+        {mode === "ios" || mode === "android" ? (
+          <DownloadSimple size={20} weight="light" aria-hidden className="shrink-0" />
+        ) : null}
+        <p className="min-w-0 flex-1 text-body text-ink" role="status">
+          {message ??
+            (mode === "notifications"
+              ? "Activa los recordatorios para no perder tu racha."
+              : "Instala Kizuna en tu pantalla de inicio.")}
+        </p>
+        {mode === "ios" ? (
+          <Button className="w-auto!" onClick={() => setSheet(true)}>
+            Ver cómo
+          </Button>
+        ) : null}
+        {mode === "android" ? (
+          <Button className="w-auto!" onClick={install}>
+            Instalar
+          </Button>
+        ) : null}
+        {mode === "notifications" ? (
+          <Button className="w-auto!" onClick={turnOn}>
+            Activar
+          </Button>
+        ) : null}
+      </Card>
+      <Sheet open={sheet} title="Instala Kizuna" onClose={() => setSheet(false)}>
+        <div className="flex items-center gap-4">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img src="/icons/icon-192.png" alt="" width={56} height={56} className="size-14 shrink-0 rounded-lg" />
+          <p className="min-w-0 flex-1 text-body text-muted">
+            En iPhone, los recordatorios solo llegan si Kizuna está en tu pantalla de inicio.
+          </p>
+        </div>
+        <ol className="flex flex-col rounded-lg border border-line bg-surface px-4 shadow-card">
+          {STEPS.map(({ Icon, text }, i) => (
+            <li key={text} className="flex min-h-14 items-center gap-3 border-line [&:not(:last-child)]:border-b">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                <Icon size={20} weight="light" aria-hidden />
+              </span>
+              <span className="min-w-0 flex-1 text-body text-ink">{text}</span>
+              <span className="section-label text-muted">{String(i + 1).padStart(2, "0")}</span>
+            </li>
+          ))}
+        </ol>
+        <Button onClick={() => setSheet(false)}>Entendido</Button>
+        <Button variant="ghost" className="text-ink! hover:bg-field!" onClick={dismiss}>
+          Ahora no
+        </Button>
+      </Sheet>
+    </>
+  );
+}
