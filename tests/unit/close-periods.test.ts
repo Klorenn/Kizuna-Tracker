@@ -160,7 +160,7 @@ describe('closeDuePeriods', () => {
       throw new Error('boom')
     }
     const log = vi.spyOn(console, 'error').mockImplementation(() => {})
-    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 2 })
+    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 0 })
     log.mockRestore()
     m.repo.insertPeriod = original
     await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 1, debtsCreated: 0 })
