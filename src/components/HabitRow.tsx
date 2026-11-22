@@ -33,12 +33,8 @@ export function HabitRow({ row }: { row: TodayRow }) {
     setError(null);
     start(async () => {
       setDone(!row.done);
-      try {
-        if (row.done) await undoCheckIn(row.id);
-        else await checkIn(row.id);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "No pudimos guardar el hábito.");
-      }
+      const result = row.done ? await undoCheckIn(row.id) : await checkIn(row.id);
+      if (!result.ok) setError(result.error);
     });
   }
 
@@ -90,7 +86,7 @@ export function HabitRow({ row }: { row: TodayRow }) {
         ) : row.requiresPhoto && !done ? (
           <Link
             href={`/habitos/${row.id}/foto`}
-            className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
+            className="inline-flex h-11 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
           >
             <Camera size={16} weight="light" aria-hidden />
             Foto

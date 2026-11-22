@@ -40,6 +40,7 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
     .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,archived_at")
     .eq("id", id)
     .eq("user_id", user.id)
+    .is("archived_at", null)
     .maybeSingle();
   if (!habit) notFound();
 

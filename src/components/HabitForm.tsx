@@ -154,7 +154,11 @@ export function HabitForm({
         <div className="flex items-center gap-3">
           <div className="min-w-0 flex-1">
             <p className="text-body font-medium text-ink">Foto en cada paso</p>
-            <p className="text-small text-muted">Opcional. Tus amigos verán las fotos.</p>
+            <p className="text-small text-muted">
+              {draft.visibility === "private"
+                ? "Opcional."
+                : "Opcional. Tus amigos verán las fotos."}
+            </p>
           </div>
           <Toggle
             label="Foto en cada paso"

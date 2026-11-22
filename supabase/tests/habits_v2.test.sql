@@ -1,6 +1,6 @@
 begin;
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(35);
 
 -- A owner, B accepted friend, D deleted account
 insert into auth.users (id) values
@@ -38,6 +38,19 @@ insert into public.checkins (id, habit_id, user_id, local_date, photo_path) valu
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone, status)
 values ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
   'b0000000-0000-0000-0000-000000000004', 'b0000000-0000-0000-0000-000000000007', 'daily', false, 4, 5000, 'America/Santiago', 'active');
+insert into public.habits (id, user_id, name, icon, frequency_type, requires_photo, visibility) values
+  ('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001', 'Gym reto', 'barbell', 'daily', true, 'friends'),
+  ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Con reto foto', 'book', 'daily', false, 'friends'),
+  ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Gym libre', 'barbell', 'daily', true, 'friends');
+insert into public.habit_items (id, habit_id, user_id, label, position, requires_photo) values
+  ('f0000000-0000-0000-0000-000000000007', 'b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Paso', 0, false),
+  ('f0000000-0000-0000-0000-000000000008', 'b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Colado', 0, false);
+insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone, status)
+values
+  ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000007', 'daily', true, 4, 5000, 'America/Santiago', 'active'),
+  ('c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
+   'b0000000-0000-0000-0000-000000000010', 'b0000000-0000-0000-0000-000000000007', 'daily', true, 4, 5000, 'America/Santiago', 'proposed');
 insert into storage.objects (bucket_id, name, owner) values
   ('proofs', 'a0000000-0000-0000-0000-000000000001/d0000000-0000-0000-0000-000000000001.jpg', 'a0000000-0000-0000-0000-000000000001'),
   ('proofs', 'a0000000-0000-0000-0000-000000000001/d0000000-0000-0000-0000-000000000002.jpg', 'a0000000-0000-0000-0000-000000000001');
@@ -115,6 +128,25 @@ select lives_ok($$ update public.habits set visibility = 'public' where id = 'b0
   'a habit in a challenge can become public');
 select throws_ok($$ update public.habits set visibility = 'secret' where id = 'b0000000-0000-0000-0000-000000000002' $$,
   '23514', null, 'visibility is constrained');
+
+-- photo habits cannot be completed through items
+select throws_ok(
+  $$ insert into public.habit_items (habit_id, user_id, label, position)
+     values ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'X', 5) $$,
+  '42501', null, 'cannot add an item to a habit that requires a photo');
+select throws_ok($$ update public.habits set requires_photo = true where id = 'b0000000-0000-0000-0000-000000000003' $$,
+  'P0001', 'photo_conflict', 'cannot require a photo on a habit with active items');
+select throws_ok($$ select * from public.check_item('f0000000-0000-0000-0000-000000000008') $$, 'P0001', 'photo_required',
+  'check_item refuses items of a habit that requires a photo');
+-- challenge guards
+select throws_ok(
+  $$ insert into public.habit_items (habit_id, user_id, label, position)
+     values ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Otro', 5) $$,
+  'P0001', 'habit_in_challenge', 'cannot add items to a habit in a photo challenge');
+select throws_ok($$ update public.habit_items set archived_at = now() where id = 'f0000000-0000-0000-0000-000000000007' $$,
+  'P0001', 'habit_in_challenge', 'cannot archive items of a habit in a photo challenge');
+select throws_ok($$ update public.habits set requires_photo = false where id = 'b0000000-0000-0000-0000-000000000009' $$,
+  'P0001', 'habit_in_challenge', 'cannot drop the photo requirement of a habit in a photo challenge');
 
 -- ===== D: deleted profile =====
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000004","role":"authenticated"}', true);

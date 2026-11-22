@@ -10,6 +10,7 @@ type Result = { ok: true } | { ok: false; error: string };
 const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
 const ERRORS: Record<string, string> = {
   habit_in_challenge: "Este hábito tiene un reto activo. No puede ser solo tuyo.",
+  photo_conflict: "Un hábito con pasos pide la foto en cada paso, no en el hábito.",
   habit_has_items: "Este hábito se completa marcando sus pasos.",
   photo_required: "Este hábito pide una foto de prueba.",
   item_not_found: "No encontramos ese paso.",
@@ -85,9 +86,6 @@ export async function updateHabit(id: string, draft: HabitDraft): Promise<Result
   const uid = auth.user?.id;
   if (!uid) return { ok: false, error: ERRORS.not_authenticated };
 
-  const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id);
-  if (error) return { ok: false, error: messageFor(error.message) };
-
   // Items are matched by label (case-insensitive): renaming archives the old step and
   // creates a new one, reordering only updates positions, so history is not mislabelled.
   const { data: current, error: readError } = await supabase
@@ -97,7 +95,7 @@ export async function updateHabit(id: string, draft: HabitDraft): Promise<Result
     .is("archived_at", null);
   if (readError) return { ok: false, error: GENERIC };
   const byLabel = new Map((current ?? []).map((i) => [i.label.trim().toLocaleLowerCase("es"), i.id]));
-  const kept = new Set<string>();
+  const wanted = new Set(draft.items.map((i) => i.label.trim().toLocaleLowerCase("es")));
   const inserts: {
     habit_id: string;
     user_id: string;
@@ -105,31 +103,36 @@ export async function updateHabit(id: string, draft: HabitDraft): Promise<Result
     position: number;
     requires_photo: boolean;
   }[] = [];
-  for (const [position, item] of draft.items.entries()) {
-    const label = item.label.trim();
-    const existingId = byLabel.get(label.toLocaleLowerCase("es"));
-    if (existingId) {
-      kept.add(existingId);
-      const { error: itemError } = await supabase
-        .from("habit_items")
-        .update({ label, position, requires_photo: item.requiresPhoto })
-        .eq("id", existingId);
-      if (itemError) return { ok: false, error: GENERIC };
-    } else {
-      inserts.push({ habit_id: id, user_id: uid, label, position, requires_photo: item.requiresPhoto });
-    }
-  }
-  const dropped = (current ?? []).filter((i) => !kept.has(i.id)).map((i) => i.id);
+  // archive dropped steps first so a habit can switch from steps to a photo requirement
+  const dropped = (current ?? [])
+    .filter((i) => !wanted.has(i.label.trim().toLocaleLowerCase("es")))
+    .map((i) => i.id);
   if (dropped.length > 0) {
     const { error: archiveError } = await supabase
       .from("habit_items")
       .update({ archived_at: new Date().toISOString() })
       .in("id", dropped);
-    if (archiveError) return { ok: false, error: GENERIC };
+    if (archiveError) return { ok: false, error: messageFor(archiveError.message) };
+  }
+  const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id);
+  if (error) return { ok: false, error: messageFor(error.message) };
+
+  for (const [position, item] of draft.items.entries()) {
+    const label = item.label.trim();
+    const existingId = byLabel.get(label.toLocaleLowerCase("es"));
+    if (existingId) {
+      const { error: itemError } = await supabase
+        .from("habit_items")
+        .update({ label, position, requires_photo: item.requiresPhoto })
+        .eq("id", existingId);
+      if (itemError) return { ok: false, error: messageFor(itemError.message) };
+    } else {
+      inserts.push({ habit_id: id, user_id: uid, label, position, requires_photo: item.requiresPhoto });
+    }
   }
   if (inserts.length > 0) {
     const { error: insertError } = await supabase.from("habit_items").insert(inserts);
-    if (insertError) return { ok: false, error: GENERIC };
+    if (insertError) return { ok: false, error: messageFor(insertError.message) };
   }
   refresh();
   return { ok: true };
@@ -155,43 +158,67 @@ export async function archiveHabit(id: string): Promise<Result> {
   return { ok: true };
 }
 
-export async function checkIn(habitId: string): Promise<{ checkinId: string; created: boolean }> {
+export async function checkIn(
+  habitId: string,
+): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string }> {
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
-  if (error || !row) throw new Error(messageFor(error?.message));
+  if (error || !row) return { ok: false, error: messageFor(error?.message) };
   refresh();
-  return { checkinId: row.checkin_id, created: row.created };
+  return { ok: true, checkinId: row.checkin_id, created: row.created };
 }
 
+const CANNOT_UNDO = "No puedes deshacer este registro.";
+
 /** Removes today's photo-less check-in (the date comes from the profile timezone). */
-export async function undoCheckIn(habitId: string): Promise<void> {
+export async function undoCheckIn(habitId: string): Promise<Result> {
   const supabase = await createServerClient();
   const { data: profile } = await supabase.from("profiles").select("timezone").single();
-  if (!profile) throw new Error(ERRORS.not_authenticated);
+  if (!profile) return { ok: false, error: ERRORS.not_authenticated };
+  const date = localDate(new Date(), profile.timezone);
+
+  // habits with items are undone by unchecking an item; photo check-ins are not undoable here
+  const { data: items } = await supabase
+    .from("habit_items")
+    .select("id")
+    .eq("habit_id", habitId)
+    .is("archived_at", null)
+    .limit(1);
+  if (items && items.length > 0) return { ok: false, error: CANNOT_UNDO };
+  const { data: today } = await supabase
+    .from("checkins")
+    .select("photo_path")
+    .eq("habit_id", habitId)
+    .eq("local_date", date)
+    .maybeSingle();
+  if (today?.photo_path) return { ok: false, error: CANNOT_UNDO };
+
   const { error } = await supabase
     .from("checkins")
     .delete()
     .eq("habit_id", habitId)
-    .eq("local_date", localDate(new Date(), profile.timezone));
-  if (error) throw new Error(GENERIC);
+    .eq("local_date", date);
+  if (error) return { ok: false, error: GENERIC };
   refresh();
+  return { ok: true };
 }
 
 export async function checkItem(
   itemId: string,
-): Promise<{ created: boolean; dayCompleted: boolean }> {
+): Promise<{ ok: true; created: boolean; dayCompleted: boolean } | { ok: false; error: string }> {
   const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("check_item", { p_item_id: itemId });
   const row = data?.[0];
-  if (error || !row) throw new Error(messageFor(error?.message));
+  if (error || !row) return { ok: false, error: messageFor(error?.message) };
   refresh();
-  return { created: row.created, dayCompleted: row.day_completed };
+  return { ok: true, created: row.created, dayCompleted: row.day_completed };
 }
 
-export async function uncheckItem(itemId: string): Promise<void> {
+export async function uncheckItem(itemId: string): Promise<Result> {
   const supabase = await createServerClient();
   const { error } = await supabase.rpc("uncheck_item", { p_item_id: itemId });
-  if (error) throw new Error(messageFor(error.message));
+  if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
+  return { ok: true };
 }

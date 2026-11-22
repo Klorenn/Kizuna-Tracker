@@ -55,6 +55,33 @@ const ICONS: Record<IconKey, Icon> = {
   check: Check,
 };
 
+export const ICON_LABEL: Record<IconKey, string> = {
+  barbell: "Pesas",
+  drop: "Gota",
+  "book-open": "Libro abierto",
+  book: "Libro",
+  "sneaker-move": "Zapatilla",
+  moon: "Luna",
+  "fork-knife": "Cubiertos",
+  flame: "Llama",
+  target: "Objetivo",
+  clock: "Reloj",
+  "calendar-blank": "Calendario",
+  bell: "Campana",
+  camera: "Cámara",
+  "pencil-simple": "Lápiz",
+  gear: "Engranaje",
+  trophy: "Trofeo",
+  "chart-bar": "Gráfico",
+  house: "Casa",
+  users: "Personas",
+  "globe-simple": "Globo",
+  image: "Imagen",
+  receipt: "Recibo",
+  flag: "Bandera",
+  check: "Check",
+};
+
 export function HabitIcon({ name, size = 20 }: { name: IconKey; size?: number }) {
   const C = ICONS[name] ?? Target;
   return <C size={size} weight="light" aria-hidden />;

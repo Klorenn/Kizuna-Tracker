@@ -1,7 +1,7 @@
 "use client";
 
 import { HABIT_ICONS, type IconKey } from "@/domain/presets";
-import { HabitIcon } from "./habit-icon";
+import { HabitIcon, ICON_LABEL } from "./habit-icon";
 
 export function IconPicker({
   value,
@@ -20,7 +20,7 @@ export function IconPicker({
             type="button"
             role="radio"
             aria-checked={selected}
-            aria-label={name}
+            aria-label={ICON_LABEL[name]}
             onClick={() => onChange(name)}
             className={`flex h-11 items-center justify-center rounded-md ${
               selected

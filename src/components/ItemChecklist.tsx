@@ -22,12 +22,8 @@ export function ItemChecklist({ habitId, items }: { habitId: string; items: Toda
     setError(null);
     start(async () => {
       toggleView({ id: item.id, checked: !item.checked });
-      try {
-        if (item.checked) await uncheckItem(item.id);
-        else await checkItem(item.id);
-      } catch (e) {
-        setError(e instanceof Error ? e.message : "No pudimos guardar el paso.");
-      }
+      const result = item.checked ? await uncheckItem(item.id) : await checkItem(item.id);
+      if (!result.ok) setError(result.error);
     });
   }
 
@@ -43,7 +39,7 @@ export function ItemChecklist({ habitId, items }: { habitId: string; items: Toda
               </span>
               <Link
                 href={`/habitos/${habitId}/foto?paso=${item.id}`}
-                className="inline-flex h-9 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
+                className="inline-flex h-11 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
               >
                 <Camera size={16} weight="light" aria-hidden />
                 Foto

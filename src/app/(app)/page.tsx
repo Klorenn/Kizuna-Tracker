@@ -9,7 +9,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { localDate } from "@/domain/dates";
+import { addDays, localDate } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -45,7 +45,8 @@ export default async function Home() {
       .from("checkins")
       .select("habit_id,local_date")
       .eq("user_id", user.id)
-      .is("rejected_at", null),
+      .is("rejected_at", null)
+      .gte("local_date", addDays(today, -400)),
     supabase
       .from("checkin_items")
       .select("item_id,local_date,created_at")

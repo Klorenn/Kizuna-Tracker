@@ -15,7 +15,7 @@ export function Chip({
     <button
       type="button"
       aria-pressed={selected}
-      className={`inline-flex h-9 items-center gap-1.5 rounded-full px-3 text-small font-medium transition-colors duration-[120ms] ${
+      className={`inline-flex h-11 items-center gap-1.5 rounded-full px-3 text-small font-medium transition-colors duration-[120ms] ${
         selected
           ? "border-[1.5px] border-accent bg-accent-soft px-[10.5px] text-accent"
           : "bg-field text-ink"

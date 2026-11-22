@@ -44,6 +44,7 @@ create policy habit_items_insert_owner on public.habit_items
     and exists (
       select 1 from public.habits h
       where h.id = habit_id and h.user_id = (select auth.uid())
+        and not h.requires_photo
     )
   );
 create policy habit_items_update_owner on public.habit_items
@@ -192,6 +193,60 @@ create trigger habits_visibility_guard
 before update of visibility on public.habits
 for each row execute function public.habits_visibility_guard();
 
+-- ------------------------------------------------- photo guards
+-- A habit that requires a photo cannot also have active items (items would let the
+-- day complete without a photo), and a habit used by a proposed/active challenge that
+-- requires photos keeps its photo requirement and its item list.
+create function public.habits_photo_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.requires_photo and exists (
+    select 1 from public.habit_items i
+    where i.habit_id = new.id and i.archived_at is null
+  ) then
+    raise exception 'photo_conflict';
+  end if;
+  if old.requires_photo and not new.requires_photo and exists (
+    select 1 from public.challenges c
+    where c.status in ('proposed', 'active') and c.requires_photo
+      and (c.creator_habit_id = new.id or c.rival_habit_id = new.id)
+  ) then
+    raise exception 'habit_in_challenge';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.habits_photo_guard() from public, anon, authenticated;
+create trigger habits_photo_guard
+before update of requires_photo on public.habits
+for each row execute function public.habits_photo_guard();
+
+create function public.habit_items_challenge_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if (tg_op = 'INSERT' or (old.archived_at is null and new.archived_at is not null)) and exists (
+    select 1 from public.challenges c
+    where c.status in ('proposed', 'active') and c.requires_photo
+      and (c.creator_habit_id = new.habit_id or c.rival_habit_id = new.habit_id)
+  ) then
+    raise exception 'habit_in_challenge';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.habit_items_challenge_guard() from public, anon, authenticated;
+create trigger habit_items_challenge_guard
+before insert or update of archived_at on public.habit_items
+for each row execute function public.habit_items_challenge_guard();
+
 -- ------------------------------------------------------------- RPCs
 -- Photo-less check-in. Now also refuses deleted accounts and habits with items.
 create or replace function public.create_checkin(p_habit_id uuid)
@@ -296,6 +351,7 @@ declare
   v_tz text;
   v_habit uuid;
   v_requires_photo boolean;
+  v_habit_photo boolean;
   v_date date;
   v_id uuid;
 begin
@@ -308,7 +364,7 @@ begin
     raise exception 'not_authenticated' using errcode = '28000';
   end if;
 
-  select i.habit_id, i.requires_photo into v_habit, v_requires_photo
+  select i.habit_id, i.requires_photo, h.requires_photo into v_habit, v_requires_photo, v_habit_photo
   from public.habit_items i
   join public.habits h on h.id = i.habit_id
   where i.id = p_item_id and i.user_id = v_uid and i.archived_at is null
@@ -316,7 +372,8 @@ begin
   if not found then
     raise exception 'item_not_found';
   end if;
-  if v_requires_photo then
+  -- items cannot be a way around a habit that asks for a photo
+  if v_requires_photo or v_habit_photo then
     raise exception 'photo_required';
   end if;
 

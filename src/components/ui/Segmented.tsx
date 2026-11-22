@@ -26,7 +26,7 @@ export function Segmented<T extends string>({
             role="radio"
             aria-checked={selected}
             onClick={() => onChange(o.value)}
-            className={`h-9 min-w-0 flex-1 rounded-md px-3 text-[14px] font-medium transition-colors duration-[120ms] ${
+            className={`h-11 min-w-0 flex-1 rounded-md px-3 text-[14px] font-medium transition-colors duration-[120ms] ${
               selected ? "bg-surface text-ink shadow-card" : "text-muted"
             }`}
           >
