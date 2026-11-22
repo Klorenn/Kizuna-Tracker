@@ -122,11 +122,11 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           <EmptyState title="Sin hábitos públicos" body="Todavía no comparte ningún hábito." />
         </Card>
       ) : (
-        view.habits.map((hab) => {
+        view.habits.map((hab, habIndex) => {
           const weekly = hab.frequencyType === "weekly";
           const doneCount = hab.weeks.flat().filter((d) => d.done).length;
           return (
-            <Card key={hab.id} className="flex flex-col gap-3 p-4">
+            <Card key={`${habIndex}-${hab.name}`} className="flex flex-col gap-3 p-4">
               <div className="flex items-center gap-3">
                 <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-field text-ink">
                   <HabitIcon name={hab.icon as IconKey} />

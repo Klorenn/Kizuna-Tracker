@@ -1,4 +1,8 @@
 begin;
+-- supabase/seed.sql loads local test users; these tests build their own fixtures inside
+-- this transaction, so clear the seed first (rolled back at the end).
+truncate public.profiles cascade;
+delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
 select plan(60);
 

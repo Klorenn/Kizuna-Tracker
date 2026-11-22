@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Check } from "@phosphor-icons/react";
 import { AuthTopBar } from "@/components/auth/AuthTopBar";
@@ -444,6 +445,17 @@ export default function RegistroPage() {
                 checked={form.acceptTerms}
                 onChange={(e) => set("acceptTerms", e.target.checked)}
               />
+              <p className="text-small text-muted">
+                Lee los{" "}
+                <Link href="/legal/terminos" target="_blank" className="text-accent underline underline-offset-2">
+                  Términos de uso
+                </Link>{" "}
+                y la{" "}
+                <Link href="/legal/privacidad" target="_blank" className="text-accent underline underline-offset-2">
+                  Política de privacidad
+                </Link>
+                .
+              </p>
               {submitError && <Hint tone="error">{submitError}</Hint>}
             </>
           )}

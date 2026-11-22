@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import { KanjiWatermark } from "@/components/auth/KanjiWatermark";
 import { CatLift } from "@/components/brand/CatLift";
 import { Lockup } from "@/components/brand/Logo";
@@ -32,7 +33,15 @@ export default function BienvenidaPage() {
           Ya tengo cuenta
         </ButtonLink>
         <p className="text-center text-small text-balance text-muted">
-          Al continuar aceptas los Términos de uso y la Política de privacidad.
+          Al continuar aceptas los{" "}
+          <Link href="/legal/terminos" className="text-accent underline underline-offset-2">
+            Términos de uso
+          </Link>{" "}
+          y la{" "}
+          <Link href="/legal/privacidad" className="text-accent underline underline-offset-2">
+            Política de privacidad
+          </Link>
+          .
         </p>
       </div>
     </main>

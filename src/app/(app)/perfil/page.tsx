@@ -140,6 +140,16 @@ export default async function PerfilPage() {
         </div>
       </Card>
 
+      <p className="text-center text-small text-muted">
+        <Link href="/legal/terminos" className="text-accent underline underline-offset-2">
+          Términos de uso
+        </Link>
+        {" · "}
+        <Link href="/legal/privacidad" className="text-accent underline underline-offset-2">
+          Política de privacidad
+        </Link>
+      </p>
+
       <SignOutButton />
       <DeleteAccountButton username={profile.username} />
       <p className="text-center text-small text-muted">
