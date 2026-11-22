@@ -10,6 +10,7 @@ import { ButtonLink } from "@/components/ui/Button";
 import { localDate } from "@/domain/dates";
 import {
   challengeFrequency,
+  cancelledLabel,
   countDone,
   dayMonthLabel,
   endsOn,
@@ -32,7 +33,7 @@ export default async function RetosPage() {
   const { data: rows } = await supabase
     .from("challenges")
     .select(
-      "id,creator_id,rival_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at",
+      "id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at",
     )
     .in("status", ["proposed", "active", "finished", "cancelled"])
     .order("created_at", { ascending: false });
@@ -139,11 +140,11 @@ export default async function RetosPage() {
     const theyOwe = mineDebts.filter((d) => d.creditor_id === user.id).reduce((s, d) => s + d.amount, 0);
     const theyFailed = mineDebts.filter((d) => d.debtor_id !== user.id).length;
     const outcome =
-      c.status === "cancelled" ? "Cancelado" : theyOwe > iOwe ? "Ganaste" : theyOwe < iOwe ? "Perdiste" : "Empate";
+      c.status === "cancelled" ? cancelledLabel(c) : theyOwe > iOwe ? "Ganaste" : theyOwe < iOwe ? "Perdiste" : "Empate";
     const unit = f.type === "daily" ? "días" : "semanas";
     const summary =
       c.status === "cancelled"
-        ? "Cancelado entre los dos"
+        ? cancelledLabel(c)
         : `Terminó el ${closing ? dayMonthLabel(closing) : ""}${theyFailed > 0 ? ` · ${other} falló ${theyFailed} ${unit}` : ""}`;
     return { status: c.status, data: { ...base, kind: "finished", summary, outcome } };
   });

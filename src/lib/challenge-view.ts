@@ -59,3 +59,10 @@ export function endsOn(c: ScheduleRow): LocalDate | null {
 
 export const firstName = (displayName: string | null | undefined, fallback = 'Tu amigo') =>
   displayName?.trim().split(/\s+/)[0] || fallback
+
+/** Why a challenge was cancelled, when the data says so. */
+export function cancelledLabel(c: { starts_on: string | null; cancel_requested_by: string | null }): string {
+  if (c.cancel_requested_by) return 'Cancelado entre los dos'
+  if (!c.starts_on) return 'Propuesta retirada'
+  return 'Cancelado'
+}

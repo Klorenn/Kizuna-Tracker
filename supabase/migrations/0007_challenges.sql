@@ -2,13 +2,15 @@
 
 -- ------------------------------------------------------------ proposal policy
 -- Recreated: the creator's habit must be theirs, active, not private, and the challenge's
--- requires_photo must mirror the habit (habits with items never require a photo).
+-- requires_photo must mirror the habit (habits with items never require a photo), and the
+-- timezone must be the creator's own.
 drop policy challenges_insert_creator on public.challenges;
 create policy challenges_insert_creator on public.challenges
   for insert to authenticated
   with check (
     creator_id = (select auth.uid())
     and status = 'proposed'
+    and timezone = (select p.timezone from public.profiles p where p.id = (select auth.uid()))
     and public.is_friend((select auth.uid()), rival_id)
     and exists (
       select 1 from public.habits h
@@ -58,6 +60,12 @@ begin
     return;
   end if;
 
+  if not exists (
+    select 1 from public.habits h
+    where h.id = c.creator_habit_id and h.archived_at is null
+  ) then
+    raise exception 'creator_habit_unavailable';
+  end if;
   if p_rival_habit_id is null then
     raise exception 'rival_habit_required';
   end if;
@@ -135,7 +143,9 @@ end;
 $$;
 
 -- ------------------------------------------------------ cancel_challenges_between
--- Used when two people stop being friends. Only touches challenges the caller is in.
+-- Internal: only remove_friend calls it (no grant to API roles), so a player cannot
+-- cancel a challenge unilaterally while staying friends. No debts are created for the
+-- period in progress.
 create function public.cancel_challenges_between(p_other uuid)
 returns void
 language plpgsql
@@ -156,6 +166,34 @@ begin
 end;
 $$;
 
+-- ------------------------------------------------------------ remove_friend
+-- Deletes the friendship and cancels the open challenges between the pair, atomically.
+-- Returns false when they were not friends (or had no pending request).
+create function public.remove_friend(p_other uuid)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_deleted int;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+  delete from public.friendships f
+  where (f.requester_id = v_uid and f.addressee_id = p_other)
+     or (f.requester_id = p_other and f.addressee_id = v_uid);
+  get diagnostics v_deleted = row_count;
+  if v_deleted = 0 then
+    return false;
+  end if;
+  perform public.cancel_challenges_between(p_other);
+  return true;
+end;
+$$;
+
 -- ------------------------------------------------------------ reject_checkin
 -- The rival of an active photo challenge can reject the owner's photo within 24 h of
 -- the check-in. A rejected check-in no longer counts; the owner gets a notification.
@@ -169,6 +207,9 @@ declare
   v_uid uuid := auth.uid();
   k public.checkins%rowtype;
   v_challenge uuid;
+  v_starts date;
+  v_weeks int;
+  v_tz text;
 begin
   if v_uid is null then
     raise exception 'not_authenticated' using errcode = '28000';
@@ -181,7 +222,7 @@ begin
     raise exception 'checkin_not_found';
   end if;
 
-  select c.id into v_challenge
+  select c.id, c.starts_on, c.weeks, c.timezone into v_challenge, v_starts, v_weeks, v_tz
   from public.challenges c
   where c.status = 'active'
     and c.requires_photo
@@ -193,6 +234,13 @@ begin
   end if;
   if k.rejected_at is not null then
     raise exception 'already_rejected';
+  end if;
+  -- only check-ins that belong to the challenge schedule, and only once it has started
+  if v_starts is null
+     or k.local_date < v_starts
+     or k.local_date > v_starts + v_weeks * 7 - 1
+     or v_starts > (now() at time zone v_tz)::date then
+    raise exception 'checkin_out_of_range';
   end if;
   if k.created_at + interval '24 hours' <= now() then
     raise exception 'reject_window_closed';
@@ -210,5 +258,6 @@ $$;
 
 grant execute on function public.respond_challenge(uuid, boolean, uuid) to authenticated;
 grant execute on function public.request_cancel(uuid) to authenticated;
-grant execute on function public.cancel_challenges_between(uuid) to authenticated;
+revoke execute on function public.cancel_challenges_between(uuid) from public, anon, authenticated;
+grant execute on function public.remove_friend(uuid) to authenticated;
 grant execute on function public.reject_checkin(uuid, text) to authenticated;

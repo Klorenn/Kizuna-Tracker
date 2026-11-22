@@ -815,6 +815,7 @@ export type Database = {
         Args: { p_checkin_id: string; p_reason: string }
         Returns: undefined
       }
+      remove_friend: { Args: { p_other: string }; Returns: boolean }
       request_cancel: { Args: { p_id: string }; Returns: boolean }
       respond_challenge: {
         Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }

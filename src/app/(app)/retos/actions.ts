@@ -8,6 +8,7 @@ type Result = { ok: true } | { ok: false; error: string };
 
 const GENERIC = "No pudimos completar la acción. Inténtalo de nuevo.";
 const NOT_AUTH = "Inicia sesión para continuar.";
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PRIVATE_HABIT = "Este hábito es solo para ti. Cámbialo a Amigos o Público para retar.";
 
 const ERRORS: Record<string, string> = {
@@ -22,6 +23,8 @@ const ERRORS: Record<string, string> = {
   not_friends: "Solo puedes retar a tus amigos.",
   reject_window_closed: "Pasaron más de 24 horas. Ya no puedes rechazar esta foto.",
   already_rejected: "Esta foto ya fue rechazada.",
+  creator_habit_unavailable: "El hábito de este reto ya no está disponible.",
+  checkin_out_of_range: "Esta foto no cuenta para el reto.",
   checkin_not_found: "No encontramos esa foto.",
   invalid_reason: "Elige un motivo.",
 };
@@ -47,6 +50,7 @@ export async function proposeChallenge(
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const valid = validateChallengeInput(input);
   if (!valid.ok) return valid;
+  if (!UUID.test(input.rivalId) || !UUID.test(input.habitId)) return { ok: false, error: GENERIC };
   const { supabase, uid } = await currentUser();
   if (!uid) return { ok: false, error: NOT_AUTH };
   if (input.rivalId === uid) return { ok: false, error: "Solo puedes retar a tus amigos." };
@@ -126,12 +130,4 @@ export async function rejectCheckin(checkinId: string, reason: RejectReason): Pr
   refresh();
   revalidatePath("/retos/[id]", "page");
   return { ok: true };
-}
-
-/** Cancels the open challenges between the caller and `otherId` (called before unfriending). */
-export async function cancelChallengesBetween(otherId: string): Promise<void> {
-  const { supabase, uid } = await currentUser();
-  if (!uid) return;
-  await supabase.rpc("cancel_challenges_between", { p_other: otherId });
-  refresh();
 }

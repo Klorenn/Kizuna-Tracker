@@ -42,8 +42,6 @@ const client = {
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ host: 'kizuna.app', 'x-forwarded-proto': 'https' }) }))
-const { cancel } = vi.hoisted(() => ({ cancel: vi.fn() }))
-vi.mock('@/app/(app)/retos/actions', () => ({ cancelChallengesBetween: cancel }))
 
 import {
   acceptInvite,
@@ -57,10 +55,6 @@ beforeEach(() => {
   writes.length = 0
   reads = {}
   rpc.mockReset()
-  cancel.mockReset()
-  cancel.mockImplementation(async () => {
-    order.push('cancelChallengesBetween')
-  })
 })
 
 describe('friend actions', () => {
@@ -132,9 +126,15 @@ describe('friend actions', () => {
     expect(order).toEqual(['friendships.delete'])
   })
 
-  it('removeFriend cancels challenges before deleting the row', async () => {
+  it('removeFriend goes through the remove_friend RPC (friendship + challenges together)', async () => {
+    rpc.mockResolvedValue({ data: true, error: null })
     await expect(removeFriend(U2)).resolves.toEqual({ ok: true })
-    expect(cancel).toHaveBeenCalledWith(U2)
-    expect(order).toEqual(['cancelChallengesBetween', 'friendships.delete'])
+    expect(rpc).toHaveBeenCalledWith('remove_friend', { p_other: U2 })
+    expect(order).toEqual([])
+  })
+
+  it('removeFriend reports a friendship that no longer exists', async () => {
+    rpc.mockResolvedValue({ data: false, error: null })
+    await expect(removeFriend(U2)).resolves.toEqual({ ok: false, error: 'Esta persona ya no está en tus amigos.' })
   })
 })

@@ -114,7 +114,7 @@ select throws_ok(
   '42501', null, 'cannot create a challenge with someone elses habit');
 select lives_ok(
   $$ insert into public.challenges (creator_id, rival_id, creator_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone)
-     values ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'daily', true, 4, 5000, 'UTC') $$,
+     values ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'daily', true, 4, 5000, 'America/Santiago') $$,
   'friend can propose a challenge with own habit');
 select throws_ok($$ update public.debts set amount = 1 $$, '42501', null, 'creditor cannot change debt amount');
 select throws_ok($$ update public.debts set debtor_id = creditor_id $$, '42501', null, 'creditor cannot change debtor');

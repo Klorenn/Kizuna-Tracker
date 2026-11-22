@@ -1,4 +1,4 @@
-import { CaretLeft, Check, Clock, Warning } from "@phosphor-icons/react/dist/ssr";
+import { CaretLeft, Check, CheckCircle, Clock, Warning } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
@@ -15,7 +15,9 @@ import { REJECT_LABEL, type RejectReason } from "@/lib/challenge-form";
 import {
   challengeFrequency,
   countDone,
+  cancelledLabel,
   dayMonthLabel,
+  endsOn,
   firstName,
   frequencyLabel,
   periodStatus,
@@ -66,9 +68,10 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       c.starts_on
         ? supabase
             .from("checkins")
-            .select("id,habit_id,local_date,photo_path,is_duplicate,rejected_at,reject_reason,created_at")
+            .select("id,habit_id,local_date,photo_path,is_duplicate,rejected_at,rejected_by,reject_reason,created_at")
             .in("habit_id", habitIds)
             .gte("local_date", c.starts_on)
+            .lte("local_date", endsOn(c) ?? c.starts_on)
             .order("created_at", { ascending: false })
         : Promise.resolve({ data: [] }),
       supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at,period_start").eq("challenge_id", c.id),
@@ -106,7 +109,9 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
 
   // photos
   const rejectedMine = rows.filter((k) => k.habit_id === myHabitId && k.rejected_at);
-  const rejectedTheirs = rows.filter((k) => k.habit_id === theirHabitId && k.rejected_at);
+  // per-challenge counters: photos each player rejected, inside the challenge dates
+  const rejectedByMe = rows.filter((k) => k.rejected_at && k.rejected_by === user.id).length;
+  const rejectedByOther = rows.filter((k) => k.rejected_at && k.rejected_by === otherId).length;
   const theirPhotos = valid.filter((k) => k.habit_id === theirHabitId && k.photo_path);
   const inWindow = theirPhotos.filter((k) => canReject(new Date(k.created_at), now)).slice(0, 5);
   const shown = c.requires_photo ? (inWindow.length > 0 ? inWindow : theirPhotos.slice(0, 1)) : [];
@@ -166,7 +171,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         Activo
       </Pill>
     ) : (
-      <Pill icon={<Clock size={14} weight="light" aria-hidden />}>{c.status === "finished" ? "Terminado" : "Cancelado"}</Pill>
+      <Pill icon={<Clock size={14} weight="light" aria-hidden />}>{c.status === "finished" ? "Terminado" : cancelledLabel(c)}</Pill>
     );
 
   return (
@@ -238,7 +243,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
                     </p>
                   ) : null}
                   {rejectable ? (
-                    <RejectPhotoButton checkinId={k.id} ownerName={other} rejectedCount={rejectedTheirs.length} />
+                    <RejectPhotoButton checkinId={k.id} ownerName={other} rejectedCount={rejectedByMe} />
                   ) : null}
                 </div>
               );
@@ -257,9 +262,9 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         {c.requires_photo ? (
           <Card className="flex flex-1 flex-col gap-1 p-4">
             <p className="text-small text-muted">Fotos rechazadas</p>
-            <p className="text-title font-semibold text-ink">{rejectedMine.length + rejectedTheirs.length}</p>
+            <p className="text-title font-semibold text-ink">{rejectedByMe + rejectedByOther}</p>
             <p className="text-small text-muted">
-              Tú {rejectedMine.length} · {other} {rejectedTheirs.length}
+              Tú {rejectedByMe} · {other} {rejectedByOther}
             </p>
           </Card>
         ) : null}
@@ -315,7 +320,15 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
                     <p className="font-mono text-[15px] font-medium text-ink">
                       {formatCLP(debt?.amount ?? c.fine_amount)}
                     </p>
-                    <Pill icon={<Clock size={14} weight="light" aria-hidden />}>
+                    <Pill
+                      icon={
+                        debt?.paid_at ? (
+                          <CheckCircle size={14} weight="light" aria-hidden />
+                        ) : (
+                          <Clock size={14} weight="light" aria-hidden />
+                        )
+                      }
+                    >
                       {debt?.paid_at ? "Pagada" : "Pendiente"}
                     </Pill>
                   </>

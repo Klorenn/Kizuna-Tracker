@@ -32,7 +32,6 @@ vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import {
-  cancelChallengesBetween,
   proposeChallenge,
   rejectCheckin,
   requestCancel,
@@ -97,6 +96,12 @@ describe('proposeChallenge', () => {
     })
   })
 
+  it('rejects ids that are not UUIDs', async () => {
+    const r = await proposeChallenge({ ...input, rivalId: 'abc,or(x)' })
+    expect(r.ok).toBe(false)
+    expect(writes).toHaveLength(0)
+  })
+
   it('validates the input first', async () => {
     const r = await proposeChallenge({ ...input, fineAmount: 0 })
     expect(r.ok).toBe(false)
@@ -153,13 +158,5 @@ describe('rejectCheckin', () => {
     rpc.mockResolvedValue({ error: null })
     await expect(rejectCheckin('k1', 'duplicate')).resolves.toEqual({ ok: true })
     expect(rpc).toHaveBeenCalledWith('reject_checkin', { p_checkin_id: 'k1', p_reason: 'duplicate' })
-  })
-})
-
-describe('cancelChallengesBetween', () => {
-  it('calls the RPC with the other user', async () => {
-    rpc.mockResolvedValue({ error: null })
-    await cancelChallengesBetween(U2)
-    expect(rpc).toHaveBeenCalledWith('cancel_challenges_between', { p_other: U2 })
   })
 })

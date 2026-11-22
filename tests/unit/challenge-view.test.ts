@@ -50,3 +50,13 @@ describe('labels', () => {
     expect(firstName(null)).toBe('Tu amigo')
   })
 })
+
+import { cancelledLabel } from '@/lib/challenge-view'
+
+describe('cancelledLabel', () => {
+  it('names the cause when known', () => {
+    expect(cancelledLabel({ starts_on: null, cancel_requested_by: null })).toBe('Propuesta retirada')
+    expect(cancelledLabel({ starts_on: '2026-11-02', cancel_requested_by: 'u' })).toBe('Cancelado entre los dos')
+    expect(cancelledLabel({ starts_on: '2026-11-02', cancel_requested_by: null })).toBe('Cancelado')
+  })
+})

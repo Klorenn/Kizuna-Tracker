@@ -6,7 +6,6 @@ import { redirect } from "next/navigation";
 import { INVITE_ERRORS, INVITE_GENERIC, inviteErrorKey } from "@/lib/invites";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
-import { cancelChallengesBetween } from "../retos/actions";
 
 type Result = { ok: true } | { ok: false; error: string };
 type RequestResult = { ok: true; status: "pending" | "accepted" } | { ok: false; error: string };
@@ -113,16 +112,10 @@ export async function removeFriend(userId: string): Promise<Result> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
   if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
-  await cancelChallengesBetween(userId);
-  const { data, error } = await supabase
-    .from("friendships")
-    .delete()
-    .or(
-      `and(requester_id.eq.${uid},addressee_id.eq.${userId}),and(requester_id.eq.${userId},addressee_id.eq.${uid})`,
-    )
-    .select("id");
+  const { data, error } = await supabase.rpc("remove_friend", { p_other: userId });
   if (error) return { ok: false, error: GENERIC };
-  if (!data || data.length === 0) return { ok: false, error: "Esta persona ya no está en tus amigos." };
+  if (!data) return { ok: false, error: "Esta persona ya no está en tus amigos." };
+  revalidatePath("/retos");
   refresh();
   return { ok: true };
 }
