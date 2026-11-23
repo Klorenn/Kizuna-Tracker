@@ -10,15 +10,17 @@ export const metadata: Metadata = { title: "Iniciar sesión" };
 export default async function LoginPage({
   searchParams,
 }: {
-  searchParams: Promise<{ next?: string; error?: string }>;
+  searchParams: Promise<{ next?: string; error?: string; notice?: string }>;
 }) {
-  const { next, error } = await searchParams;
+  const { next, error, notice } = await searchParams;
   return (
     <main className="relative isolate mx-auto flex min-h-dvh w-full max-w-md flex-col gap-4 px-5 pb-[max(env(safe-area-inset-bottom),24px)]">
       <KanjiWatermark />
       <AuthTopBar backHref="/bienvenida" />
       <StepTitle title="Hola de nuevo" subtitle="Entra con tu correo o tu @usuario." />
-      <LoginForm next={next ?? null} profileMissing={error === "perfil"} />
+      <LoginForm next={next ?? null} profileMissing={error === "perfil"}
+        accountReady={notice === "cuenta-lista"}
+      />
     </main>
   );
 }

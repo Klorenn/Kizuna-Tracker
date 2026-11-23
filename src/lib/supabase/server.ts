@@ -1,12 +1,15 @@
 import { createServerClient as createSsrClient } from "@supabase/ssr";
 import { cookies } from "next/headers";
 import type { Database } from "./database.types";
+import { supabasePublicConfig } from "./env";
 
 export async function createServerClient() {
+  const config = supabasePublicConfig();
+  if (!config) throw new Error("Supabase public configuration is missing");
   const cookieStore = await cookies();
   return createSsrClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+    config.url,
+    config.key,
     {
       cookies: {
         getAll: () => cookieStore.getAll(),

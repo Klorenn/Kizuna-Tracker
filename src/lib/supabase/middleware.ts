@@ -1,10 +1,15 @@
 import { createServerClient } from "@supabase/ssr";
 import { NextResponse, type NextRequest } from "next/server";
+import { decideAccess, type AccessDecision } from "./access";
 import type { Database } from "./database.types";
+import { supabasePublicConfig, supabasePublicKey, supabaseUrl } from "./env";
 import { shouldSignOut } from "./profile-gate";
 import { isPublicPath, safeNextPath } from "./public-paths";
 
-const AUTH_PAGES = ["/bienvenida", "/login", "/registro"];
+const FETCH_TIMEOUT_MS = 3000;
+let warned = false; // log the configuration problem once per process, not per request
+
+const AUTH_PAGES =["/bienvenida", "/login", "/registro"];
 
 function redirectTo(
   request: NextRequest,
@@ -20,45 +25,81 @@ function redirectTo(
   return res;
 }
 
-function nextQuery(next: string) {
-  return next === "/" ? "" : `?next=${encodeURIComponent(next)}`;
+function applyDecision(
+  request: NextRequest,
+  decision: AccessDecision,
+  response: NextResponse,
+) {
+  if (decision.kind === "redirect") {
+    return redirectTo(request, decision.to, response, decision.search);
+  }
+  return response;
 }
 
 export async function updateSession(request: NextRequest) {
   let response = NextResponse.next({ request });
-  const supabase = createServerClient<Database>(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll: () => request.cookies.getAll(),
-        setAll(list) {
-          list.forEach(({ name, value }) => request.cookies.set(name, value));
-          response = NextResponse.next({ request });
-          list.forEach(({ name, value, options }) =>
-            response.cookies.set(name, value, options),
-          );
-        },
-      },
-    },
-  );
-
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
   const path = request.nextUrl.pathname;
+  const config = supabasePublicConfig();
+
+  let supabase: ReturnType<typeof createServerClient<Database>> | null = null;
+  if (config) {
+    try {
+      supabase = createServerClient<Database>(config.url, config.key, {
+        global: {
+          // A hanging Supabase must fail fast (counts as an auth failure), not 504.
+          fetch: (input, init) =>
+            fetch(input, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
+        },
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll(list) {
+            list.forEach(({ name, value }) => request.cookies.set(name, value));
+            response = NextResponse.next({ request });
+            list.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options),
+            );
+          },
+        },
+      });
+    } catch {
+      // e.g. a malformed URL: same as missing configuration.
+      supabase = null;
+    }
+  }
+
+  if (!supabase) {
+    if (!warned) {
+      warned = true;
+      const missing = [!supabaseUrl() && "url", !supabasePublicKey() && "publicKey"].filter(Boolean);
+      console.error(
+        `[middleware] Supabase configuration missing or invalid: ${missing.join(", ") || "unusable value"}`,
+      );
+    }
+    return applyDecision(
+      request,
+      decideAccess({ path, configPresent: false, user: null, authError: false }),
+      response,
+    );
+  }
+
+  let user: { id: string } | null = null;
+  let authError = false;
+  try {
+    const res = await supabase.auth.getUser();
+    user = res.data.user;
+  } catch {
+    // Network failure or Supabase down: signed-out rules, cookies untouched.
+    authError = true;
+  }
+
+  const decision = decideAccess({ path, configPresent: true, user, authError });
+  if (decision.kind !== "continue" || !user) {
+    return applyDecision(request, decision, response);
+  }
+
   const isPublic = isPublicPath(path);
   const isAuthPage = AUTH_PAGES.includes(path);
   const isInvite = path.startsWith("/invite/");
-
-  if (!user) {
-    if (path === "/") return redirectTo(request, "/bienvenida", response);
-    if (isInvite) {
-      return redirectTo(request, "/login", response, nextQuery(safeNextPath(path)));
-    }
-    if (isPublic) return response;
-    return redirectTo(request, "/login", response, nextQuery(safeNextPath(path)));
-  }
 
   // Signed in: public pages other than the auth pages and invites need no profile.
   if (isPublic && !isAuthPage && !isInvite) return response;
