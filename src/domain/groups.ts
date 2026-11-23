@@ -24,9 +24,38 @@ export function isLocalDate(v: unknown): v is string {
   return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
 }
 
-/** The shape of an invitation code: URL-safe, long enough to carry at least 100 bits. Checked before any database call. */
+/** Invitation codes: 8 characters, no 0, 1, I or O. Canonical form is upper case with no separator. */
+export const INVITE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
+const CANONICAL = /^[2-9A-HJ-NP-Z]{8}$/
+const ASCII_CODE = /^[2-9A-HJ-NP-Za-hj-np-z]{8}$/
+
+/** The canonical shape only. Checked before any database call. */
 export function isInviteCodeShape(v: unknown): v is string {
-  return typeof v === 'string' && /^[0-9a-f]{32}$/.test(v)
+  return typeof v === 'string' && CANONICAL.test(v)
+}
+
+/**
+ * What a person may type or paste -> the canonical code, or null. Exactly the database's `groups_normalize_code`: longer than
+ * 64 characters is invalid at once; every whitespace character and at most one hyphen are removed; the rest must be 8 ASCII
+ * characters of the alphabet in either case (checked BEFORE upper-casing, so a ligature or full-width letters never become
+ * letters); then upper-case.
+ */
+export function normalizeInviteCode(v: unknown): string | null {
+  if (typeof v !== 'string' || v.length > 64) return null
+  const noSpace = v.replace(/\s/g, '')
+  if (noSpace.split('-').length > 2) return null
+  const joined = noSpace.replace('-', '')
+  return ASCII_CODE.test(joined) ? joined.toUpperCase() : null
+}
+
+/** "K7QM4PXD" -> "K7QM-4PXD" (how people see and say it). */
+export function formatInviteCode(code: string): string {
+  return isInviteCodeShape(code) ? `${code.slice(0, 4)}-${code.slice(4)}` : code
+}
+
+/** The public path of an invitation: "/g/K7QM4PXD". */
+export function inviteUrlPath(code: string): string {
+  return `/g/${code}`
 }
 
 /** Length in characters as a person counts them (an emoji is one). */

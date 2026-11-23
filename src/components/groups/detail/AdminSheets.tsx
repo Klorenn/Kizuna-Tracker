@@ -10,6 +10,7 @@ import { Check, Minus, Plus } from "@phosphor-icons/react";
 import { useState, type FormEvent } from "react";
 import { ColorPicker } from "@/components/ColorPicker";
 import { IconPicker } from "@/components/IconPicker";
+import { formatInviteCode } from "@/domain/groups";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
@@ -27,18 +28,21 @@ import { ErrorLine, Mono } from "./parts";
 
 /* --------------------------------- invitation --------------------------------- */
 
-export type InviteState = { status: "pending" } | { status: "ready"; url: string } | { status: "error"; error: string };
+export type InviteState = { status: "pending" } | { status: "ready"; url: string; code: string } | { status: "error"; error: string };
 
 export function InviteView({
   state,
   copy,
+  copied = "link",
   onRetry,
   onCopy,
 }: {
   state: InviteState;
   copy: CopyOutcome | "idle";
+  /** What the last copy was, for the button that says "copiado". */
+  copied?: "link" | "code";
   onRetry: () => void;
-  onCopy: (url: string) => void;
+  onCopy: (text: string, what: "link" | "code") => void;
 }) {
   if (state.status === "pending")
     return (
@@ -68,14 +72,33 @@ export function InviteView({
         onFocus={(e) => e.currentTarget.select()}
         className="font-mono"
       />
-      <Button onClick={() => onCopy(state.url)} aria-live="polite">
-        {copy === "copied" ? (
+      <Button onClick={() => onCopy(state.url, "link")} aria-live="polite">
+        {copy === "copied" && copied === "link" ? (
           <>
             <Check size={20} weight="light" aria-hidden />
             Enlace copiado
           </>
         ) : (
           "Copiar enlace"
+        )}
+      </Button>
+      <p className="text-body text-muted">O comparte el código: se escribe en «Tengo un enlace».</p>
+      <Input
+        label="Código de invitación"
+        name="invite-code"
+        value={formatInviteCode(state.code)}
+        readOnly
+        onFocus={(e) => e.currentTarget.select()}
+        className="font-mono"
+      />
+      <Button variant="secondary" onClick={() => onCopy(formatInviteCode(state.code), "code")} aria-live="polite">
+        {copy === "copied" && copied === "code" ? (
+          <>
+            <Check size={20} weight="light" aria-hidden />
+            Código copiado
+          </>
+        ) : (
+          "Copiar código"
         )}
       </Button>
       {copy === "unavailable" ? (

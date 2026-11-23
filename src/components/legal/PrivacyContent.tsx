@@ -21,8 +21,16 @@ const SECTIONS: LegalSection[] = [
       body: [
         "Cada hábito tiene una visibilidad: Solo yo, Amigos o Público.",
         "Solo yo: nadie más ve el hábito ni sus fotos. Amigos: tus amigos ven tu racha y tus fotos. Público: tu racha aparece en tu perfil público.",
-        "Las fotos nunca son públicas. Solo las ven tus amigos, y solo las de hábitos que no sean Solo yo. En un reto, la otra persona ve las fotos del hábito del reto.",
+        "Las fotos nunca son públicas. Fuera de un grupo, solo las ven tus amigos, y solo las de hábitos que no sean Solo yo. En un reto, la otra persona ve las fotos del hábito del reto.",
         "Tus retos y deudas los ven las personas que participan en ellos.",
+      ],
+    },
+    {
+      title: "Grupos",
+      body: [
+        "Los miembros de un grupo al que te unes ven tu nombre, tu @usuario y tu avatar, y los registros y las fotos del único hábito que vinculas a ese grupo. No ven tus otros hábitos ni ningún otro dato tuyo. Pueden ser personas que no son tus amigos.",
+        "Lo ven desde el día en que te unes: lo anterior a ese día sigue siendo privado, aunque vincules un hábito que ya tenías. Al salir del grupo, o si te sacan, los demás dejan de ver tus registros y fotos de inmediato. Tu nombre y tu resultado en las semanas que ya se cerraron quedan en el historial del grupo.",
+        "Los grupos son solo por invitación: solo se entra con un enlace de invitación y no aparecen en ninguna lista ni en la búsqueda.",
       ],
     },
     {
@@ -76,5 +84,5 @@ const SECTIONS: LegalSection[] = [
 
 /** Legal text without page chrome: shared by /legal/privacidad and the in-app sheet. */
 export function PrivacyContent() {
-  return <LegalBody updated="22 de noviembre de 2026" sections={SECTIONS} />;
+  return <LegalBody updated="23 de noviembre de 2026" sections={SECTIONS} />;
 }

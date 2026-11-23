@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { avatarUrl } from "@/lib/avatar";
 import { ChallengeCard, type ChallengeCardData } from "@/components/ChallengeCard";
+import { RetosGruposSwitch } from "@/components/groups/RetosGruposSwitch";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -213,6 +214,7 @@ export default async function RetosPage() {
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-1">
+      <RetosGruposSwitch current="retos" />
       <div className="flex h-11 items-start justify-end pt-1">
         <Link
           href="/retos/nuevo"

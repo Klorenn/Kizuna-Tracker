@@ -1,9 +1,10 @@
 import type { GroupCommitment, GroupWallCursor } from '@/lib/groups-contract'
+import type { Database } from '@/lib/supabase/database.types'
 
 /**
- * The single seam over the Grupos RPCs (migration 0023). The generated Supabase types do not know these
- * functions yet, so the rows are typed by hand here and nothing else in the app calls `supabase.rpc` for
- * groups. When the generated types arrive, only this file changes.
+ * The single seam over the Grupos RPCs (migrations 0023 and 0024, generated types). Nothing else in the app calls `supabase.rpc` for groups. The function names and argument names are
+ * checked against the generated types; the rows are those types with the nullability the database really has
+ * (the generator marks every column non-null) and `role` narrowed.
  *
  * Every function returns the raw `{ data, error }` untouched: mapping rows and errors is the caller's job.
  */
@@ -11,13 +12,63 @@ import type { GroupCommitment, GroupWallCursor } from '@/lib/groups-contract'
 export type RpcError = { message: string; code?: string; details?: string; hint?: string }
 export type RpcAnswer<T> = { data: T | null; error: RpcError | null }
 
-/** Any Supabase client (the caller's session, or the service role in the cron route only). */
+/** Any Supabase client (the caller's session, or the service role in the cron route and the invitation module only). */
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type GroupsClient = { rpc: (...args: any[]) => unknown }
 
+type Fns = Database['public']['Functions']
+type Row<F extends keyof Fns> = Fns[F]['Returns'] extends (infer R)[] ? R : never
+type Nullable<T, K extends keyof T> = Omit<T, K> & { [P in K]: T[P] | null }
+
+export type GroupRoleValue = 'admin' | 'member'
+
+export type MyGroupRow = Omit<Row<'my_groups'>, 'role'> & { role: GroupRoleValue }
+
+export type GroupDetailRow = Nullable<
+  Omit<Row<'group_detail'>, 'my_role'> & { my_role: GroupRoleValue },
+  | 'description'
+  | 'archived_at'
+  | 'next_commitment_name'
+  | 'next_commitment_icon'
+  | 'next_target_per_week'
+  | 'next_requires_photo'
+  | 'next_effective_from'
+>
+
+export type GroupBoardDbRow = Nullable<Omit<Row<'group_board'>, 'role'> & { role: GroupRoleValue }, 'avatar_path' | 'avatar_preset'>
+export type GroupWallDbRow = Nullable<Row<'group_wall'>, 'avatar_path' | 'avatar_preset' | 'photo_path'>
+export type GroupHistoryDbRow = Nullable<Row<'group_history'>, 'my_complied'>
+export type GroupWeekDetailDbRow = Nullable<Row<'group_week_detail'>, 'avatar_path' | 'avatar_preset'>
+
+/** What each read answers; any other function answers what the generated types say. */
+type Answers = {
+  my_groups: MyGroupRow[]
+  group_detail: GroupDetailRow[]
+  group_board: GroupBoardDbRow[]
+  group_wall: GroupWallDbRow[]
+  group_history: GroupHistoryDbRow[]
+  group_week_detail: GroupWeekDetailDbRow[]
+  /** NULL (no exception) for an unknown, malformed, expired, used-up, archived or removed-before code (0024). */
+  join_group: string | null
+  group_invite_preview_for: InvitePreviewForRow | null
+}
+type Answer<F extends keyof Fns> = F extends keyof Answers ? Answers[F] : Fns[F]['Returns']
+/** The generated argument names and types; any argument may be null (the generator marks them all non-null). */
+type ArgsOf<F extends keyof Fns> = Fns[F]['Args'] extends never ? undefined : { [K in keyof Fns[F]['Args']]: Fns[F]['Args'][K] | null }
+
 type Query<T> = PromiseLike<RpcAnswer<T>> & { abortSignal?: (s: AbortSignal) => unknown }
 
-async function call<T>(
+async function call<F extends keyof Fns>(
+  client: GroupsClient,
+  fn: F,
+  args?: ArgsOf<F>,
+  signal?: AbortSignal,
+): Promise<RpcAnswer<Answer<F>>> {
+  return callLoose<Answer<F>>(client, fn, args as Record<string, unknown> | undefined, signal)
+}
+
+/** For the functions the generated types do not know yet. */
+async function callLoose<T>(
   client: GroupsClient,
   fn: string,
   args?: Record<string, unknown>,
@@ -28,98 +79,6 @@ async function call<T>(
   // supabase-js builders abort through `.abortSignal()`; it returns the same builder
   if (signal && typeof query.abortSignal === 'function') query.abortSignal(signal)
   return query
-}
-
-export type GroupRoleValue = 'admin' | 'member'
-
-export type MyGroupRow = {
-  id: string
-  name: string
-  icon: string
-  color: string
-  role: GroupRoleValue
-  member_count: number
-  commitment_name: string
-  commitment_icon: string
-  target_per_week: number
-  requires_photo: boolean
-  my_habit_id: string
-  my_done: number
-  my_counts: boolean
-  complied_count: number
-  counted_count: number
-  streak: number
-  archived: boolean
-}
-
-export type GroupDetailRow = {
-  id: string
-  name: string
-  icon: string
-  color: string
-  description: string | null
-  commitment_name: string
-  commitment_icon: string
-  target_per_week: number
-  requires_photo: boolean
-  next_commitment_name: string | null
-  next_commitment_icon: string | null
-  next_target_per_week: number | null
-  next_requires_photo: boolean | null
-  next_effective_from: string | null
-  /** The brief says "my role"; the column name is not fixed, so the loader accepts `my_role` or `role`. */
-  my_role?: GroupRoleValue
-  role?: GroupRoleValue
-  my_habit_id: string
-  streak: number
-  member_count: number
-  archived?: boolean
-}
-
-type PersonColumns = {
-  user_id: string
-  username: string
-  display_name: string
-  avatar_path: string | null
-  avatar_preset: number | null
-}
-
-export type GroupBoardDbRow = PersonColumns & {
-  role: GroupRoleValue
-  joined_on: string
-  counts: boolean
-  done: number
-  target: number
-}
-
-export type GroupWallDbRow = PersonColumns & {
-  checkin_id: string
-  local_date: string
-  photo_path: string | null
-  created_at: string
-}
-
-export type GroupHistoryDbRow = {
-  week_start: string
-  target_per_week: number
-  requires_photo: boolean
-  members_counted: number
-  members_complied: number
-  my_complied: boolean | null
-}
-
-export type GroupWeekDetailDbRow = PersonColumns & { done: number; target: number; complied: boolean }
-
-export type InvitePreviewDb = {
-  name: string
-  icon: string
-  color: string
-  commitment_name: string
-  commitment_icon: string
-  target_per_week: number
-  requires_photo: boolean
-  member_count: number
-  full: boolean
 }
 
 export type CreateGroupArgs = {
@@ -140,7 +99,7 @@ export type GroupFieldsArgs = { name: string; icon: string; color: string; descr
 // writes ---------------------------------------------------------------------------------------------------------------
 
 export const createGroup = (c: GroupsClient, a: CreateGroupArgs) =>
-  call<string>(c, 'create_group', {
+  call(c, 'create_group', {
     p_name: a.name,
     p_icon: a.icon,
     p_color: a.color,
@@ -153,7 +112,7 @@ export const createGroup = (c: GroupsClient, a: CreateGroupArgs) =>
   })
 
 export const updateGroup = (c: GroupsClient, groupId: string, f: GroupFieldsArgs) =>
-  call<null>(c, 'update_group', {
+  call(c, 'update_group', {
     p_group_id: groupId,
     p_name: f.name,
     p_icon: f.icon,
@@ -163,7 +122,7 @@ export const updateGroup = (c: GroupsClient, groupId: string, f: GroupFieldsArgs
 
 /** Resolves the Monday the change takes effect (a "YYYY-MM-DD" string). */
 export const setGroupCommitment = (c: GroupsClient, groupId: string, k: GroupCommitment) =>
-  call<string>(c, 'set_group_commitment', {
+  call(c, 'set_group_commitment', {
     p_group_id: groupId,
     p_commitment_name: k.name,
     p_commitment_icon: k.icon,
@@ -171,39 +130,35 @@ export const setGroupCommitment = (c: GroupsClient, groupId: string, k: GroupCom
     p_requires_photo: k.requiresPhoto,
   })
 
-export const archiveGroup = (c: GroupsClient, groupId: string) => call<null>(c, 'archive_group', { p_group_id: groupId })
+export const archiveGroup = (c: GroupsClient, groupId: string) => call(c, 'archive_group', { p_group_id: groupId })
 
 export const createGroupInvite = (c: GroupsClient, groupId: string) =>
-  call<string>(c, 'create_group_invite', { p_group_id: groupId })
+  call(c, 'create_group_invite', { p_group_id: groupId })
 
 export const joinGroup = (c: GroupsClient, code: string, habitId: string) =>
-  call<string>(c, 'join_group', { p_code: code, p_habit_id: habitId })
+  call(c, 'join_group', { p_code: code, p_habit_id: habitId })
 
-export const leaveGroup = (c: GroupsClient, groupId: string) => call<null>(c, 'leave_group', { p_group_id: groupId })
+export const leaveGroup = (c: GroupsClient, groupId: string) => call(c, 'leave_group', { p_group_id: groupId })
 
 export const removeGroupMember = (c: GroupsClient, groupId: string, userId: string) =>
-  call<null>(c, 'remove_group_member', { p_group_id: groupId, p_user_id: userId })
+  call(c, 'remove_group_member', { p_group_id: groupId, p_user_id: userId })
 
 export const setGroupAdmin = (c: GroupsClient, groupId: string, userId: string, admin: boolean) =>
-  call<null>(c, 'set_group_admin', { p_group_id: groupId, p_user_id: userId, p_admin: admin })
+  call(c, 'set_group_admin', { p_group_id: groupId, p_user_id: userId, p_admin: admin })
 
 // reads ----------------------------------------------------------------------------------------------------------------
 
-/** Callable by `anon` too. Null for an unknown, expired or used-up code, or an archived group. */
-export const groupInvitePreview = (c: GroupsClient, code: string) =>
-  call<InvitePreviewDb>(c, 'group_invite_preview', { p_code: code })
+export const myGroups = (c: GroupsClient) => call(c, 'my_groups')
 
-export const myGroups = (c: GroupsClient) => call<MyGroupRow[]>(c, 'my_groups')
-
-/** The contract does not say whether `group_detail` returns one row or a one-element set: the loader accepts both. */
+/** `group_detail` returns a set with one row (none for a stranger). */
 export const groupDetail = (c: GroupsClient, groupId: string) =>
-  call<GroupDetailRow[]>(c, 'group_detail', { p_group_id: groupId })
+  call(c, 'group_detail', { p_group_id: groupId })
 
 export const groupBoard = (c: GroupsClient, groupId: string) =>
-  call<GroupBoardDbRow[]>(c, 'group_board', { p_group_id: groupId })
+  call(c, 'group_board', { p_group_id: groupId })
 
 export const groupWall = (c: GroupsClient, groupId: string, cursor: GroupWallCursor | null, limit: number) =>
-  call<GroupWallDbRow[]>(c, 'group_wall', {
+  call(c, 'group_wall', {
     p_group_id: groupId,
     p_before: cursor ? cursor.before : null,
     p_before_id: cursor ? cursor.beforeId : null,
@@ -211,16 +166,16 @@ export const groupWall = (c: GroupsClient, groupId: string, cursor: GroupWallCur
   })
 
 export const groupHistory = (c: GroupsClient, groupId: string, limit: number) =>
-  call<GroupHistoryDbRow[]>(c, 'group_history', { p_group_id: groupId, p_limit: limit })
+  call(c, 'group_history', { p_group_id: groupId, p_limit: limit })
 
 export const groupWeekDetail = (c: GroupsClient, groupId: string, weekStart: string) =>
-  call<GroupWeekDetailDbRow[]>(c, 'group_week_detail', { p_group_id: groupId, p_week_start: weekStart })
+  call(c, 'group_week_detail', { p_group_id: groupId, p_week_start: weekStart })
 
 // cron (service role only) ---------------------------------------------------------------------------------------------
 
 /** Number of weeks closed. Only the cron route calls this, and only with the service role. */
 export const closeDueGroupWeeks = (c: GroupsClient, signal?: AbortSignal) =>
-  call<number>(c, 'close_due_group_weeks', undefined, signal)
+  call(c, 'close_due_group_weeks', undefined, signal)
 
 /** "function ... does not exist": the migration is not in this database yet (PostgREST PGRST202 or Postgres 42883). */
 export function isMissingFunction(error: { message?: string; code?: string } | null | undefined): boolean {
@@ -228,3 +183,28 @@ export function isMissingFunction(error: { message?: string; code?: string } | n
   if (error.code === 'PGRST202' || error.code === '42883') return true
   return /function .* does not exist|could not find the function/i.test(error.message ?? '')
 }
+
+// 0024 (service role only) ---------------------------------------------------------------------------------------------
+
+/** What `group_invite_preview_for` answers (the generated type says Json): the nine preview keys, plus `member` and `group_id` only for an active member. */
+export type InvitePreviewForRow = {
+  name: string
+  icon: string
+  color: string
+  commitment_name: string
+  commitment_icon: string
+  target_per_week: number
+  requires_photo: boolean
+  member_count: number
+  full: boolean
+  member?: boolean
+  group_id?: string
+}
+
+/** The preview of an invitation. Callable ONLY with the service role. `viewer` is the signed-in person's id from the session, never from the request. Null for a code that does not work. */
+export const groupInvitePreviewFor = (c: GroupsClient, code: string, viewer: string | null) =>
+  call(c, 'group_invite_preview_for', { p_code: code, p_viewer: viewer })
+
+/** `true` = blocked. Service role only. `record: false` only checks; `true` also counts this attempt. */
+export const rateLimit = (c: GroupsClient, key: string, limit: number, windowSeconds: number, record: boolean) =>
+  call(c, 'rate_limit', { p_key: key, p_limit: limit, p_window_seconds: windowSeconds, p_record: record })

@@ -21,7 +21,7 @@ import { GroupIconTile, NumText } from "./parts";
  * Props:
  *  - groups: GroupSummary[] | null (null = the read failed)
  *  - canCreate: boolean (false hides "Crear grupo" and says why)
- *  - hrefs: where it links to; defaults to /grupos/nuevo, /grupos/<id>, /grupos/unirse/<code>
+ *  - hrefs: where it links to; defaults to /grupos/nuevo, /grupos/<id>, /g/<code>
  *  - retryHref: LoadFailed's retry link (default /grupos)
  *  - navigate: opens a route from the "Tengo un enlace" sheet (default: router.push)
  * The Retos | Grupos switch is not part of this view: the page places it.
@@ -35,7 +35,7 @@ export type GroupsListHrefs = {
 export const DEFAULT_GROUPS_HREFS: GroupsListHrefs = {
   create: "/grupos/nuevo",
   group: (id) => `/grupos/${id}`,
-  join: (code) => `/grupos/unirse/${code}`,
+  join: (code) => `/g/${code}`,
 };
 
 function GroupCard({ group, href }: { group: GroupSummary; href: string }) {

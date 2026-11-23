@@ -1,9 +1,8 @@
-import { isInviteCodeShape, isLocalDate, isUuid } from '@/domain/groups'
+import { isLocalDate, isUuid } from '@/domain/groups'
 import type {
   GroupBoardRow,
   GroupCommitment,
   GroupDetail,
-  GroupInvitePreview,
   GroupLoaded,
   GroupPerson,
   GroupRole,
@@ -281,25 +280,4 @@ export function loadGroupWeek(
       (o): GroupWeekRow => ({ ...personOf(o), done: num(o, 'done'), target: num(o, 'target'), complied: bool(o, 'complied') }),
     ),
   )
-}
-
-/**
- * The public preview of an invitation (`group_invite_preview`, callable signed out): `GroupInvitePreview`, or `data: null` when the
- * link no longer works (unknown, expired, used up, archived group, or a code with an impossible shape: no call is made then).
- * `ok: false` only when the read itself failed.
- */
-export function loadInvitePreview(code: string, client?: GroupsClient): Promise<GroupLoaded<GroupInvitePreview | null>> {
-  if (!isInviteCodeShape(code)) return Promise.resolve({ ok: true, data: null })
-  return run(client, COPY.invite, (c) => rpc.groupInvitePreview(c, code), (data) => {
-    if (data === null || data === undefined) return null
-    const o = row(data)
-    return {
-      name: str(o, 'name'),
-      icon: str(o, 'icon'),
-      color: str(o, 'color'),
-      commitment: commitmentOf(o),
-      memberCount: num(o, 'member_count'),
-      full: bool(o, 'full'),
-    }
-  })
 }

@@ -22,6 +22,8 @@ const ICONS = {
   photo_rejected: Warning,
   new_debt: Receipt,
   reminder: Bell,
+  group_week_closed: Users,
+  group_member_joined: Users,
 } as const;
 
 type Row = { id: string; type: string; payload: unknown; read_at: string | null; created_at: string };

@@ -4,7 +4,7 @@ import { decideAccess, type AccessDecision } from "./access";
 import type { Database } from "./database.types";
 import { supabasePublicConfig, supabasePublicKey, supabaseUrl } from "./env";
 import { shouldSignOut } from "./profile-gate";
-import { isPublicPath, safeNextPath } from "./public-paths";
+import { isGroupInvitePath, isPublicPath, safeNextPath } from "./public-paths";
 
 /*
  * Time budgets (a hanging Supabase must not become a 504, and a slow one must not log anyone out):
@@ -242,7 +242,7 @@ async function run(
 
   const isPublic = isPublicPath(path);
   const isAuthPage = AUTH_PAGES.includes(path);
-  const isInvite = path.startsWith("/invite/");
+  const isInvite = path.startsWith("/invite/") || isGroupInvitePath(path);
 
   // Signed in: public pages other than the auth pages and invites need no profile.
   if (isPublic && !isAuthPage && !isInvite) return state.response;

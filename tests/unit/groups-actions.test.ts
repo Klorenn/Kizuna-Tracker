@@ -7,9 +7,10 @@ const OTHER = '22222222-2222-4222-8222-222222222222'
 const G = '33333333-3333-4333-8333-333333333333'
 const NEW_HABIT = '55555555-5555-4555-8555-555555555555'
 const OWN_HABIT = '66666666-6666-4666-8666-666666666666'
-const CODE = '0123456789abcdef0123456789abcdef'
+const CODE = 'K7QM4PXD'
 
 const rpc = vi.fn()
+const lookupInvite = vi.fn()
 const createHabit = vi.fn()
 const revalidatePath = vi.fn()
 let log: string[] = []
@@ -62,6 +63,14 @@ vi.mock('@/lib/supabase/admin', () => ({
     return client
   },
 }))
+vi.mock('@/lib/groups-invite-server', () => ({
+  JOIN_LIMIT: { limit: 10, windowSeconds: 3600 },
+  joinInviteKey: (id: string) => `gjoin:user:${id}`,
+  lookupInvite: (...a: unknown[]) => {
+    log.push('lookup')
+    return lookupInvite(...a)
+  },
+}))
 vi.mock('next/cache', () => ({ revalidatePath: (...a: unknown[]) => revalidatePath(...a) }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ host: 'kizuna.test' }) }))
 vi.mock('@/app/(app)/habitos/actions', () => ({
@@ -110,17 +119,18 @@ const PREVIEW = {
   name: 'Gym',
   icon: 'barbell',
   color: 'rosa',
-  commitment_name: 'Ir al gym',
-  commitment_icon: 'barbell',
-  target_per_week: 3,
-  requires_photo: false,
-  member_count: 3,
+  commitment: { name: 'Ir al gym', icon: 'barbell', targetPerWeek: 3, requiresPhoto: false },
+  memberCount: 3,
   full: false,
 }
+const found = (over: Record<string, unknown> = {}, memberGroupId: string | null = null) => ({
+  kind: 'found',
+  data: { preview: { ...PREVIEW, ...over }, memberGroupId },
+})
 
-/** Answers by RPC name (the invitation preview answers a good link unless told otherwise); a missing name answers `{ data: null, error: null }`. */
+/** Answers by RPC name; a missing name answers `{ data: null, error: null }`. */
 function answers(map: Record<string, Result | ((args: unknown) => Result)>) {
-  const all: Record<string, Result | ((args: unknown) => Result)> = { group_invite_preview: { data: PREVIEW }, ...map }
+  const all: Record<string, Result | ((args: unknown) => Result)> = { ...map }
   rpc.mockImplementation(async (name: string, args: unknown) => {
     const a = all[name]
     if (!a) return { data: null, error: null }
@@ -131,6 +141,8 @@ const revalidated = () => revalidatePath.mock.calls.map((c) => c[0] as string).s
 
 beforeEach(() => {
   rpc.mockReset()
+  lookupInvite.mockReset()
+  lookupInvite.mockResolvedValue(found())
   createHabit.mockReset()
   createHabit.mockResolvedValue({ ok: true, id: NEW_HABIT })
   revalidatePath.mockReset()
@@ -413,26 +425,16 @@ describe('join', () => {
   it('"Crear": habit first, then join_group with the code and that habit', async () => {
     answers({ join_group: { data: G } })
     await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: true, data: { id: G } })
-    expect(log).toEqual(['requireUser', 'rpc:group_invite_preview', 'createHabit', 'rpc:join_group'])
+    expect(log).toEqual(['requireUser', 'lookup', 'createHabit', 'rpc:join_group'])
+    // the lookup is counted per person (10 per hour) and the viewer is the session's, never the request's
+    expect(lookupInvite).toHaveBeenCalledWith(expect.objectContaining({ code: CODE, viewerId: ME, key: `gjoin:user:${ME}`, limit: 10, windowSeconds: 3600 }))
     expect(rpc).toHaveBeenCalledWith('join_group', { p_code: CODE, p_habit_id: NEW_HABIT })
     expect(revalidated()).toEqual(['/grupos', `/grupos/${G}`])
   })
 
   it('the new habit is built from the commitment the invitation shows (read through the preview), never from the client', async () => {
+    lookupInvite.mockResolvedValue(found({ color: 'salvia', commitment: { name: 'Correr', icon: 'sneaker-move', targetPerWeek: 7, requiresPhoto: true } }))
     answers({
-      group_invite_preview: {
-        data: {
-          name: 'Gym',
-          icon: 'barbell',
-          color: 'salvia',
-          commitment_name: 'Correr',
-          commitment_icon: 'sneaker-move',
-          target_per_week: 7,
-          requires_photo: true,
-          member_count: 3,
-          full: false,
-        },
-      },
       join_group: { data: G },
     })
     await actions.join(CODE, { kind: 'create' })
@@ -441,27 +443,54 @@ describe('join', () => {
     )
   })
 
+  it.each(['k7qm4pxd', 'K7QM-4PXD', ' k7qm 4pxd '])('a code typed as %j is normalised before the database sees it', async (typed) => {
+    answers({ join_group: { data: G } })
+    await actions.join(typed, { kind: 'habit', habitId: OWN_HABIT })
+    expect(rpc).toHaveBeenCalledWith('join_group', { p_code: CODE, p_habit_id: OWN_HABIT })
+  })
+
   it('a link that no longer works stops before creating a habit', async () => {
-    answers({ group_invite_preview: { data: null, error: null } })
+    lookupInvite.mockResolvedValue({ kind: 'gone' })
     await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Este enlace ya no sirve. Pide uno nuevo.' })
     expect(createHabit).not.toHaveBeenCalled()
   })
 
   it('a full group stops before creating a habit', async () => {
-    answers({
-      group_invite_preview: {
-        data: { name: 'G', icon: 'barbell', color: 'rosa', commitment_name: 'x', commitment_icon: 'barbell', target_per_week: 3, requires_photo: false, member_count: 50, full: true },
-      },
-    })
+    lookupInvite.mockResolvedValue(found({ memberCount: 50, full: true }))
     await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Este grupo está completo.' })
     expect(createHabit).not.toHaveBeenCalled()
   })
 
   it('if the preview cannot be read, it fails without creating a habit', async () => {
-    answers({ group_invite_preview: { data: null, error: { message: 'timeout' } } })
-    const r = await actions.join(CODE, { kind: 'create' })
-    expect(r.ok).toBe(false)
+    lookupInvite.mockResolvedValue({ kind: 'failed' })
+    await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: GENERIC })
     expect(createHabit).not.toHaveBeenCalled()
+  })
+
+  it('over the attempt limit: the limiter copy, and no habit is created', async () => {
+    lookupInvite.mockResolvedValue({ kind: 'blocked' })
+    await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Demasiados intentos. Prueba de nuevo en unos minutos.' })
+    expect(createHabit).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('the person is already a member (the database says so): that copy, no habit, no join', async () => {
+    lookupInvite.mockResolvedValue(found({}, G))
+    await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Ya eres parte de este grupo.' })
+    expect(createHabit).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('join_group answers NULL (no exception): the link no longer works', async () => {
+    answers({ join_group: { data: null, error: null }, my_groups: { data: [] } })
+    await expect(actions.join(CODE, { kind: 'habit', habitId: OWN_HABIT })).resolves.toEqual({ ok: false, error: 'Este enlace ya no sirve. Pide uno nuevo.' })
+    expect(log).not.toContain('habits.delete')
+  })
+
+  it('join_group answers NULL after "Crear": the same copy, and the habit this call made is cleaned up', async () => {
+    answers({ join_group: { data: null, error: null }, my_groups: { data: [] } })
+    await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Este enlace ya no sirve. Pide uno nuevo.' })
+    expect(log).toContain('habits.delete')
   })
 
   it('with a chosen habit: no preview, no creation, Hoy revalidated once', async () => {
@@ -487,6 +516,7 @@ describe('join', () => {
   it.each([
     ['invite_not_found', 'Este enlace ya no sirve. Pide uno nuevo.'],
     ['invite_expired', 'Este enlace ya no sirve. Pide uno nuevo.'],
+    ['too_many_attempts', 'Demasiados intentos. Prueba de nuevo en unos minutos.'],
     ['group_full', 'Este grupo está completo.'],
     ['group_limit', 'Ya estás en 10 grupos. Sal de uno para entrar a otro.'],
     ['already_member', 'Ya eres parte de este grupo.'],
@@ -620,17 +650,22 @@ describe('createInvite', () => {
     answers({ create_group_invite: { data: CODE } })
     await expect(actions.createInvite(G)).resolves.toEqual({
       ok: true,
-      data: { code: CODE, url: `https://kizuna.example/grupos/unirse/${CODE}` },
+      data: { code: CODE, url: `https://kizuna.example/g/${CODE}` },
     })
     expect(rpc).toHaveBeenCalledWith('create_group_invite', { p_group_id: G })
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it.each(['k7qm4pxd', 'K7QM-4PXD', ' K7QM4PXD', 'K7QM4PXDD'])('what the database returns is never repaired: %j is a failure', async (returned) => {
+    answers({ create_group_invite: { data: returned } })
+    await expect(actions.createInvite(G)).resolves.toEqual({ ok: false, error: GENERIC })
   })
 
   it('falls back to the request host when no site URL is configured', async () => {
     vi.stubEnv('NEXT_PUBLIC_SITE_URL', '')
     answers({ create_group_invite: { data: CODE } })
     const r = await actions.createInvite(G)
-    expect(r).toEqual({ ok: true, data: { code: CODE, url: `https://kizuna.test/grupos/unirse/${CODE}` } })
+    expect(r).toEqual({ ok: true, data: { code: CODE, url: `https://kizuna.test/g/${CODE}` } })
   })
 
   it('a code of the wrong shape or no code is a failure (nothing is put in a URL)', async () => {
@@ -659,10 +694,10 @@ describe('createInvite', () => {
 // membership -----------------------------------------------------------------------------------------------------------
 
 describe('leave', () => {
-  it('leaves and revalidates the group, the list and Hoy (the chip goes away)', async () => {
+  it('leaves and revalidates the list and Hoy (the chip goes away), but not the page the leaver is on (no 404 flash)', async () => {
     await expect(actions.leave(G)).resolves.toEqual({ ok: true, data: undefined })
     expect(rpc).toHaveBeenCalledWith('leave_group', { p_group_id: G })
-    expect(revalidated()).toEqual(['/', '/grupos', `/grupos/${G}`])
+    expect(revalidated()).toEqual(['/', '/grupos'])
   })
   it('maps last_admin and validates', async () => {
     answers({ leave_group: { data: null, error: { message: 'last_admin' } } })

@@ -9,7 +9,6 @@ const data = await import('@/lib/groups-data')
 const G = '11111111-1111-4111-8111-111111111111'
 const H = '33333333-3333-4333-8333-333333333333'
 const U = '22222222-2222-4222-8222-222222222222'
-const CODE = '0123456789abcdef0123456789abcdef'
 
 beforeEach(() => {
   rpc.mockReset()
@@ -401,61 +400,5 @@ describe('loadGroupWeek', () => {
     expect(await data.loadGroupWeek(G, '2026-11-16')).toMatchObject({ ok: false, notFound: true })
     rpc.mockResolvedValue({ data: null, error: { message: 'x' } })
     expect(await data.loadGroupWeek(G, '2026-11-16')).toMatchObject({ ok: false, error: 'No pudimos cargar esa semana. Inténtalo de nuevo.' })
-  })
-})
-
-describe('loadInvitePreview', () => {
-  const preview = (over: Record<string, unknown> = {}) => ({
-    name: 'Gym',
-    icon: 'barbell',
-    color: 'indigo',
-    commitment_name: 'Ir al gym',
-    commitment_icon: 'barbell',
-    target_per_week: 3,
-    requires_photo: true,
-    member_count: 12,
-    full: false,
-    ...over,
-  })
-
-  it('maps the preview', async () => {
-    rpc.mockResolvedValue({ data: preview(), error: null })
-    const r = await data.loadInvitePreview(CODE)
-    expect(rpc).toHaveBeenCalledWith('group_invite_preview', { p_code: CODE })
-    expect(r).toEqual({
-      ok: true,
-      data: {
-        name: 'Gym',
-        icon: 'barbell',
-        color: 'indigo',
-        commitment: { name: 'Ir al gym', icon: 'barbell', targetPerWeek: 3, requiresPhoto: true },
-        memberCount: 12,
-        full: false,
-      },
-    })
-  })
-
-  it('a code the database does not know (null) is ok with null data: the link no longer works', async () => {
-    rpc.mockResolvedValue({ data: null, error: null })
-    expect(await data.loadInvitePreview(CODE)).toEqual({ ok: true, data: null })
-  })
-
-  it('a code with the wrong shape never reaches the database', async () => {
-    for (const code of ['', 'short', 'has spaces in it and more', "'; drop table--------", 'x'.repeat(200)]) {
-      expect(await data.loadInvitePreview(code)).toEqual({ ok: true, data: null })
-    }
-    expect(rpc).not.toHaveBeenCalled()
-  })
-
-  it('a failed call is an error state, not "the link is gone"', async () => {
-    rpc.mockResolvedValue({ data: null, error: { message: 'timeout' } })
-    expect(await data.loadInvitePreview(CODE)).toEqual({ ok: false, error: 'No pudimos cargar la invitación. Inténtalo de nuevo.' })
-    rpc.mockRejectedValue(new Error('network'))
-    expect((await data.loadInvitePreview(CODE)).ok).toBe(false)
-  })
-
-  it('a malformed preview is an error state', async () => {
-    rpc.mockResolvedValue({ data: preview({ full: 'no' }), error: null })
-    expect((await data.loadInvitePreview(CODE)).ok).toBe(false)
   })
 })
