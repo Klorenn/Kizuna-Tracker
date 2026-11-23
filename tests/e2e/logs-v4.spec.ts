@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient, type SupabaseClient } from "@supabase/supabase-js";
 import { expect, test, type Page } from "@playwright/test";
-import { logIn, PASSWORD, randomHandle } from "./helpers";
+import { logIn, PASSWORD, randomHandle, expectNotFound } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1)");
 
@@ -134,8 +134,7 @@ test("Resumen shows the v4 cards and each opens its drill-down", async ({ page }
   await expect(page.getByRole("img", { name: /^Promedio por día y por mes, en vasos:/ })).toBeVisible();
 
   // not a quantity habit of this user -> 404
-  const bad = await page.goto(`/resumen/cantidad/${ids.estudiar}`);
-  expect(bad?.status()).toBe(404);
+  await expectNotFound(page, `/resumen/cantidad/${ids.estudiar}`);
 });
 
 test("the calendar day sheet shows time, distance and water with their sums", async ({ page }) => {

@@ -143,7 +143,7 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   const lock = "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
   // the form alert itself says why (never "La meta debe ser mayor que 0.")
-  const alert = page.getByRole("alert").filter({ hasText: lock });
+  const alert = page.getByRole("alert").filter({ hasText: lock }).last();
   await expect(alert).toBeVisible();
   await expect(page.getByText("La meta debe ser mayor que 0.")).toHaveCount(0);
   await expect(page).toHaveURL(/\/editar$/);

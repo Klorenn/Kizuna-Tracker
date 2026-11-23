@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test } from "@playwright/test";
 import { monthTitle, shiftMonth } from "../../src/domain/calendar";
-import { logIn, PASSWORD, randomHandle, SEED_PASSWORD, signUp } from "./helpers";
+import { logIn, PASSWORD, randomHandle, SEED_PASSWORD, signUp, expectNotFound } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase seeded with supabase/seed.sql (E2E_SUPABASE=1)");
 
@@ -185,10 +185,8 @@ test("a user sees REGISTROS, the drill-downs, the calendar log and PROGRESO with
   await expect(page.getByRole("link", { name: /Sentadilla.*Mejor 80 kg/ })).toBeVisible();
 
   // unknown group / foreign exercise -> 404
-  const bad = await page.goto("/resumen/gimnasio/cardio");
-  expect(bad?.status()).toBe(404);
-  const foreignRes = await page.goto(`/resumen/ejercicio/${foreign!.id}`);
-  expect(foreignRes?.status()).toBe(404);
+  await expectNotFound(page, "/resumen/gimnasio/cardio");
+  await expectNotFound(page, `/resumen/ejercicio/${foreign!.id}`);
 
   // edit today's workout from the calendar link: Extensión 30 -> 32,5, saved, and the leg group
   // progress (+40 kg) does not change
