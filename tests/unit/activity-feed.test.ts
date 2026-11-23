@@ -1,80 +1,78 @@
 import { describe, expect, test, vi } from 'vitest'
-import { args, fakeSupabase } from './support/fake-supabase'
+import { F1, FIXTURE, ME, NOW, feedClient } from './support/feed-fixture'
 
 vi.mock('server-only', () => ({}))
 const { loadFeedPage } = await import('@/lib/activity-feed')
 
-const ME = '11111111-1111-4111-8111-111111111111'
-const FRIEND = '22222222-2222-4222-8222-222222222222'
-const ROW = {
-  id: '33333333-3333-4333-8333-333333333333',
-  user_id: FRIEND,
-  habit_id: 'h1',
-  local_date: '2026-11-21',
-  created_at: '2026-11-21T10:00:00.000Z',
-  photo_path: null,
-  rejected_at: null,
-  rejected_by: null,
-  habits: { name: 'Correr', color: 'sage', frequency_type: 'daily', target_per_week: null },
+async function run(opts: Partial<Parameters<typeof loadFeedPage>[2]> = {}, db = FIXTURE) {
+  const f = feedClient(db)
+  const page = await loadFeedPage(f.client, ME, { now: NOW, ...opts, timezone: 'UTC' })
+  const feed = f.rpcCalls.find((c) => c.name === 'friend_feed')!
+  return { page, feed, ...f }
 }
 
-async function run(opts: Partial<Parameters<typeof loadFeedPage>[2]>, rows: unknown[] = [ROW]) {
-  const f = fakeSupabase((q) => {
-    // the feed query is the one that selects rejected_by
-    const select = String(q.calls.find((c) => c.method === 'select')?.args[0] ?? '')
-    return { data: q.table === 'checkins' && select.includes('rejected_by') ? rows : [] }
-  })
-  const page = await loadFeedPage(f.client, ME, { now: new Date('2026-11-22T12:00:00Z'), ...opts, timezone: 'UTC' })
-  const main = f.queries.find((q) => q.table === 'checkins')!
-  return { page, main }
-}
-
-describe('loadFeedPage: rejected check-ins', () => {
-  test('feed (no owner): only mine-rejected or non-rejected rows', async () => {
-    const { main } = await run({})
-    expect(args(main, 'neq')).toEqual([['user_id', ME]])
-    expect(args(main, 'or')).toEqual([[`and(or(rejected_at.is.null,rejected_by.eq.${ME}))`]])
+describe('loadFeedPage: one friend_feed call carries visibility, rejected rule and keyset', () => {
+  test('feed (no owner): no owner argument, visibility stays in the database', async () => {
+    const { feed } = await run()
+    expect(feed.params.p_owner).toBeUndefined()
+    expect(feed.params.p_photos_only).toBe(false)
   })
 
-  test("a friend's profile (owner = friend) applies the same rule", async () => {
-    const { main } = await run({ owner: FRIEND })
-    expect(args(main, 'eq')).toEqual([['user_id', FRIEND]])
-    expect(args(main, 'or')).toEqual([[`and(or(rejected_at.is.null,rejected_by.eq.${ME}))`]])
+  test("a friend's profile (owner = friend) passes the owner", async () => {
+    const { feed } = await run({ owner: F1 })
+    expect(feed.params.p_owner).toBe(F1)
   })
 
-  test('the owner viewing their own check-ins sees every row (no rejected filter)', async () => {
-    const { main } = await run({ owner: ME })
-    expect(args(main, 'or')).toEqual([])
-  })
-})
-
-describe('loadFeedPage: cursor and paging', () => {
-  test('cursor adds the strict keyset condition next to the rejected one', async () => {
-    const cursor = { day: '2026-11-21', at: '2026-11-21T10:00:00.000Z', id: ROW.id }
-    const { main } = await run({ cursor })
-    const [[expr]] = args(main, 'or') as [[string]]
-    expect(expr).toContain('and(or(rejected_at.is.null')
-    expect(expr).toContain(`local_date.lt.${cursor.day}`)
-    expect(expr).toContain(`id.lt.${cursor.id}`)
+  test('the viewer own check-ins pass the owner too (the database lets them see every row)', async () => {
+    const { feed } = await run({ owner: ME })
+    expect(feed.params.p_owner).toBe(ME)
   })
 
-  test('orders newest first and asks for limit + 1 to know if there is more', async () => {
-    const { main } = await run({ limit: 5 })
-    expect(args(main, 'order').map((a) => a[0])).toEqual(['local_date', 'created_at', 'id'])
-    expect(args(main, 'limit')).toEqual([[6]])
+  test('cursor is passed as the strict keyset condition', async () => {
+    const cursor = { day: '2026-11-21', at: '2026-11-21T10:00:00.000Z', id: '00000000-0000-4000-8000-000000000009' }
+    const { feed } = await run({ cursor })
+    expect(feed.params).toMatchObject({ p_cursor_day: cursor.day, p_cursor_at: cursor.at, p_cursor_id: cursor.id })
   })
 
-  test('photos filter requires a photo path', async () => {
-    const { main } = await run({ filter: 'photos' })
-    expect(args(main, 'not')).toEqual([['photo_path', 'is', null]])
+  test('asks for limit (the database returns one extra row to know if there is more)', async () => {
+    const { feed } = await run({ limit: 5 })
+    expect(feed.params.p_limit).toBe(5)
+  })
+
+  test('photos filter is passed on', async () => {
+    const { feed } = await run({ filter: 'photos' })
+    expect(feed.params.p_photos_only).toBe(true)
   })
 
   test('returns next cursor only when there is a row beyond the limit', async () => {
-    const second = { ...ROW, id: '44444444-4444-4444-8444-444444444444', created_at: '2026-11-21T09:00:00.000Z' }
-    const { page } = await run({ limit: 1 }, [ROW, second])
+    const { page } = await run({ limit: 1 })
     expect(page.items).toHaveLength(1)
-    expect(page.next).toEqual({ day: ROW.local_date, at: ROW.created_at, id: ROW.id })
-    const last = await run({ limit: 2 }, [ROW, second])
+    expect(page.next).toEqual({ day: page.items[0].cursor.day, at: page.items[0].cursor.at, id: page.items[0].id })
+    const last = await run({ limit: 7 })
     expect(last.page.next).toBeNull()
+  })
+
+  test('a failing read throws (the page shows the feed error state)', async () => {
+    const bad = {
+      rpc: () => ({ then: (r: (v: unknown) => unknown) => Promise.resolve({ data: null, error: { message: 'boom' } }).then(r) }),
+    } as never
+    await expect(loadFeedPage(bad, ME, { timezone: 'UTC', now: NOW })).rejects.toThrow('boom')
+  })
+})
+
+describe('loadFeedPage: round trips', () => {
+  test('the main read, then everything else in one parallel batch (two levels, not four)', async () => {
+    const { trips } = await run()
+    expect(trips[0]).toBe('rpc:friend_feed')
+    // no table read of the checkins feed, no per-habit or follow-up serial query
+    expect(trips.filter((t) => t === 'checkins')).toEqual([])
+    expect(trips.slice(1).sort()).toEqual(['challenges', 'checkin_items', 'habit_items', 'public_profiles', 'rpc:checkin_dates'].sort())
+  })
+
+  test('the streak history is one checkin_dates call for the habits on the page', async () => {
+    const { rpcCalls } = await run()
+    const dates = rpcCalls.filter((c) => c.name === 'checkin_dates')
+    expect(dates).toHaveLength(1)
+    expect((dates[0].params.p_habit_ids as string[]).sort()).toEqual(['h-gone', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
   })
 })
