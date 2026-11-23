@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
-import { parseTypedAmount, resolveTarget } from "@/lib/quantity-queue";
+import { parseTypedAmount, parseTypedAmountResult, resolveTarget } from "@/lib/quantity-queue";
 import {
   MAX_QUANTITY_LABEL,
   validateQuantityConfig,
@@ -91,9 +91,11 @@ export function QuantityFields({
 
   const checked = validateQuantityConfig(value);
   const typedTarget = parseTypedAmount(target, value);
+  const targetParse = parseTypedAmountResult(target, value);
+  const stepParse = parseTypedAmountResult(step, value);
   const belowLock = locked && typedTarget !== null && typedTarget < minTarget;
-  const targetError = belowLock ? (lockedReason ?? null) : !checked.ok && /meta debe|meta no/i.test(checked.error) ? checked.error : null;
-  const stepError = !checked.ok && /suma rápida/i.test(checked.error) ? checked.error : null;
+  const targetError = belowLock ? (lockedReason ?? null) : !targetParse.ok ? targetParse.error : !checked.ok && /meta debe|meta no/i.test(checked.error) ? checked.error : null;
+  const stepError = !stepParse.ok ? stepParse.error : !checked.ok && /suma rápida/i.test(checked.error) ? checked.error : null;
   const glassError = !checked.ok && /vaso/i.test(checked.error) && value.display === "glasses" ? checked.error : null;
   const labelError = !checked.ok && /unidad/i.test(checked.error) && value.unit === "custom" ? checked.error : null;
 

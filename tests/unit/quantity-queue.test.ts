@@ -6,6 +6,8 @@ import {
   goalMet,
   newEntryId,
   parseTypedAmount,
+  parseTypedAmountResult,
+  doneAfterSync,
   resetSharedQuantityQueue,
   resolveTarget,
   sharedQuantityQueue,
@@ -242,14 +244,31 @@ describe('retry', () => {
     expect(q.pending()).toEqual([])
   })
 
-  it('does not send an id that is already in flight', async () => {
-    const send = vi.fn<Send>(never)
+  it('never sends the same entry id twice at the same time (add backlog, retry timer, flush)', async () => {
+    const active = new Map<string, number>()
+    let maxConcurrent = 0
+    let q1Sends = 0
+    const send = vi.fn<Send>(async (_h, id) => {
+      if (id === 'q1') q1Sends += 1
+      const first = id === 'q1' && q1Sends === 1
+      active.set(id, (active.get(id) ?? 0) + 1)
+      maxConcurrent = Math.max(maxConcurrent, active.get(id)!)
+      await new Promise((r) => setTimeout(r, 1500))
+      active.set(id, active.get(id)! - 1)
+      return first ? NET : OK(1000)
+    })
     const q = createQuantityQueue(send, ids)
-    q.add('h1', 250)
+    q.add('h1', 250) // q1: slow, then a network failure
+    q.add('h1', 250) // q2 while q1 is in flight: the add backlog must skip q1
     q.add('h1', 250)
     void q.flush()
-    await vi.advanceTimersByTimeAsync(0)
-    expect(send).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(1500) // q1 fails, retry timer armed for 1 s
+    await vi.advanceTimersByTimeAsync(1000) // timer flushes: q1 is idle, q2/q3 are done or in flight
+    q.add('h1', 250)
+    void q.flush()
+    await vi.advanceTimersByTimeAsync(10000)
+    expect(maxConcurrent).toBe(1)
+    expect(q.pending()).toEqual([])
   })
 
   it('flushes on online and when the page becomes visible', () => {
@@ -325,32 +344,94 @@ const cfg = (over: Partial<QuantityConfig>): QuantityConfig => ({
   ...over,
 })
 
-describe('parseTypedAmount', () => {
-  it('reads "." as thousands for whole-number units', () => {
-    expect(parseTypedAmount('1.250', cfg({}))).toBe(1250)
-    expect(parseTypedAmount('12.500', cfg({ unit: 'steps' }))).toBe(12500)
-    expect(parseTypedAmount('1.250.000', cfg({ unit: 'steps' }))).toBeNull() // over the day limit
-    expect(parseTypedAmount('250', cfg({}))).toBe(250)
+const WHOLE = 'Usa números enteros, por ejemplo 1250.'
+const AMBIGUOUS = '¿Mil o decimal? Escribe 1250 o 1,25.'
+const INVALID = 'Revisa la cantidad.'
+const ok = (amount: number) => ({ ok: true, amount })
+const bad = (error: string) => ({ ok: false, error })
+
+const groups: Record<string, QuantityConfig> = {
+  ml: cfg({}),
+  steps: cfg({ unit: 'steps' }),
+  times: cfg({ unit: 'times', target: 3, step: 1 }),
+  minutes: cfg({ unit: 'minutes', target: 30, step: 10 }),
+  km: cfg({ unit: 'km', target: 5, step: 1 }),
+  custom: cfg({ unit: 'custom', label: 'páginas', target: 100, step: 10 }),
+  glasses: cfg({ display: 'glasses' }),
+}
+const wholeUnits = ['ml', 'steps', 'times', 'minutes']
+const decimalUnits = ['km', 'custom']
+
+describe('parseTypedAmountResult', () => {
+  it.each(wholeUnits)('whole-number unit %s: digits and valid thousands dots only', (u) => {
+    const c = groups[u]
+    expect(parseTypedAmountResult('250', c)).toEqual(ok(250))
+    expect(parseTypedAmountResult('1.250', c)).toEqual(ok(1250))
+    expect(parseTypedAmountResult('12.500', c)).toEqual(ok(12500))
+    expect(parseTypedAmountResult('1.250,0', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('1.5', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('1,5', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('1,250', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('0.500', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('12.50.0', c)).toEqual(bad(INVALID))
+    expect(parseTypedAmountResult('12.50', c)).toEqual(bad(WHOLE))
+    expect(parseTypedAmountResult('1.250.000', c)).toEqual(bad(INVALID)) // over the day limit
   })
-  it('refuses decimals and malformed groups for whole-number units', () => {
-    expect(parseTypedAmount('1.5', cfg({}))).toBeNull()
-    expect(parseTypedAmount('1.25', cfg({}))).toBeNull()
-    expect(parseTypedAmount('1,5', cfg({}))).toBeNull()
-    expect(parseTypedAmount('12.50.0', cfg({}))).toBeNull()
+
+  it.each(decimalUnits)('decimal unit %s: one dot + 1-2 digits is a decimal, 3 digits is ambiguous', (u) => {
+    const c = groups[u]
+    expect(parseTypedAmountResult('5', c)).toEqual(ok(5))
+    expect(parseTypedAmountResult('1.5', c)).toEqual(ok(1.5))
+    expect(parseTypedAmountResult('2.25', c)).toEqual(ok(2.25))
+    expect(parseTypedAmountResult('3.0', c)).toEqual(ok(3))
+    expect(parseTypedAmountResult('10.000', c)).toEqual(bad(AMBIGUOUS))
+    expect(parseTypedAmountResult('2.000', c)).toEqual(bad(AMBIGUOUS))
+    expect(parseTypedAmountResult('1.250', c)).toEqual(bad(AMBIGUOUS))
+    expect(parseTypedAmountResult('0.500', c)).toEqual(bad(AMBIGUOUS))
+    expect(parseTypedAmountResult('1.2500', c)).toEqual(bad(INVALID))
+    expect(parseTypedAmountResult('1.250.000', c)).toEqual(bad(INVALID))
+    expect(parseTypedAmountResult('1.2.5', c)).toEqual(bad(INVALID))
   })
-  it('reads "." as a decimal point for km and custom units (trailing zeros dropped)', () => {
-    expect(parseTypedAmount('1.5', cfg({ unit: 'km' }))).toBe(1.5)
-    expect(parseTypedAmount('1.250', cfg({ unit: 'km' }))).toBe(1.25)
-    expect(parseTypedAmount('1.255', cfg({ unit: 'km' }))).toBeNull()
-    expect(parseTypedAmount('2.5', cfg({ unit: 'custom', label: 'páginas' }))).toBe(2.5)
-    expect(parseTypedAmount('3.0', cfg({ unit: 'km' }))).toBe(3)
+
+  it.each([...decimalUnits, 'glasses'])('%s: a comma is the decimal separator, dots before it are thousands', (u) => {
+    const c = groups[u]
+    const f = (n: number) => (u === 'glasses' ? Math.round(n * 250) : n)
+    expect(parseTypedAmountResult('1,5', c)).toEqual(ok(f(1.5)))
+    expect(parseTypedAmountResult('1,25', c)).toEqual(ok(f(1.25)))
+    expect(parseTypedAmountResult('1,250', c)).toEqual(ok(f(1.25)))
+    expect(parseTypedAmountResult('1,255', c)).toEqual(bad(INVALID))
+    // 1250,5 vasos is over the 100.000 base-unit day limit; the units without a conversion accept it
+    expect(parseTypedAmountResult('1.250,5', c)).toEqual(u === 'glasses' ? bad(INVALID) : ok(1250.5))
+    expect(parseTypedAmountResult('12.50,5', c)).toEqual(bad(INVALID))
+    expect(parseTypedAmountResult('1,5,5', c)).toEqual(bad(INVALID))
   })
-  it('comma is always the decimal separator and dots before it are thousands', () => {
-    expect(parseTypedAmount('1,5', cfg({ unit: 'km' }))).toBe(1.5)
-    expect(parseTypedAmount('1.250,5', cfg({ unit: 'km' }))).toBe(1250.5)
+
+  it('glasses behave as a decimal unit and convert to ml', () => {
+    const c = groups.glasses
+    expect(parseTypedAmountResult('1.5', c)).toEqual(ok(375))
+    expect(parseTypedAmountResult('2', c)).toEqual(ok(500))
+    expect(parseTypedAmountResult('1.250', c)).toEqual(bad(AMBIGUOUS))
   })
-  it('glasses are decimal: "1.5" vasos is 375 ml', () => {
-    expect(parseTypedAmount('1.5', cfg({ display: 'glasses' }))).toBe(375)
+
+  it.each(Object.keys(groups))('%s: letters, signs, empty and zero use the invalid copy', (u) => {
+    const c = groups[u]
+    for (const raw of ['', '  ', 'abc', '-5', '+5', '1e3', '1 000', '0', '0,0', ',', '.', '1.', '.5']) {
+      expect(parseTypedAmountResult(raw, c), `${u}: "${raw}"`).toMatchObject({ ok: false })
+    }
+    for (const raw of ['abc', '-5', '', '0']) expect(parseTypedAmountResult(raw, c)).toEqual(bad(INVALID))
+  })
+
+  it('parseTypedAmount is the number-or-null view of the result', () => {
+    expect(parseTypedAmount('1.250', groups.ml)).toBe(1250)
+    expect(parseTypedAmount('1.250', groups.km)).toBeNull()
+  })
+})
+
+describe('doneAfterSync', () => {
+  it('forgets the server done flag when the confirmed total drops below the goal', () => {
+    expect(doneAfterSync(true, 1750, 2000)).toBe(false)
+    expect(doneAfterSync(true, 2000, 2000)).toBe(true)
+    expect(doneAfterSync(false, 2500, 2000)).toBe(false)
   })
 })
 

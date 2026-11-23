@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
 import { Warning } from "@phosphor-icons/react/dist/ssr";
 import { formatAmount, progressLabel, type QuantityConfig } from "@/domain/quantity";
-import { parseTypedAmount } from "@/lib/quantity-queue";
+import { parseTypedAmountResult } from "@/lib/quantity-queue";
 
 /** One sum of today. `saved` is false while it waits for the server (no "Quitar" until then). */
 export type QuantityEntryView = { id: string; amount: number; at: string; saved: boolean };
@@ -22,8 +22,8 @@ export type QuantityEntryView = { id: string; amount: number; at: string; saved:
  * - timeZone: IANA zone for the "08:10" time of each sum.
  * - onAdd(amount): adds a sum, already parsed to base units.
  * - onRemove(entryId): removes a sum; resolves when done (the parent reports errors).
- * - message: optional notice (a refused sum, offline, pending) shown inside the sheet, because the
- *   page's own messages sit under the sheet's overlay.
+ * - messages: optional notices (a refused sum, offline, pending count) shown inside the sheet, because
+ *   the page's own notices sit under the sheet's overlay.
  */
 export function QuantitySheet({
   open,
@@ -34,7 +34,7 @@ export function QuantitySheet({
   timeZone,
   onAdd,
   onRemove,
-  message = null,
+  messages = [],
 }: {
   open: boolean;
   onClose: () => void;
@@ -44,7 +44,7 @@ export function QuantitySheet({
   timeZone: string;
   onAdd: (amount: number) => void;
   onRemove: (entryId: string) => Promise<void> | void;
-  message?: string | null;
+  messages?: string[];
 }) {
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -63,13 +63,13 @@ export function QuantitySheet({
   const unitHint = formatAmount(2, config).replace(/^[\d.,]+\s/, "");
 
   function submit() {
-    const amount = parseTypedAmount(raw, config);
-    if (amount === null) {
-      setError("Revisa la cantidad.");
+    const parsed = parseTypedAmountResult(raw, config);
+    if (!parsed.ok) {
+      setError(parsed.error);
       return;
     }
     setError(null);
-    onAdd(amount);
+    onAdd(parsed.amount);
     setRaw("");
   }
 
@@ -81,12 +81,12 @@ export function QuantitySheet({
         {progressLabel(total, config)}
       </p>
 
-      {message ? (
-        <p role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+      {messages.map((m) => (
+        <p key={m} role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
           <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
-          {message}
+          {m}
         </p>
-      ) : null}
+      ))}
 
       <form
         className="flex flex-col gap-3"

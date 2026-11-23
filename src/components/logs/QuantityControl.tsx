@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, DotsThree, Warning } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react/dist/ssr";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
@@ -8,6 +8,7 @@ import { ProgressRing } from "@/components/ui/ProgressRing";
 import type { HabitColor } from "@/domain/habit-colors";
 import { formatAmount, progressLabel, stepAmount, type QuantityConfig } from "@/domain/quantity";
 import {
+  doneAfterSync,
   goalMet,
   QUANTITY_MESSAGES,
   sharedQuantityQueue,
@@ -18,6 +19,79 @@ import type { QuantityEntryView } from "./QuantitySheet";
 
 // The sheet is not visible on first paint, so it loads on demand.
 const QuantitySheet = dynamic(() => import("./QuantitySheet").then((m) => m.QuantitySheet), { ssr: false });
+
+const pendingLabel = (n: number) => `${n} ${n === 1 ? "suma pendiente" : "sumas pendientes"} de guardar`;
+
+/**
+ * Ring, running number, goal state and notices. Presentational: the running number (`shown`) is
+ * optimistic, the goal state follows only `confirmed` (the server's total) or `serverDone`. A
+ * rejection (dismissable), the connectivity line (`offline`) and the pending count are three
+ * separate things and can all show at once.
+ */
+export function QuantityStatus({
+  config,
+  shown,
+  confirmed,
+  serverDone,
+  pending,
+  rejection,
+  offline,
+  onDismiss,
+  color,
+}: {
+  config: QuantityConfig;
+  shown: number;
+  confirmed: number;
+  serverDone: boolean;
+  pending: number;
+  rejection: string | null;
+  offline: string | null;
+  onDismiss: () => void;
+  color?: HabitColor;
+}) {
+  const done = goalMet(confirmed, config.target, serverDone);
+  const pct = config.target > 0 ? (shown / config.target) * 100 : 0;
+  return (
+    <>
+      <div className="flex items-center gap-3">
+        <ProgressRing value={pct} label={progressLabel(shown, config)} color={color} />
+        <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
+          <p className="font-mono text-small text-ink">{progressLabel(shown, config)}</p>
+          {done ? (
+            <p className="flex items-center gap-1 text-small text-ink">
+              <CheckCircle size={16} weight="light" className="text-accent" aria-hidden />
+              Meta de hoy cumplida
+            </p>
+          ) : null}
+        </div>
+      </div>
+      {rejection ? (
+        <div role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+          <Warning size={16} weight="light" className="mt-[14px] shrink-0 text-alert" aria-hidden />
+          <p className="flex-1 py-[14px]">{rejection}</p>
+          <button
+            type="button"
+            aria-label="Cerrar aviso"
+            onClick={onDismiss}
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-md text-ink hover:bg-field"
+          >
+            <X size={16} weight="light" aria-hidden />
+          </button>
+        </div>
+      ) : null}
+      {offline ? (
+        <p role="status" className="text-small text-pretty text-muted">
+          {offline}
+        </p>
+      ) : null}
+      {pending > 0 ? (
+        <p role="status" className="text-small text-muted">
+          {pendingLabel(pending)}
+        </p>
+      ) : null}
+    </>
+  );
+}
 
 /**
  * Today's quantity control: progress ring, quick-add button and the entries sheet.
@@ -53,7 +127,8 @@ export function QuantityControl({
   const [view, setView] = useState({ shown: total, confirmed: total, pending: 0 });
   const [serverDone, setServerDone] = useState(false);
   const [list, setList] = useState<QuantityEntryView[]>(() => entries.map((e) => ({ ...e, saved: true })));
-  const [message, setMessage] = useState<{ text: string; kind: "error" | "offline" } | null>(null);
+  const [rejection, setRejection] = useState<string | null>(null);
+  const [offline, setOffline] = useState<string | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
   const queueRef = useRef<QuantityQueue | null>(null);
   const dirty = useRef(false);
@@ -92,6 +167,8 @@ export function QuantityControl({
     const server = entriesRef.current;
     q.setTotal(habitId, total, server.map((e) => e.id));
     const waiting = q.pending().filter((s) => s.habitId === habitId);
+    if (waiting.length > 0) dirty.current = true; // a restored backlog: refresh once when it drains
+    setServerDone((d) => doneAfterSync(d, total, config.target));
     setList([
       ...server.map((e) => ({ ...e, saved: true })),
       ...waiting.map((s) => ({
@@ -102,7 +179,7 @@ export function QuantityControl({
       })),
     ]);
     readView(q);
-  }, [habitId, total, entriesKey, queue, readView]);
+  }, [habitId, total, entriesKey, config.target, queue, readView]);
 
   // Answers from the queue: confirmed, refused (rolled back) or offline (kept, retried).
   useEffect(() => {
@@ -112,7 +189,7 @@ export function QuantityControl({
       if (refused.length === 0) return;
       const gone = new Set(refused.map((n) => n.entryId));
       setList((l) => l.filter((e) => !gone.has(e.id)));
-      setMessage({ text: refused[refused.length - 1].error, kind: "error" });
+      setRejection(refused[refused.length - 1].error);
     };
     showNotices(); // refusals that arrived while this control was not mounted
     return q.subscribe((e: QueueEvent) => {
@@ -122,11 +199,11 @@ export function QuantityControl({
       }
       if (e.sum.habitId !== habitId) return;
       if (e.kind === "offline") {
-        setMessage({ text: e.error, kind: "offline" });
+        setOffline(e.error);
       } else if (e.result.ok) {
         setServerDone(e.result.done);
         setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
-        setMessage((m) => (m?.kind === "offline" ? null : m));
+        setOffline(null);
       } else {
         showNotices();
       }
@@ -141,7 +218,7 @@ export function QuantityControl({
       const at = new Date().toISOString();
       stamps.current.set(entryId, at);
       dirty.current = true;
-      setMessage((m) => (m?.kind === "error" ? null : m));
+      setRejection(null);
       setList((l) => [...l, { id: entryId, amount, at, saved: false }]);
       readView(q);
     },
@@ -153,7 +230,7 @@ export function QuantityControl({
       const q = queue();
       const res = await removeQuantity(entryId);
       if (!res.ok) {
-        setMessage({ text: res.error, kind: "error" });
+        setRejection(res.error);
         if (res.error === QUANTITY_MESSAGES.notFound) {
           // gone elsewhere: drop the stale row and refresh the numbers
           setList((l) => l.filter((e) => e.id !== entryId));
@@ -164,10 +241,11 @@ export function QuantityControl({
       }
       q.setTotal(habitId, res.total);
       setServerDone(res.done);
-      setMessage(null);
+      setRejection(null);
       setList((l) => l.filter((e) => e.id !== entryId));
       dirty.current = true;
       readView(q);
+      refreshIfIdle(); // right away: the removal is already confirmed
     },
     [habitId, queue, readView, refreshIfIdle],
   );
@@ -186,35 +264,21 @@ export function QuantityControl({
   useEffect(() => cancelHold, []);
 
   const step = stepAmount(config);
-  const done = goalMet(view.confirmed, config.target, serverDone);
-  const pct = config.target > 0 ? (view.shown / config.target) * 100 : 0;
   const stepText = formatAmount(step, config);
-  const pendingText = `${view.pending} ${view.pending === 1 ? "suma pendiente" : "sumas pendientes"} de guardar`;
 
   return (
     <div className="flex flex-col gap-3">
-      <div className="flex items-center gap-3">
-        <ProgressRing value={pct} label={progressLabel(view.shown, config)} color={color} />
-        <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
-          <p className="font-mono text-small text-ink">{progressLabel(view.shown, config)}</p>
-          {done ? (
-            <p className="flex items-center gap-1 text-small text-ink">
-              <CheckCircle size={16} weight="light" className="text-accent" aria-hidden />
-              Meta de hoy cumplida
-            </p>
-          ) : null}
-        </div>
-      </div>
-      {message ? (
-        <p role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
-          <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
-          {message.text}
-        </p>
-      ) : view.pending > 0 ? (
-        <p role="status" className="text-small text-muted">
-          {pendingText}
-        </p>
-      ) : null}
+      <QuantityStatus
+        config={config}
+        shown={view.shown}
+        confirmed={view.confirmed}
+        serverDone={serverDone}
+        pending={view.pending}
+        rejection={rejection}
+        offline={offline}
+        onDismiss={() => setRejection(null)}
+        color={color}
+      />
       <div className="flex items-center gap-2">
         <button
           type="button"
@@ -262,7 +326,7 @@ export function QuantityControl({
           timeZone={timeZone}
           onAdd={add}
           onRemove={remove}
-          message={message?.text ?? (view.pending > 0 ? pendingText : null)}
+          messages={[rejection, offline, view.pending > 0 ? pendingLabel(view.pending) : null].filter((m): m is string => m !== null)}
         />
       ) : null}
     </div>
