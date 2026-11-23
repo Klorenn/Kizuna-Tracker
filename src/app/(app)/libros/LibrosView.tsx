@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
 import { Toast, useToast } from "@/components/ui/Toast";
-import { MAX_BOOK_AUTHOR, MAX_BOOK_TITLE, MAX_PAGES } from "@/domain/logs";
+import { bookProgress, MAX_BOOK_AUTHOR, MAX_BOOK_TITLE, MAX_PAGES } from "@/domain/logs";
 import type { LocalDate } from "@/domain/types";
 import { bookDeleteCopy } from "@/lib/reading-books";
 
@@ -78,19 +78,8 @@ export function LibrosView({ books, today }: { books: BookView[]; today: LocalDa
               <BookRow
                 key={b.id}
                 book={b}
-                hint={
-                  b.totalPages ? (
-                    <span className="font-mono">
-                      {b.currentPage} de {b.totalPages}
-                    </span>
-                  ) : b.currentPage > 0 ? (
-                    <>
-                      Página <span className="font-mono">{b.currentPage}</span>
-                    </>
-                  ) : (
-                    "Sin lecturas"
-                  )
-                }
+                hint={<span className="font-mono">{bookProgress(b.currentPage, b.totalPages) ?? "Sin lecturas"}</span>}
+                percent={b.totalPages ? progressPercent(b.currentPage, b.totalPages) : null}
                 onOpen={() => setPanel({ kind: "edit", book: b })}
               />
             ))}
@@ -146,13 +135,30 @@ function Section({ id, label, empty, children }: { id: string; label: string; em
   );
 }
 
-function BookRow({ book, hint, onOpen }: { book: BookView; hint: React.ReactNode; onOpen: () => void }) {
+/** The percentage of `bookProgress` ("página 40 de 412 · 10 %"), so the bar and the text never disagree. */
+function progressPercent(page: number, total: number): number {
+  const match = /(\d+) %/.exec(bookProgress(page, total) ?? "");
+  return match ? Number(match[1]) : 0;
+}
+
+function BookRow({
+  book,
+  hint,
+  percent = null,
+  onOpen,
+}: {
+  book: BookView;
+  hint: React.ReactNode;
+  /** a thin bar under the row when the book has a total */
+  percent?: number | null;
+  onOpen: () => void;
+}) {
   return (
-    <li>
+    <li className="border-b border-line">
       <button
         type="button"
         onClick={onOpen}
-        className="flex min-h-[60px] w-full items-center gap-3 border-b border-line px-4 py-3 text-left transition-colors duration-[120ms] hover:bg-field"
+        className="flex min-h-[60px] w-full items-center gap-3 px-4 py-3 text-left transition-colors duration-[120ms] hover:bg-field"
       >
         <Books size={20} weight="light" aria-hidden className="shrink-0 text-ink" />
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -166,6 +172,18 @@ function BookRow({ book, hint, onOpen }: { book: BookView; hint: React.ReactNode
           <span className="shrink-0 font-mono text-[14px] font-medium text-muted">{book.pages} pág.</span>
         ) : null}
       </button>
+      {percent !== null ? (
+        <div
+          role="progressbar"
+          aria-label={`Progreso de ${book.title}`}
+          aria-valuemin={0}
+          aria-valuemax={100}
+          aria-valuenow={percent}
+          className="mx-4 mb-3 -mt-1 h-1 overflow-hidden rounded-full bg-line"
+        >
+          <div className="h-1 rounded-full bg-accent" style={{ width: `${percent}%` }} />
+        </div>
+      ) : null}
     </li>
   );
 }
@@ -225,7 +243,7 @@ function BookFormSheet({
           onChange={(e) => setAuthor(e.target.value)}
         />
         <Input
-          label="Páginas del libro (opcional)"
+          label="Páginas totales (opcional)"
           name="total"
           inputMode="numeric"
           className="font-mono"
