@@ -45,3 +45,38 @@ export function groupErrorCopy(raw: string | undefined | null): string {
 export function isNotFoundCode(code: string | null): boolean {
   return code === 'group_not_found' || code === 'not_group_member'
 }
+
+// the optional fine -----------------------------------------------------------------------------------------------------
+
+const FINE_COPY: Record<string, string> = {
+  fine_pending: 'Ya hay una propuesta de multa en votación.',
+  invalid_fine: 'El monto debe estar entre $1 y $100.000 y el fondo necesita un nombre.',
+  fine_closed: 'Esa votación ya terminó.',
+  fine_not_found: 'Esa votación ya terminó.',
+  no_active_fine: 'Este grupo no tiene una multa activa.',
+  already_bound: 'Ya participas en la multa.',
+  not_bound: 'No participas en la multa.',
+  own_debt: 'Otro administrador debe marcar tu deuda.',
+  debt_not_found: 'No encontramos esa deuda.',
+  no_photo_rule: 'Este grupo no pide foto.',
+  own_checkin: 'No puedes rechazar tu propia foto.',
+  reject_window_closed: 'Solo se puede rechazar una foto dentro de 24 horas.',
+  week_closed: 'Esa semana ya cerró.',
+  invalid_reason: 'Escribe un motivo de hasta 140 letras.',
+  checkin_not_found: 'No encontramos ese registro.',
+}
+
+/** The codes of the fine RPCs. Kept apart from `GROUP_ERROR_CODES` (the core list); the core codes they also raise fall back to it. */
+export const FINE_ERROR_CODES = Object.keys(FINE_COPY)
+
+/** The known fine code inside a raw database message, if any. */
+export function fineErrorCode(raw: string | undefined | null): string | null {
+  if (!raw) return null
+  return FINE_ERROR_CODES.find((k) => raw.includes(k)) ?? null
+}
+
+/** Fine codes first, then the core group codes, else the generic retry copy: raw database text is never returned. */
+export function fineErrorCopy(raw: string | undefined | null): string {
+  const code = fineErrorCode(raw)
+  return code ? FINE_COPY[code] : groupErrorCopy(raw)
+}

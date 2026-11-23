@@ -1,6 +1,13 @@
+import { FUND_DISCLAIMER } from '@/domain/group-fines'
+import { dateLabel, isLocalDate } from '@/domain/groups'
 import { formatCLP } from '@/domain/ledger'
 
 export type NotificationType =
+  | 'group_fine_proposed'
+  | 'group_fine_active'
+  | 'group_fine_expired'
+  | 'group_fund_debt'
+  | 'group_photo_rejected'
   | 'friend_request'
   | 'challenge_proposed'
   | 'photo_rejected'
@@ -13,7 +20,10 @@ export type NotificationView = { title: string; body: string; url: string }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null)
 
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+/** A whole, positive amount of pesos as the app prints it ("$2.500"); anything else is not printed. */
+const money = (v: unknown): string | null => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? formatCLP(v) : null)
+
+const UUID =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** `/grupos/<id>` when the payload carries a real id, else the list: a payload is never trusted into a path. */
 const groupUrl = (id: unknown): string => (typeof id === 'string' && UUID.test(id) ? `/grupos/${id}` : '/grupos')
@@ -88,6 +98,57 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       return {
         title: `${name ?? 'Alguien'} se unió a ${group ?? 'tu grupo'}`,
         body: 'Ya es parte del grupo.',
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_fine_proposed': {
+      const group = str(payload.group_name)
+      const amount = money(payload.amount)
+      const purpose = str(payload.purpose)
+      return {
+        title: amount
+          ? `${group ?? 'Tu grupo'}: proponen una multa de ${amount} por semana`
+          : group
+            ? `${group}: proponen una multa`
+            : 'Proponen una multa en tu grupo',
+        body: purpose ? `Fondo: ${purpose}` : 'Revisa la propuesta y vota.',
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_fine_active': {
+      const group = str(payload.group_name)
+      const amount = money(payload.amount)
+      return {
+        title: amount ? `${group ?? 'Tu grupo'}: la multa de ${amount} ya está activa` : `${group ?? 'Tu grupo'}: la multa ya está activa`,
+        body: 'Participas si la aceptaste. Revisa el grupo.',
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_fine_expired': {
+      const group = str(payload.group_name)
+      return {
+        title: group ? `${group}: la propuesta de multa no alcanzó los votos` : 'La propuesta de multa de tu grupo no alcanzó los votos',
+        body: 'Cualquier administrador puede proponer otra.',
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_fund_debt': {
+      const group = str(payload.group_name)
+      const amount = money(payload.amount)
+      const week = isLocalDate(payload.week_start) ? `Semana del ${dateLabel(payload.week_start)}. ` : ''
+      return {
+        title: amount ? `Le debes ${amount} al fondo de ${group ?? 'tu grupo'}` : 'Tienes una deuda con el fondo de tu grupo',
+        body: `${week}${FUND_DISCLAIMER}`,
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_photo_rejected': {
+      const group = str(payload.group_name)
+      const reason = str(payload.reason)?.trim()
+      const date = isLocalDate(payload.local_date) ? ` del ${dateLabel(payload.local_date)}` : ''
+      return {
+        title: `${group ?? 'Tu grupo'}: rechazaron tu foto${date}`,
+        body: reason ? `Motivo: ${reason}` : 'Revisa el grupo para ver el detalle.',
         url: groupUrl(payload.group_id),
       }
     }
