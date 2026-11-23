@@ -124,6 +124,74 @@ describe('buildToday', () => {
   })
 })
 
+describe('v4 rows', () => {
+  const base = { items: [], itemChecks: [], today: '2026-11-22', timeZone: 'America/Santiago' }
+  const water = {
+    id: 'w',
+    name: 'Agua',
+    log_type: 'quantity',
+    quantity_unit: 'ml',
+    quantity_label: null,
+    quantity_target: 2000,
+    quantity_step: 250,
+    quantity_display: 'glasses',
+    glass_ml: 250,
+  }
+
+  it('a quantity habit is done only with a check-in, never by its total', () => {
+    const entries = { w: [{ id: 'e1', amount: 1250, at: '2026-11-22T12:00:00Z' }] }
+    const open = buildToday({ ...base, habits: [habit(water)], checkins: [], quantity: entries })
+    expect(open.rows[0].done).toBe(false)
+    expect(open.rows[0].quantity).toEqual({
+      config: { unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 },
+      total: 1250,
+      entries: entries.w,
+    })
+    expect(habitSubtitle(open.rows[0])).toBe('5 de 8 vasos')
+    expect(open.doneCount).toBe(0)
+    const met = buildToday({
+      ...base,
+      habits: [habit(water)],
+      checkins: [{ habit_id: 'w', local_date: '2026-11-22' }],
+      quantity: { w: [{ id: 'e1', amount: 2000, at: '2026-11-22T12:00:00Z' }] },
+    })
+    expect(met.rows[0].done).toBe(true)
+    expect(habitSubtitle(met.rows[0])).toBe('Meta de hoy cumplida · 8 de 8 vasos')
+  })
+
+  it('a quantity habit without entries shows 0 and other types carry no quantity', () => {
+    const r = buildToday({ ...base, habits: [habit(water), habit({ id: 'x', log_type: 'time' })], checkins: [] })
+    expect(habitSubtitle(r.rows[0])).toBe('0 de 8 vasos')
+    expect(r.rows[1].quantity).toBeNull()
+    expect(r.rows[0].log).toBeNull()
+  })
+
+  it('time log: "1 h 25 min · Álgebra"', () => {
+    const r = buildToday({
+      ...base,
+      habits: [habit({ id: 's', name: 'Estudiar', log_type: 'time' })],
+      checkins: [{ habit_id: 's', local_date: '2026-11-22' }],
+      logs: { s: { kind: 'time', minutes: 85, topic: 'Álgebra' } },
+    })
+    expect(habitSubtitle(r.rows[0])).toBe('1 h 25 min · Álgebra')
+  })
+
+  it('a time habit that also has an old reading shows the time', () => {
+    const r = buildToday({
+      ...base,
+      habits: [habit({ id: 's', log_type: 'time' })],
+      checkins: [],
+      logs: {
+        s: [
+          { kind: 'reading', pages: 3, bookTitle: 'Dune' },
+          { kind: 'time', minutes: 30, topic: null },
+        ],
+      },
+    })
+    expect(habitSubtitle(r.rows[0])).toBe('30 min')
+  })
+})
+
 describe('undoLosesCopy', () => {
   const row = (o: Partial<ReturnType<typeof buildToday>['rows'][number]>) =>
     ({ ...buildToday({ habits: [habit()], items: [], checkins: [], itemChecks: [], today: '2026-11-22', timeZone: 'UTC' }).rows[0], ...o })
@@ -138,6 +206,22 @@ describe('undoLosesCopy', () => {
     )
     expect(undoLosesCopy(row({ logType: 'workout', log: { kind: 'reading', pages: 3, bookTitle: 'Dune' } }))).toBe(
       'Se borrará también la lectura de hoy.',
+    )
+  })
+
+  it('names the time, what you watched and the outings', () => {
+    expect(undoLosesCopy(row({ log: { kind: 'time', minutes: 85, topic: null } }))).toBe(
+      'Se borrará también el tiempo de hoy (1 h 25 min).',
+    )
+    expect(
+      undoLosesCopy(
+        row({ log: { kind: 'watch', title: 'Dark', mediaKind: 'series', episodes: 3, minutes: null, completed: false } }),
+      ),
+    ).toBe('Se borrará también lo que viste hoy.')
+    const out = { distanceM: 2500, durationS: 1800, kind: 'walk' as const }
+    expect(undoLosesCopy(row({ log: { kind: 'cardio', entries: [out] } }))).toBe('Se borrará también la salida de hoy.')
+    expect(undoLosesCopy(row({ log: { kind: 'cardio', entries: [out, out] } }))).toBe(
+      'Se borrarán también las 2 salidas de hoy.',
     )
   })
 

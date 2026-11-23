@@ -3,6 +3,8 @@ import { format } from 'date-fns'
 import { addDays, weekStart } from './dates'
 import { toHabitColor, type HabitColor } from './habit-colors'
 import { LOG_TYPES, logSubtitle, type LogType, type TodayLog } from './logs'
+import { QUANTITY_UNITS, type QuantityConfig, type QuantityUnit } from './quantity'
+import { formatDuration } from './time'
 import type { IconKey, Visibility } from './presets'
 import { dailyStreak, weeklyStreak } from './streaks'
 import type { Frequency, LocalDate } from './types'
@@ -18,6 +20,12 @@ export type HabitInput = {
   color?: string | null
   preset?: string | null
   log_type?: string | null
+  quantity_unit?: string | null
+  quantity_label?: string | null
+  quantity_target?: number | null
+  quantity_step?: number | null
+  quantity_display?: string | null
+  glass_ml?: number | null
 }
 export type ItemInput = {
   id: string
@@ -52,6 +60,8 @@ export type TodayRow = {
   logType: LogType
   /** today's log of this habit (reading or workout), if any */
   log: TodayLog | null
+  /** a quantity habit's goal, running total and today's sums; null for every other log type */
+  quantity: { config: QuantityConfig; total: number; entries: { id: string; amount: number; at: string }[] } | null
 }
 
 export function buildToday(input: {
@@ -61,6 +71,8 @@ export function buildToday(input: {
   itemChecks: ItemCheckInput[]
   /** today's logs by habit_id (several when the log type changed after logging) */
   logs?: Record<string, TodayLog | TodayLog[]>
+  /** today's quantity sums by habit_id, oldest first */
+  quantity?: Record<string, { id: string; amount: number; at: string }[]>
   today: LocalDate
   timeZone: string
 }): { rows: TodayRow[]; doneCount: number; total: number; bestDailyStreak: number } {
@@ -110,6 +122,7 @@ export function buildToday(input: {
       items,
       logType: toLogType(h.log_type),
       log: pickLog(input.logs?.[h.id], toLogType(h.log_type)),
+      quantity: quantityOf(h, input.quantity?.[h.id] ?? []),
     }
   })
 
@@ -122,19 +135,45 @@ export function buildToday(input: {
   }
 }
 
+/** The goal of a quantity habit and today's sums. The total counts sums only: `done` follows the check-in. */
+function quantityOf(h: HabitInput, entries: { id: string; amount: number; at: string }[]): TodayRow['quantity'] {
+  if (h.log_type !== 'quantity' || !QUANTITY_UNITS.includes(h.quantity_unit as QuantityUnit)) return null
+  if (typeof h.quantity_target !== 'number' || typeof h.quantity_step !== 'number') return null
+  const config: QuantityConfig = {
+    unit: h.quantity_unit as QuantityUnit,
+    label: h.quantity_label ?? null,
+    target: Number(h.quantity_target),
+    step: Number(h.quantity_step),
+    display: h.quantity_display === 'glasses' ? 'glasses' : 'base',
+    glassMl: h.glass_ml ?? 250,
+  }
+  const total = Math.round(entries.reduce((sum, e) => sum + e.amount, 0) * 100) / 100
+  return { config, total, entries }
+}
+
 /** The log whose kind matches the habit's log type, else whichever exists (first). */
 function pickLog(logs: TodayLog | TodayLog[] | undefined, logType: LogType): TodayLog | null {
   const list = logs === undefined ? [] : Array.isArray(logs) ? logs : [logs]
   return list.find((l) => l.kind === logType) ?? list[0] ?? null
 }
 
-const UNDO_LOSES: Record<TodayLog['kind'], string> = {
-  reading: 'Se borrará también la lectura de hoy.',
-  workout: 'Se borrará también el entrenamiento de hoy.',
-  time: 'Se borrará también el tiempo de hoy.',
-  watch: 'Se borrará también lo que viste hoy.',
-  quantity: 'Se borrará también la cantidad de hoy.',
-  cardio: 'Se borrará también la distancia de hoy.',
+function undoLoses(log: TodayLog): string {
+  switch (log.kind) {
+    case 'reading':
+      return 'Se borrará también la lectura de hoy.'
+    case 'workout':
+      return 'Se borrará también el entrenamiento de hoy.'
+    case 'time':
+      return `Se borrará también el tiempo de hoy (${formatDuration(log.minutes)}).`
+    case 'watch':
+      return 'Se borrará también lo que viste hoy.'
+    case 'quantity':
+      return 'Se borrará también la cantidad de hoy.'
+    case 'cardio':
+      return log.entries.length === 1
+        ? 'Se borrará también la salida de hoy.'
+        : `Se borrarán también las ${log.entries.length} salidas de hoy.`
+  }
 }
 
 /**
@@ -142,13 +181,16 @@ const UNDO_LOSES: Record<TodayLog['kind'], string> = {
  * current log type, and name the log that is actually there. Null: undo right away.
  */
 export function undoLosesCopy(row: Pick<TodayRow, 'log'>): string | null {
-  return row.log ? UNDO_LOSES[row.log.kind] : null
+  return row.log ? undoLoses(row.log) : null
 }
 
 const toLogType = (v: string | null | undefined): LogType =>
   (LOG_TYPES as readonly string[]).includes(v ?? '') ? (v as LogType) : 'none'
 
 export function habitSubtitle(row: TodayRow): string {
+  if (row.quantity) {
+    return logSubtitle({ kind: 'quantity', total: row.quantity.total, config: row.quantity.config, done: row.done })
+  }
   if (row.log) return logSubtitle(row.log)
   if (row.frequency.type === 'weekly') {
     return `${row.weekCount} de ${row.frequency.target} esta semana`

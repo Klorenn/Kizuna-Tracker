@@ -47,4 +47,58 @@ describe('todayLogs', () => {
       { kind: 'workout', dayTypes: ['legs'], exerciseCount: 0 },
     ])
   })
+
+  it('maps time, watch, cardio and quantity rows; the time wins over an old reading in Hoy', () => {
+    const r = todayLogs(
+      [{ habit_id: 's', checkin_id: 'c', book_id: 'b', from_page: 1, to_page: 5, books: { title: 'Dune' } }],
+      [],
+      [],
+      {
+        time: [{ habit_id: 's', minutes: 85, topic: 'Álgebra' }],
+        watch: [
+          { habit_id: 'v', episodes: 3, minutes: null, completed: false, media_items: { title: 'Dark', kind: 'series' } },
+          { habit_id: 'm', episodes: null, minutes: null, completed: true, media_items: { title: 'Alien', kind: 'movie' } },
+        ],
+        cardio: [
+          { habit_id: 'r', kind: 'run', distance_m: 5200, duration_s: 1780 },
+          { habit_id: 'r', kind: 'walk', distance_m: 2500, duration_s: 1800 },
+        ],
+        quantity: [
+          { id: 'q2', habit_id: 'w', amount: 250, created_at: '2026-11-22T12:10:00Z' },
+          { id: 'q1', habit_id: 'w', amount: 500, created_at: '2026-11-22T11:00:00Z' },
+        ],
+      },
+    )
+    expect(r.logs.s).toEqual([
+      { kind: 'reading', pages: 4, bookTitle: 'Dune' },
+      { kind: 'time', minutes: 85, topic: 'Álgebra' },
+    ])
+    expect(r.logs.v).toEqual([
+      { kind: 'watch', title: 'Dark', mediaKind: 'series', episodes: 3, minutes: null, completed: false },
+    ])
+    expect(r.logs.m).toEqual([
+      { kind: 'watch', title: 'Alien', mediaKind: 'movie', episodes: null, minutes: null, completed: true },
+    ])
+    expect(r.logs.r).toEqual([
+      {
+        kind: 'cardio',
+        entries: [
+          { kind: 'run', distanceM: 5200, durationS: 1780 },
+          { kind: 'walk', distanceM: 2500, durationS: 1800 },
+        ],
+      },
+    ])
+    // oldest first, amounts as numbers
+    expect(r.quantity.w).toEqual([
+      { id: 'q1', amount: 500, at: '2026-11-22T11:00:00Z' },
+      { id: 'q2', amount: 250, at: '2026-11-22T12:10:00Z' },
+    ])
+  })
+
+  it('quantity amounts that arrive as strings (numeric columns) become numbers', () => {
+    const r = todayLogs([], [], [], {
+      quantity: [{ id: 'q', habit_id: 'w', amount: '250.00' as unknown as number, created_at: '2026-11-22T11:00:00Z' }],
+    })
+    expect(r.quantity.w[0].amount).toBe(250)
+  })
 })
