@@ -767,6 +767,36 @@ export type Database = {
           },
         ]
       }
+      group_join_attempts: {
+        Row: {
+          attempted_at: string
+          user_id: string
+        }
+        Insert: {
+          attempted_at?: string
+          user_id: string
+        }
+        Update: {
+          attempted_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_join_attempts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_join_attempts_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_members: {
         Row: {
           counts_from: string
@@ -1589,6 +1619,21 @@ export type Database = {
           },
         ]
       }
+      rate_limit_events: {
+        Row: {
+          at: string
+          key_hash: string
+        }
+        Insert: {
+          at?: string
+          key_hash: string
+        }
+        Update: {
+          at?: string
+          key_hash?: string
+        }
+        Relationships: []
+      }
       reminder_log: {
         Row: {
           created_at: string
@@ -2128,6 +2173,10 @@ export type Database = {
         }[]
       }
       group_invite_preview: { Args: { p_code: string }; Returns: Json }
+      group_invite_preview_for: {
+        Args: { p_code: string; p_viewer?: string }
+        Returns: Json
+      }
       group_proof_readable: { Args: { p_name: string }; Returns: boolean }
       group_wall: {
         Args: {
@@ -2271,6 +2320,15 @@ export type Database = {
         }[]
       }
       remove_friend: { Args: { p_other: string }; Returns: boolean }
+      rate_limit: {
+        Args: {
+          p_key: string
+          p_limit: number
+          p_record: boolean
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
       remove_group_member: {
         Args: { p_group_id: string; p_user_id: string }
         Returns: undefined

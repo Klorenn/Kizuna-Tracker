@@ -2,7 +2,7 @@ begin;
 -- Short invitation codes (0024): 8 characters from 23456789ABCDEFGHJKLMNPQRSTUVWXYZ, normalised input, old 32-hex invites retired.
 -- Runs against a database that already has 0023 (prepend only 0024). Own fixtures, rolled back.
 create extension if not exists pgtap with schema extensions;
-select plan(69);
+select plan(78);
 
 create schema tests;
 create function tests.u(n int) returns uuid language sql immutable as $f$
@@ -17,7 +17,7 @@ begin insert into tests.ctx (k, v) values (key, val) on conflict (k) do update s
 create function tests.g(k text) returns uuid language sql stable security definer as $f$
   select v from tests.ctx where ctx.k = $1 $f$;
 create temp table t_codes (k text, code text);
-grant all on t_codes to authenticated, anon;
+grant all on t_codes to authenticated, anon, service_role;
 -- mints n codes one after the other (revoking each so the cap of five and the reuse rule do not interfere)
 create function tests.mint(gid uuid, n int) returns void language plpgsql as $f$
 begin
@@ -64,19 +64,24 @@ delete from public.group_invites where code in ('K7QM4PXD', repeat('a', 32));
 
 -- ================================================== normalisation and rejection
 insert into public.group_invites (code, group_id, created_by, max_uses) values ('K7QM4PXD', tests.g('g'), tests.u(1), 5);
-set local role anon;
+set local role service_role;
 select is(public.group_invite_preview(v) ->> 'name', 'Codigos', 'C1 the preview finds [' || v || ']')
   from unnest(array['K7QM4PXD', 'k7qm4pxd', 'k7qm-4pxd', ' K7QM 4PXD ', 'K7QM-4PXD', 'k7-qm4pxd', E'\tK7QM4PXD\n']) v;
 select is(public.group_invite_preview(v), null, 'C2 the preview answers null without an error for [' || coalesce(v, 'null') || ']')
-  from unnest(array['K7QM4PX', 'K7QM4PXDA', 'K7QM4PX0', 'K7QM4PXI', 'K7QM4PXO', 'K7QM4PX1', 'K7QM-4P-XD', 'K7QM4PX!', '', '   ', '-', 'ZZZZZZZZ', repeat('a', 32), null]) v;
+  from unnest(array['K7QM4PX', 'K7QM4PXDA', 'K7QM4PX0', 'K7QM4PXI', 'K7QM4PXO', 'K7QM4PX1', 'K7QM4PXl', 'K7QM4PXL', 'K7QM4PXo', 'K7QM4PXi', E'\uFF2B7QM4PXD', repeat(' ', 100) || 'K7QM4PXD', 'K7QM-4P-XD', 'K7QM4PX!', '', '   ', '-', 'ZZZZZZZZ', repeat('a', 32), null]) v;
 select is((select array_agg(k order by k)::text from jsonb_object_keys(public.group_invite_preview('k7qm-4pxd')) k),
   '{color,commitment_icon,commitment_name,full,icon,member_count,name,requires_photo,target_per_week}', 'C3 the preview keys are unchanged');
 reset role;
 set local role authenticated;
 select tests.login(2);
-select throws_ok(format($$ select public.join_group(%L, tests.h(2, 1)) $$, v), 'P0001', 'invite_not_found', 'C4 join_group: not found for [' || v || ']')
+select is(public.join_group(v, tests.h(2, 1)), null, 'C4 join_group: null (not found) for [' || v || ']')
   from unnest(array['K7QM4PX', 'K7QM4PXDA', 'K7QM4PX0', 'K7QM4PXI', 'K7QM-4P-XD', '', '   ', 'ZZZZZZZZ', repeat('a', 32)]) v;
-select throws_ok($$ select public.join_group(null, tests.h(2, 1)) $$, 'P0001', 'invite_not_found', 'C5 a null code is not found');
+select is(public.join_group(null, tests.h(2, 1)), null, 'C5 a null code is null too');
+reset role;
+select is((select count(*)::int from public.group_join_attempts where user_id = tests.u(2)), 10, 'C5b each of those ten recorded one attempt');
+delete from public.group_join_attempts;
+set local role authenticated;
+select tests.login(2);
 select tests.save('joined', public.join_group(' k7qm-4pxd ', tests.h(2, 1)));
 select is(tests.g('joined'), tests.g('g'), 'C6 join_group accepts a typed code: lower case, hyphen, spaces');
 reset role;
@@ -104,7 +109,7 @@ select public.join_group((select code from t_codes where k = 'g2a'), tests.h(4, 
 select tests.login(3);
 select public.remove_group_member(tests.g('g2'), tests.u(4));
 select tests.login(4);
-select throws_ok(format($$ select public.join_group(%L, tests.h(4, 1)) $$, (select code from t_codes where k = 'g2a')), 'P0001', 'invite_not_found',
+select is(public.join_group((select code from t_codes where k = 'g2a'), tests.h(4, 1)), null,
   'D6 a removed member cannot come back with the code made before the removal');
 select tests.login(3);
 insert into t_codes select 'g2b', public.create_group_invite(tests.g('g2'));
@@ -117,7 +122,7 @@ select lives_ok(format($$ select public.join_group(%L, tests.h(4, 1)) $$, lower(
 reset role;
 insert into public.group_invites (code, group_id, created_by, max_uses, expires_at) values ('EXPYRED2', tests.g('g2'), tests.u(3), 5, now() - interval '1 minute');
 insert into public.group_invites (code, group_id, created_by, max_uses, uses) values ('USEDUP22', tests.g('g2'), tests.u(3), 5, 5);
-set local role anon;
+set local role service_role;
 select is(public.group_invite_preview('EXPYRED2'), null, 'E1 an expired code previews as null');
 select is(public.group_invite_preview('USEDUP22'), null, 'E2 a used-up code previews as null');
 reset role;
@@ -125,7 +130,7 @@ set local role authenticated;
 select tests.login(3);
 select is(public.revoke_group_invites(tests.g('g2')), 2, 'E3 revoke_group_invites is unchanged: it expires the two still-active invites (the stale one counts, expired and used-up do not)');
 reset role;
-set local role anon;
+set local role service_role;
 select is(public.group_invite_preview((select code from t_codes where k = 'g2b')), null, 'E4 a revoked code previews as null');
 reset role;
 set local role authenticated;
@@ -133,13 +138,12 @@ select tests.login(3);
 select public.archive_group(tests.g('g2'));
 reset role;
 insert into public.group_invites (code, group_id, created_by, max_uses) values ('ARCHYVE2', tests.g('g2'), tests.u(3), 5);
-set local role anon;
+set local role service_role;
 select is(public.group_invite_preview('ARCHYVE2'), null, 'E5 an archived group''s code previews as null');
 reset role;
 
 -- ================================================== grants and helpers
-select ok(has_function_privilege('anon', 'public.group_invite_preview(text)', 'execute') and has_function_privilege('authenticated', 'public.group_invite_preview(text)', 'execute')
-  and not has_function_privilege('public', 'public.group_invite_preview(text)', 'execute'), 'F1 the preview keeps its grants');
+select ok(has_function_privilege('service_role', 'public.group_invite_preview(text)', 'execute') and not has_function_privilege('anon', 'public.group_invite_preview(text)', 'execute') and not has_function_privilege('authenticated', 'public.group_invite_preview(text)', 'execute'), 'F1 the preview is service_role only');
 select ok(has_function_privilege('authenticated', 'public.join_group(text,uuid)', 'execute') and not has_function_privilege('anon', 'public.join_group(text,uuid)', 'execute'), 'F2 join_group keeps its grants');
 select is((select bool_or(has_function_privilege(r, p, 'execute')) from unnest(array['public.groups_normalize_code(text)', 'public.groups_random_invite_code()']) p, unnest(array['anon', 'authenticated', 'public']) r),
   false, 'F3 the new helpers are not callable by clients');
@@ -151,6 +155,18 @@ select is((select count(*)::int from pg_proc p where p.pronamespace = 'public'::
   'F5 no dynamic SQL');
 select is(public.groups_normalize_code(' k7qm 4pxd '), 'K7QM4PXD', 'F6 groups_normalize_code: canonical form');
 select is(public.groups_normalize_code('K7QM-4PXD-'), null, 'F7 a trailing second hyphen is not accepted');
+
+-- ================================================== the collision path (invite_unavailable), forced by replacing the generator inside this rolled-back transaction
+set local role authenticated;
+select tests.login(1);
+select public.revoke_group_invites(tests.g('g'));
+reset role;
+create or replace function public.groups_random_invite_code() returns text language sql as $f$ select 'K7QM4PXD'::text $f$;
+set local role authenticated;
+select tests.login(1);
+select throws_ok($$ select public.create_group_invite(tests.g('g')) $$, 'P0001', 'invite_unavailable', 'G1 a generator that only collides ends in invite_unavailable after the bounded retries');
+reset role;
+select is((select count(*)::int from public.group_invites where group_id = tests.g('g') and expires_at > now()), 0, 'G2 and nothing was minted');
 
 select * from finish();
 rollback;

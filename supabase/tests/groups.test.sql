@@ -131,10 +131,11 @@ select is((select bool_and(has_function_privilege('authenticated', p, 'execute')
     'public.group_wall(uuid,timestamp with time zone,uuid,integer)', 'public.group_history(uuid,integer)',
     'public.group_week_detail(uuid,date)']) p),
   true, 'A8 every client RPC is executable by authenticated only');
-select ok(has_function_privilege('anon', 'public.group_invite_preview(text)', 'execute')
-  and has_function_privilege('authenticated', 'public.group_invite_preview(text)', 'execute')
+select ok(has_function_privilege('service_role', 'public.group_invite_preview(text)', 'execute')
+  and not has_function_privilege('authenticated', 'public.group_invite_preview(text)', 'execute')
+  and not has_function_privilege('anon', 'public.group_invite_preview(text)', 'execute')
   and not has_function_privilege('public', 'public.group_invite_preview(text)', 'execute'),
-  'A9 the invitation preview is callable by anon and authenticated');
+  'A9 the invitation preview is callable by the service role only (the server rate-limits it)');
 select ok(has_function_privilege('service_role', 'public.close_due_group_weeks(timestamp with time zone)', 'execute')
   and not has_function_privilege('authenticated', 'public.close_due_group_weeks(timestamp with time zone)', 'execute')
   and not has_function_privilege('anon', 'public.close_due_group_weeks(timestamp with time zone)', 'execute')
@@ -194,7 +195,7 @@ select throws_ok(q, '28000', 'not_authenticated', 'C no session: ' || split_part
   $$ select * from public.group_wall(tests.u(1)) $$,
   $$ select * from public.group_history(tests.u(1)) $$,
   $$ select * from public.group_week_detail(tests.u(1), date '2026-11-02') $$]) q;
-select is(public.group_invite_preview('ZZZZZZZZ'), null, 'C16 the preview needs no session and answers null for an unknown code');
+select throws_ok($$ select public.group_invite_preview('ZZZZZZZZ') $$, '42501', null, 'C16 clients cannot call the preview any more');
 
 -- ===================================================== D. create_group
 select tests.login(1);
@@ -313,7 +314,7 @@ select is((select row(created_by, group_id, uses)::text from public.group_invite
   row(tests.u(1), tests.g('g1'), 0)::text, 'F3 the invite is recorded with its creator');
 select ok((select expires_at between now() + interval '6 days 23 hours' and now() + interval '7 days 1 hour'
   from public.group_invites where code = (select code from t_codes where k = 'code1')), 'F4 an invite lasts seven days');
-set local role anon;
+set local role service_role;
 select is((select array_agg(k order by k)::text from jsonb_object_keys(public.group_invite_preview((select code from t_codes where k = 'code1'))) k),
   '{color,commitment_icon,commitment_name,full,icon,member_count,name,requires_photo,target_per_week}',
   'F5 the preview returns exactly the nine listed keys, to anon');
@@ -337,16 +338,16 @@ select is((public.group_invite_preview((select code from t_codes where k = 'code
 -- join_group
 set local role authenticated;
 select tests.login(4);
-select throws_ok($$ select public.join_group('ZZZZZZZZ', tests.h(4, 1)) $$, 'P0001', 'invite_not_found', 'F14 an unknown code is invite_not_found');
-select throws_ok($$ select public.join_group(null, tests.h(4, 1)) $$, 'P0001', 'invite_not_found', 'F15 a null code is invite_not_found');
+select is(public.join_group('ZZZZZZZZ', tests.h(4, 1)), null, 'F14 an unknown code answers null (and records an attempt)');
+select is(public.join_group(null, tests.h(4, 1)), null, 'F15 a null code answers null');
 reset role;
 update public.group_invites set expires_at = now() - interval '1 minute' where code = (select code from t_codes where k = 'code1');
 set local role authenticated;
-select throws_ok(format($$ select public.join_group(%L, tests.h(4, 1)) $$, (select code from t_codes where k = 'code1')), 'P0001', 'invite_expired', 'F16 an expired code is invite_expired');
+select is(public.join_group((select code from t_codes where k = 'code1'), tests.h(4, 1)), null, 'F16 an expired code answers null');
 reset role;
 update public.group_invites set expires_at = now() + interval '7 days', uses = max_uses where code = (select code from t_codes where k = 'code1');
 set local role authenticated;
-select throws_ok(format($$ select public.join_group(%L, tests.h(4, 1)) $$, (select code from t_codes where k = 'code1')), 'P0001', 'invite_expired', 'F17 a used-up code is invite_expired');
+select is(public.join_group((select code from t_codes where k = 'code1'), tests.h(4, 1)), null, 'F17 a used-up code answers null');
 reset role;
 update public.group_invites set uses = 0 where code = (select code from t_codes where k = 'code1');
 set local role authenticated;
@@ -452,7 +453,10 @@ select throws_ok($$ select public.revoke_group_invites(tests.g('g1')) $$, 'P0001
 select tests.login(1);
 select is(public.revoke_group_invites(tests.g('g1')), 5, 'G19 an admin revokes every active invite at once and gets how many');
 select is(public.revoke_group_invites(tests.g('g1')), 0, 'G19b revoking again revokes nothing');
+reset role;
 select is(public.group_invite_preview('BBBBBBB2'), null, 'G19c a revoked invite previews as null');
+set local role authenticated;
+select tests.login(1);
 insert into t_codes select 'code1d', public.create_group_invite(tests.g('g1'));
 reset role;
 update public.group_invites set uses = max_uses where code = (select code from t_codes where k = 'code1d');
@@ -682,7 +686,7 @@ select throws_ok($$ select public.leave_group(tests.g('gr')) $$, 'P0001', 'last_
 select lives_ok($$ select public.remove_group_member(tests.g('gr'), tests.u(75)) $$, 'K10 an admin removes a member');
 select tests.login(75);
 select throws_ok($$ select * from public.group_board(tests.g('gr')) $$, 'P0001', 'group_not_found', 'K11 a removed member sees nothing');
-select throws_ok(format($$ select public.join_group(%L, tests.h(75, 1)) $$, (select code from t_codes where k = 'coder')), 'P0001', 'invite_not_found',
+select is(public.join_group((select code from t_codes where k = 'coder'), tests.h(75, 1)), null,
   'K12 a removed member cannot come back with an invite made before the removal (no hint)');
 select tests.login(74);
 insert into t_codes select 'coder2', public.create_group_invite(tests.g('gr'));
@@ -713,9 +717,11 @@ select throws_ok(format($$ select public.%s $$, q), 'P0001', 'group_archived', '
   $$remove_group_member(tests.g('g2'), tests.u(8))$$,
   $$set_group_admin(tests.g('g2'), tests.u(8), true)$$]) q;
 select is((select archived from public.my_groups() m where m.id = tests.g('g2')), true, 'K20 my_groups flags the archived group');
+reset role;
 select is(public.group_invite_preview((select code from t_codes where k = 'code2')), null, 'K21 an archived group''s invite previews as null');
+set local role authenticated;
 select tests.login(7);
-select throws_ok(format($$ select public.join_group(%L, tests.h(7, 8)) $$, (select code from t_codes where k = 'code2')), 'P0001', 'invite_not_found', 'K22 an archived group''s invite cannot be used');
+select is(public.join_group((select code from t_codes where k = 'code2'), tests.h(7, 8)), null, 'K22 an archived group''s invite cannot be used (null)');
 select tests.login(9);
 select lives_ok($$ update public.habits set requires_photo = false where id = tests.h(9, 6) $$, 'K23 archiving a group frees the habits linked to it');
 
