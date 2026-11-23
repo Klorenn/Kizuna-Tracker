@@ -1,6 +1,6 @@
 "use client";
 
-import { Camera, Check, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Camera, Check, Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { checkItem, uncheckItem } from "@/app/(app)/habitos/actions";

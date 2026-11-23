@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, CircleHalf, Clock, ImageBroken, MinusCircle, WarningCircle } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, CircleHalf, Clock, ImageBroken, MinusCircle, WarningCircle } from "@phosphor-icons/react";
 import Link from "next/link";
 import type { RefObject } from "react";
 import { DayLogDetail, WeightRow } from "@/components/logs/DayLogDetail";

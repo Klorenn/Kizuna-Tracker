@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Plus, Warning } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { createMedia } from "@/app/(app)/registros/watch-actions";
 import type { PickerMedia } from "@/app/(app)/series/media-data";

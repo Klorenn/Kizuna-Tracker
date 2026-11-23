@@ -1,6 +1,6 @@
 "use client";
 
-import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";

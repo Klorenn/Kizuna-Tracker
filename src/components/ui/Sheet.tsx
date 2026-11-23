@@ -1,6 +1,6 @@
 "use client";
 
-import { X } from "@phosphor-icons/react/dist/ssr";
+import { X } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { createModalStack, createScrollLock, trapTarget } from "@/lib/modal-stack";

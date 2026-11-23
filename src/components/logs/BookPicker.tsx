@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Plus, Warning } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { createBook } from "@/app/(app)/registros/actions";
 import { Button } from "@/components/ui/Button";
