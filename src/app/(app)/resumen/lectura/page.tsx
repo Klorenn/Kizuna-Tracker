@@ -6,7 +6,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { dayLabel, monthOf, shiftMonth } from "@/domain/calendar";
-import { lastMonths, monthlyReading, pagesRead, readingSeries } from "@/domain/logs";
+import { bookProgress, lastMonths, monthlyReading, pagesRead, readingSeries } from "@/domain/logs";
 import { loadReadingData } from "@/lib/logs-data";
 import { RangeToggle } from "../RangeToggle";
 import {
@@ -41,6 +41,7 @@ export default async function LecturaPage({
   const months = lastMonths(month, range);
   const series = readingSeries(entries, books, months);
   const titles = new Map(books.map((b) => [b.id, b.title]));
+  const totals = new Map(books.map((b) => [b.id, b.totalPages]));
   const list = entries
     .filter((e) => monthOf(e.date) === month)
     .sort((a, b) => b.date.localeCompare(a.date) || b.toPage - a.toPage);
@@ -105,7 +106,9 @@ export default async function LecturaPage({
               <li key={`${e.date}-${i}`} className="flex items-center gap-3 border-b border-line px-4 py-3 last:border-b-0">
                 <div className="min-w-0 flex-1">
                   <p className="truncate text-body text-ink">{titles.get(e.bookId) ?? "Libro"}</p>
-                  <p className="text-small text-muted">{dayLabel(e.date)}</p>
+                  <p className="text-small text-muted">
+                    {[dayLabel(e.date), bookProgress(e.toPage, totals.get(e.bookId) ?? null)].filter(Boolean).join(" · ")}
+                  </p>
                 </div>
                 <p className="shrink-0 text-right font-mono text-small text-muted">
                   {e.fromPage} → {e.toPage}
