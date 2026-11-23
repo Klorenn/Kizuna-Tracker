@@ -12,7 +12,7 @@ const TABS = [
   { href: "/perfil", label: "Perfil", Icon: User },
 ] as const;
 
-/** Home is active for "/" and for habit screens (/habitos/...). */
+/** Home is active for "/" and for habit screens (/habitos/...); Amigos also for /@handle. */
 export function BottomNav() {
   const pathname = usePathname();
   if (pathname === "/listo") return null;
@@ -26,7 +26,10 @@ export function BottomNav() {
           const active =
             href === "/"
               ? pathname === "/" || pathname.startsWith("/habitos")
-              : pathname.startsWith(href);
+              : href === "/amigos"
+                ? // other people's profiles (/@handle) belong to Amigos
+                  pathname.startsWith(href) || pathname.startsWith("/@") || pathname.startsWith("/u/")
+                : pathname.startsWith(href);
           return (
             <li key={href} className="flex-1">
               <Link
