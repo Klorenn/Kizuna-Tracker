@@ -4,6 +4,12 @@ export type DeletableTable =
   | 'reading_entries'
   | 'books'
   | 'exercises'
+  | 'pomodoro_blocks'
+  | 'time_entries'
+  | 'watch_entries'
+  | 'media_items'
+  | 'quantity_entries'
+  | 'cardio_entries'
   | 'body_weights'
   | 'goals'
   | 'checkin_items'
@@ -18,6 +24,12 @@ export const DELETE_ORDER: readonly DeletableTable[] = [
   'reading_entries',
   'books',
   'exercises',
+  'pomodoro_blocks',
+  'time_entries',
+  'watch_entries',
+  'media_items',
+  'quantity_entries',
+  'cardio_entries',
   'body_weights',
   'goals',
   'checkin_items',

@@ -1,5 +1,6 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, test } from 'vitest'
-import { deleteAccountWith, type DeleteAccountDeps } from '@/lib/delete-account'
+import { DELETE_ORDER, deleteAccountWith, type DeleteAccountDeps } from '@/lib/delete-account'
 
 const UID = '12345678-aaaa-4bbb-8ccc-1234567890ab'
 const NOW = new Date('2026-11-25T12:00:00Z')
@@ -50,7 +51,7 @@ describe('deleteAccountWith', () => {
     expect(removed).toContainEqual({ bucket: 'avatars', paths: [`${UID}.jpg`] })
   })
 
-  test('borra registros detallados, peso, goals, checkin_items, checkins, habit_items y habits en ese orden, nunca debts', async () => {
+  test('borra registros detallados (incluidos tiempo, series, cantidad y distancia), peso, goals, checkin_items, checkins, habit_items y habits en ese orden, nunca debts', async () => {
     const { deps, calls } = fake()
     await deleteAccountWith(deps, UID, NOW)
     const deleted = calls.filter((c) => c.startsWith('delete:')).map((c) => c.split(':')[1])
@@ -60,6 +61,12 @@ describe('deleteAccountWith', () => {
       'reading_entries',
       'books',
       'exercises',
+      'pomodoro_blocks',
+      'time_entries',
+      'watch_entries',
+      'media_items',
+      'quantity_entries',
+      'cardio_entries',
       'body_weights',
       'goals',
       'checkin_items',
@@ -102,5 +109,22 @@ describe('deleteAccountWith', () => {
     const { deps, calls } = fake()
     await deleteAccountWith(deps, UID, NOW)
     expect(calls.at(-1)!.startsWith('ban:')).toBe(true)
+  })
+
+  test('DELETE_ORDER cubre todas las tablas de 0018 y los hijos van antes que los padres', () => {
+    const sql = readFileSync('supabase/migrations/0018_v4_logs.sql', 'utf8')
+    const created = [...sql.matchAll(/create table public\.(\w+)\s*\(/g)].map((m) => m[1])
+    expect(created.length).toBeGreaterThanOrEqual(6)
+    for (const t of created) expect(DELETE_ORDER).toContain(t)
+    // a table's foreign keys to other tables of the list must come later in the order
+    for (const m of sql.matchAll(/create table public\.(\w+)\s*\(([\s\S]*?)\n\);/g)) {
+      for (const ref of m[2].matchAll(/references public\.(\w+)/g)) {
+        const parent = ref[1]
+        if (!(DELETE_ORDER as readonly string[]).includes(parent)) continue
+        expect(DELETE_ORDER.indexOf(m[1] as never), `${m[1]} before ${parent}`).toBeLessThan(
+          DELETE_ORDER.indexOf(parent as never),
+        )
+      }
+    }
   })
 })
