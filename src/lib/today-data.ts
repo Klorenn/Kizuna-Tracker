@@ -1,4 +1,4 @@
-import { addDays } from "@/domain/dates";
+import { addDays, localDate } from "@/domain/dates";
 import type { CheckinInput, HabitInput, ItemCheckInput, ItemInput } from "@/domain/today";
 import { loadCheckinDates } from "@/lib/checkin-dates";
 import { loadPickerBooksOrNull, type PickerBook } from "@/lib/reading-books";
@@ -13,6 +13,8 @@ export const HISTORY_DAYS = 400;
 export type TodayData =
   | {
       ok: true;
+      today: string;
+      timeZone: string;
       habits: HabitInput[];
       items: ItemInput[];
       itemChecks: ItemCheckInput[];
@@ -21,18 +23,27 @@ export type TodayData =
       checkins: CheckinInput[];
       books: PickerBook[];
     }
-  | { ok: false };
-
-export type TodayHistory = { ok: true; checkins: CheckinInput[] } | { ok: false };
+  /** `missingProfile`: the signed-in user has no profile row (the page redirects); otherwise a read failed. */
+  | { ok: false; missingProfile?: boolean };
 
 /**
- * Everything Hoy reads, in one round: the independent reads start together, and the two that need
- * the habit ids (the check-in history and the reading sheet's books) start the moment the habits
- * arrive, side by side. The history is one `checkin_dates` call (one row per habit, no row cap);
- * streak math stays in `domain/streaks`. A failed history is `{ ok: false }`, never an empty list.
+ * Everything Hoy reads, in as few serial levels as the data allows. Besides the session check
+ * (the caller's), there are two: the profile, the habits, the habit items and the history RPC
+ * start together (the RPC the moment the habits arrive), and the reads that need today's local
+ * date (item checks, today's check-ins, today's logs) start when the profile arrives.
+ *
+ * The RPC cannot wait for the time zone, so it asks from a zone-free date: the UTC date minus 401
+ * days is never later than local today minus 400 in any zone (local dates are within a day of UTC
+ * dates), and the dates before today minus 400 are dropped here, so the window is exact.
+ * Streak math stays in `domain/streaks`. Any failed read is `{ ok: false }`, never a partial Hoy.
  * The series and movie titles are not here: the watch sheet loads them when it opens.
  */
-export async function loadTodayData(supabase: Supabase, userId: string, today: string): Promise<TodayData> {
+export async function loadTodayData(
+  supabase: Supabase,
+  userId: string,
+  profileRead: Promise<{ timezone: string } | null>,
+  now: Date = new Date(),
+): Promise<TodayData> {
   const habitsRead = Promise.resolve(
     supabase
       .from("habits")
@@ -43,48 +54,60 @@ export async function loadTodayData(supabase: Supabase, userId: string, today: s
       .is("archived_at", null)
       .order("created_at"),
   );
-  const historyRead: Promise<TodayHistory> = habitsRead.then(async ({ data, error }) => {
-    if (error) return { ok: false };
-    const dated = await loadCheckinDates(
-      supabase,
-      (data ?? []).map((h) => h.id),
-      addDays(today, -HISTORY_DAYS),
-    );
-    if (!dated.ok) return { ok: false };
-    const checkins: CheckinInput[] = [];
-    for (const [habit_id, dates] of dated.byHabit) for (const local_date of dates) checkins.push({ habit_id, local_date });
-    return { ok: true, checkins };
-  });
-  // the reading sheet's books, only when a reading habit is on Hoy
-  const booksRead: Promise<PickerBook[] | null> = habitsRead.then(({ data, error }) =>
-    error ? null : (data ?? []).some((h) => h.log_type === "reading") ? loadPickerBooksOrNull(supabase, userId) : [],
-  );
-
-  const [habits, items, itemChecks, todayCheckins, todayLogs, history, books] = await Promise.all([
-    habitsRead,
+  const itemsRead = Promise.resolve(
     supabase
       .from("habit_items")
       .select("id,habit_id,label,position,requires_photo")
       .eq("user_id", userId)
       .is("archived_at", null),
-    supabase.from("checkin_items").select("item_id,local_date,created_at").eq("user_id", userId).eq("local_date", today),
-    supabase.from("checkins").select("id,habit_id").eq("user_id", userId).eq("local_date", today),
-    loadTodayLogs(supabase, userId, today),
-    historyRead,
-    booksRead,
-  ]);
-  // any read that failed makes the whole screen a retry state: rows built from partial data would lie
-  if (habits.error || items.error || itemChecks.error || todayCheckins.error || !todayLogs.ok || !history.ok || books === null) {
+  );
+  const rawHistory: Promise<{ ok: true; byHabit: Map<string, string[]> } | { ok: false }> = habitsRead.then(
+    async ({ data, error }) => {
+      if (error) return { ok: false };
+      return loadCheckinDates(
+        supabase,
+        (data ?? []).map((h) => h.id),
+        addDays(localDate(now, "UTC"), -(HISTORY_DAYS + 1)),
+      );
+    },
+  );
+  // the reading sheet's books, only when a reading habit is on Hoy
+  const booksRead: Promise<PickerBook[] | null> = habitsRead.then(({ data, error }) =>
+    error ? null : (data ?? []).some((h) => h.log_type === "reading") ? loadPickerBooksOrNull(supabase, userId) : [],
+  );
+  // everything that needs today's local date
+  const dayReads = profileRead.then(async (profile) => {
+    if (!profile) return null;
+    const today = localDate(now, profile.timezone);
+    const [itemChecks, todayCheckins, todayLogs] = await Promise.all([
+      supabase.from("checkin_items").select("item_id,local_date,created_at").eq("user_id", userId).eq("local_date", today),
+      supabase.from("checkins").select("id,habit_id").eq("user_id", userId).eq("local_date", today),
+      loadTodayLogs(supabase, userId, today),
+    ]);
+    return { today, timeZone: profile.timezone, itemChecks, todayCheckins, todayLogs };
+  });
+
+  const [habits, items, day, raw, books] = await Promise.all([habitsRead, itemsRead, dayReads, rawHistory, booksRead]);
+  if (!day) return { ok: false, missingProfile: true };
+  if (habits.error || items.error || day.itemChecks.error || day.todayCheckins.error || !day.todayLogs.ok || !raw.ok || books === null) {
+    // any failed read makes the whole screen a retry state: rows built from partial data would lie
     return { ok: false };
+  }
+  const from = addDays(day.today, -HISTORY_DAYS);
+  const checkins: CheckinInput[] = [];
+  for (const [habit_id, dates] of raw.byHabit) {
+    for (const local_date of dates) if (local_date >= from) checkins.push({ habit_id, local_date });
   }
   return {
     ok: true,
+    today: day.today,
+    timeZone: day.timeZone,
     habits: habits.data ?? [],
     items: items.data ?? [],
-    itemChecks: itemChecks.data ?? [],
-    todayCheckins: todayCheckins.data ?? [],
-    todayLogs,
-    checkins: history.checkins,
+    itemChecks: day.itemChecks.data ?? [],
+    todayCheckins: day.todayCheckins.data ?? [],
+    todayLogs: day.todayLogs,
+    checkins,
     books,
   };
 }

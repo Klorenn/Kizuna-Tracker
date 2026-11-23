@@ -3,6 +3,8 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const events: string[] = []
 const { revalidatePath, rpc } = vi.hoisted(() => ({ revalidatePath: vi.fn(), rpc: vi.fn() }))
 let deleteError: { message: string } | null = null
+const failing = new Set<string>()
+let deleted = false
 
 const tick = () => new Promise((r) => setTimeout(r, 0))
 const ROWS: Record<string, unknown> = {
@@ -18,7 +20,7 @@ function read(table: string) {
     events.push(`start ${table}`)
     await tick()
     events.push(`end ${table}`)
-    return ROWS[table]
+    return failing.has(table) ? { data: null, error: { message: 'boom' } } : ROWS[table]
   }
   const c: Record<string, unknown> = {}
   for (const m of ['eq', 'is', 'in', 'limit', 'select']) c[m] = () => c
@@ -36,6 +38,7 @@ const client = {
     delete: () => {
       const c: Record<string, unknown> = {}
       c.eq = () => c
+      deleted = true
       c.then = (res: (v: unknown) => unknown) => res({ error: deleteError })
       return c
     },
@@ -52,6 +55,8 @@ beforeEach(() => {
   revalidatePath.mockReset()
   rpc.mockReset()
   deleteError = null
+  failing.clear()
+  deleted = false
 })
 
 describe('check-in and undo revalidate only what changed', () => {
@@ -71,6 +76,18 @@ describe('check-in and undo revalidate only what changed', () => {
     await checkIn('h1')
     deleteError = { message: 'boom' }
     await undoCheckIn('h1')
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+})
+
+describe('undoCheckIn never deletes on a failed guard read', () => {
+  it.each(['habit_items', 'checkins'])('a failed %s read answers the generic retry message and deletes nothing', async (table) => {
+    failing.add(table)
+    await expect(undoCheckIn('h1')).resolves.toEqual({
+      ok: false,
+      error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+    })
+    expect(deleted).toBe(false)
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 })

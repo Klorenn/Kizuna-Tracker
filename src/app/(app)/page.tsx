@@ -16,7 +16,6 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { localDate } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
 import { hoyCatAssets } from "@/lib/motion/cat-animation";
 import { createServerClient } from "@/lib/supabase/server";
@@ -27,13 +26,10 @@ export default async function Home() {
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const profile = await getViewerProfile();
-  if (!profile) redirect("/login?error=perfil");
-
   const now = new Date();
-  const today = localDate(now, profile.timezone);
-
-  const data = await loadTodayData(supabase, user.id, today);
+  // the profile read starts with the habits: no serial level for it
+  const data = await loadTodayData(supabase, user.id, getViewerProfile(), now);
+  if (!data.ok && data.missingProfile) redirect("/login?error=perfil");
   if (!data.ok) {
     // any failed read: a retry line, never rows built from partial data (zeros, an empty list, "add" on an existing log)
     return (
@@ -47,7 +43,7 @@ export default async function Home() {
     );
   }
 
-  const { habits, items, itemChecks, todayCheckins, todayLogs, checkins, books } = data;
+  const { today, timeZone, habits, items, itemChecks, todayCheckins, todayLogs, checkins, books } = data;
   const view = buildToday({
     habits,
     items,
@@ -56,7 +52,7 @@ export default async function Home() {
     logs: todayLogs.logs,
     quantity: todayLogs.quantity,
     today,
-    timeZone: profile.timezone,
+    timeZone: timeZone,
   });
   const checkinByHabit = new Map(todayCheckins.map((c) => [c.habit_id, c.id]));
   const readingFor = (habitId: string): RowReading => ({
@@ -65,7 +61,7 @@ export default async function Home() {
     entry: todayLogs.readings[habitId]?.entry ?? null,
   });
   const allDone = view.total > 0 && view.doneCount === view.total;
-  const label = `Hoy · ${format(new TZDate(now, profile.timezone), "EEE d MMM", { locale: es })}`;
+  const label = `Hoy · ${format(new TZDate(now, timeZone), "EEE d MMM", { locale: es })}`;
   const pct = view.total === 0 ? 0 : (view.doneCount / view.total) * 100;
 
   return (
@@ -77,7 +73,7 @@ export default async function Home() {
       <InstallPrompt />
       <PomodoroBannerLazy
         userId={user.id}
-        timeZone={profile.timezone}
+        timeZone={timeZone}
         habits={view.rows.filter((r) => r.logType === "time").map((r) => ({ id: r.id, name: r.name }))}
       />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
@@ -129,7 +125,7 @@ export default async function Home() {
                   key={row.id}
                   row={row}
                   today={today}
-                  timeZone={profile.timezone}
+                  timeZone={timeZone}
                   checkinId={checkinByHabit.get(row.id) ?? null}
                   reading={row.logType === "reading" ? readingFor(row.id) : undefined}
                 />

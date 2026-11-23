@@ -7,6 +7,7 @@ import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { WeeklyBarsLazy } from "@/components/charts/LazyCharts";
 import { HabitGoals } from "@/components/HabitGoals";
+import { LoadFailed } from "@/components/LoadFailed";
 import { CardioProgress } from "@/components/logs/CardioProgress";
 import { QuantityProgress } from "@/components/logs/QuantityProgress";
 import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
@@ -50,6 +51,7 @@ import {
 } from "@/lib/logs-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
 import { read, readRows } from "@/lib/read";
+import { countLogged } from "@/lib/today-entry";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
@@ -59,6 +61,8 @@ export const metadata: Metadata = { title: "Hábito" };
 const MONTHS_VIEW = "meses";
 const OVERVIEW_MONTHS = 12;
 const HISTORY_DAYS = 366;
+
+class CountFailed extends Error {}
 
 export default async function HabitoPage({
   params,
@@ -100,6 +104,15 @@ export default async function HabitoPage({
 
   // PROGRESO of a habit with a detailed log: this month against the last, from a bounded window.
   const loadProgress = async (): Promise<ReactNode> => {
+    try {
+      return await loadProgressInner();
+    } catch (e) {
+      // a failed "is today logged" count: the retry line, never an "Añadir" or "Editar" guess
+      if (e instanceof CountFailed) return <LoadFailed href={`/habitos/${habit.id}`} />;
+      throw e;
+    }
+  };
+  const loadProgressInner = async (): Promise<ReactNode> => {
     if (logType === "none") return null;
     const windowStart = logWindowStart(today);
     // today's check-in, and whether it already has its log (not for quantity: no check-in needed)
@@ -112,19 +125,9 @@ export default async function HabitoPage({
         .maybeSingle());
       if (!todayCheckin) return null;
       const cid = todayCheckin.id;
-      let count: number | null = null;
-      if (logType === "reading") {
-        count = (await supabase.from("reading_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "workout") {
-        count = (await supabase.from("workout_sessions").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "time") {
-        count = (await supabase.from("time_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "watch") {
-        count = (await supabase.from("watch_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "cardio") {
-        count = (await supabase.from("cardio_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      }
-      return { logged: (count ?? 0) > 0 };
+      const res = await countLogged(supabase, logType, cid);
+      if (!res.ok) throw new CountFailed();
+      return { logged: res.logged };
     };
 
     switch (logType) {

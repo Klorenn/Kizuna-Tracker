@@ -271,7 +271,7 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
   const uid = auth.user?.id;
   if (!uid) return { ok: false, error: ERRORS.not_authenticated };
   // ownership, time zone and steps do not depend on each other: one round, not three
-  const [habit, { data: profile }, { data: items }] = await Promise.all([
+  const [habit, { data: profile }, { data: items, error: itemsError }] = await Promise.all([
     ownHabit(supabase, uid, habitId),
     supabase.from("profiles").select("timezone").single(),
     supabase.from("habit_items").select("id").eq("habit_id", habitId).is("archived_at", null).limit(1),
@@ -281,13 +281,15 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
   const date = localDate(new Date(), profile.timezone);
 
   // habits with items are undone by unchecking an item; photo check-ins are not undoable here
+  if (itemsError) return { ok: false, error: GENERIC };
   if (items && items.length > 0) return { ok: false, error: CANNOT_UNDO };
-  const { data: today } = await supabase
+  const { data: today, error: todayError } = await supabase
     .from("checkins")
     .select("photo_path")
     .eq("habit_id", habitId)
     .eq("local_date", date)
     .maybeSingle();
+  if (todayError) return { ok: false, error: GENERIC };
   if (today?.photo_path) return { ok: false, error: CANNOT_UNDO };
 
   const { error } = await supabase

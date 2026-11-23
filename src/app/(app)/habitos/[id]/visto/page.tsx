@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
-import { loadPickerMedia } from "@/app/(app)/series/media-data";
+import { loadPickerMediaOrNull } from "@/app/(app)/series/media-data";
+import { LoadFailed } from "@/components/LoadFailed";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -49,17 +50,20 @@ export default async function VistoPage({
     .eq("user_id", user.id)
     .eq("local_date", date)
     .maybeSingle());
-  const { data: entry } = checkin
-    ? await supabase
-        .from("watch_entries")
-        .select("media_id,episodes,season,episode_to,minutes,completed")
-        .eq("checkin_id", checkin.id)
-        .maybeSingle()
-    : { data: null };
+  // a failed read must not open an empty editor: saving would replace the stored entry
+  const entry = checkin
+    ? read(
+        await supabase
+          .from("watch_entries")
+          .select("media_id,episodes,season,episode_to,minutes,completed")
+          .eq("checkin_id", checkin.id)
+          .maybeSingle(),
+      )
+    : null;
   const isWatch = habit.log_type === "watch";
   // the log type changed after logging: the old entry still shows, so it can be fixed or deleted
   const leftover = !isWatch && entry !== null;
-  const media = checkin && (isWatch || leftover) ? await loadPickerMedia(supabase, user.id, entry?.media_id) : [];
+  const media = checkin && (isWatch || leftover) ? await loadPickerMediaOrNull(supabase, user.id, entry?.media_id) : [];
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">
@@ -82,6 +86,8 @@ export default async function VistoPage({
             }
           />
         </Card>
+      ) : media === null ? (
+        <LoadFailed href={`/habitos/${id}/visto`} />
       ) : !checkin ? (
         <Card>
           <EmptyState title="Ese día no tiene check-in" body="Los registros se guardan sobre un día cumplido." />

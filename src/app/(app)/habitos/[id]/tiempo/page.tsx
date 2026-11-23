@@ -53,9 +53,10 @@ export default async function TiempoPage({
     .eq("user_id", user.id)
     .eq("local_date", date)
     .maybeSingle());
-  const { data: entry } = checkin
-    ? await supabase.from("time_entries").select("minutes,topic").eq("checkin_id", checkin.id).maybeSingle()
-    : { data: null };
+  // a failed read must not open an empty editor: saving would replace the stored time
+  const entry = checkin
+    ? read(await supabase.from("time_entries").select("minutes,topic").eq("checkin_id", checkin.id).maybeSingle())
+    : null;
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">

@@ -67,6 +67,7 @@ export async function loadPickerBooks(
 export async function loadPickerBooksOrNull(
   supabase: SupabaseClient<Database>,
   userId: string,
+  keep?: string,
 ): Promise<PickerBook[] | null> {
   const [books, entries] = await Promise.all([
     supabase
@@ -83,5 +84,5 @@ export async function loadPickerBooksOrNull(
       .limit(500),
   ])
   if (books.error || entries.error) return null
-  return pickerBooks(books.data ?? [], entries.data ?? [], undefined)
+  return pickerBooks(books.data ?? [], entries.data ?? [], keep)
 }

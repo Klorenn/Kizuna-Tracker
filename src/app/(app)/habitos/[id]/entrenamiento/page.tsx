@@ -107,7 +107,8 @@ export default async function EntrenamientoPage({
     own: e.user_id !== null,
     archived: e.archived_at !== null,
   }));
-  const current = currentRes.data as SessionRow | null;
+  // a failed read must not open an empty logger: saving would replace the stored workout
+  const current = read(currentRes) as SessionRow | null;
   const history = (readRows(historyRes) as SessionRow[]).map((s) => ({
     date: s.local_date,
     ...toDraft(s),
