@@ -270,7 +270,7 @@ export default function RegistroPage() {
                 autoComplete="given-name"
                 autoCapitalize="words"
                 enterKeyHint="next"
-                placeholder="Carolina"
+                placeholder="Kizuna"
                 maxLength={40}
                 autoFocus
                 value={form.firstName}
@@ -282,7 +282,7 @@ export default function RegistroPage() {
                 autoComplete="family-name"
                 autoCapitalize="words"
                 enterKeyHint="next"
-                placeholder="Méndez"
+                placeholder="絆"
                 maxLength={40}
                 value={form.lastName}
                 onChange={(e) => set("lastName", e.target.value)}
