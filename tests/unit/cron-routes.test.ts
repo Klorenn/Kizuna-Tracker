@@ -17,7 +17,7 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
     vi.spyOn(console, 'error').mockImplementation(() => {})
     vi.doMock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ rpc }) }))
     vi.doMock('@/lib/close-periods-repo', () => ({ createClosePeriodsRepo: () => ({}) }))
-    vi.doMock('@/lib/close-periods', () => ({ closeDuePeriods: async () => ({ closed: 0, debtsCreated: 0 }) }))
+    vi.doMock('@/lib/close-periods', () => ({ closeDuePeriods: async () => ({ closed: 0, debtsCreated: 0 }), closeGroupWeeks: async () => ({ closed: 0 }) }))
     vi.doMock('@/lib/notify', () => ({ notify: async () => {}, pushPendingNotifications: async () => 0 }))
     vi.doMock('@/lib/reminders', () => ({ dueReminderEntries: () => [] }))
     vi.doMock('@/lib/reminders-repo', () => ({ loadReminderCandidates: async () => [], claimReminders: async () => [] }))
@@ -45,7 +45,8 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
 
   it('valid env secret -> 200', async () => {
     expect((await post('Bearer env-secret')).status).toBe(200)
-    expect(rpc).not.toHaveBeenCalled()
+    // an env-secret request performs no database secret check
+    expect(rpc).not.toHaveBeenCalledWith('cron_secret_valid', expect.anything())
   })
 
   it('valid database secret -> 200', async () => {

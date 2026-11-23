@@ -88,6 +88,20 @@ describe('groups-rpc: one function per RPC, exact names and arguments', () => {
   })
 })
 
+describe('closeDueGroupWeeks with an abort signal', () => {
+  it('hands the signal to the query builder', async () => {
+    const signal = new AbortController().signal
+    const builder: { abortSignal: ReturnType<typeof vi.fn>; then: (r: (v: unknown) => unknown) => unknown } = {
+      abortSignal: vi.fn(() => builder),
+      then: (r) => r({ data: 2, error: null }),
+    }
+    const rpc = vi.fn(() => builder)
+    expect(await rpcs.closeDueGroupWeeks({ rpc }, signal)).toEqual({ data: 2, error: null })
+    expect(rpc).toHaveBeenCalledWith('close_due_group_weeks')
+    expect(builder.abortSignal).toHaveBeenCalledWith(signal)
+  })
+})
+
 describe('isMissingFunction', () => {
   it('recognises "function does not exist" in its three spellings', () => {
     expect(rpcs.isMissingFunction({ code: 'PGRST202', message: 'Could not find the function public.close_due_group_weeks' })).toBe(true)

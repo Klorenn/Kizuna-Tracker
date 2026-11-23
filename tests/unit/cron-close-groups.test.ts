@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 // The close-periods cron closes challenge periods and, after them, due group weeks. Each half runs whether or
 // not the other fails; authentication is the same authorizeCronRequest as before (see cron-routes.test.ts).
@@ -113,6 +113,49 @@ describe('POST /api/cron/close-periods: challenges x groups', () => {
     expect(order).toEqual(['challenges', 'close_due_group_weeks'])
     expect(createAdminClient).toHaveBeenCalledTimes(1)
     expect(rpc).toHaveBeenCalledWith('close_due_group_weeks')
+  })
+
+  describe('the group half has a 15 second limit', () => {
+    afterEach(() => vi.useRealTimers())
+
+    it('a group closing that never answers is aborted at 15 s, logged as non-fatal, and the response is unchanged', async () => {
+      vi.useFakeTimers()
+      activeChallenges.mockResolvedValue([])
+      let signal: AbortSignal | undefined
+      const builder = { abortSignal: (s: AbortSignal) => ((signal = s), builder), then: () => {} }
+      rpc.mockReturnValue(builder)
+      let status: number | null = null
+      const pending = post().then(async (r) => {
+        status = r.status
+        return r.json()
+      })
+      await vi.advanceTimersByTimeAsync(14_999)
+      expect(status).toBeNull()
+      await vi.advanceTimersByTimeAsync(2)
+      expect(await pending).toEqual({ closed: 0, debtsCreated: 0 })
+      expect(status).toBe(200)
+      expect(signal?.aborted).toBe(true)
+      expect(console.warn).toHaveBeenCalled()
+      expect(console.error).not.toHaveBeenCalled()
+    })
+
+    it('a timeout never changes a failed challenge response either', async () => {
+      vi.useFakeTimers()
+      activeChallenges.mockRejectedValue(new Error('db down'))
+      rpc.mockReturnValue({ then: () => {} })
+      const pending = post().then(async (r) => ({ status: r.status, body: await r.json() }))
+      await vi.advanceTimersByTimeAsync(15_001)
+      expect(await pending).toEqual({ status: 500, body: { error: 'failed' } })
+    })
+
+    it('an answer before the limit clears the timer', async () => {
+      vi.useFakeTimers()
+      activeChallenges.mockResolvedValue([])
+      rpc.mockResolvedValue({ data: 1, error: null })
+      const res = await post()
+      expect(res.status).toBe(200)
+      expect(vi.getTimerCount()).toBe(0)
+    })
   })
 
   it('an unauthenticated request does neither', async () => {

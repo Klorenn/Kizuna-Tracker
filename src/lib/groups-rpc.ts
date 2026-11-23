@@ -15,9 +15,19 @@ export type RpcAnswer<T> = { data: T | null; error: RpcError | null }
 // eslint-disable-next-line @typescript-eslint/no-explicit-any
 export type GroupsClient = { rpc: (...args: any[]) => unknown }
 
-async function call<T>(client: GroupsClient, fn: string, args?: Record<string, unknown>): Promise<RpcAnswer<T>> {
-  const rpc = client.rpc as (fn: string, args?: Record<string, unknown>) => PromiseLike<RpcAnswer<T>>
-  return args === undefined ? rpc.call(client, fn) : rpc.call(client, fn, args)
+type Query<T> = PromiseLike<RpcAnswer<T>> & { abortSignal?: (s: AbortSignal) => unknown }
+
+async function call<T>(
+  client: GroupsClient,
+  fn: string,
+  args?: Record<string, unknown>,
+  signal?: AbortSignal,
+): Promise<RpcAnswer<T>> {
+  const rpc = client.rpc as (fn: string, args?: Record<string, unknown>) => Query<T>
+  const query = args === undefined ? rpc.call(client, fn) : rpc.call(client, fn, args)
+  // supabase-js builders abort through `.abortSignal()`; it returns the same builder
+  if (signal && typeof query.abortSignal === 'function') query.abortSignal(signal)
+  return query
 }
 
 export type GroupRoleValue = 'admin' | 'member'
@@ -209,7 +219,8 @@ export const groupWeekDetail = (c: GroupsClient, groupId: string, weekStart: str
 // cron (service role only) ---------------------------------------------------------------------------------------------
 
 /** Number of weeks closed. Only the cron route calls this, and only with the service role. */
-export const closeDueGroupWeeks = (c: GroupsClient) => call<number>(c, 'close_due_group_weeks')
+export const closeDueGroupWeeks = (c: GroupsClient, signal?: AbortSignal) =>
+  call<number>(c, 'close_due_group_weeks', undefined, signal)
 
 /** "function ... does not exist": the migration is not in this database yet (PostgREST PGRST202 or Postgres 42883). */
 export function isMissingFunction(error: { message?: string; code?: string } | null | undefined): boolean {
