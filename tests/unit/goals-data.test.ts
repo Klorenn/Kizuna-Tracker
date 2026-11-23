@@ -65,6 +65,11 @@ describe('loadGoals', () => {
     expect(views.map((v) => v.current)).toEqual([0, 0, 0])
   })
 
+  test('a failed history read counts as zero, like the per-goal counts did', async () => {
+    const { views } = await load({ dates: { data: null, error: { message: 'boom' } } })
+    expect(views.map((v) => v.current)).toEqual([0, 0, 0])
+  })
+
   test('weekly goals come first', async () => {
     const { views } = await load()
     expect(views[0].kind).toBe('weekly')
