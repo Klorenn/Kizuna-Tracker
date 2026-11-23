@@ -5,8 +5,25 @@ import Link from "next/link";
 import { useOptimistic, useState, useTransition } from "react";
 import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
 import { habitSubtitle, type TodayRow } from "@/domain/today";
+import type { PickerBook } from "@/lib/reading-books";
 import { ItemChecklist } from "./ItemChecklist";
+import { ReadingSheet, type ReadingSheetMode } from "./logs/ReadingSheet";
+import { Button } from "./ui/Button";
+import { Sheet } from "./ui/Sheet";
+import { Toast, useToast } from "./ui/Toast";
 import { VisibilityIcon } from "./habit-icon";
+
+/** What a reading habit's row needs for its sheet: your books and today's check-in and reading. */
+export type RowReading = {
+  books: PickerBook[];
+  checkinId: string | null;
+  entry: { bookId: string; fromPage: number; toPage: number } | null;
+};
+
+const UNDO_LOSES: Record<"reading" | "workout", string> = {
+  reading: "Se borrará también la lectura de hoy.",
+  workout: "Se borrará también el entrenamiento de hoy.",
+};
 
 function Box({ done }: { done: boolean }) {
   return (
@@ -21,22 +38,57 @@ function Box({ done }: { done: boolean }) {
   );
 }
 
-/** List-style row inside a Card. Plain habit: tap to check. Photo: "Foto" chip. Items: checklist below. */
-export function HabitRow({ row }: { row: TodayRow }) {
+/**
+ * List-style row inside a Card. Plain habit: tap to check. Photo: "Foto" chip. Items: checklist
+ * below. Reading habit: "Hecho" opens "¿Qué leíste hoy?". Done without a log on a habit with a log
+ * type: "Añadir registro". Undoing a check-in that has a log asks first (the log goes with it).
+ */
+export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading }) {
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useOptimistic(row.done);
+  const [sheet, setSheet] = useState<ReadingSheetMode | null>(null);
+  const [confirmUndo, setConfirmUndo] = useState(false);
+  const [toast, showToast] = useToast();
   const hasItems = row.items.length > 0;
   const checkedCount = row.items.filter((i) => i.checked).length;
+  const readingFlow = row.logType === "reading" && reading !== undefined;
 
   function toggle() {
     setError(null);
+    if (!row.done && readingFlow) return setSheet({ kind: "checkin", habitId: row.id });
+    if (row.done && row.log && row.logType !== "none") return setConfirmUndo(true);
+    run();
+  }
+
+  function run() {
+    setConfirmUndo(false);
     start(async () => {
       setDone(!row.done);
       const result = row.done ? await undoCheckIn(row.id) : await checkIn(row.id);
       if (!result.ok) setError(result.error);
     });
   }
+
+  const addLog =
+    done && row.log === null && row.logType !== "none" ? (
+      row.logType === "reading" && readingFlow && reading.checkinId ? (
+        <button
+          type="button"
+          onClick={() => setSheet({ kind: "edit", checkinId: reading.checkinId!, entry: reading.entry })}
+          className="inline-flex h-11 shrink-0 items-center text-small font-medium text-accent"
+        >
+          Añadir registro
+        </button>
+      ) : (
+        <Link
+          href={`/habitos/${row.id}/${row.logType === "reading" ? "lectura" : "entrenamiento"}`}
+          className="inline-flex h-11 shrink-0 items-center text-small font-medium text-accent"
+        >
+          Añadir registro
+        </Link>
+      )
+    ) : null;
 
   const text = (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -87,6 +139,8 @@ export function HabitRow({ row }: { row: TodayRow }) {
           <span className="font-mono text-small font-medium text-muted">
             {checkedCount} de {row.items.length}
           </span>
+        ) : addLog ? (
+          addLog
         ) : row.requiresPhoto && !done ? (
           <Link
             href={`/habitos/${row.id}/foto`}
@@ -104,6 +158,19 @@ export function HabitRow({ row }: { row: TodayRow }) {
           {error}
         </p>
       ) : null}
+      {sheet && reading ? (
+        <ReadingSheet open mode={sheet} books={reading.books} onClose={() => setSheet(null)} onSaved={showToast} />
+      ) : null}
+      {row.logType !== "none" ? (
+        <Sheet open={confirmUndo} title="¿Deshacer el hábito de hoy?" onClose={() => setConfirmUndo(false)}>
+          <p className="text-body text-muted">{UNDO_LOSES[row.logType]}</p>
+          <Button onClick={run}>Deshacer</Button>
+          <Button variant="secondary" onClick={() => setConfirmUndo(false)}>
+            Cancelar
+          </Button>
+        </Sheet>
+      ) : null}
+      <Toast message={toast} />
     </div>
   );
 }

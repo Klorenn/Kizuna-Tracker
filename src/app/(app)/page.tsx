@@ -3,9 +3,10 @@ import { Camera, Plus } from "@phosphor-icons/react/dist/ssr";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
+import { CatAnimation } from "@/components/brand/CatAnimation";
 import { CatPreload } from "@/components/brand/CatPreload";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
-import { HabitRow } from "@/components/HabitRow";
+import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ButtonLink } from "@/components/ui/Button";
@@ -17,6 +18,8 @@ import { addDays, localDate } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
 import { hoyCatAssets } from "@/lib/motion/cat-animation";
 import { fetchAll } from "@/lib/paginate";
+import { loadPickerBooks, type PickerBook } from "@/lib/reading-books";
+import { loadTodayLogs } from "@/lib/today-logs";
 import { createServerClient } from "@/lib/supabase/server";
 
 export default async function Home() {
@@ -35,10 +38,10 @@ export default async function Home() {
   const now = new Date();
   const today = localDate(now, profile.timezone);
 
-  const [habits, items, checkins, itemChecks] = await Promise.all([
+  const [habits, items, checkins, itemChecks, todayCheckins, todayLogs] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset")
+      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset,log_type")
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
@@ -64,6 +67,8 @@ export default async function Home() {
       .select("item_id,local_date,created_at")
       .eq("user_id", user.id)
       .eq("local_date", today),
+    supabase.from("checkins").select("id,habit_id").eq("user_id", user.id).eq("local_date", today),
+    loadTodayLogs(supabase, user.id, today),
   ]);
 
   const view = buildToday({
@@ -71,9 +76,21 @@ export default async function Home() {
     items: items.data ?? [],
     checkins,
     itemChecks: itemChecks.data ?? [],
+    logs: todayLogs.logs,
     today,
     timeZone: profile.timezone,
   });
+  // the reading sheet's books, only when a reading habit is on Hoy
+  const books: PickerBook[] = view.rows.some((r) => r.logType === "reading")
+    ? await loadPickerBooks(supabase, user.id)
+    : [];
+  const checkinByHabit = new Map((todayCheckins.data ?? []).map((c) => [c.habit_id, c.id]));
+  const readingFor = (habitId: string): RowReading => ({
+    books,
+    checkinId: checkinByHabit.get(habitId) ?? null,
+    entry: todayLogs.readings[habitId]?.entry ?? null,
+  });
+  const allDone = view.total > 0 && view.doneCount === view.total;
   const label = `Hoy · ${format(new TZDate(now, profile.timezone), "EEE d MMM", { locale: es })}`;
   const pct = view.total === 0 ? 0 : (view.doneCount / view.total) * 100;
 
@@ -129,10 +146,20 @@ export default async function Home() {
             </div>
             <div className="mt-1 divide-y divide-line">
               {view.rows.map((row) => (
-                <HabitRow key={row.id} row={row} />
+                <HabitRow
+                  key={row.id}
+                  row={row}
+                  reading={row.logType === "reading" ? readingFor(row.id) : undefined}
+                />
               ))}
             </div>
           </Card>
+          {allDone ? (
+            <div className="flex items-center justify-center gap-3 py-2">
+              <CatAnimation asset="sleep" width={56} />
+              <p className="text-body text-muted">Listo por hoy. Descansa.</p>
+            </div>
+          ) : null}
           <ButtonLink href="/habitos/nuevo" variant="secondary">
             <Plus size={20} weight="light" aria-hidden />
             Nuevo hábito
@@ -141,9 +168,19 @@ export default async function Home() {
             today={today}
             done={view.doneCount}
             total={view.total}
-            rows={view.rows.map((r) => ({ id: r.id, preset: r.preset, hasItems: r.items.length > 0, done: r.done }))}
+            rows={view.rows.map((r) => ({
+              id: r.id,
+              preset: r.preset,
+              hasItems: r.items.length > 0,
+              done: r.done,
+              icon: r.icon,
+            }))}
           />
-          <CatPreload assets={hoyCatAssets(view.rows.map((r) => ({ preset: r.preset, hasItems: r.items.length > 0 })))} />
+          <CatPreload
+            assets={hoyCatAssets(
+              view.rows.map((r) => ({ preset: r.preset, hasItems: r.items.length > 0, logType: r.logType, icon: r.icon })),
+            )}
+          />
         </>
       )}
     </main>

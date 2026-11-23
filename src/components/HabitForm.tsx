@@ -14,6 +14,7 @@ import {
   type HabitDraft,
   type PresetKey,
 } from "@/domain/presets";
+import type { LogType } from "@/domain/logs";
 import { ColorPicker } from "./ColorPicker";
 import { IconPicker } from "./IconPicker";
 import { VisibilityPicker } from "./VisibilityPicker";
@@ -29,6 +30,16 @@ const FREQUENCY = [
   { value: "daily", label: "Diaria" },
   { value: "weekly", label: "Veces por semana" },
 ] as const;
+const LOG_TYPE_OPTIONS = [
+  { value: "none", label: "Ninguno" },
+  { value: "reading", label: "Lectura" },
+  { value: "workout", label: "Entrenamiento" },
+] as const satisfies readonly { value: LogType; label: string }[];
+const LOG_TYPE_HINT: Record<LogType, string> = {
+  none: "Solo marcas si lo hiciste.",
+  reading: "Anotas el libro y las páginas de cada día.",
+  workout: "Anotas el tipo de día, los ejercicios y los pesos.",
+};
 
 /** Create (with preset chips) or edit a habit. */
 export function HabitForm({
@@ -222,6 +233,8 @@ export function HabitForm({
               patch({
                 items: [...draft.items, { label: "", requiresPhoto: false }],
                 requiresPhoto: false,
+                // a habit with steps does not carry a detailed log
+                logType: "none",
               })
             }
             className="flex min-h-12 items-center gap-2 text-body text-accent disabled:opacity-40"
@@ -231,6 +244,19 @@ export function HabitForm({
           </button>
         </div>
       </div>
+
+      {!hasItems ? (
+        <div className="flex flex-col gap-2">
+          <p className="text-small text-ink">Registro detallado</p>
+          <Segmented
+            label="Registro detallado"
+            options={LOG_TYPE_OPTIONS}
+            value={draft.logType}
+            onChange={(logType) => patch({ logType })}
+          />
+          <p className="text-small text-muted">{LOG_TYPE_HINT[draft.logType]}</p>
+        </div>
+      ) : null}
 
       <VisibilityPicker value={draft.visibility} onChange={(visibility) => patch({ visibility })} />
 
