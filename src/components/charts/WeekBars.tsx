@@ -51,7 +51,7 @@ export function WeekBars({
               {h > 0 ? <div className="w-full max-w-8 rounded-t-[4px] bg-(--habit)" style={{ height: h }} /> : null}
             </div>
             <div className="h-px w-full bg-line" />
-            <span className="h-4 whitespace-nowrap font-mono text-[13px] uppercase leading-4 text-muted">{r.tick}</span>
+            <span className="h-4 whitespace-nowrap font-mono text-[13px] leading-4 text-muted">{r.tick}</span>
           </div>
         );
       })}
