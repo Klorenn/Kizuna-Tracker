@@ -55,42 +55,37 @@ export default async function PerfilPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at,height_cm")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
-
-  const today = localDate(new Date(), profile.timezone);
-  const [{ data: habits }, goals, record, { data: debtRows }, bodyEntries] = await Promise.all([
+  // Reads that need only the user id start with the profile; the ones that need its timezone follow.
+  const [{ data: profile }, { data: habits }, record, { data: debtRows }, bodyEntries] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at,height_cm")
+      .eq("id", user.id)
+      .maybeSingle(),
     supabase
       .from("habits")
       .select("id,name,color,frequency_type,target_per_week")
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
-    loadGoals(supabase, user.id, today),
     challengeRecord(user.id),
     supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
     loadRecentWeights(supabase, user.id, 5),
   ]);
+  if (!profile) redirect("/login?error=perfil");
 
-  // History per habit, bounded by date and row count (the API caps a query at 1000 rows)
-  const { from, limit } = streakWindow(today);
-  const history = await Promise.all(
-    (habits ?? []).map(async (h) => {
-      const { data } = await supabase
-        .from("checkins")
-        .select("local_date")
-        .eq("habit_id", h.id)
-        .is("rejected_at", null)
-        .gte("local_date", from)
-        .order("local_date", { ascending: false })
-        .limit(limit);
-      return { ...h, color: toHabitColor(h.color), dates: (data ?? []).map((c) => c.local_date) };
-    }),
-  );
+  const today = localDate(new Date(), profile.timezone);
+  // History of every habit in one call (one row per habit), alongside the goals
+  const { from } = streakWindow(today);
+  const habitRows = habits ?? [];
+  const [goals, { data: dated }] = await Promise.all([
+    loadGoals(supabase, user.id, today),
+    habitRows.length
+      ? supabase.rpc("checkin_dates", { p_habit_ids: habitRows.map((h) => h.id), p_from: from })
+      : Promise.resolve({ data: [] }),
+  ]);
+  const datesByHabit = new Map((dated ?? []).map((r) => [r.habit_id, r.dates]));
+  const history = habitRows.map((h) => ({ ...h, color: toHabitColor(h.color), dates: datesByHabit.get(h.id) ?? [] }));
   const { current, best } = profileStreaks(history, today);
   const strip = history.map((h) => {
     const weekly = h.frequency_type === "weekly";

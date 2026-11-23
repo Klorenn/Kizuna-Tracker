@@ -73,19 +73,23 @@ export default async function AmigosPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("timezone")
-    .eq("id", user.id)
-    .maybeSingle();
+  // getUser is the only read everything else waits on: profile, friendships, search and the feed
+  // start together. The feed needs the timezone just to format times, so it gets the promise.
+  const meRead = Promise.resolve(supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle());
+  const timezone = meRead.then(({ data }) => data?.timezone ?? "UTC");
+  const [{ data: me }, { data: friendships }, hits, feed] = await Promise.all([
+    meRead,
+    supabase
+      .from("friendships")
+      .select("id,requester_id,addressee_id,status")
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    q.trim() ? searchUsers(q) : Promise.resolve([]),
+    loadFeedPage(supabase, user.id, { timezone }).catch((): null => null),
+  ]);
   if (!me) redirect("/login?error=perfil");
   const today = localDate(new Date(), me.timezone);
 
-  const { data: friendships } = await supabase
-    .from("friendships")
-    .select("id,requester_id,addressee_id,status")
-    .order("created_at", { ascending: false })
-    .limit(1000);
   const rows = friendships ?? [];
   const other = (f: { requester_id: string; addressee_id: string }) =>
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
@@ -94,9 +98,7 @@ export default async function AmigosPage({
   const related = new Map(rows.map((f) => [other(f), f]));
   const friendIds = friends.map(other);
 
-  const [hits, feed, streaks, { data: people }] = await Promise.all([
-    q.trim() ? searchUsers(q) : Promise.resolve([]),
-    loadFeedPage(supabase, user.id, { timezone: me.timezone }).catch((): null => null),
+  const [streaks, { data: people }] = await Promise.all([
     // on failure: no status line at all (never a false "Sin racha activa")
     friendStreaks(supabase, friendIds, today).catch((): Map<string, ListStreak> => new Map()),
     rows.length
