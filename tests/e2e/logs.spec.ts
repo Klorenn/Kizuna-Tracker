@@ -301,8 +301,10 @@ test("Hoy: undoing a check-in with a log asks first and names the log (even afte
 
   // done reading habit without a log: "Añadir registro" opens the reading sheet
   await page.getByRole("button", { name: "Añadir registro" }).click();
-  await expect(page.getByRole("dialog", { name: "Añadir lectura" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const addReading = page.getByRole("dialog", { name: "Añadir lectura" });
+  await expect(addReading).toBeVisible();
+  await addReading.getByRole("button", { name: "Cerrar" }).click();
+  await expect(addReading).toHaveCount(0);
 
   const box = page.getByRole("checkbox", { name: "Pesas" });
   await expect(box).toHaveAttribute("aria-checked", "true");

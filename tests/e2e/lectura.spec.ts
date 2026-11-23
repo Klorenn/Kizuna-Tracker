@@ -68,7 +68,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await expect(rest).toBeVisible();
   await shot(page, "04-rest-done");
   await rest.getByRole("button", { name: "Listo" }).click();
+  // Estudiar is a time habit now: "Hecho" opens "¿Cuánto rato?" and "Omitir" checks in without time
   await page.getByRole("checkbox", { name: "Estudiar" }).click();
+  await dialog(page, "¿Cuánto rato?").getByRole("button", { name: "Omitir" }).click();
   const study = dialog(page, "Estudio registrado");
   await expect(study).toBeVisible();
   await shot(page, "05-study-done");
@@ -84,7 +86,8 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await expect(sheet).toBeVisible();
   await sheet.getByLabel("Desde").fill("40");
   await sheet.getByLabel("Hasta").fill("412");
-  await sheet.getByText("Terminé este libro").click();
+  // reaching the last page ticks "Terminé este libro" by itself
+  await expect(sheet.getByRole("checkbox", { name: "Terminé este libro" })).toBeChecked();
   await sheet.getByRole("button", { name: "Guardar" }).click();
   const book = dialog(page, "Terminaste Dune");
   await expect(book).toBeVisible();
@@ -92,7 +95,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await book.getByRole("button", { name: "Listo" }).click();
 
   // last habit → only "Día completo", then the quiet end-of-day state
-  await page.getByRole("checkbox", { name: "Agua" }).click();
+  // Agua is a quantity habit: eight glasses meet the goal, and the goal completes the day
+  const glass = page.getByRole("button", { name: "Sumar 1 vaso" });
+  for (let i = 0; i < 8; i++) await glass.click();
   const day = dialog(page, "Día completo");
   await expect(day).toBeVisible();
   await day.getByRole("button", { name: "Listo" }).click();
