@@ -248,12 +248,26 @@ export function HabitForm({
       {!hasItems ? (
         <div className="flex flex-col gap-2">
           <p className="text-small text-ink">Registro detallado</p>
-          <Segmented
-            label="Registro detallado"
-            options={LOG_TYPE_OPTIONS}
-            value={draft.logType}
-            onChange={(logType) => patch({ logType })}
-          />
+          {/* Segmented look, but each option sized to its label: "Entrenamiento" does not fit a third of 360 px */}
+          <div role="radiogroup" aria-label="Registro detallado" className="flex gap-1 rounded-md bg-field p-1">
+            {LOG_TYPE_OPTIONS.map((o) => {
+              const selected = o.value === draft.logType;
+              return (
+                <button
+                  key={o.value}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => patch({ logType: o.value })}
+                  className={`h-11 flex-auto rounded-md px-2 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] ${
+                    selected ? "bg-raised text-ink shadow-card" : "text-muted"
+                  }`}
+                >
+                  {o.label}
+                </button>
+              );
+            })}
+          </div>
           <p className="text-small text-muted">{LOG_TYPE_HINT[draft.logType]}</p>
         </div>
       ) : null}
