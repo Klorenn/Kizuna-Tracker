@@ -52,8 +52,8 @@ function PhotoCard({ entry, eager }: { entry: FeedEntry; eager: boolean }) {
   return (
     <div className="relative mt-1 flex h-[208px] flex-col justify-end overflow-hidden rounded-md bg-media p-3.5">
       {entry.photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
         // lazy + async decode: up to 20 full-size photos per page must not compete with the first screen
+        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
         <img
           src={entry.photoUrl}
           alt={`Foto de ${entry.habit.name}`}
