@@ -1,0 +1,118 @@
+import { createClient } from "@supabase/supabase-js";
+import { expect, test, type Page } from "@playwright/test";
+import { logIn, PASSWORD, randomHandle } from "./helpers";
+
+test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1)");
+// the owner's phone: 390 px, touch
+test.use({ viewport: { width: 390, height: 844 }, hasTouch: true, isMobile: true });
+
+const admin = () =>
+  createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+
+let handle = "";
+let userId = "";
+let habitId = "";
+
+test.beforeAll(async () => {
+  handle = randomHandle("leave");
+  const { data, error } = await admin().auth.admin.createUser({
+    email: `${handle}@example.com`,
+    password: PASSWORD,
+    email_confirm: true,
+    user_metadata: {
+      username: handle,
+      first_name: "Gabi",
+      last_name: "E2E",
+      birth_date: "1993-05-05",
+      timezone: "America/Santiago",
+      terms_accepted: true,
+    },
+  });
+  expect(error).toBeNull();
+  userId = data.user!.id;
+});
+
+// the celebration opens once per habit and day, so every test checks in a fresh habit
+test.beforeEach(async () => {
+  const { data, error } = await admin()
+    .from("habits")
+    .insert({
+      user_id: userId,
+      name: "Gimnasio",
+      icon: "barbell",
+      frequency_type: "weekly",
+      target_per_week: 5,
+      color: "cielo",
+      log_type: "workout",
+      preset: "gym",
+      requires_photo: true,
+    })
+    .select("id")
+    .single();
+  expect(error).toBeNull();
+  habitId = data!.id;
+});
+
+/** Logs in, sends a generated photo for the gym habit and waits for the celebration sheet. */
+async function openCelebration(page: Page) {
+  await page.addInitScript(() => Object.defineProperty(navigator, "mediaDevices", { value: undefined }));
+  await logIn(page, `@${handle}`, PASSWORD);
+  const jpeg = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 64;
+    c.height = 64;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#5a5ac2";
+    g.fillRect(0, 0, 64, 64);
+    return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+  });
+  await page.goto(`/habitos/${habitId}/foto`);
+  await page.locator('input[type="file"]').setInputFiles({
+    name: "gym.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from(jpeg, "base64"),
+  });
+  await page.getByRole("button", { name: "Usar esta foto" }).click();
+  const sheet = page.getByRole("dialog", { name: "Entrenamiento cumplido" });
+  await expect(sheet).toBeVisible();
+  return sheet;
+}
+
+const isRsc = (url: URL) => url.searchParams.has("_rsc") && url.pathname === "/";
+
+test("Listo closes the sheet at once, however long Hoy takes, and asks the server for Hoy once", async ({ page }) => {
+  const sheet = await openCelebration(page);
+  const rscForHoy: string[] = [];
+  await page.route(isRsc, async (route) => {
+    rscForHoy.push(route.request().url());
+    await new Promise((r) => setTimeout(r, 3_000));
+    await route.continue();
+  });
+
+  await sheet.getByRole("button", { name: "Listo" }).tap();
+
+  // the sheet never waits for the network, and what stays behind is a loading shape, not an empty page
+  await expect(sheet).toHaveCount(0, { timeout: 500 });
+  await expect(page.locator("[aria-busy='true']")).toBeVisible();
+
+  await expect(page.getByRole("heading", { name: "Hoy" })).toBeVisible({ timeout: 10_000 });
+  await expect(page).toHaveURL(/\/$/);
+  // replace("/") already renders Hoy fresh (dynamic pages are not cached on the client): no second round trip
+  expect(rscForHoy).toHaveLength(1);
+  // ...and that render is fresh: the habit is already checked in (no "Foto" shortcut left)
+  await expect(page.getByRole("link", { name: "Foto", exact: true })).toHaveCount(0);
+});
+
+test("if Hoy never answers, the app goes to Hoy with a full page load", async ({ page }) => {
+  const sheet = await openCelebration(page);
+  // the client-side navigation hangs (flaky network, odd proxy); a normal document load still works
+  await page.route(isRsc, () => new Promise(() => {}));
+
+  await sheet.getByRole("button", { name: "Listo" }).tap();
+
+  await expect(sheet).toHaveCount(0, { timeout: 500 });
+  await expect(page.getByRole("heading", { name: "Hoy" })).toBeVisible({ timeout: 15_000 });
+  await expect(page).toHaveURL(/\/$/);
+});
