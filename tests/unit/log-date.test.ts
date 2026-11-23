@@ -24,4 +24,10 @@ describe('logDateParam (?fecha=)', () => {
     expect(logDateParam(['2026-11-20', '2026-11-21'], today)).toBe(today)
     expect(logDateParam('2026-11-23', today)).toBe(today)
   })
+  it('falls back to today for impossible days and far futures', () => {
+    expect(logDateParam('2026-02-30', today)).toBe(today)
+    expect(logDateParam('2026-02-29', today)).toBe(today)
+    expect(logDateParam('2099-01-01', today)).toBe(today)
+    expect(logDateParam('2024-02-29', today)).toBe('2024-02-29')
+  })
 })

@@ -2,7 +2,7 @@
 
 import { ArrowCounterClockwise, Plus, Trash, Warning } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { deleteWorkout, saveWorkout } from "@/app/(app)/registros/workout-actions";
 import { Button } from "@/components/ui/Button";
 import { IconButton } from "@/components/ui/IconButton";
@@ -22,6 +22,7 @@ import {
   draftFromFields,
   fieldsFromDraft,
   nextSet,
+  type FieldError,
   type SetFields,
   type WorkoutFields,
 } from "@/lib/workout-form";
@@ -31,9 +32,9 @@ import { SetRow } from "./SetRow";
 
 const LEAVE_DELAY_MS = 1400;
 
-function ErrorLine({ message }: { message: string }) {
+function ErrorLine({ id, message }: { id?: string; message: string }) {
   return (
-    <p role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+    <p id={id} role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
       <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
       {message}
     </p>
@@ -68,6 +69,16 @@ export function WorkoutLogger({
   const [pickerOpen, setPickerOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorAt, setErrorAt] = useState<FieldError | null>(null);
+  const errorId = useId();
+  const idBase = useId();
+  const repsId = (exerciseId: string, set: number) => `${idBase}-${exerciseId}-${set}-reps`;
+  // after adding a set or an exercise, the new row's reps input takes focus (runs after the
+  // picker sheet gave focus back to its opener, so this one wins)
+  const [focusTarget, setFocusTarget] = useState<{ id: string } | null>(null);
+  useEffect(() => {
+    if (focusTarget) document.getElementById(focusTarget.id)?.focus();
+  }, [focusTarget]);
   const [saved, setSaved] = useState(false);
   const [pending, start] = useTransition();
   const [toast, showToast] = useToast();
@@ -80,6 +91,7 @@ export function WorkoutLogger({
   const atMaxExercises = fields.exercises.length >= MAX_EXERCISES;
 
   function patchExercise(index: number, sets: SetFields[]) {
+    setErrorAt(null);
     setFields((f) => ({ ...f, exercises: f.exercises.map((e, i) => (i === index ? { ...e, sets } : e)) }));
   }
 
@@ -102,8 +114,14 @@ export function WorkoutLogger({
 
   function save() {
     setError(null);
+    setErrorAt(null);
     const parsed = draftFromFields(fields);
-    if (!parsed.ok) return setError(parsed.error);
+    if (!parsed.ok) {
+      setErrorAt(parsed.at);
+      const ex = fields.exercises[parsed.at.exercise];
+      if (ex) setFocusTarget({ id: repsId(ex.exerciseId, parsed.at.set) });
+      return setError(parsed.error);
+    }
     const valid = validateWorkoutDraft(parsed.draft);
     if (!valid.ok) return setError(valid.error);
     start(async () => {
@@ -132,7 +150,7 @@ export function WorkoutLogger({
       <section className="flex flex-col gap-3">
         <SectionHeader label="Tipo de día" />
         <DayTypeChips value={fields.dayTypes} onChange={(dayTypes) => setFields((f) => ({ ...f, dayTypes }))} />
-        {prefill ? (
+        {prefill && fields.exercises.length === 0 ? (
           <Button
             variant="secondary"
             onClick={() => setFields((f) => ({ ...f, exercises: fieldsFromDraft(prefill).exercises }))}
@@ -170,6 +188,9 @@ export function WorkoutLogger({
               {ex.sets.map((s, j) => (
                 <SetRow
                   key={j}
+                  repsId={repsId(ex.exerciseId, j)}
+                  invalid={errorAt && errorAt.exercise === i && errorAt.set === j ? errorAt.field : undefined}
+                  errorId={errorId}
                   index={j + 1}
                   exerciseName={name}
                   value={s}
@@ -181,7 +202,10 @@ export function WorkoutLogger({
                 <button
                   type="button"
                   disabled={atMaxSets}
-                  onClick={() => patchExercise(i, [...ex.sets, nextSet(ex.sets)])}
+                  onClick={() => {
+                    patchExercise(i, [...ex.sets, nextSet(ex.sets)]);
+                    setFocusTarget({ id: repsId(ex.exerciseId, ex.sets.length) });
+                  }}
                   aria-label={`Agregar serie a ${name}`}
                   className="inline-flex h-11 items-center gap-1.5 rounded-md px-3 text-body font-medium text-accent hover:bg-accent-soft disabled:text-muted disabled:hover:bg-transparent"
                 >
@@ -204,7 +228,7 @@ export function WorkoutLogger({
         ) : null}
       </section>
 
-      {error ? <ErrorLine message={error} /> : null}
+      {error ? <ErrorLine id={errorId} message={error} /> : null}
 
       <div className="flex flex-col gap-2">
         <Button onClick={save} disabled={pending || saved}>
@@ -223,6 +247,7 @@ export function WorkoutLogger({
         usedIds={fields.exercises.map((e) => e.exerciseId)}
         onClose={() => setPickerOpen(false)}
         onPick={(ex) => {
+          if (!fields.exercises.some((e) => e.exerciseId === ex.id)) setFocusTarget({ id: repsId(ex.id, 0) });
           setFields((f) =>
             f.exercises.some((e) => e.exerciseId === ex.id)
               ? f

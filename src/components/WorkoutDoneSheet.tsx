@@ -64,7 +64,8 @@ export function WorkoutDoneSheet({
             onClick={() => {
               // moving to the logger: the sheet must not close by itself (nor go back to Hoy) meanwhile
               auto.cancel();
-              router.push(`/habitos/${habitId}/entrenamiento`);
+              // replace, not push: the camera page of a checked-in habit must not stay in the history
+              router.replace(`/habitos/${habitId}/entrenamiento`);
             }}
           >
             Registrar entrenamiento

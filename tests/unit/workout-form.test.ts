@@ -44,17 +44,28 @@ describe('draftFromFields', () => {
     expect(r.ok && r.draft.exercises[0].sets[0].kg).toBe(0)
   })
   it.each([
-    [{ reps: '', kg: '10' }, 'Las repeticiones van de 1 a 1000.'],
-    [{ reps: '0', kg: '10' }, 'Las repeticiones van de 1 a 1000.'],
-    [{ reps: '5,5', kg: '10' }, 'Las repeticiones van de 1 a 1000.'],
-    [{ reps: '5', kg: 'abc' }, 'El peso va de 0 a 999,99 kg.'],
-    [{ reps: '5', kg: '1000' }, 'El peso va de 0 a 999,99 kg.'],
-    [{ reps: '5', kg: '' }, 'Escribe el peso de cada serie (0 si es tu peso corporal).'],
-  ])('rejects bad fields %o', (set, error) => {
+    [{ reps: '', kg: '10' }, 'Las repeticiones van de 1 a 1000.', 'reps'],
+    [{ reps: '0', kg: '10' }, 'Las repeticiones van de 1 a 1000.', 'reps'],
+    [{ reps: '5,5', kg: '10' }, 'Las repeticiones van de 1 a 1000.', 'reps'],
+    [{ reps: '5', kg: 'abc' }, 'El peso va de 0 a 999,99 kg.', 'kg'],
+    [{ reps: '5', kg: '1000' }, 'El peso va de 0 a 999,99 kg.', 'kg'],
+    [{ reps: '5', kg: '' }, 'Escribe el peso de cada serie (0 si es tu peso corporal).', 'kg'],
+  ])('rejects bad fields %o and points at the field', (set, error, field) => {
     expect(draftFromFields({ dayTypes: ['legs'], exercises: [{ exerciseId: 'sq', sets: [set] }] })).toEqual({
       ok: false,
       error,
+      at: { exercise: 0, set: 0, field },
     })
+  })
+  it('points at the first bad set across exercises', () => {
+    const r = draftFromFields({
+      dayTypes: ['legs'],
+      exercises: [
+        { exerciseId: 'a', sets: [{ reps: '5', kg: '10' }] },
+        { exerciseId: 'b', sets: [{ reps: '5', kg: '10' }, { reps: '5', kg: '' }] },
+      ],
+    })
+    expect(r.ok === false && r.at).toEqual({ exercise: 1, set: 1, field: 'kg' })
   })
 })
 

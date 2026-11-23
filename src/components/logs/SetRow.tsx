@@ -5,7 +5,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import type { SetFields } from "@/lib/workout-form";
 
 const FIELD =
-  "h-11 w-full min-w-0 rounded-md border border-outline-strong bg-paper px-3 text-center font-mono text-body text-ink caret-accent outline-none transition-[border-color,box-shadow] duration-[120ms] focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--color-accent)]";
+  "h-11 w-full min-w-0 rounded-md border border-outline-strong bg-paper px-3 text-center font-mono text-body text-ink caret-accent outline-none transition-[border-color,box-shadow] duration-[120ms] focus:border-accent focus:shadow-[inset_0_0_0_1px_var(--color-accent)] aria-[invalid=true]:border-alert";
 
 /** One set: "1  [reps] × [kg] kg". Fields are text so a half-typed "42," is fine; the comma is shown. */
 export function SetRow({
@@ -14,6 +14,9 @@ export function SetRow({
   value,
   onChange,
   onRemove,
+  repsId,
+  invalid,
+  errorId,
 }: {
   /** 1-based */
   index: number;
@@ -22,13 +25,22 @@ export function SetRow({
   onChange: (next: SetFields) => void;
   /** Absent when it is the only set. */
   onRemove?: () => void;
+  /** id of the reps input, so the logger can focus a new row. */
+  repsId?: string;
+  /** The field the last save attempt rejected; it gets aria-invalid and points at the error line. */
+  invalid?: "reps" | "kg";
+  errorId?: string;
 }) {
+  const a11y = (field: "reps" | "kg") =>
+    invalid === field ? { "aria-invalid": true as const, "aria-describedby": errorId } : {};
   return (
     <div className="flex items-center gap-2">
       <span className="w-5 shrink-0 text-right font-mono text-small text-muted" aria-hidden>
         {index}
       </span>
       <input
+        id={repsId}
+        {...a11y("reps")}
         aria-label={`Repeticiones de la serie ${index} de ${exerciseName}`}
         inputMode="numeric"
         autoComplete="off"
@@ -42,6 +54,7 @@ export function SetRow({
         ×
       </span>
       <input
+        {...a11y("kg")}
         aria-label={`Peso en kilos de la serie ${index} de ${exerciseName}`}
         inputMode="decimal"
         autoComplete="off"

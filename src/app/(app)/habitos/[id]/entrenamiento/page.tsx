@@ -10,22 +10,13 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { TopBar } from "@/components/ui/TopBar";
 import { localDate } from "@/domain/dates";
 import { type DayType, type MuscleGroup, type WorkoutDraft } from "@/domain/logs";
-import type { LocalDate } from "@/domain/types";
+import { logDateParam } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
 import { exercisesFromRows } from "@/lib/workout-form";
 
 export const metadata: Metadata = { title: "Entrenamiento" };
 
 const HISTORY_SESSIONS = 40;
-
-/** `?fecha=YYYY-MM-DD`: a real date that is not in the future; anything else is today. */
-function pickDate(raw: string | string[] | undefined, today: LocalDate): LocalDate {
-  if (typeof raw !== "string" || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) return today;
-  const [y, m, d] = raw.split("-").map(Number);
-  const probe = new Date(Date.UTC(y, m - 1, d));
-  const real = probe.getUTCFullYear() === y && probe.getUTCMonth() === m - 1 && probe.getUTCDate() === d;
-  return real && raw <= today ? raw : today;
-}
 
 type SessionRow = {
   local_date: string;
@@ -64,11 +55,12 @@ export default async function EntrenamientoPage({
     .select("id,name,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
+    .is("archived_at", null)
     .maybeSingle();
   if (!habit || habit.log_type !== "workout") notFound();
 
   const today = localDate(new Date(), profile.timezone);
-  const date = pickDate(fecha, today);
+  const date = logDateParam(fecha, today);
   const [y, m, d] = date.split("-").map(Number);
   const title = `Entrenamiento · ${format(new TZDate(y, m - 1, d, "UTC"), "EEE d MMM", { locale: es })}`;
   const backHref = `/habitos/${id}`;

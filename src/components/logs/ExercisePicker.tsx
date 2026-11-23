@@ -160,7 +160,10 @@ export function ExercisePicker({
         <button
           type="button"
           disabled={used}
-          onClick={() => onPick(e)}
+          onClick={() => {
+            reset();
+            onPick(e);
+          }}
           className="flex min-h-11 min-w-0 flex-1 items-center gap-2 rounded-md py-2 text-left text-body text-ink hover:bg-field disabled:text-muted disabled:hover:bg-transparent"
         >
           <span className="min-w-0 flex-1 truncate">{e.name}</span>

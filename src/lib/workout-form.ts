@@ -28,17 +28,24 @@ export function fieldsFromDraft(d: WorkoutDraft): WorkoutFields {
   }
 }
 
-export function draftFromFields(f: WorkoutFields): { ok: true; draft: WorkoutDraft } | { ok: false; error: string } {
+/** Where a form error is, so the logger can mark that input (aria-invalid) and focus it. */
+export type FieldError = { exercise: number; set: number; field: 'reps' | 'kg' }
+
+export function draftFromFields(
+  f: WorkoutFields,
+): { ok: true; draft: WorkoutDraft } | { ok: false; error: string; at: FieldError } {
   const exercises: WorkoutDraft['exercises'] = []
-  for (const e of f.exercises) {
+  for (const [i, e] of f.exercises.entries()) {
     const sets: { reps: number; kg: number }[] = []
-    for (const s of e.sets) {
+    for (const [j, s] of e.sets.entries()) {
+      const fail = (error: string, field: FieldError['field']) =>
+        ({ ok: false, error, at: { exercise: i, set: j, field } }) as const
       const repsText = s.reps.trim()
       const reps = /^\d{1,4}$/.test(repsText) ? Number(repsText) : NaN
-      if (!Number.isInteger(reps) || reps < 1 || reps > 1000) return { ok: false, error: 'Las repeticiones van de 1 a 1000.' }
-      if (s.kg.trim() === '') return { ok: false, error: 'Escribe el peso de cada serie (0 si es tu peso corporal).' }
+      if (!Number.isInteger(reps) || reps < 1 || reps > 1000) return fail('Las repeticiones van de 1 a 1000.', 'reps')
+      if (s.kg.trim() === '') return fail('Escribe el peso de cada serie (0 si es tu peso corporal).', 'kg')
       const kg = parseKg(s.kg)
-      if (kg === null) return { ok: false, error: 'El peso va de 0 a 999,99 kg.' }
+      if (kg === null) return fail('El peso va de 0 a 999,99 kg.', 'kg')
       sets.push({ reps, kg })
     }
     exercises.push({ exerciseId: e.exerciseId, sets })
