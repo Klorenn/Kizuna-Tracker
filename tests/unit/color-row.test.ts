@@ -88,3 +88,29 @@ describe('commitColor', () => {
     expect(apply.mock.calls).toEqual([['yuzu'], ['indigo']])
   })
 })
+
+describe('commitColor with a later choice', () => {
+  it('B fails after C succeeded: C stays shown, nothing is reverted', async () => {
+    const apply = vi.fn()
+    const save = vi.fn(async () => ({ ok: false as const, error: 'No pudimos guardar el color. Inténtalo de nuevo.' }))
+    // the colour shown now is C (matcha), not the failed B (sakura)
+    const r = await commitColor('sakura', 'indigo', { apply, save, current: () => 'matcha' })
+    expect(r.ok).toBe(false)
+    expect(apply.mock.calls).toEqual([['sakura']])
+  })
+
+  it('B fails with nothing after it: reverts to the previous colour and returns the error copy', async () => {
+    const apply = vi.fn()
+    const save = vi.fn(async () => ({ ok: false as const, error: 'No pudimos guardar el color. Inténtalo de nuevo.' }))
+    const r = await commitColor('sakura', 'indigo', { apply, save, current: () => 'sakura' })
+    expect(r).toEqual({ ok: false, error: 'No pudimos guardar el color. Inténtalo de nuevo.' })
+    expect(apply.mock.calls).toEqual([['sakura'], ['indigo']])
+  })
+
+  it('the same holds when the save throws', async () => {
+    const apply = vi.fn()
+    const save = vi.fn(async () => { throw new Error('x') })
+    await commitColor('sakura', 'indigo', { apply, save, current: () => 'umi' })
+    expect(apply.mock.calls).toEqual([['sakura']])
+  })
+})

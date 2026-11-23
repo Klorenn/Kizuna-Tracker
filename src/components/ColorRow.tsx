@@ -16,16 +16,17 @@ const GENERIC_ERROR = "No pudimos guardar el color. Inténtalo de nuevo.";
 export async function commitColor(
   next: Color,
   previous: Color,
-  { apply, save }: { apply: (c: Color) => void; save: (c: Color) => Promise<Result> },
+  { apply, save, current }: { apply: (c: Color) => void; save: (c: Color) => Promise<Result>; current?: () => Color },
 ): Promise<Result> {
   apply(next);
   try {
     const r = await save(next);
     if (r.ok) return r;
-    apply(previous);
+    // a later choice already replaced `next`: leave what is shown
+    if (!current || current() === next) apply(previous);
     return r;
   } catch {
-    apply(previous);
+    if (!current || current() === next) apply(previous);
     return { ok: false, error: GENERIC_ERROR };
   }
 }
@@ -38,6 +39,7 @@ export async function commitColor(
 export function ColorRow({ initial }: { initial: Color }) {
   const [color, setColorState] = useState<Color>(initial);
   const [error, setError] = useState<string | null>(null);
+  const shown = useRef<Color>(initial);
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
   // Not wrapped in a transition on purpose: the optimistic state must commit at once, even while an
@@ -48,10 +50,12 @@ export function ColorRow({ initial }: { initial: Color }) {
     setError(null);
     void commitColor(next, previous, {
       apply: (c) => {
+        shown.current = c;
         setColorState(c);
         document.documentElement.dataset.color = c;
       },
       save: setColor,
+      current: () => shown.current,
     }).then((r) => {
       if (!r.ok) setError(r.error);
     });

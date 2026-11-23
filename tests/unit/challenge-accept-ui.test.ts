@@ -67,6 +67,20 @@ describe('AcceptOptions', () => {
     expect(render({ habits: [] })).not.toContain('Se creará como hábito')
   })
 
+  it('unreadable proposer habit: no "Crear", own habits only', () => {
+    const html = render({ canCreate: false, sourceReadable: false, selected: 'h1', habits: [{ id: 'h1', name: 'Gimnasio', requiresPhoto: false }] })
+    expect(html).not.toContain('Crear «')
+    expect(html).toContain('Gimnasio')
+    expect(html).not.toContain('compite con')
+  })
+
+  it('unreadable proposer habit and no habits: an error line, not a dead end', () => {
+    const html = render({ canCreate: false, sourceReadable: false, selected: '', habits: [] })
+    expect(html).not.toContain('Crear «')
+    expect(html).toContain('role="alert"')
+    expect(html).toContain('No pudimos cargar el hábito de este reto. Inténtalo de nuevo en unos minutos.')
+  })
+
   it('options are 44 px touch targets', () => {
     expect(render({ habits: [] })).toContain('min-h-11')
   })

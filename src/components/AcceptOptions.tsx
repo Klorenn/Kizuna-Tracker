@@ -1,3 +1,4 @@
+import { Warning } from "@phosphor-icons/react";
 import { HabitIcon } from "@/components/habit-icon";
 import type { IconKey } from "@/domain/presets";
 import { CREATE_NEW } from "@/lib/challenge-accept";
@@ -20,7 +21,7 @@ export function ProposalHabitLines({
 }) {
   return (
     <>
-      <p className="flex items-center gap-[6px] text-small text-muted">
+      <p className="flex items-center gap-1.5 text-small text-muted">
         <span className="flex shrink-0 text-ink">
           <HabitIcon name={icon} size={16} />
         </span>
@@ -63,7 +64,7 @@ function Radio({
       >
         {selected ? <span className="size-[10px] rounded-full bg-accent" /> : null}
       </span>
-      <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className={`text-body text-ink ${selected ? "font-medium" : ""}`}>{title}</span>
         {note?.map((line) => (
           <span key={line} className="text-small text-muted">
@@ -83,6 +84,7 @@ export function AcceptOptions({
   createSimple,
   habits,
   canCreate,
+  sourceReadable = true,
   selected,
   onSelect,
 }: {
@@ -92,14 +94,26 @@ export function AcceptOptions({
   createSimple: boolean;
   habits: AcceptHabit[];
   canCreate: boolean;
+  /** false when the proposer habit could not be read: no "Crear", own habits only. */
+  sourceReadable?: boolean;
   selected: string;
   onSelect: (value: string) => void;
 }) {
+  if (!sourceReadable && habits.length === 0) {
+    return (
+      <p role="alert" className="flex items-start gap-1.5 text-small text-ink">
+        <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
+        No pudimos cargar el hábito de este reto. Inténtalo de nuevo en unos minutos.
+      </p>
+    );
+  }
   return (
     <>
-      <p className="text-body text-muted">
-        {otherName} compite con «{proposedName}». Elige con cuál participas tú.
-      </p>
+      {sourceReadable ? (
+        <p className="text-body text-muted">
+          {otherName} compite con «{proposedName}». Elige con cuál participas tú.
+        </p>
+      ) : null}
       <div role="radiogroup" aria-label="Tu hábito" className="flex flex-col rounded-lg border border-line px-4">
         {canCreate ? (
           <Radio

@@ -97,6 +97,8 @@ export type ChallengeCardData = {
   createSubline?: string;
   /** The new habit cannot keep the proposer log type: it is created as "Solo marcar". */
   createSimple?: boolean;
+  /** false when the proposer habit could not be read: "Crear" is not offered. */
+  sourceReadable?: boolean;
 };
 
 export function ChallengeCard({ data }: { data: ChallengeCardData }) {
@@ -157,7 +159,10 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
   const router = useRouter();
 
   const choices = (data.habits ?? []).filter((h) => !data.requiresPhoto || h.requiresPhoto);
-  const initial = defaultAcceptSelection(data.habitName, choices);
+  const readable = data.sourceReadable ?? true;
+  const initial = readable
+    ? defaultAcceptSelection(data.habitName, choices)
+    : { selected: choices[0]?.id ?? "", canCreate: false };
   const [choice, setChoice] = useState<string>(initial.selected);
 
   function decline() {
@@ -212,6 +217,7 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
           createSimple={data.createSimple ?? false}
           habits={choices}
           canCreate={initial.canCreate}
+          sourceReadable={readable}
           selected={choice}
           onSelect={setChoice}
         />

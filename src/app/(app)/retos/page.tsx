@@ -156,6 +156,7 @@ export default async function RetosPage() {
           habitKind: habitKindLabel(src?.log_type ?? "none"),
           createSubline: createSubline(f, c.requires_photo),
           createSimple: simpleFallback,
+          sourceReadable: !!src,
         },
       };
     }

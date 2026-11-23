@@ -7,7 +7,8 @@ const CH = '33333333-3333-4333-8333-333333333333'
 const SRC_HABIT = '44444444-4444-4444-8444-444444444444'
 const NEW_HABIT = '55555555-5555-4555-8555-555555555555'
 
-let reads: Record<string, Result> = {}
+let reads: Record<string, Result | Result[]> = {}
+let eqs: Record<string, [string, unknown][]> = {}
 let log: string[] = []
 const rpc = vi.fn()
 const createHabit = vi.fn()
@@ -16,8 +17,17 @@ let usedServiceRole = false
 
 function chain(key: string) {
   const c: Record<string, unknown> = {}
-  for (const m of ['eq', 'or', 'in', 'is', 'limit', 'select', 'neq', 'order']) c[m] = () => c
-  const result = () => reads[key] ?? { data: [], error: null }
+  for (const m of ['or', 'in', 'is', 'limit', 'select', 'neq', 'order']) c[m] = () => c
+  c.eq = (col: string, val: unknown) => {
+    ;(eqs[key] ??= []).push([col, val])
+    return c
+  }
+  // an array is a queue of answers: one per read, the last one repeats
+  const result = (): Result => {
+    const v = reads[key]
+    if (Array.isArray(v)) return v.length > 1 ? v.shift()! : v[0]
+    return v ?? { data: [], error: null }
+  }
   c.maybeSingle = async () => result()
   c.single = async () => result()
   c.then = (res: (v: unknown) => unknown) => res(result())
@@ -96,6 +106,7 @@ beforeEach(() => {
     'habits.delete': { data: [{ id: NEW_HABIT }], error: null },
   }
   log = []
+  eqs = {}
   signedIn = true
   rpc.mockReset()
   rpc.mockResolvedValue({ data: null, error: null })
@@ -221,6 +232,54 @@ describe('acceptChallengeWithNewHabit', () => {
     expect(r).toEqual({
       ok: false,
       error: 'El reto ya no está disponible. Creamos «Valorant» en tus hábitos; puedes archivarlo.',
+    })
+  })
+
+  it('the clean-up delete is filtered by exactly the created habit id and the caller id', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'challenge_not_proposed' } })
+    await acceptChallengeWithNewHabit(CH)
+    expect(log.filter((l) => l === 'habits.delete')).toHaveLength(1)
+    expect(eqs['habits.delete']).toEqual([
+      ['id', NEW_HABIT],
+      ['user_id', ME],
+    ])
+    // no id other than the created one ever reaches a delete
+    expect(JSON.stringify(eqs['habits.delete'])).not.toContain(SRC_HABIT)
+  })
+
+  describe('after a failed accept step the challenge is re-read first', () => {
+    const active = { data: challenge({ status: 'active', rival_habit_id: NEW_HABIT }), error: null }
+    const proposed = { data: challenge(), error: null }
+
+    it('lost response: active with the created habit means it was accepted, nothing is deleted', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'fetch failed' } })
+      reads['challenges.select'] = [proposed, active]
+      await expect(acceptChallengeWithNewHabit(CH)).resolves.toEqual({ ok: true, habitId: NEW_HABIT })
+      expect(log).not.toContain('habits.delete')
+    })
+
+    it('active with another habit is a real failure: the new habit is deleted', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'challenge_not_proposed' } })
+      reads['challenges.select'] = [proposed, { data: challenge({ status: 'active', rival_habit_id: SRC_HABIT }), error: null }]
+      await expect(acceptChallengeWithNewHabit(CH)).resolves.toEqual({ ok: false, error: 'Este reto ya fue respondido.' })
+      expect(log).toContain('habits.delete')
+    })
+
+    it('the re-read fails: nothing is deleted and the person is told the habit exists', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'fetch failed' } })
+      reads['challenges.select'] = [proposed, { data: null, error: { message: 'boom' } }]
+      await expect(acceptChallengeWithNewHabit(CH)).resolves.toEqual({
+        ok: false,
+        error: 'No pudimos confirmar el reto. Creamos «Valorant» en tus hábitos; revisa Retos antes de reintentar.',
+      })
+      expect(log).not.toContain('habits.delete')
+    })
+
+    it('the re-read is made with the caller session on the same challenge id', async () => {
+      rpc.mockResolvedValue({ data: null, error: { message: 'challenge_not_proposed' } })
+      await acceptChallengeWithNewHabit(CH)
+      expect(log.filter((l) => l === 'challenges.select')).toHaveLength(2)
+      expect(eqs['challenges.select']).toEqual([['id', CH], ['id', CH]])
     })
   })
 

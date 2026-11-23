@@ -92,7 +92,7 @@ async function befriend(a: Page, b: Page, handleA: string, handleB: string, name
   await row.getByRole("button", { name: "Agregar", exact: true }).click();
   await expect(row.getByText("Solicitud enviada")).toBeVisible();
   await b.goto("/amigos");
-  await b.getByRole("button", { name: `Aceptar a ` }).click();
+  await b.getByRole("button", { name: `Aceptar a ${nameA}` }).click();
   await expect(b.getByText(`@${handleA}`)).toBeVisible();
 }
 

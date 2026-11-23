@@ -173,6 +173,23 @@ export async function acceptChallengeWithNewHabit(
     p_rival_habit_id: created.id,
   });
   if (error) {
+    // the response may be lost while the accept committed: ask the challenge before judging
+    const { data: now, error: rereadError } = await supabase
+      .from("challenges")
+      .select("status,rival_habit_id")
+      .eq("id", id)
+      .maybeSingle();
+    if (rereadError) {
+      return {
+        ok: false,
+        error: `No pudimos confirmar el reto. Creamos «${draft.name.trim()}» en tus hábitos; revisa Retos antes de reintentar.`,
+      };
+    }
+    if (now?.status === "active" && now.rival_habit_id === created.id) {
+      refresh(id);
+      revalidatePath("/");
+      return { ok: true, habitId: created.id };
+    }
     // only the habit created above, only if it is still the caller's: never anything else
     const { data: removed, error: removeError } = await supabase
       .from("habits")
