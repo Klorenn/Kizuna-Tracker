@@ -74,6 +74,9 @@ export type ChallengeCardData = {
   id: string;
   kind: "incoming" | "outgoing" | "active" | "finished";
   otherName: string;
+  /** Rival's uploaded photo URL and bundled preset (the avatar shown on proposal cards). */
+  otherAvatar?: string | null;
+  otherPreset?: number | null;
   habitName: string;
   summary: string;
   fine: number;
@@ -169,7 +172,7 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center gap-3">
-        <Avatar name={data.otherName} />
+        <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <p className="text-body font-medium text-ink">{data.otherName} te propone un reto</p>
           <p className="text-small text-muted">{data.summary}</p>
@@ -246,7 +249,7 @@ function OutgoingCard({ data }: { data: ChallengeCardData }) {
   return (
     <Card className="flex flex-col gap-3 p-4">
       <div className="flex items-center gap-3">
-        <Avatar name={data.otherName} />
+        <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <p className="text-body font-medium text-ink">Esperando a {data.otherName}</p>
           <p className="text-small text-muted">

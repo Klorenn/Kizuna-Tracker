@@ -10,10 +10,13 @@ import { Hint } from "@/components/auth/Hint";
 import { KanjiWatermark } from "@/components/auth/KanjiWatermark";
 import { PasswordToggle } from "@/components/auth/PasswordToggle";
 import { StepTitle } from "@/components/auth/StepTitle";
+import { AvatarPicker } from "@/components/avatars/AvatarPicker";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
 import { localDate } from "@/domain/dates";
+import { pickRandomPreset } from "@/lib/avatar-presets";
 import {
   UNDERAGE_ERROR,
   normalizeUsername,
@@ -134,13 +137,15 @@ export default function RegistroPage() {
   const [availability, setAvailability] = useState<Availability>("idle");
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [today] = useState(() => localDate(new Date(), browserTimezone()));
+  // Random cat preselected once (lazy init, so it survives re-renders and step changes).
+  const [avatarPreset, setAvatarPreset] = useState(() => pickRandomPreset());
   const stepRef = useRef<HTMLDivElement>(null);
 
   const birthDate =
     birth.d && birth.m && birth.y.length === 4
       ? `${birth.y}-${pad(birth.m, 2)}-${pad(birth.d, 2)}`
       : "";
-  const input: Partial<SignupInput> = { ...form, birthDate };
+  const input: Partial<SignupInput> = { ...form, birthDate, avatarPreset };
   const check = validateSignupStep(step, input, today);
   const username = normalizeUsername(form.username);
 
@@ -205,6 +210,7 @@ export default function RegistroPage() {
       ...form,
       birthDate,
       timezone: browserTimezone(),
+      avatarPreset,
     };
     const result = validateSignup(full, today);
     if (!result.ok) {
@@ -233,7 +239,6 @@ export default function RegistroPage() {
     form.passwordConfirm.length >= form.password.length &&
     form.password !== form.passwordConfirm;
   const eye = <PasswordToggle shown={showPw} onToggle={() => setShowPw((v) => !v)} />;
-  const initials = `${(form.firstName.trim()[0] ?? "").toUpperCase()}${(form.lastName.trim()[0] ?? "").toUpperCase()}`;
 
   return (
     <form
@@ -333,29 +338,35 @@ export default function RegistroPage() {
                 {availability === "checking" && (
                   <Hint tone="muted">Revisando disponibilidad…</Hint>
                 )}
-                {availability === "available" && (
-                  <>
-                    <Hint tone="ok">@{username} está disponible</Hint>
-                    <div className="auth-step flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
-                      <p className="section-label text-muted">Así te verán tus amigos</p>
-                      <div className="flex items-center gap-3">
-                        <span
-                          aria-hidden
-                          className="inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-line bg-ink-soft font-mono text-label font-medium tracking-[0.04em] text-ink"
-                        >
-                          {initials}
-                        </span>
-                        <div className="flex min-w-0 flex-col gap-[2px]">
-                          <p className="truncate text-body font-medium text-ink">
-                            {form.firstName.trim()} {form.lastName.trim()}
-                          </p>
-                          <p className="truncate text-small text-muted">@{username}</p>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                )}
+                {availability === "available" && <Hint tone="ok">@{username} está disponible</Hint>}
               </div>
+              <div className="flex flex-col gap-1">
+                <p className="text-small text-ink">
+                  Elige tu avatar
+                </p>
+                <AvatarPicker
+                  label="Elige tu avatar"
+                  value={avatarPreset}
+                  onChange={(n) => {
+                    setSubmitError(null);
+                    setAvatarPreset(n);
+                  }}
+                />
+              </div>
+              {availability === "available" && (
+                <div className="auth-step flex flex-col gap-3 rounded-lg border border-line bg-surface p-4">
+                  <p className="section-label text-muted">Así te verán tus amigos</p>
+                  <div className="flex items-center gap-3">
+                    <Avatar name={`${form.firstName.trim()} ${form.lastName.trim()}`} preset={avatarPreset} />
+                    <div className="flex min-w-0 flex-col gap-[2px]">
+                      <p className="truncate text-body font-medium text-ink">
+                        {form.firstName.trim()} {form.lastName.trim()}
+                      </p>
+                      <p className="truncate text-small text-muted">@{username}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </>
           )}
 

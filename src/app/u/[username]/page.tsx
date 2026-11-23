@@ -83,7 +83,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     if (viewer?.username === username) redirect("/perfil");
     const { data: target } = await supabase
       .from("public_profiles")
-      .select("id,username,display_name,avatar_path")
+      .select("id,username,display_name,avatar_path,avatar_preset")
       .eq("username", username)
       .maybeSingle();
     if (target?.id) {
@@ -108,6 +108,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
                 username: target.username ?? username,
                 name: target.display_name ?? "Tu amigo",
                 avatar: avatarUrl(target.avatar_path),
+                avatarPreset: target.avatar_preset,
               }}
               data={data}
               today={today}
@@ -128,7 +129,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const page = (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
       <header className="flex items-center gap-4">
-        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} />
+        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} preset={view.avatarPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <h1 className="truncate text-title font-semibold text-ink">{view.displayName}</h1>
           <p className="truncate font-mono text-[14px] text-muted">@{view.username}</p>

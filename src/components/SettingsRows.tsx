@@ -4,6 +4,8 @@ import { At, Bell, Camera, Copy, EnvelopeSimple, Globe, Palette, User, Warning }
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setTimezone, updateSettings } from "@/app/(app)/perfil/actions";
+import { removeAvatar, setAvatarPreset } from "@/app/(app)/perfil/avatar-actions";
+import { AvatarPicker } from "@/components/avatars/AvatarPicker";
 import { setTheme } from "@/app/theme-actions";
 import { useAvatarUpload } from "@/components/profile/useAvatarUpload";
 import { Avatar } from "@/components/ui/Avatar";
@@ -53,6 +55,7 @@ export function AccountRows({
   username,
   email,
   avatarSrc,
+  avatarPreset,
 }: {
   firstName: string;
   lastName: string;
@@ -60,14 +63,44 @@ export function AccountRows({
   username: string;
   email: string | null;
   avatarSrc: string | null;
+  avatarPreset: number | null;
 }) {
   const [open, setOpen] = useState(false);
+  const [photoOpen, setPhotoOpen] = useState(false);
+  // optimistic pick while the preset is being saved
+  const [picked, setPicked] = useState<number | null>(null);
   const [first, setFirst] = useState(firstName);
   const [last, setLast] = useState(lastName);
   const { error, setError, busy, run } = useSave();
-  const avatar = useAvatarUpload();
+  const avatar = useAvatarUpload(() => {
+    setPicked(null);
+    setPhotoOpen(false);
+  });
+  const photoSave = useSave();
   const [toast, showToast] = useToast();
   const name = `${firstName} ${lastName}`;
+  const hasPhoto = avatarSrc !== null;
+  // the ring follows the preset in use; an uploaded photo has priority, so no preset is marked
+  const shownPreset = picked ?? (hasPhoto ? null : avatarPreset);
+
+  const closePhoto = () => {
+    setPhotoOpen(false);
+    setPicked(null);
+    photoSave.setError(null);
+  };
+
+  function choosePreset(n: number) {
+    if (n === shownPreset) return;
+    setPicked(n);
+    // choosing a cat replaces the photo, otherwise nothing would visibly change
+    photoSave.run(
+      async () => {
+        const r = await setAvatarPreset(n);
+        return r.ok && hasPhoto ? removeAvatar() : r;
+      },
+      () => showToast("Avatar actualizado"),
+    );
+  }
 
   const close = () => {
     setOpen(false);
@@ -110,20 +143,45 @@ export function AccountRows({
         icon={<Camera size={20} weight="light" />}
         label="Foto de perfil"
         hint={avatar.busy ? "Subiendo foto…" : "Aparece en tu perfil"}
-        trailing={<Avatar name={name} size="S" src={avatarSrc} />}
+        trailing={<Avatar name={name} size="S" src={avatarSrc} preset={avatarPreset} />}
         chevron
-        onClick={avatar.pick}
-        disabled={avatar.busy}
+        onClick={() => setPhotoOpen(true)}
       />
-      {/* outside the row's <button>: an alert inside a button is not announced reliably */}
-      {avatar.error ? (
-        <p role="alert" className="flex items-center gap-1 border-b border-line px-4 py-3 text-small text-ink">
-          <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
-          {avatar.error}
-        </p>
-      ) : null}
       {avatar.input}
       <Toast message={toast} />
+
+      <Sheet open={photoOpen} title="Foto de perfil" onClose={closePhoto}>
+        <div className="flex justify-center">
+          <Avatar name={name} size="L" src={picked ? null : avatarSrc} preset={picked ?? avatarPreset} />
+        </div>
+        <Button variant="secondary" onClick={avatar.pick} disabled={avatar.busy || photoSave.busy}>
+          <Camera size={20} weight="light" aria-hidden />
+          {avatar.busy ? "Subiendo foto…" : "Subir foto"}
+        </Button>
+        <div className="flex flex-col gap-2">
+          <p className="section-label text-muted">O elige un avatar</p>
+          <AvatarPicker
+            layout="grid"
+            label="Elige tu avatar"
+            value={shownPreset}
+            onChange={choosePreset}
+            disabled={photoSave.busy || avatar.busy}
+          />
+        </div>
+        <ErrorText error={photoSave.error ?? avatar.error} />
+        {hasPhoto ? (
+          <Button
+            variant="ghost"
+            disabled={photoSave.busy || avatar.busy}
+            onClick={() => {
+              setPicked(null);
+              photoSave.run(removeAvatar, () => showToast("Foto quitada"));
+            }}
+          >
+            Quitar foto
+          </Button>
+        ) : null}
+      </Sheet>
 
       <Sheet open={open} title="Nombre" onClose={close}>
         <Input label="Nombre" value={first} maxLength={40} onChange={(e) => setFirst(e.target.value)} />

@@ -73,7 +73,7 @@ export async function loadFeedPage(
   const photoPaths = rows.flatMap((r) => (r.photo_path ? [r.photo_path] : []));
 
   const [{ data: people }, history, { data: items }, { data: challenges }, signed] = await Promise.all([
-    supabase.from("public_profiles").select("id,username,display_name,avatar_path").in("id", userIds),
+    supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", userIds),
     // streak context: bounded by date (highest milestone) and paged past the row cap
     fetchAll((a, b) =>
       supabase
@@ -146,6 +146,7 @@ export async function loadFeedPage(
         username: p?.username ?? "",
         name,
         avatar: avatarUrl(p?.avatar_path ?? null),
+        avatarPreset: p?.avatar_preset ?? null,
       },
       habit: { name: habit, color: toHabitColor(r.habits?.color) },
       copy: actionCopy(habit, kind),

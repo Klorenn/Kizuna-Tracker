@@ -1,3 +1,4 @@
+import { isAvatarPreset } from "@/lib/avatar-presets";
 import { addDays, weekStart } from "@/domain/dates";
 import { toHabitColor, type HabitColor } from "@/domain/habit-colors";
 import { dailyStreak, weeklyStreak } from "@/domain/streaks";
@@ -10,6 +11,8 @@ export type PublicProfileRow = {
   avatarPath: string | null;
   /** Cache-buster for the public avatar URL (0013); older rows may lack it. */
   avatarUpdatedAt?: string | null;
+  /** Bundled cat avatar 1..8 (0016); older rows may lack it. */
+  avatarPreset?: number | null;
   habits: {
     name: string;
     icon: string;
@@ -26,6 +29,7 @@ export type PublicProfileView = {
   displayName: string;
   avatarPath: string | null;
   avatarUpdatedAt: string | null;
+  avatarPreset: number | null;
   habits: {
     name: string;
     icon: string;
@@ -50,6 +54,7 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
     displayName: row.displayName,
     avatarPath: row.avatarPath ?? null,
     avatarUpdatedAt: row.avatarUpdatedAt ?? null,
+    avatarPreset: isAvatarPreset(row.avatarPreset) ? row.avatarPreset : null,
     habits: row.habits.map((h) => {
       const done = new Set(h.dates);
       const first = addDays(weekStart(today), -7 * (HEATMAP_WEEKS - 1));

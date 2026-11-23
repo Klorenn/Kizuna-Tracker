@@ -55,7 +55,7 @@ export default async function PerfilPage() {
   if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,created_at")
+    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
@@ -136,6 +136,7 @@ export default async function PerfilPage() {
           name={name}
           username={profile.username}
           src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
+          preset={profile.avatar_preset}
           since={memberSince(profile.created_at, profile.timezone)}
         />
       </header>

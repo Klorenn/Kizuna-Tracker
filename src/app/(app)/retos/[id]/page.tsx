@@ -7,6 +7,7 @@ import { CancelChallengeButton, Pill } from "@/components/ChallengeCard";
 import { FeedItem } from "@/components/FeedItem";
 import { RejectPhotoButton } from "@/components/RejectSheet";
 import { Avatar } from "@/components/ui/Avatar";
+import { avatarUrl } from "@/lib/avatar";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { canReject, periodsFor, REJECT_WINDOW_MS } from "@/domain/challenges";
@@ -65,9 +66,9 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const theirHabitId = mine ? c.rival_habit_id : c.creator_habit_id;
   const habitIds = [myHabitId, theirHabitId].filter((x): x is string => !!x);
 
-  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }] =
+  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }, { data: me }] =
     await Promise.all([
-      supabase.from("public_profiles").select("display_name").eq("id", otherId).maybeSingle(),
+      supabase.from("public_profiles").select("display_name,avatar_path,avatar_preset").eq("id", otherId).maybeSingle(),
       supabase.from("habits").select("id,name,color").in("id", habitIds),
       c.starts_on
         ? supabase
@@ -82,6 +83,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       supabase.from("challenge_periods").select("period_start").eq("challenge_id", c.id).not("closed_at", "is", null),
       // the rival's check-ins are only readable while we are friends
       supabase.rpc("is_friend", { a: user.id, b: otherId }),
+      supabase.from("profiles").select("avatar_path,avatar_updated_at,avatar_preset").eq("id", user.id).maybeSingle(),
     ]);
 
   const other = firstName(profile?.display_name);
@@ -204,11 +206,23 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       <SectionHeader label={f.type === "weekly" ? "Esta semana" : "Hoy"} action={closesLabel} />
       <Card accent className="flex flex-col gap-4 p-4 pl-[19px]">
         {[
-          { name: "Tú", done: mineNow, color: myColor },
-          { name: other, done: theirsNow, color: theirColor },
+          {
+            name: "Tú",
+            done: mineNow,
+            color: myColor,
+            src: avatarUrl(me?.avatar_path ?? null, me?.avatar_updated_at),
+            preset: me?.avatar_preset,
+          },
+          {
+            name: other,
+            done: theirsNow,
+            color: theirColor,
+            src: avatarUrl(profile?.avatar_path ?? null),
+            preset: profile?.avatar_preset,
+          },
         ].map((row) => (
           <div key={row.name} className="flex items-center gap-3">
-            <Avatar name={row.name} />
+            <Avatar name={row.name} src={row.src} preset={row.preset} />
             <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
               <div className="flex items-center gap-2">
                 <p className="flex-1 text-body font-medium text-ink">{row.name}</p>

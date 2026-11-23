@@ -23,7 +23,7 @@ export default async function AjustesPage() {
   if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,timezone_changed_at,reminder_time")
+    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,timezone_changed_at,reminder_time")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
@@ -50,6 +50,7 @@ export default async function AjustesPage() {
           username={profile.username}
           email={user.email ?? null}
           avatarSrc={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
+          avatarPreset={profile.avatar_preset}
         />
       </ListSection>
 
