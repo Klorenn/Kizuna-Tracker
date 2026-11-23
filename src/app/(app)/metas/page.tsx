@@ -13,13 +13,13 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate, weekStart } from "@/domain/dates";
 import { loadGoals } from "@/lib/goals-data";
 import { createServerClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/viewer";
+import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Metas" };
 
 export default async function MetasPage() {
   const viewer = await getViewer();
-  if (!viewer) redirect("/bienvenida");
+  if (!viewer) redirect(await viewerMissingDestination());
   const supabase = await createServerClient();
 
   const now = new Date();

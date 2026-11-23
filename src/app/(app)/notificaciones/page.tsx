@@ -12,7 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { addDays, localDate } from "@/domain/dates";
 import { notificationView } from "@/lib/notification-copy";
 import { createServerClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/viewer";
+import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Notificaciones" };
 
@@ -28,7 +28,7 @@ type Row = { id: string; type: string; payload: unknown; read_at: string | null;
 
 export default async function NotificacionesPage() {
   const viewer = await getViewer();
-  if (!viewer) redirect("/bienvenida");
+  if (!viewer) redirect(await viewerMissingDestination());
   const supabase = await createServerClient();
   const tz = viewer.timezone;
 

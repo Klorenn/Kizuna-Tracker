@@ -2,7 +2,7 @@ import { readFileSync, statSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { CAT_ASSETS, type CatAsset } from '@/lib/motion/cat-animation'
 
-const file = (url: string) => `public${url}`
+const file = (url: string) => `public${url.split('?')[0]}`
 const gifSize = (url: string) => {
   const b = readFileSync(file(url))
   expect(b.subarray(0, 3).toString('latin1')).toBe('GIF')

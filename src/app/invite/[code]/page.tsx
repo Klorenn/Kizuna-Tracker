@@ -8,7 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { avatarUrl } from "@/lib/avatar";
 import { INVITE_ERRORS, INVITE_GENERIC } from "@/lib/invites";
 import { createServerClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/viewer";
+import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Invitación", robots: { index: false, follow: false } };
 
@@ -25,7 +25,7 @@ export default async function InvitePage({
 }) {
   const { code } = await params;
   const { error } = (await searchParams) ?? {};
-  const viewer = await getViewer();
+  const viewer = await getSessionUser();
   if (!viewer) redirect(`/login?next=${encodeURIComponent(`/invite/${code}`)}`);
 
   const supabase = await createServerClient();

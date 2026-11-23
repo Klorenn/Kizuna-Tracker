@@ -24,13 +24,17 @@ describe('isStaticAsset (the only thing the service worker caches at runtime)', 
 })
 
 describe('PRECACHE_GLOBS (what the service worker downloads on install)', () => {
-  it('never precaches the cat GIFs or the rest of public/brand (they cache on first use)', () => {
-    expect(PRECACHE_GLOBS.some((g) => g.includes('brand'))).toBe(false)
-    expect(PRECACHE_GLOBS).not.toContain('public/**/*')
+  it('is exactly the build output, the app icons and the avatar presets: no brand art, no public/**', () => {
+    expect(PRECACHE_GLOBS).toEqual([
+      '.next/static/**/*.{js,css,html,ico,apng,png,avif,jpg,jpeg,jfif,pjpeg,pjp,gif,svg,webp,json,webmanifest}',
+      'public/icons/**/*',
+      'public/avatars/**/*',
+    ])
   })
-  it('precaches the build output, the app icons and the avatar presets', () => {
-    expect(PRECACHE_GLOBS).toContain('public/icons/**/*')
-    expect(PRECACHE_GLOBS).toContain('public/avatars/**/*')
-    expect(PRECACHE_GLOBS.some((g) => g.startsWith('.next/static/'))).toBe(true)
+})
+
+describe('versioned brand urls', () => {
+  it('still match the runtime cache when they carry the ?v= query (the query stays in the cache key)', () => {
+    expect(isStaticAsset(req('https://kizuna.app/brand/cat-jump.gif?v=2'))).toBe(true)
   })
 })

@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { BRAND_ASSET_VERSION, brandUrl } from "@/lib/brand-assets";
 import { CAT_ASSETS, catAnimationStyle } from "@/lib/motion/cat-animation";
 import { CAT_LIFT, catLiftStyle } from "@/lib/motion/cat-lift";
 
@@ -10,8 +11,8 @@ describe("cat-animation assets", () => {
 
   it("describes the jump GIF: 73 frames of 80 ms on a 480 canvas, union box 310 x 393", () => {
     const j = CAT_ASSETS.jump;
-    expect(j.gif).toBe("/brand/cat-jump.gif");
-    expect(j.still).toBe("/brand/cat-jump-still.png");
+    expect(j.gif).toBe(brandUrl("cat-jump.gif"));
+    expect(j.still).toBe(brandUrl("cat-jump-still.png"));
     expect(j.canvas).toBe(480);
     expect(j.box).toEqual({ x: 106, y: 52, w: 310, h: 393 });
     expect(j.stillBox).toEqual({ x: 0, y: 0, w: 480, h: 480 });
@@ -20,8 +21,8 @@ describe("cat-animation assets", () => {
 
   it("describes the eat GIF: 73 frames of 80 ms on a 480 canvas, union box 232 x 287", () => {
     const e = CAT_ASSETS.eat;
-    expect(e.gif).toBe("/brand/cat-eat.gif");
-    expect(e.still).toBe("/brand/cat-eat-still.png");
+    expect(e.gif).toBe(brandUrl("cat-eat.gif"));
+    expect(e.still).toBe(brandUrl("cat-eat-still.png"));
     expect(e.canvas).toBe(480);
     expect(e.box).toEqual({ x: 108, y: 91, w: 232, h: 287 });
     expect(e.stillBox).toEqual({ x: 0, y: 0, w: 480, h: 480 });
@@ -49,8 +50,8 @@ describe("cat-animation assets", () => {
 
   it("exposes the asset urls as css variables", () => {
     const s = catAnimationStyle("jump", 93) as Record<string, unknown>;
-    expect(s["--cat-gif"]).toBe("url(/brand/cat-jump.gif)");
-    expect(s["--cat-still"]).toBe("url(/brand/cat-jump-still.png)");
+    expect(s["--cat-gif"]).toBe(`url(${brandUrl("cat-jump.gif")})`);
+    expect(s["--cat-still"]).toBe(`url(${brandUrl("cat-jump-still.png")})`);
   });
 });
 
@@ -65,13 +66,13 @@ describe('cat variants (small badges are still)', () => {
     expect(catVariantFor(160)).toBe('animated')
   })
   it('a still cat never references the GIF', () => {
-    expect(catUrls('jump', 'still')).toEqual(['/brand/cat-jump-still.png'])
+    expect(catUrls('jump', 'still')).toEqual([brandUrl("cat-jump-still.png")])
     const s = catAnimationStyle('jump', 40, 'still') as Record<string, string>
     expect(JSON.stringify(s)).not.toContain('.gif')
-    expect(s['--cat-gif']).toBe('url(/brand/cat-jump-still.png)')
+    expect(s['--cat-gif']).toBe(`url(${brandUrl("cat-jump-still.png")})`)
   })
   it('an animated cat uses the GIF and its still', () => {
-    expect(catUrls('lift', 'animated')).toEqual(['/brand/cat-lift.gif', '/brand/cat-lift-still.png'])
+    expect(catUrls('lift', 'animated')).toEqual([brandUrl("cat-lift.gif"), brandUrl("cat-lift-still.png")])
   })
 })
 
@@ -99,8 +100,8 @@ import { existsSync } from 'node:fs'
 describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms', () => {
   it('read: downscaled to 480 px, union box 301 x 286 at (78, 94)', () => {
     expect(CAT_ASSETS.read).toEqual({
-      gif: '/brand/cat-read.gif',
-      still: '/brand/cat-read-still.png',
+      gif: brandUrl("cat-read.gif"),
+      still: brandUrl("cat-read-still.png"),
       canvas: 480,
       box: { x: 78, y: 94, w: 301, h: 286 },
       stillBox: { x: 0, y: 0, w: 480, h: 480 },
@@ -114,8 +115,8 @@ describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms
   })
   it('sleep: union box 341 x 296 at (99, 65)', () => {
     expect(CAT_ASSETS.sleep).toEqual({
-      gif: '/brand/cat-sleep.gif',
-      still: '/brand/cat-sleep-still.png',
+      gif: brandUrl("cat-sleep.gif"),
+      still: brandUrl("cat-sleep-still.png"),
       canvas: 480,
       box: { x: 99, y: 65, w: 341, h: 296 },
       stillBox: { x: 0, y: 0, w: 480, h: 480 },
@@ -125,8 +126,8 @@ describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms
   })
   it('code: 320 canvas, union box 292 x 176 at (0, 76) (the tail swings to the left edge)', () => {
     expect(CAT_ASSETS.code).toEqual({
-      gif: '/brand/cat-code.gif',
-      still: '/brand/cat-code-still.png',
+      gif: brandUrl("cat-code.gif"),
+      still: brandUrl("cat-code-still.png"),
       canvas: 320,
       box: { x: 0, y: 76, w: 292, h: 176 },
       stillBox: { x: 0, y: 0, w: 320, h: 320 },
@@ -151,5 +152,18 @@ describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms
       ]),
     ).toEqual(['jump', 'read', 'sleep', 'code'])
     expect(hoyCatAssets([{ preset: null, hasItems: false, icon: 'laptop' }])).toEqual(['jump', 'code'])
+  })
+})
+
+describe('brand asset versioning', () => {
+  it('builds every cat url with the version query, so a re-encode busts browser and service worker caches', () => {
+    expect(brandUrl('cat-jump.gif')).toBe(`/brand/cat-jump.gif?v=${BRAND_ASSET_VERSION}`)
+    for (const a of Object.values(CAT_ASSETS)) {
+      expect(a.gif).toMatch(new RegExp(`^/brand/cat-[a-z]+\\.gif\\?v=${BRAND_ASSET_VERSION}$`))
+      expect(a.still).toMatch(new RegExp(`^/brand/cat-[a-z]+-still\\.png\\?v=${BRAND_ASSET_VERSION}$`))
+    }
+  })
+  it('is at least 2 since the gifsicle re-encode', () => {
+    expect(Number(BRAND_ASSET_VERSION)).toBeGreaterThanOrEqual(2)
   })
 })

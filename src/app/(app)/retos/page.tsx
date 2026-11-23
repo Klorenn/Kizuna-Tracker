@@ -22,12 +22,12 @@ import {
 } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/viewer";
+import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Retos" };
 
 export default async function RetosPage() {
-  const viewer = await getViewer();
+  const viewer = await getSessionUser();
   if (!viewer) redirect("/bienvenida");
   const supabase = await createServerClient();
 

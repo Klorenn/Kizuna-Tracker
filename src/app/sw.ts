@@ -15,7 +15,8 @@ new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
-    { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME }) },
+    // the query is part of the cache key: /brand/x.gif?v=2 is a different entry from ?v=1
+    { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME, matchOptions: { ignoreSearch: false } }) },
     // pages, RSC, /api, Supabase: never cached
     { matcher: () => true, handler: new NetworkOnly() },
   ],

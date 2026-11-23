@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { isRestHabit, isStudyHabit } from "@/domain/day-complete";
+import { brandUrl } from "@/lib/brand-assets";
 
 /*
  * Owner's cat GIFs. Each is rendered as a luminance CSS mask cropped to the cat's union bounding
@@ -17,8 +18,8 @@ import { isRestHabit, isStudyHabit } from "@/domain/day-complete";
  * coalesced frames. Stills of resized cats were resized with them. sleep was already 15 colors.
  */
 export const CAT_LIFT = {
-  gif: "/brand/cat-lift.gif",
-  still: "/brand/cat-lift-still.png",
+  gif: brandUrl("cat-lift.gif"),
+  still: brandUrl("cat-lift-still.png"),
   canvas: 360,
   box: { x: 68, y: 45, w: 235, h: 239 },
   stillBox: { x: 91, y: 70, w: 195, h: 214 },
@@ -27,8 +28,8 @@ export const CAT_LIFT = {
 } as const;
 
 export const CAT_JUMP = {
-  gif: "/brand/cat-jump.gif",
-  still: "/brand/cat-jump-still.png",
+  gif: brandUrl("cat-jump.gif"),
+  still: brandUrl("cat-jump-still.png"),
   canvas: 480,
   box: { x: 106, y: 52, w: 310, h: 393 },
   stillBox: { x: 0, y: 0, w: 480, h: 480 },
@@ -37,8 +38,8 @@ export const CAT_JUMP = {
 
 /** 480 x 480 canvas, 73 frames x 80 ms; cat box 232 x 287 at (108, 91). The still is the full frame 0. */
 export const CAT_EAT = {
-  gif: "/brand/cat-eat.gif",
-  still: "/brand/cat-eat-still.png",
+  gif: brandUrl("cat-eat.gif"),
+  still: brandUrl("cat-eat-still.png"),
   canvas: 480,
   box: { x: 108, y: 91, w: 232, h: 287 },
   stillBox: { x: 0, y: 0, w: 480, h: 480 },
@@ -57,8 +58,8 @@ export const CAT_EAT = {
  */
 const catSquare = <C extends number>(name: string, canvas: C, box: { x: number; y: number; w: number; h: number }) =>
   ({
-    gif: `/brand/cat-${name}.gif`,
-    still: `/brand/cat-${name}-still.png`,
+    gif: brandUrl(`cat-${name}.gif`),
+    still: brandUrl(`cat-${name}-still.png`),
     canvas,
     box,
     stillBox: { x: 0, y: 0, w: canvas, h: canvas },

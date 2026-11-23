@@ -9,6 +9,8 @@ const state = {
   profile: { id: 'u1' } as { id: string } | null,
   profileError: null as unknown,
   profileEq: [] as unknown[][],
+  profileIs: [] as unknown[][],
+  claimsThrows: null as unknown,
   getUser: vi.fn(),
   getClaims: vi.fn(),
   signOut: vi.fn(),
@@ -27,7 +29,10 @@ vi.mock('@supabase/ssr', () => ({
             state.profileEq.push(a)
             return q
           },
-          is: () => q,
+          is: (...a: unknown[]) => {
+            state.profileIs.push(a)
+            return q
+          },
           maybeSingle: async () => ({ data: state.profile, error: state.profileError }),
         }
         return q
@@ -49,11 +54,13 @@ beforeEach(() => {
   state.profile = { id: 'u1' }
   state.profileError = null
   state.profileEq = []
+  state.profileIs = []
+  state.claimsThrows = null
   state.getUser.mockReset().mockRejectedValue(new Error('getUser must not be called'))
-  state.getClaims.mockReset().mockImplementation(async () => ({
-    data: state.claims ? { claims: state.claims } : null,
-    error: state.claimsError,
-  }))
+  state.getClaims.mockReset().mockImplementation(async () => {
+    if (state.claimsThrows) throw state.claimsThrows
+    return { data: state.claims ? { claims: state.claims } : null, error: state.claimsError }
+  })
   state.signOut.mockReset().mockResolvedValue({ error: null })
 })
 
@@ -134,5 +141,42 @@ describe('updateSession', () => {
   it('a signed-in user on an auth page goes to the app', async () => {
     const res = await updateSession(req('/login'))
     expect(location(res)!.pathname).toBe('/')
+  })
+})
+
+describe('the deleted-account gate', () => {
+  it('only counts profiles that are not soft-deleted (is deleted_at null) and match the claims subject', async () => {
+    await updateSession(req('/amigos'))
+    expect(state.profileIs).toEqual([['deleted_at', null]])
+    expect(state.profileEq).toEqual([['id', 'u1']])
+  })
+})
+
+describe('getClaims throwing (not an Auth error)', () => {
+  const cases: [string, unknown][] = [
+    ['a malformed token (SyntaxError)', new SyntaxError('Unexpected token } in JSON')],
+    ['an unknown alg', new Error('Invalid alg claim')],
+    ['a network error', new TypeError('fetch failed')],
+  ]
+
+  it.each(cases)('%s on a protected page is a signed-out visitor: login redirect, no sign-out, no throw', async (_n, err) => {
+    state.claimsThrows = err
+    const res = await updateSession(req('/amigos'))
+    expect(location(res)!.pathname).toBe('/login')
+    expect(state.signOut).not.toHaveBeenCalled()
+    expect(res.cookies.getAll()).toEqual([])
+  })
+
+  it.each(cases)('%s on /login passes through, so the user can sign in again', async (_n, err) => {
+    state.claimsThrows = err
+    const res = await updateSession(req('/login'))
+    expect(res.headers.get('location')).toBeNull()
+    expect(state.signOut).not.toHaveBeenCalled()
+  })
+
+  it('on / goes to the welcome page', async () => {
+    state.claimsThrows = new SyntaxError('x')
+    const res = await updateSession(req('/'))
+    expect(location(res)!.pathname).toBe('/bienvenida')
   })
 })

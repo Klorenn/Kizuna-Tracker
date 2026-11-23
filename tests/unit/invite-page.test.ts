@@ -7,7 +7,7 @@ vi.mock('@/lib/supabase/server', () => ({
   }),
 }))
 vi.mock('@/lib/viewer', () => ({
-  getViewer: async () => ({ id: 'me', timezone: 'UTC', deletedAt: null }),
+  getSessionUser: async () => ({ id: 'me', email: null }),
 }))
 vi.mock('@/app/(app)/amigos/actions', () => ({ acceptInviteAction: vi.fn() }))
 const { redirect } = vi.hoisted(() => ({ redirect: vi.fn() }))

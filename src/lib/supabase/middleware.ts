@@ -46,8 +46,15 @@ export async function updateSession(request: NextRequest) {
   // getClaims verifies the JWT locally against the cached JWKS (no Auth round trip) and still
   // refreshes an expired session through the cookie adapter above. Anything it cannot verify
   // (no session, bad or unrefreshable token) counts as signed out.
-  const { data: claimsData } = await supabase.auth.getClaims();
-  const userId = claimsData?.claims?.sub ?? null;
+  // auth-js rethrows what is not an AuthError (a malformed token, an unknown alg, a network
+  // failure): that must read as "signed out", never as a 500 that locks /login too.
+  let userId: string | null = null;
+  try {
+    const { data: claimsData } = await supabase.auth.getClaims();
+    userId = claimsData?.claims?.sub ?? null;
+  } catch {
+    userId = null;
+  }
   const path = request.nextUrl.pathname;
   const isPublic = isPublicPath(path);
   const isAuthPage = AUTH_PAGES.includes(path);

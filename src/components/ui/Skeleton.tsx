@@ -81,12 +81,15 @@ export function SkeletonPage({
   children: React.ReactNode;
 }) {
   return (
-    <main aria-busy="true" className={`mx-auto max-w-md ${padding}`}>
+    <>
+      {/* outside the busy element: live regions inside aria-busy can stay silent */}
       <p role="status" className="sr-only">
         Cargando
       </p>
-      <div className={`flex flex-col ${gap} animate-pulse motion-reduce:animate-none`}>{children}</div>
-    </main>
+      <main aria-busy="true" className={`mx-auto max-w-md ${padding}`}>
+        <div className={`flex flex-col ${gap} animate-pulse motion-reduce:animate-none`}>{children}</div>
+      </main>
+    </>
   );
 }
 

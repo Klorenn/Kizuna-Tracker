@@ -27,7 +27,7 @@ import {
 } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
-import { getViewer } from "@/lib/viewer";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 // Hidden from search engines until the legal review is done.
 export const metadata: Metadata = { title: "Perfil", robots: { index: false, follow: false } };
@@ -66,7 +66,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return <Unavailable />;
 
   const supabase = await createServerClient();
-  const viewer = await getViewer();
+  const viewer = await getSessionUser();
 
   // Viewer state: anonymous and strangers get the public view; friends the rich one; self → Perfil.
   let timezone = "UTC";
@@ -76,7 +76,8 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   // public_profile RPC has nothing (no public habits)
   let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null } | null = null;
   if (viewer) {
-    timezone = viewer.timezone;
+    // the one profile read the page always made for a signed-in viewer
+    timezone = (await getViewerProfile())?.timezone ?? timezone;
     const { data: found } = await supabase
       .from("public_profiles")
       .select("id,username,display_name,avatar_path,avatar_preset")
