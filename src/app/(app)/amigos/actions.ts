@@ -5,8 +5,10 @@ import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { loadFeedPage } from "@/lib/activity-feed";
 import { parseCursor, parseFilter, type FeedPage } from "@/lib/feed";
+import { PAGE_SIZE, REQUEST_LIMIT_COPY, loadPeople, type Person } from "@/lib/discover-data";
 import { INVITE_ERRORS, INVITE_GENERIC, inviteErrorKey } from "@/lib/invites";
 import { notify } from "@/lib/notify";
+import { requireUser } from "@/lib/require-user";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -18,6 +20,7 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function refresh() {
   revalidatePath("/amigos");
+  revalidatePath("/amigos/explorar");
 }
 
 async function currentUserId() {
@@ -26,31 +29,31 @@ async function currentUserId() {
   return { supabase, uid: data.user?.id ?? null };
 }
 
-export type UserHit = { id: string; username: string; displayName: string; avatarPath: string | null; avatarPreset: number | null };
-
-/** Username prefix search (max 20) through the public_profiles view (id, username, display_name, avatar_path, avatar_preset). */
-export async function searchUsers(q: string): Promise<UserHit[]> {
-  const term = (typeof q === "string" ? q : "").trim().toLowerCase().replace(/^@/, "");
-  if (!/^[a-z0-9_]{1,20}$/.test(term)) return [];
-  const { supabase, uid } = await currentUserId();
-  if (!uid) return [];
-  const { data } = await supabase
-    .from("public_profiles")
-    .select("id,username,display_name,avatar_path,avatar_preset")
-    .ilike("username", `${term.replaceAll("_", "\\_")}%`)
-    .neq("id", uid)
-    .order("username")
-    .limit(20);
-  return (data ?? []).flatMap((p) =>
-    p.id && p.username && p.display_name
-      ? [{ id: p.id, username: p.username, displayName: p.display_name, avatarPath: p.avatar_path, avatarPreset: p.avatar_preset }]
-      : [],
-  );
+/**
+ * Next page of Explorar ("Ver más"). The query and the offset come from the client and are
+ * re-validated; the read is discover_people through the caller's own session.
+ */
+export async function loadMorePeople(
+  query: unknown,
+  offset: unknown,
+): Promise<{ ok: true; people: Person[]; hasMore: boolean } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (typeof offset !== "number" || !Number.isInteger(offset) || offset < 0 || offset > 1000) {
+    return { ok: false, error: GENERIC };
+  }
+  return loadPeople({ query: typeof query === "string" ? query : null, offset, limit: PAGE_SIZE, client: auth.supabase });
 }
 
-export async function sendFriendRequest(userId: string, retried = false): Promise<RequestResult> {
-  const { supabase, uid } = await currentUserId();
-  if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
+export async function sendFriendRequest(userId: string): Promise<RequestResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  return requestFrom(auth.supabase, auth.userId, userId, false);
+}
+
+type Client = Awaited<ReturnType<typeof createServerClient>>;
+
+async function requestFrom(supabase: Client, uid: string, userId: string, retried: boolean): Promise<RequestResult> {
   if (userId === uid) return { ok: false, error: "No puedes agregarte a ti mismo." };
   if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
 
@@ -83,7 +86,8 @@ export async function sendFriendRequest(userId: string, retried = false): Promis
     .from("friendships")
     .insert({ requester_id: uid, addressee_id: userId, status: "pending" });
   // unique pair index: someone created the row in between, read it again
-  if (error?.code === "23505" && !retried) return sendFriendRequest(userId, true);
+  if (error?.code === "23505" && !retried) return requestFrom(supabase, uid, userId, true);
+  if (error?.message?.includes("request_limit")) return { ok: false, error: REQUEST_LIMIT_COPY };
   if (error) return { ok: false, error: GENERIC };
   const { data: me } = await supabase
     .from("public_profiles")
@@ -100,13 +104,61 @@ export async function sendFriendRequest(userId: string, retried = false): Promis
 }
 
 export async function addFriendByUsername(username: string): Promise<RequestResult> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
   const name = (typeof username === "string" ? username : "").toLowerCase().replace(/^@/, "");
   if (!/^[a-z0-9_]{3,20}$/.test(name)) return { ok: false, error: "No encontramos a esa persona." };
-  const { supabase, uid } = await currentUserId();
-  if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
-  const { data } = await supabase.from("public_profiles").select("id").eq("username", name).maybeSingle();
+  const { data } = await auth.supabase.from("public_profiles").select("id").eq("username", name).maybeSingle();
   if (!data?.id) return { ok: false, error: "No encontramos a esa persona." };
-  return sendFriendRequest(data.id);
+  return requestFrom(auth.supabase, auth.userId, data.id, false);
+}
+
+/**
+ * The addressee accepts a pending request from `userId`. Only ever an UPDATE of that pending row:
+ * if the requester withdrew meanwhile it reports it, and never creates a request of its own.
+ */
+export async function acceptFriendRequestFrom(userId: string): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
+  const { data, error } = await auth.supabase
+    .from("friendships")
+    .update({ status: "accepted" })
+    .eq("requester_id", userId)
+    .eq("addressee_id", auth.userId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { ok: false, error: GENERIC };
+  if (!data || data.length === 0) return { ok: false, error: "Esta solicitud ya no existe." };
+  refresh();
+  return { ok: true };
+}
+
+/** The requester withdraws a pending request they sent (client DELETE of a pending row under RLS). */
+export async function cancelFriendRequest(userId: string): Promise<Result> {
+  return dropPending(userId, "sent");
+}
+
+/** The addressee rejects a pending request without needing its row id. */
+export async function declineFriendRequest(userId: string): Promise<Result> {
+  return dropPending(userId, "received");
+}
+
+async function dropPending(userId: string, side: "sent" | "received"): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
+  const { data, error } = await auth.supabase
+    .from("friendships")
+    .delete()
+    .eq("requester_id", side === "sent" ? auth.userId : userId)
+    .eq("addressee_id", side === "sent" ? userId : auth.userId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { ok: false, error: GENERIC };
+  if (!data || data.length === 0) return { ok: false, error: "Esta solicitud ya no existe." };
+  refresh();
+  return { ok: true };
 }
 
 export async function respondFriendRequest(id: string, accept: boolean): Promise<Result> {

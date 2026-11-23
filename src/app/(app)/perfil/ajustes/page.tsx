@@ -4,22 +4,35 @@ import { cookies } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
+import { LoadFailed } from "@/components/LoadFailed";
 import { NotificationSection } from "@/components/NotificationSection";
 import { AccountRows, PreferenceRows } from "@/components/SettingsRows";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ListRow, ListSection } from "@/components/ui/ListRow";
 import { avatarUrl } from "@/lib/avatar";
+import { loadDiscoverable } from "@/lib/discover-data";
+import { createServerClient } from "@/lib/supabase/server";
 import { timezoneLock } from "@/lib/profile-view";
 import { getSessionUser, getViewerProfile, viewerMissingDestination } from "@/lib/viewer";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
+import { DiscoverableSwitch } from "./DiscoverableSwitch";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
 export default async function AjustesPage() {
   // one auth read and one profile read, both shared with the rest of the request
-  const profile = await getViewerProfile();
-  if (!profile) redirect(await viewerMissingDestination());
   const session = await getSessionUser();
+  // the privacy switch is not part of the shared viewer read: its own query, started together with
+  // the profile (null = the read failed)
+  const [profile, discoverable] = await Promise.all([
+    getViewerProfile(),
+    session
+      ? createServerClient()
+          .then((supabase) => loadDiscoverable(supabase, session.id))
+          .catch((): null => null)
+      : Promise.resolve(null),
+  ]);
+  if (!profile) redirect(await viewerMissingDestination());
 
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
   const reminderTime = profile.reminderTime.slice(0, 5);
@@ -66,6 +79,13 @@ export default async function AjustesPage() {
           label="Tus fotos solo las ven tus amigos"
           hint="Las fotos de prueba nunca son públicas. Tu perfil público solo muestra tus hábitos públicos."
         />
+        {discoverable === null ? (
+          <div className="border-b border-line px-4 py-3">
+            <LoadFailed href="/perfil/ajustes" />
+          </div>
+        ) : (
+          <DiscoverableSwitch initial={discoverable} />
+        )}
         <ListRow
           icon={<Scales size={20} weight="light" />}
           label="Tu peso y tu altura son privados. Nadie más puede verlos."

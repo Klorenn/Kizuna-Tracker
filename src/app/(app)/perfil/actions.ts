@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { deleteAccountWith } from "@/lib/delete-account";
 import { supabaseDeleteDeps } from "@/lib/delete-account-deps";
 import { processAvatar } from "@/lib/avatar";
+import { requireUser } from "@/lib/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -77,6 +78,21 @@ export async function uploadAvatar(file: File): Promise<Result> {
   const { error: profileError } = await admin.from("profiles").update({ avatar_path: path, avatar_updated_at: new Date().toISOString() }).eq("id", uid);
   if (profileError) return { ok: false, error: GENERIC };
   revalidatePath("/perfil", "layout");
+  return { ok: true };
+}
+
+/** Privacidad: whether the person appears in Amigos > Sugerencias and in Explorar. */
+export async function setDiscoverable(value: boolean): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (typeof value !== "boolean") return { ok: false, error: GENERIC };
+  const { data, error } = await auth.supabase
+    .from("profiles")
+    .update({ discoverable: value })
+    .eq("id", auth.userId)
+    .select("id");
+  if (error || !data || data.length === 0) return { ok: false, error: GENERIC };
+  revalidatePath("/amigos", "layout");
   return { ok: true };
 }
 
