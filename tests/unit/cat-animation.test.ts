@@ -8,37 +8,37 @@ describe("cat-animation assets", () => {
     expect(catAnimationStyle("lift", 235)).toEqual(catLiftStyle(235));
   });
 
-  it("describes the jump GIF: 73 frames of 80 ms on a 720 canvas, union box 465 x 589", () => {
+  it("describes the jump GIF: 73 frames of 80 ms on a 480 canvas, union box 310 x 393", () => {
     const j = CAT_ASSETS.jump;
     expect(j.gif).toBe("/brand/cat-jump.gif");
     expect(j.still).toBe("/brand/cat-jump-still.png");
-    expect(j.canvas).toBe(720);
-    expect(j.box).toEqual({ x: 159, y: 78, w: 465, h: 589 });
-    expect(j.stillBox).toEqual({ x: 0, y: 0, w: 720, h: 720 });
+    expect(j.canvas).toBe(480);
+    expect(j.box).toEqual({ x: 106, y: 52, w: 310, h: 393 });
+    expect(j.stillBox).toEqual({ x: 0, y: 0, w: 480, h: 480 });
     expect(j.playMs).toBe(5840);
   });
 
-  it("describes the eat GIF: 73 frames of 80 ms on a 720 canvas, union box 350 x 429", () => {
+  it("describes the eat GIF: 73 frames of 80 ms on a 480 canvas, union box 232 x 287", () => {
     const e = CAT_ASSETS.eat;
     expect(e.gif).toBe("/brand/cat-eat.gif");
     expect(e.still).toBe("/brand/cat-eat-still.png");
-    expect(e.canvas).toBe(720);
-    expect(e.box).toEqual({ x: 160, y: 137, w: 350, h: 429 });
-    expect(e.stillBox).toEqual({ x: 0, y: 0, w: 720, h: 720 });
+    expect(e.canvas).toBe(480);
+    expect(e.box).toEqual({ x: 108, y: 91, w: 232, h: 287 });
+    expect(e.stillBox).toEqual({ x: 0, y: 0, w: 480, h: 480 });
     expect(e.playMs).toBe(5840);
-    const s = catAnimationStyle("eat", 350) as Record<string, unknown>;
-    expect(s.height).toBe(429);
-    expect(s["--cat-mask-pos"]).toBe("-160px -137px");
+    const s = catAnimationStyle("eat", 232) as Record<string, unknown>;
+    expect(s.height).toBe(287);
+    expect(s["--cat-mask-pos"]).toBe("-108px -91px");
   });
 
   it("crops the jump mask to the cat box", () => {
-    const s = catAnimationStyle("jump", 465) as Record<string, unknown>;
-    expect(s.width).toBe(465);
-    expect(s.height).toBe(589);
-    expect(s["--cat-mask-size"]).toBe("720px 720px");
-    expect(s["--cat-mask-pos"]).toBe("-159px -78px");
-    expect(s["--cat-still-size"]).toBe("720px 720px");
-    expect(s["--cat-still-pos"]).toBe("-159px -78px");
+    const s = catAnimationStyle("jump", 310) as Record<string, unknown>;
+    expect(s.width).toBe(310);
+    expect(s.height).toBe(393);
+    expect(s["--cat-mask-size"]).toBe("480px 480px");
+    expect(s["--cat-mask-pos"]).toBe("-106px -52px");
+    expect(s["--cat-still-size"]).toBe("480px 480px");
+    expect(s["--cat-still-pos"]).toBe("-106px -52px");
   });
 
   it("scales with width", () => {
@@ -96,7 +96,7 @@ describe('Hoy cat preloading', () => {
 
 import { existsSync } from 'node:fs'
 
-describe('read, sleep and code cats (480 canvas, 73 frames x 80 ms)', () => {
+describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms', () => {
   it('read: downscaled to 480 px, union box 301 x 286 at (78, 94)', () => {
     expect(CAT_ASSETS.read).toEqual({
       gif: '/brand/cat-read.gif',
@@ -123,18 +123,18 @@ describe('read, sleep and code cats (480 canvas, 73 frames x 80 ms)', () => {
     })
     expect((catAnimationStyle('sleep', 341) as Record<string, unknown>)['--cat-mask-pos']).toBe('-99px -65px')
   })
-  it('code: union box 437 x 262 at (0, 115) (the tail swings to the left edge)', () => {
+  it('code: 320 canvas, union box 292 x 176 at (0, 76) (the tail swings to the left edge)', () => {
     expect(CAT_ASSETS.code).toEqual({
       gif: '/brand/cat-code.gif',
       still: '/brand/cat-code-still.png',
-      canvas: 480,
-      box: { x: 0, y: 115, w: 437, h: 262 },
-      stillBox: { x: 0, y: 0, w: 480, h: 480 },
+      canvas: 320,
+      box: { x: 0, y: 76, w: 292, h: 176 },
+      stillBox: { x: 0, y: 0, w: 320, h: 320 },
       playMs: 5840,
     })
-    const c = catAnimationStyle('code', 437) as Record<string, unknown>
-    expect(c.height).toBe(262)
-    expect(c['--cat-mask-pos']).toBe('0px -115px')
+    const c = catAnimationStyle('code', 292) as Record<string, unknown>
+    expect(c.height).toBe(176)
+    expect(c['--cat-mask-pos']).toBe('0px -76px')
   })
   it('ships the files', () => {
     for (const a of ['read', 'sleep', 'code']) {
