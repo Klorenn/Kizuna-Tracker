@@ -23,6 +23,8 @@ export const MIN_PASSWORD_LENGTH = 8
 export const UNDERAGE_ERROR = 'Debes ser mayor de 18 años para usar Kizuna.'
 
 const USERNAME_RE = /^[a-z0-9_]{3,20}$/
+/** Account deletion renames profiles to `deleted_<id>`; the database reserves the prefix too. */
+export const RESERVED_USERNAME_PREFIX = 'deleted_'
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/
 
@@ -72,8 +74,12 @@ export function validateSignupStep(
       return { ok: true }
     }
     case 3: {
-      if (!USERNAME_RE.test(normalizeUsername(input.username ?? ''))) {
+      const username = normalizeUsername(input.username ?? '')
+      if (!USERNAME_RE.test(username)) {
         return fail('username', 'Usa de 3 a 20 letras minúsculas, números o _.')
+      }
+      if (username.startsWith(RESERVED_USERNAME_PREFIX)) {
+        return fail('username', 'Ese usuario no está disponible.')
       }
       return { ok: true }
     }

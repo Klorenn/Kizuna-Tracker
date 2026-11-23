@@ -21,17 +21,15 @@ export async function checkUsername(
   const normalized = normalizeUsername(username);
   if (!/^[a-z0-9_]{3,20}$/.test(normalized)) return { available: false };
   const ip = clientIp(await headers());
+  const admin = createAdminClient();
   if (ip) {
-    const { data: ok, error: limitError } = await createAdminClient().rpc(
-      "register_login_attempt",
-      { p_keys: [`chk:${ip}`] },
-    );
+    const { data: ok, error: limitError } = await admin.rpc("register_login_attempt", {
+      p_keys: [`chk:${ip}`],
+    });
     if (limitError || ok !== true) return { available: false, rateLimited: true };
   }
-  const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc("username_available", {
-    p_username: normalized,
-  });
+  // service role only: a direct /rpc call would skip the chk: throttle above
+  const { data, error } = await admin.rpc("username_available", { p_username: normalized });
   return { available: !error && data === true };
 }
 
@@ -76,12 +74,12 @@ export async function signUp(
     if (limitError || allowed !== true) return { ok: false, error: RATE_LIMITED_ERROR };
   }
 
-  const supabase = await createServerClient();
-  const { data: free } = await supabase.rpc("username_available", {
+  const { data: free } = await createAdminClient().rpc("username_available", {
     p_username: clean.username,
   });
   if (free !== true) return { ok: false, error: USERNAME_TAKEN_ERROR };
 
+  const supabase = await createServerClient();
   const { data, error } = await supabase.auth.signUp({
     email: clean.email,
     password: clean.password,

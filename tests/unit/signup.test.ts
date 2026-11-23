@@ -65,6 +65,16 @@ describe('validateSignupStep', () => {
     expect(validateSignupStep(3, { username: '@pau_k' }, today)).toEqual({ ok: true })
   })
 
+  it('step 3 refuses the deleted_ prefix, reserved for deleted accounts', () => {
+    expect(validateSignupStep(3, { username: 'deleted_0123456789ab' }, today)).toEqual({
+      ok: false,
+      field: 'username',
+      error: 'Ese usuario no está disponible.',
+    })
+    expect(validateSignupStep(3, { username: '@Deleted_x' }, today)).toMatchObject({ ok: false, field: 'username' })
+    expect(validateSignupStep(3, { username: 'undeleted_x' }, today)).toEqual({ ok: true })
+  })
+
   it('step 4 validates email', () => {
     expect(validateSignupStep(4, { email: 'pau@' }, today)).toMatchObject({
       ok: false,

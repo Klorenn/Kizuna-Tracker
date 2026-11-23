@@ -4,7 +4,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(39);
+select plan(40);
 
 -- ===== handle_new_user trigger (runs as postgres, like GoTrue) =====
 insert into auth.users (id, email, raw_user_meta_data) values
@@ -88,17 +88,19 @@ reset role;
 
 -- ===== anon =====
 set local role anon;
-select is(public.username_available('user_a'), false, 'taken username is unavailable');
-select is(public.username_available('gone_1'), false, 'deleted username is unavailable');
-select is(public.username_available('libre_1'), true, 'free username is available');
-select is(public.username_available('AB'), false, 'invalid username format is unavailable');
+-- 0014: username checks go through the signup server action (service role, throttled)
+select throws_ok($$ select public.username_available('libre_1') $$, '42501', null, 'anon cannot check usernames directly');
 select throws_ok($$ select public.email_for_username('user_a') $$, '42501', null, 'anon cannot resolve usernames to emails');
-select is(public.username_available(null), false, 'null username is unavailable, not null');
 select throws_ok($$ select * from public.account_for_login('username', 'user_a') $$, '42501', null, 'anon cannot resolve accounts');
 reset role;
 
 -- ===== service_role =====
 set local role service_role;
+select is(public.username_available('user_a'), false, 'taken username is unavailable');
+select is(public.username_available('gone_1'), false, 'deleted username is unavailable');
+select is(public.username_available('libre_1'), true, 'free username is available');
+select is(public.username_available('AB'), false, 'invalid username format is unavailable');
+select is(public.username_available(null), false, 'null username is unavailable, not null');
 select is(public.email_for_username('user_a'), 'user_a@kizuna.app', 'service role resolves username to email');
 select is(public.email_for_username('gone_1'), null, 'deleted user resolves to null');
 select is(public.email_for_username('nadie_1'), null, 'unknown user resolves to null');

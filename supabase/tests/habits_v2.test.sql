@@ -47,8 +47,12 @@ insert into public.habits (id, user_id, name, icon, frequency_type, requires_pho
   ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Con reto foto', 'book', 'daily', false, 'friends'),
   ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Gym libre', 'barbell', 'daily', true, 'friends');
 insert into public.habit_items (id, habit_id, user_id, label, position, requires_photo) values
-  ('f0000000-0000-0000-0000-000000000007', 'b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Paso', 0, false),
+  ('f0000000-0000-0000-0000-000000000007', 'b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Paso', 0, false);
+-- legacy state (before 0014's activation guard): an active step smuggled onto a photo habit
+alter table public.habit_items disable trigger habit_items_activation_guard;
+insert into public.habit_items (id, habit_id, user_id, label, position, requires_photo) values
   ('f0000000-0000-0000-0000-000000000008', 'b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Colado', 0, false);
+alter table public.habit_items enable trigger habit_items_activation_guard;
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone, status)
 values
   ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',

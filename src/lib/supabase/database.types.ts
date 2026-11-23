@@ -82,6 +82,7 @@ export type Database = {
           requires_photo: boolean
           rival_habit_id: string | null
           rival_id: string
+          settled_at: string | null
           starts_on: string | null
           status: string
           target_per_week: number | null
@@ -100,6 +101,7 @@ export type Database = {
           requires_photo?: boolean
           rival_habit_id?: string | null
           rival_id: string
+          settled_at?: string | null
           starts_on?: string | null
           status?: string
           target_per_week?: number | null
@@ -118,6 +120,7 @@ export type Database = {
           requires_photo?: boolean
           rival_habit_id?: string | null
           rival_id?: string
+          settled_at?: string | null
           starts_on?: string | null
           status?: string
           target_per_week?: number | null
@@ -915,6 +918,15 @@ export type Database = {
       reject_checkin: {
         Args: { p_checkin_id: string; p_reason: string }
         Returns: undefined
+      }
+      reminder_candidates: {
+        Args: never
+        Returns: {
+          pending_today: boolean
+          reminder_time: string
+          timezone: string
+          user_id: string
+        }[]
       }
       remove_friend: { Args: { p_other: string }; Returns: boolean }
       request_cancel: { Args: { p_id: string }; Returns: boolean }
