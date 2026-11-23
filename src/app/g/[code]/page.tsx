@@ -8,6 +8,7 @@ import { eligibleGroupHabits, linkedHabitIds } from "@/domain/group-habits";
 import { groupInviteLoginHref } from "@/domain/group-join";
 import { loadHabitCandidates } from "@/lib/group-habits-data";
 import { loadMyGroups } from "@/lib/groups-data";
+import { loadInviteFine } from "@/lib/groups-invite-fine";
 import { lookupInvite, pageInviteKey, PAGE_LIMIT } from "@/lib/groups-invite-server";
 import { skipRateLimit } from "@/lib/rate-limit-mode";
 import { clientIp } from "@/lib/request-ip";
@@ -73,6 +74,8 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
   }
 
   const found = outcome.kind === "found" ? outcome.data : null;
+  // only after a successful preview; any failure here is "no fine shown", never a broken invitation
+  const fine = found && found.memberGroupId === null && !found.preview.full ? await loadInviteFine(code) : null;
   return (
     <main className={frame}>
       <JoinGroup
@@ -89,6 +92,7 @@ export default async function InvitePage({ params }: { params: Promise<{ code: s
         code={code}
         groupHref={found?.memberGroupId ? `/grupos/${found.memberGroupId}` : "/grupos"}
         alreadyMember={member}
+        fine={fine}
       />
     </main>
   );

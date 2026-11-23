@@ -257,9 +257,9 @@ export function FundSection({
               </Card>
             </>
           ) : null}
-          <p className="text-small text-pretty text-muted">{RULE_LINE}</p>
         </div>
       ) : null}
+      {showFund || proposal ? <p className="text-small text-pretty text-muted">{RULE_LINE}</p> : null}
 
       {admin && state ? (
         <ProposalSheet

@@ -20,7 +20,19 @@ const EXPECTED: Record<string, string> = {
   cannot_remove_self: 'Para salir, usa «Salir del grupo».',
   too_many_attempts: 'Demasiados intentos. Prueba de nuevo en unos minutos.',
   not_authenticated: GROUP_SIGN_IN_COPY,
+  commitment_change_pending: 'Ya hay un cambio de compromiso para la próxima semana. Espera a que empiece para hacer otro.',
 }
+
+import { fineErrorCopy } from '@/lib/groups-copy'
+
+describe('commitment_change_pending', () => {
+  const COPY = 'Ya hay un cambio de compromiso para la próxima semana. Espera a que empiece para hacer otro.'
+  it('is mapped, also inside a longer database message', () => {
+    expect(groupErrorCopy('commitment_change_pending')).toBe(COPY)
+    expect(groupErrorCopy('ERROR: commitment_change_pending (P0001)')).toBe(COPY)
+    expect(fineErrorCopy('commitment_change_pending')).toBe(COPY)
+  })
+})
 
 describe('groupErrorCopy', () => {
   it.each(Object.entries(EXPECTED))('%s -> its Spanish copy', (code, copy) => {

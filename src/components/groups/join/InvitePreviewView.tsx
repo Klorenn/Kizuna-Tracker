@@ -3,6 +3,8 @@
 import { useRef, useState, useTransition } from "react";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { FUND_DISCLAIMER } from "@/domain/group-fines";
+import { formatCLP } from "@/domain/ledger";
 import type { GroupActions, GroupHabitChoice, GroupInvitePreview } from "@/lib/groups-contract";
 import { HabitChoice } from "../create/HabitChoice";
 import { commitmentLine, memberCountLabel } from "../list/format";
@@ -80,7 +82,10 @@ export function InvitePreviewView({
   code,
   actions,
   onJoined,
+  fine = null,
 }: {
+  /** Optional addition: the fine in force, shown with "La multa solo aplica si la aceptas." (it binds nobody by joining). */
+  fine?: { amount: number; purpose: string } | null;
   preview: GroupInvitePreview | null;
   signedIn: boolean;
   loginHref: string;
@@ -141,6 +146,17 @@ export function InvitePreviewView({
           <NumText>{memberCountLabel(preview.memberCount)}</NumText>
         </p>
       </div>
+
+      {fine && !alreadyMember && !preview.full ? (
+        <div className="flex w-full min-w-0 flex-col gap-1 rounded-md bg-field px-4 py-3 text-left">
+          <p className="text-body font-semibold text-ink wrap-anywhere">
+            <NumText>{`Multa: ${formatCLP(fine.amount)} por semana incumplida`}</NumText>
+          </p>
+          <p className="text-small text-muted wrap-anywhere">{`Para: ${fine.purpose}`}</p>
+          <p className="text-small text-ink">La multa solo aplica si la aceptas.</p>
+          <p className="text-small text-pretty text-muted">{FUND_DISCLAIMER}</p>
+        </div>
+      ) : null}
 
       {alreadyMember ? (
         <>

@@ -20,7 +20,10 @@ export function JoinGroup({
   code,
   groupHref = "/grupos",
   alreadyMember: member = false,
+  fine = null,
 }: {
+  /** The fine in force, when the group has one: shown on the invitation; after joining the person lands on the fund to answer it. */
+  fine?: { amount: number; purpose: string } | null;
   preview: GroupInvitePreview | null;
   signedIn: boolean;
   loginHref: string;
@@ -43,7 +46,8 @@ export function JoinGroup({
       groupHref={groupHref}
       code={code}
       actions={actions}
-      onJoined={(id) => router.replace(`/grupos/${id}`)}
+      fine={fine}
+      onJoined={(id) => router.replace(fine ? `/grupos/${id}?seccion=fondo` : `/grupos/${id}`)}
     />
   );
 }

@@ -23,6 +23,9 @@ import { groupByDay } from "@/lib/feed";
 import type { GroupActions, GroupResult, GroupWallCursor, GroupWallItem, GroupWallPage } from "@/lib/groups-contract";
 import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
 import { useSignedUrls } from "@/lib/use-signed-urls";
+import type { GroupFineActions } from "@/lib/groups-fines-contract";
+import { RejectPhotoButton } from "../reject/RejectPhotoButton";
+import { rejectButtonProps, type RejectContext } from "./fines-wiring";
 import { appendWallPage, initialWall, plainDayLabel, type WallState } from "./group-logic";
 import { ErrorLine, PersonLink } from "./parts";
 
@@ -68,7 +71,10 @@ function Photo({ url, name }: { url: string | null | undefined; name: string }) 
   );
 }
 
-function WallEntry({ item, url }: { item: GroupWallItem; url: string | null | undefined }) {
+/** What the wall needs to offer "Rechazar foto": the group's rules and the page's clock, plus the action. */
+export type WallReject = RejectContext & { actions: Pick<GroupFineActions, "rejectPhoto">; onRejected?: (checkinId: string) => void };
+
+function WallEntry({ item, url, reject }: { item: GroupWallItem; url: string | null | undefined; reject?: WallReject }) {
   return (
     <li className="flex flex-col gap-2 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -76,6 +82,9 @@ function WallEntry({ item, url }: { item: GroupWallItem; url: string | null | un
         <span className="shrink-0 text-small text-muted">{item.photoPath ? "Subió su foto" : "Registró"}</span>
       </div>
       {item.photoPath ? <Photo url={url} name={item.displayName} /> : null}
+      {item.photoPath && reject ? (
+        <RejectPhotoButton {...rejectButtonProps(item, reject)} actions={reject.actions} onRejected={reject.onRejected} />
+      ) : null}
     </li>
   );
 }
@@ -88,8 +97,10 @@ export const WallChunk = memo(function WallChunk({
   items,
   today,
   continuesFrom,
+  reject,
 }: {
   items: GroupWallItem[];
+  reject?: WallReject;
   /** The viewer's date, or null while unknown (plain dates then). */
   today: string | null;
   continuesFrom: string | null;
@@ -103,7 +114,7 @@ export const WallChunk = memo(function WallChunk({
       <Card>
         <ul className="divide-y divide-line">
           {g.items.map((i) => (
-            <WallEntry key={i.checkinId} item={i} url={i.photoPath ? urls[i.photoPath] : undefined} />
+            <WallEntry key={i.checkinId} item={i} url={i.photoPath ? urls[i.photoPath] : undefined} reject={reject} />
           ))}
         </ul>
       </Card>
@@ -130,8 +141,11 @@ export function WallFeed({
   actions,
   retryHref,
   color,
+  reject,
 }: {
   groupId: string;
+  /** Optional: with it each photo gets `RejectPhotoButton` (which decides from the real values whether to show). */
+  reject?: WallReject;
   wall: GroupWallPage | null;
   today?: string;
   actions: Pick<GroupActions, "loadMoreWall">;
@@ -179,6 +193,7 @@ export function WallFeed({
               items={items}
               today={day}
               continuesFrom={prev ? prev[prev.length - 1].localDate : null}
+              reject={reject}
             />
           );
         })

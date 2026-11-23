@@ -25,8 +25,12 @@ const money = (v: unknown): string | null => (typeof v === 'number' && Number.is
 
 const UUID =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
-/** `/grupos/<id>` when the payload carries a real id, else the list: a payload is never trusted into a path. */
-const groupUrl = (id: unknown): string => (typeof id === 'string' && UUID.test(id) ? `/grupos/${id}` : '/grupos')
+/**
+ * `/grupos/<id>` when the payload carries a real id, else the list: a payload is never trusted into a path. `section`
+ * opens that part of the group (`?seccion=fondo` for fines and debts, `muro` for a rejected photo).
+ */
+const groupUrl = (id: unknown, section?: 'fondo' | 'muro'): string =>
+  typeof id === 'string' && UUID.test(id) ? `/grupos/${id}${section ? `?seccion=${section}` : ''}` : '/grupos'
 
 const REASONS: Record<string, string> = {
   not_habit: 'no era el hábito',
@@ -112,7 +116,7 @@ export function notificationView(type: string, payload: Record<string, unknown>)
             ? `${group}: proponen una multa`
             : 'Proponen una multa en tu grupo',
         body: purpose ? `Fondo: ${purpose}` : 'Revisa la propuesta y vota.',
-        url: groupUrl(payload.group_id),
+        url: groupUrl(payload.group_id, 'fondo'),
       }
     }
     case 'group_fine_active': {
@@ -121,7 +125,7 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       return {
         title: amount ? `${group ?? 'Tu grupo'}: la multa de ${amount} ya está activa` : `${group ?? 'Tu grupo'}: la multa ya está activa`,
         body: 'Participas si la aceptaste. Revisa el grupo.',
-        url: groupUrl(payload.group_id),
+        url: groupUrl(payload.group_id, 'fondo'),
       }
     }
     case 'group_fine_expired': {
@@ -129,7 +133,7 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       return {
         title: group ? `${group}: la propuesta de multa no alcanzó los votos` : 'La propuesta de multa de tu grupo no alcanzó los votos',
         body: 'Cualquier administrador puede proponer otra.',
-        url: groupUrl(payload.group_id),
+        url: groupUrl(payload.group_id, 'fondo'),
       }
     }
     case 'group_fund_debt': {
@@ -139,7 +143,7 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       return {
         title: amount ? `Le debes ${amount} al fondo de ${group ?? 'tu grupo'}` : 'Tienes una deuda con el fondo de tu grupo',
         body: `${week}${FUND_DISCLAIMER}`,
-        url: groupUrl(payload.group_id),
+        url: groupUrl(payload.group_id, 'fondo'),
       }
     }
     case 'group_photo_rejected': {
@@ -149,7 +153,7 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       return {
         title: `${group ?? 'Tu grupo'}: rechazaron tu foto${date}`,
         body: reason ? `Motivo: ${reason}` : 'Revisa el grupo para ver el detalle.',
-        url: groupUrl(payload.group_id),
+        url: groupUrl(payload.group_id, 'muro'),
       }
     }
     default:

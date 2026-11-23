@@ -11,6 +11,10 @@
  *  - `actions: Pick<GroupActions, "update" | "setCommitment" | "archive" | "createInvite" | "leave" |
  *    "removeMember" | "setAdmin" | "loadMoreWall" | "loadWeek">`
  *  - `onLeft: () => void` (called after the caller left the group: the page navigates away)
+ *  - `fines?: GroupFines` (optional addition: the optional fine. With it the view gains "Fondo" after Miembros (admins
+ *    always; a member when there is a fine, a proposal or a debt), "Rechazar foto" on the wall and "Fotos rechazadas";
+ *    `null` in `state`/`fund`/`rejected` = that read failed. `now` is the page's clock)
+ *  - `initialSection?: GroupSection` (optional addition: the section open first, from `?seccion=`)
  *  - `today?: string` (optional addition: the viewer's local date "YYYY-MM-DD" for "Hoy"/"Ayer" on the
  *    wall; without it the device's date is used after mount)
  * Members come from `board` (it is the only read that carries roles).
@@ -20,11 +24,14 @@
  */
 import { Archive } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
+import { FundSection } from "@/components/groups/fund/FundSection";
+import { RejectedList } from "@/components/groups/reject/RejectedList";
 import { HabitIcon } from "@/components/habit-icon";
 import { Segmented } from "@/components/ui/Segmented";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { toHabitColor } from "@/domain/habit-colors";
 import type { GroupActions, GroupBoardRow, GroupDetail, GroupWallPage, GroupWeek } from "@/lib/groups-contract";
+import type { GroupFineActions, GroupFineState, GroupFund, GroupRejectedItem } from "@/lib/groups-fines-contract";
 import { BoardList } from "./BoardList";
 import {
   applyDetail,
@@ -34,17 +41,28 @@ import {
   iconKeyOf,
   type Overlay,
 } from "./group-logic";
+import { type GroupSection, showFundSection, showRejectedList } from "./fines-wiring";
 import { HistoryList } from "./HistoryList";
 import { MembersList } from "./MembersList";
 import { CommitmentText, Mono } from "./parts";
 import { WallFeed } from "./WallFeed";
 
-type Section = "board" | "wall" | "members";
-const SECTIONS = [
+const SECTIONS: readonly { value: GroupSection; label: string }[] = [
   { value: "board", label: "Tablero" },
   { value: "wall", label: "Muro" },
   { value: "members", label: "Miembros" },
-] as const;
+];
+const FUND_SECTION: { value: GroupSection; label: string } = { value: "fund", label: "Fondo" };
+
+/** The optional fine's reads and actions, handed down by the page. */
+export type GroupFines = {
+  state: GroupFineState | null;
+  fund: GroupFund | null;
+  rejected: GroupRejectedItem[] | null;
+  now: number;
+  actions: GroupFineActions;
+  onChanged: () => void | Promise<void>;
+};
 
 type DetailActions = Pick<
   GroupActions,
@@ -115,6 +133,8 @@ export function GroupDetailView({
   actions,
   onLeft,
   today,
+  fines,
+  initialSection = "board",
 }: {
   detail: GroupDetail;
   board: GroupBoardRow[] | null;
@@ -124,8 +144,10 @@ export function GroupDetailView({
   actions: DetailActions;
   onLeft: () => void;
   today?: string;
+  fines?: GroupFines;
+  initialSection?: GroupSection;
 }) {
-  const [section, setSection] = useState<Section>("board");
+  const [section, setSection] = useState<GroupSection>(initialSection);
   const [overlay, setOverlay] = useState<Overlay>(EMPTY_OVERLAY);
   // a refresh hands down new data: it replaces what was applied locally (adjust state during render)
   const [seen, setSeen] = useState({ detail, board });
@@ -139,12 +161,36 @@ export function GroupDetailView({
   const retryHref = `/grupos/${detail.id}`;
   const patch = (p: Partial<Overlay>) => setOverlay((o) => ({ ...o, ...p }));
 
+  const fundShown = fines ? showFundSection({ role: view.role, archived: view.archived, state: fines.state, fund: fines.fund }) : false;
+  const current: GroupSection = section === "fund" && !fundShown ? "board" : section;
+  const reject = useMemo(
+    () =>
+      fines
+        ? {
+            groupId: detail.id,
+            myUserId,
+            role: view.role,
+            archived: view.archived,
+            requiresPhoto: view.commitment.requiresPhoto,
+            now: fines.now,
+            actions: fines.actions,
+            onRejected: () => void fines.onChanged(),
+          }
+        : undefined,
+    [fines, detail.id, myUserId, view.role, view.archived, view.commitment.requiresPhoto],
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <Header detail={view} board={members} />
-      <Segmented label="Secciones del grupo" options={SECTIONS} value={section} onChange={setSection} />
+      <Segmented
+        label="Secciones del grupo"
+        options={fundShown ? [...SECTIONS, FUND_SECTION] : SECTIONS}
+        value={current}
+        onChange={setSection}
+      />
 
-      <div data-panel="board" hidden={section !== "board"} className="flex flex-col gap-6">
+      <div data-panel="board" hidden={current !== "board"} className="flex flex-col gap-6">
         <section aria-label="Tablero" className="flex flex-col gap-2">
           <SectionHeader label="Esta semana" />
           <BoardList rows={members} myUserId={myUserId} color={view.color} retryHref={retryHref} />
@@ -152,11 +198,31 @@ export function GroupDetailView({
         <HistoryList weeks={history} groupId={detail.id} actions={actions} retryHref={retryHref} color={view.color} />
       </div>
 
-      <div data-panel="wall" hidden={section !== "wall"}>
-        <WallFeed groupId={detail.id} wall={wall} today={today} actions={actions} retryHref={retryHref} color={view.color} />
+      <div data-panel="wall" hidden={current !== "wall"} className="flex flex-col gap-4">
+        {fines && showRejectedList({ role: view.role, items: fines.rejected }) ? (
+          <RejectedList
+            groupId={detail.id}
+            items={fines.rejected}
+            role={view.role}
+            ownerView={view.role !== "admin"}
+            archived={view.archived}
+            retryHref={retryHref}
+            actions={fines.actions}
+            onUndone={() => void fines.onChanged()}
+          />
+        ) : null}
+        <WallFeed
+          groupId={detail.id}
+          wall={wall}
+          today={today}
+          actions={actions}
+          retryHref={retryHref}
+          color={view.color}
+          reject={reject}
+        />
       </div>
 
-      <div data-panel="members" hidden={section !== "members"}>
+      <div data-panel="members" hidden={current !== "members"}>
         <MembersList
           detail={view}
           members={members}
@@ -171,6 +237,23 @@ export function GroupDetailView({
           onRoleChanged={(id, role) => setOverlay((o) => ({ ...o, roles: { ...o.roles, [id]: role } }))}
         />
       </div>
+
+      {fines && fundShown ? (
+        <div data-panel="fund" hidden={current !== "fund"}>
+          <FundSection
+            groupId={detail.id}
+            state={fines.state}
+            fund={fines.fund}
+            role={view.role}
+            archived={view.archived}
+            myUserId={myUserId}
+            retryHref={retryHref}
+            now={fines.now}
+            actions={fines.actions}
+            onChanged={fines.onChanged}
+          />
+        </div>
+      ) : null}
     </div>
   );
 }
