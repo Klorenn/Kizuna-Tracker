@@ -38,7 +38,9 @@ export function backoffMs(failures: number): number {
 
 /**
  * Runs `run` now on `kick()`; while it reports work left (`true`) it runs again after the capped
- * exponential backoff. Calls made while a run is in progress are ignored. `stop()` cancels the timer.
+ * exponential backoff. A kick made while a run is in progress is remembered and runs right after
+ * that run (once, however many arrived): what asked for it may have missed the run in flight.
+ * `stop()` cancels the timer and any queued kick.
  */
 export function createRetryScheduler(opts: {
   run: () => Promise<boolean>;
@@ -51,10 +53,16 @@ export function createRetryScheduler(opts: {
   let timer: unknown = null;
   let running = false;
   let stopped = false;
+  let queued = false;
 
   async function go(): Promise<void> {
-    if (running || stopped) return;
+    if (stopped) return;
+    if (running) {
+      queued = true;
+      return;
+    }
     running = true;
+    queued = false;
     if (timer !== null) {
       clearTimer(timer);
       timer = null;
@@ -67,6 +75,12 @@ export function createRetryScheduler(opts: {
     }
     running = false;
     if (stopped) return;
+    if (queued) {
+      // someone asked while this run was going: run again at once (it decides about the backoff)
+      if (more) failures += 1;
+      void go();
+      return;
+    }
     if (more) {
       failures += 1;
       timer = setTimer(() => {
@@ -82,6 +96,7 @@ export function createRetryScheduler(opts: {
     kick: () => void go(),
     stop: () => {
       stopped = true;
+      queued = false;
       if (timer !== null) clearTimer(timer);
       timer = null;
     },
@@ -96,7 +111,7 @@ export type FlushReport = {
   events: PomodoroEvent[];
   /** Blocks refused for good, with the copy to show ("... No guardamos 25 min."). */
   dropped: { blockId: string; minutes: number; message: string }[];
-  /** Blocks removed because they ended on an earlier local day (never sent). */
+  /** Blocks removed without being sent because they carry no end instant (older stored shape). */
   expired: number;
   /** The day's total after the last accepted block, when there was one. */
   totalMinutes: number | null;
@@ -106,22 +121,48 @@ export type FlushReport = {
   retryable: number;
   /** The session is gone: the blocks wait for the user to sign in again. */
   signedOut: boolean;
+  /** The session check could not reach the server: the blocks wait and the copy says it could not connect. */
+  unreachable: boolean;
+  /** Blocks sent although their local day was over (the server decided; informational). */
+  late: number;
 };
+
+/** The profile zone and the current instant: which local day a block still counts for. */
+export type BlockDay = { timeZone: string; now: number };
 
 /** Block ids with a request on the wire (module-wide: every caller shares it). */
 const inFlight = new Set<string>();
 
+export const SIGN_IN_MESSAGE = "Inicia sesión para guardar tus bloques.";
+export const UNREACHABLE_MESSAGE = "No pudimos conectar. Inténtalo de nuevo en unos minutos.";
+export const TOPIC_LOST_MESSAGE = "No guardamos el tema, pero sí los minutos.";
+
+/** The lines to show for a flush: what expired, what was refused, and why blocks are waiting. */
+export function reportLines(r: FlushReport): string[] {
+  return [
+    r.expired > 0 ? expiredMessage(r.expired) : null,
+    ...r.dropped.map((d) => d.message),
+    r.topicRejected ? TOPIC_LOST_MESSAGE : null,
+    r.signedOut ? SIGN_IN_MESSAGE : null,
+    r.unreachable ? UNREACHABLE_MESSAGE : null,
+  ].filter((l): l is string => l !== null);
+}
+
 /**
  * Sends every pending block of a state once. A block already in flight is skipped, so two flushes
- * triggered together never send it twice (the server is idempotent anyway). With `day`, a block that
- * ended on an earlier local day is NOT sent: it is dropped and counted in `expired`. Accepted
- * (credited or already received) -> confirm; refused for good -> drop; trouble -> stays pending.
+ * triggered together never send it twice (the server is idempotent anyway). `day` is required.
+ * The server is the authority on expiry: a block whose local day is over is still sent once. If the
+ * server already has its receipt it answers ok and the block is confirmed (credited earlier, nothing
+ * is shown as lost); if it answers `block_expired` the block is dropped with the "terminó ayer" line;
+ * trouble keeps it pending. Only a block without an end instant (older stored shape) cannot be sent
+ * and is counted in `expired`. Accepted (credited or already received) -> confirm; refused for good
+ * -> drop; trouble -> stays pending.
  */
 export async function flushPendingDetailed(
   s: PomodoroState,
   send: Send,
   topic: string | null,
-  day?: { timeZone: string; now: number },
+  day: BlockDay,
 ): Promise<FlushReport> {
   const report: FlushReport = {
     events: [],
@@ -131,17 +172,20 @@ export async function flushPendingDetailed(
     topicRejected: false,
     retryable: 0,
     signedOut: false,
+    unreachable: false,
+    late: 0,
   };
   const waiting = s.pending.filter((p) => !inFlight.has(p.blockId));
   const mine = waiting.filter((p) => {
-    // a block without its end instant (older stored shape) cannot be placed on a day: expired
-    if (!Number.isFinite(p.endedAt) || (day && blockIsExpired(p.endedAt, day.now, day.timeZone))) {
+    // a block without its end instant (older stored shape) cannot be sent: the server needs it
+    if (!Number.isFinite(p.endedAt)) {
       report.events.push({ type: "drop", blockId: p.blockId });
       report.expired += 1;
       return false;
     }
     return true;
   });
+  report.late = mine.filter((p) => blockIsExpired(p.endedAt, day.now, day.timeZone)).length;
   for (const p of mine) inFlight.add(p.blockId);
   type Answer = Awaited<ReturnType<Send>>;
   const attempt = async (p: (typeof mine)[number]): Promise<{ answer: Answer; topicRejected: boolean }> => {
@@ -184,11 +228,17 @@ export async function flushPendingDetailed(
     } else {
       report.retryable += 1;
       if (a.code === "not_authenticated") report.signedOut = true;
+      if (a.code === "session_unavailable") report.unreachable = true;
     }
   });
   return report;
 }
 
-export async function flushPending(s: PomodoroState, send: Send, topic: string | null): Promise<PomodoroEvent[]> {
-  return (await flushPendingDetailed(s, send, topic)).events;
+export async function flushPending(
+  s: PomodoroState,
+  send: Send,
+  topic: string | null,
+  day: BlockDay,
+): Promise<PomodoroEvent[]> {
+  return (await flushPendingDetailed(s, send, topic, day)).events;
 }

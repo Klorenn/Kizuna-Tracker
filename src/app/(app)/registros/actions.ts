@@ -5,12 +5,14 @@ import { localDate } from "@/domain/dates";
 import { validateBook, validateReadingInput, type BookInput } from "@/domain/logs";
 import type { LocalDate } from "@/domain/types";
 import { isLocalDate } from "@/lib/log-date";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
+import type { createServerClient } from "@/lib/supabase/server";
 
 // Reading and books. Workout actions live in ./workout-actions.ts (Gym area).
 
 export type ReadingInput = { bookId: string; fromPage: number; toPage: number; finished: boolean };
 type Result = { ok: true } | { ok: false; error: string };
+type Client = Awaited<ReturnType<typeof createServerClient>>;
 
 const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
 const READING_LOST = "Marcamos el hábito, pero no guardamos la lectura. Inténtalo de nuevo.";
@@ -58,7 +60,7 @@ function readingArgs(checkinId: string, entry: ReadingInput) {
 }
 
 /**
- * "Guardar" / "Omitir" in the reading sheet on Hoy: checks the habit in (create_checkin) and, with
+ * "Guardar" / "Solo marcar" in the reading sheet on Hoy: checks the habit in (create_checkin) and, with
  * an entry, saves the reading on that check-in. When the reading fails the habit stays checked
  * (`checkedIn: true`) so the sheet can say so and retry with saveReading.
  */
@@ -66,11 +68,13 @@ export async function checkInWithReading(
   habitId: string,
   entry: ReadingInput | null,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string; checkedIn: boolean }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error, checkedIn: false };
+  const { supabase } = auth;
   if (entry) {
     const valid = checkPages(entry);
     if (!valid.ok) return { ok: false, error: valid.error, checkedIn: false };
   }
-  const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message), checkedIn: false };
@@ -87,9 +91,11 @@ export async function checkInWithReading(
 
 /** Adds or replaces the reading of an existing check-in (edit mode, any day). Never touches the check-in. */
 export async function saveReading(checkinId: string, entry: ReadingInput): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const valid = checkPages(entry);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
   const { error } = await supabase.rpc("save_reading_entry", readingArgs(checkinId, entry));
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -97,7 +103,9 @@ export async function saveReading(checkinId: string, entry: ReadingInput): Promi
 }
 
 export async function deleteReading(checkinId: string): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { error } = await supabase.rpc("delete_reading_entry", { p_checkin_id: checkinId });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -113,12 +121,11 @@ function bookRow(input: BookInput) {
 }
 
 export async function createBook(input: BookInput): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   const valid = validateBook(input);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: NOT_AUTHENTICATED };
   const { data, error } = await supabase
     .from("books")
     .insert({ user_id: uid, ...bookRow(input) })
@@ -130,16 +137,33 @@ export async function createBook(input: BookInput): Promise<{ ok: true; id: stri
 }
 
 export async function updateBook(id: string, input: BookInput): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
   const valid = validateBook(input);
   if (!valid.ok) return valid;
-  return updateOwnBook(id, bookRow(input));
+  return updateOwnBook(auth.supabase, id, bookRow(input));
 }
 
 /** Updates the caller's own book; a foreign or deleted id matches no row and is an error. */
-async function updateOwnBook(id: string, fields: { total_pages: number | null; title?: string; author?: string | null }): Promise<Result> {
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  if (!auth.user?.id) return { ok: false, error: NOT_AUTHENTICATED };
+async function updateOwnBook(
+  supabase: Client,
+  id: string,
+  fields: { total_pages: number | null; title?: string; author?: string | null },
+): Promise<Result> {
+  if (fields.total_pages !== null) {
+    // the total must still cover what is logged (reading_entries are owner-only, so this is the caller's own)
+    const { data: top, error: topError } = await supabase
+      .from("reading_entries")
+      .select("to_page")
+      .eq("book_id", id)
+      .order("to_page", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (topError) return { ok: false, error: GENERIC };
+    if (top && fields.total_pages < top.to_page) {
+      return { ok: false, error: `Ya registraste hasta la página ${top.to_page}: el total no puede ser menor.` };
+    }
+  }
   const { data, error } = await supabase.from("books").update(fields).eq("id", id).select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
   if (!data || data.length === 0) return { ok: false, error: ERRORS.book_not_found };
@@ -152,38 +176,43 @@ async function updateOwnBook(id: string, fields: { total_pages: number | null; t
  * the author, and updateBook would overwrite it).
  */
 export async function setBookTotalPages(id: string, totalPages: number): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
   const valid = validateBook({ title: "x", author: null, totalPages });
   if (!valid.ok) return valid;
-  return updateOwnBook(id, { total_pages: totalPages });
+  return updateOwnBook(auth.supabase, id, { total_pages: totalPages });
 }
 
 /** Finished on a local date (never after today in the profile's zone), or back to "reading" with null. */
 export async function setBookFinished(id: string, finishedOn: LocalDate | null): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   if (finishedOn !== null) {
     if (!isLocalDate(finishedOn)) return { ok: false, error: "Elige una fecha válida." };
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth.user?.id;
-    if (!uid) return { ok: false, error: NOT_AUTHENTICATED };
-    // own row only: friends' profiles are readable too, so never rely on .single() alone
+    // the profiles SELECT policy is owner-only (public data lives in public_profiles); the explicit id filter keeps the read to the caller's own row
     const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
     if (!profile) return { ok: false, error: NOT_AUTHENTICATED };
     if (finishedOn > localDate(new Date(), profile.timezone)) return { ok: false, error: FUTURE };
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("books")
     .update({ status: finishedOn ? "finished" : "reading", finished_on: finishedOn })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.book_not_found };
   refresh();
   return { ok: true };
 }
 
 /** Deletes the book; its readings go with it (cascade). Check-ins never change. */
 export async function deleteBook(id: string): Promise<Result> {
-  const supabase = await createServerClient();
-  const { error } = await supabase.from("books").delete().eq("id", id);
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { data, error } = await auth.supabase.from("books").delete().eq("id", id).select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.book_not_found };
   refresh();
   return { ok: true };
 }

@@ -3,7 +3,7 @@
 import { useRef, useState } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
-import { parseTypedAmount, parseTypedAmountResult, resolveTarget } from "@/lib/quantity-queue";
+import { goalIssue, parseTypedAmount, parseTypedAmountResult, resolveTarget, type GoalIssue } from "@/lib/quantity-queue";
 import {
   MAX_QUANTITY_LABEL,
   validateQuantityConfig,
@@ -25,10 +25,13 @@ export function QuantityFields({
   value,
   onChange,
   lockedReason,
+  onGoalIssue,
 }: {
   value: QuantityConfig;
   onChange: (next: QuantityConfig) => void;
   lockedReason?: string | null;
+  /** Why the goal cannot be saved (not a number, or below the locked value); null when it can. */
+  onGoalIssue?: (issue: GoalIssue) => void;
 }) {
   type UnitKey = "ml" | "glasses" | "steps" | "km" | "times" | "minutes" | "custom";
   const unitKey: UnitKey = value.unit === "ml" && value.display === "glasses" ? "glasses" : value.unit;
@@ -64,6 +67,7 @@ export function QuantityFields({
     setTarget(fieldText(next.target, next));
     setStep(fieldText(next.step, next));
     setGlass(String(next.glassMl));
+    onGoalIssue?.(null);
     onChange(next);
   }
 
@@ -71,6 +75,7 @@ export function QuantityFields({
 
   const editTarget = (raw: string) => {
     setTarget(raw);
+    onGoalIssue?.(goalIssue(raw, value, lockedMin));
     emit({ target: resolveTarget(raw, value, lockedMin) });
   };
   const editStep = (raw: string) => {
@@ -82,6 +87,7 @@ export function QuantityFields({
     const ml = /^\d+$/.test(raw.trim()) ? Number(raw.trim()) : NaN;
     // the goal and the step keep their typed value in glasses: re-read them with the new glass size
     const next = { ...value, glassMl: ml };
+    onGoalIssue?.(goalIssue(target, next, lockedMin));
     emit({
       glassMl: ml,
       target: resolveTarget(target, next, lockedMin),
@@ -93,8 +99,9 @@ export function QuantityFields({
   const typedTarget = parseTypedAmount(target, value);
   const targetParse = parseTypedAmountResult(target, value);
   const stepParse = parseTypedAmountResult(step, value);
+  // the lock reason only for a valid number below the locked value; text that is not a number gets the invalid-number message
   const belowLock = locked && typedTarget !== null && typedTarget < minTarget;
-  const targetError = belowLock ? (lockedReason ?? null) : !targetParse.ok ? targetParse.error : !checked.ok && /meta debe|meta no/i.test(checked.error) ? checked.error : null;
+  const targetError = !targetParse.ok ? targetParse.error : belowLock ? (lockedReason ?? null) : !checked.ok && /meta debe|meta no/i.test(checked.error) ? checked.error : null;
   const stepError = !stepParse.ok ? stepParse.error : !checked.ok && /suma rápida/i.test(checked.error) ? checked.error : null;
   const glassError = !checked.ok && /vaso/i.test(checked.error) && value.display === "glasses" ? checked.error : null;
   const labelError = !checked.ok && /unidad/i.test(checked.error) && value.unit === "custom" ? checked.error : null;

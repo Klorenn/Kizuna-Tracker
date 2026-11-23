@@ -3,6 +3,7 @@
 import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createQuickAddPress } from "@/lib/quick-add-press";
 import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import type { HabitColor } from "@/domain/habit-colors";
@@ -10,7 +11,9 @@ import { formatAmount, progressLabel, stepAmount, type QuantityConfig } from "@/
 import {
   doneAfterSync,
   goalMet,
+  offlineAfter,
   QUANTITY_MESSAGES,
+  refusalText,
   sharedQuantityQueue,
   type QuantityQueue,
   type QueueEvent,
@@ -38,6 +41,7 @@ export function QuantityStatus({
   offline,
   onDismiss,
   color,
+  part = "all",
 }: {
   config: QuantityConfig;
   shown: number;
@@ -48,12 +52,23 @@ export function QuantityStatus({
   offline: string | null;
   onDismiss: () => void;
   color?: HabitColor;
+  /**
+   * `head`: ring and number; `notices`: the rejection, offline and pending lines; `all` (default): both.
+   * The control puts the notices under the buttons, so a line that appears after a tap never moves the
+   * button away from a second, fast tap.
+   */
+  part?: "head" | "notices" | "all";
 }) {
   const done = goalMet(confirmed, config.target, serverDone);
   const pct = config.target > 0 ? (shown / config.target) * 100 : 0;
+  const showHead = part !== "notices";
+  const showNotices = part !== "head";
   return (
     <>
-      <div className="flex items-center gap-3">
+      {showHead ? (
+      // fixed minimum height: the "Meta de hoy cumplida" line must not make the header taller, or the
+      // quick-add button below would move away from a fast tap
+      <div className="flex min-h-12 items-center gap-3">
         <ProgressRing value={pct} label={progressLabel(shown, config)} color={color} />
         <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
           <p className="font-mono text-small text-ink">{progressLabel(shown, config)}</p>
@@ -65,7 +80,8 @@ export function QuantityStatus({
           ) : null}
         </div>
       </div>
-      {rejection ? (
+      ) : null}
+      {showNotices && rejection ? (
         <div role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
           <Warning size={16} weight="light" className="mt-[14px] shrink-0 text-alert" aria-hidden />
           <p className="flex-1 py-[14px]">{rejection}</p>
@@ -79,12 +95,12 @@ export function QuantityStatus({
           </button>
         </div>
       ) : null}
-      {offline ? (
+      {showNotices && offline ? (
         <p role="status" className="text-small text-pretty text-muted">
           {offline}
         </p>
       ) : null}
-      {pending > 0 ? (
+      {showNotices && pending > 0 ? (
         <p role="status" className="text-small text-muted">
           {pendingLabel(pending)}
         </p>
@@ -189,23 +205,24 @@ export function QuantityControl({
       if (refused.length === 0) return;
       const gone = new Set(refused.map((n) => n.entryId));
       setList((l) => l.filter((e) => !gone.has(e.id)));
-      setRejection(refused[refused.length - 1].error);
+      setRejection(refusalText(refused));
     };
     showNotices(); // refusals that arrived while this control was not mounted
     return q.subscribe((e: QueueEvent) => {
+      // the line clears on any answer (accepted or refused) and when the queue drains
+      setOffline((current) => offlineAfter(current, e, habitId));
       if (e.kind === "drained") {
         refreshIfIdle();
         return;
       }
       if (e.sum.habitId !== habitId) return;
-      if (e.kind === "offline") {
-        setOffline(e.error);
-      } else if (e.result.ok) {
-        setServerDone(e.result.done);
-        setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
-        setOffline(null);
-      } else {
-        showNotices();
+      if (e.kind === "settled") {
+        if (e.result.ok) {
+          setServerDone(e.result.done);
+          setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
+        } else {
+          showNotices();
+        }
       }
       readView(q);
     });
@@ -214,7 +231,7 @@ export function QuantityControl({
   const add = useCallback(
     (amount: number) => {
       const q = queue();
-      const { entryId } = q.add(habitId, amount);
+      const { entryId } = q.add(habitId, amount, timeZone);
       const at = new Date().toISOString();
       stamps.current.set(entryId, at);
       dirty.current = true;
@@ -222,7 +239,7 @@ export function QuantityControl({
       setList((l) => [...l, { id: entryId, amount, at, saved: false }]);
       readView(q);
     },
-    [habitId, queue, readView],
+    [habitId, queue, readView, timeZone],
   );
 
   const remove = useCallback(
@@ -255,20 +272,24 @@ export function QuantityControl({
     refreshIfIdle();
   }, [refreshIfIdle]);
 
-  // Press and hold 500 ms opens the sheet; the click that follows a long press adds nothing.
-  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
-  const cancelHold = () => {
-    if (hold.current.timer) clearTimeout(hold.current.timer);
-    hold.current.timer = null;
-  };
-  useEffect(() => cancelHold, []);
-
   const step = stepAmount(config);
   const stepText = formatAmount(step, config);
+
+  // Press and hold 500 ms opens the sheet; the click that follows a long press adds nothing. Every
+  // other click is one sum, so a fast double tap is two.
+  const latest = useRef({ add: () => {}, openSheet: () => {} });
+  useEffect(() => {
+    latest.current = { add: () => add(step), openSheet: () => setSheetOpen(true) };
+  });
+  const [press] = useState(() =>
+    createQuickAddPress({ add: () => latest.current.add(), openSheet: () => latest.current.openSheet() }),
+  );
+  useEffect(() => press.cancel, [press]);
 
   return (
     <div className="flex flex-col gap-3">
       <QuantityStatus
+        part="head"
         config={config}
         shown={view.shown}
         confirmed={view.confirmed}
@@ -283,27 +304,14 @@ export function QuantityControl({
         <button
           type="button"
           aria-label={`Sumar ${stepText}`}
-          onPointerDown={() => {
-            hold.current.fired = false;
-            cancelHold();
-            hold.current.timer = setTimeout(() => {
-              hold.current.fired = true;
-              hold.current.timer = null;
-              setSheetOpen(true);
-            }, 500);
-          }}
-          onPointerUp={cancelHold}
-          onPointerLeave={cancelHold}
-          onPointerCancel={cancelHold}
+          onPointerDown={press.onPointerDown}
+          onPointerUp={press.cancel}
+          onPointerLeave={press.cancel}
+          onPointerCancel={press.cancel}
           onContextMenu={(e) => e.preventDefault()}
-          onClick={() => {
-            if (hold.current.fired) {
-              hold.current.fired = false;
-              return;
-            }
-            add(step);
-          }}
-          className="inline-flex h-11 min-w-0 flex-1 select-none items-center justify-center gap-1 rounded-md bg-accent px-3 font-mono text-small font-medium text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover active:scale-[0.98] motion-reduce:active:scale-100"
+          onClick={press.onClick}
+          // touch-manipulation: a fast second tap must not be read as a double-tap zoom
+          className="inline-flex h-11 min-w-0 flex-1 touch-manipulation select-none items-center justify-center gap-1 rounded-md bg-accent px-3 font-mono text-small font-medium text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover active:scale-[0.98] motion-reduce:active:scale-100"
         >
           +{stepText}
         </button>
@@ -311,11 +319,23 @@ export function QuantityControl({
           type="button"
           aria-label="Más opciones de cantidad"
           onClick={() => setSheetOpen(true)}
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-outline-strong text-ink transition-colors duration-[120ms] hover:bg-field"
+          className="inline-flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-outline-strong text-ink transition-colors duration-[120ms] hover:bg-field"
         >
           <DotsThree size={24} weight="light" aria-hidden />
         </button>
       </div>
+      <QuantityStatus
+        part="notices"
+        config={config}
+        shown={view.shown}
+        confirmed={view.confirmed}
+        serverDone={serverDone}
+        pending={view.pending}
+        rejection={rejection}
+        offline={offline}
+        onDismiss={() => setRejection(null)}
+        color={color}
+      />
       {sheetOpen ? (
         <QuantitySheet
           open

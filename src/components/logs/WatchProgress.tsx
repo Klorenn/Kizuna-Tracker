@@ -16,6 +16,21 @@ export function currentSeries(media: MediaItem[], entries: WatchEntry[]): MediaI
   return [...watching].sort((a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? ""))[0];
 }
 
+/** "5 de 26 episodios": from the all-time count when the page has it, else from the entries it loaded. */
+function progressText(series: MediaItem, entries: WatchEntry[], seenEpisodes: number | null | undefined): string {
+  if (seenEpisodes == null) return seriesProgress(entries, series);
+  const allTime: WatchEntry = {
+    date: "",
+    mediaId: series.id,
+    episodes: seenEpisodes,
+    season: null,
+    episodeTo: null,
+    minutes: null,
+    completed: false,
+  };
+  return seriesProgress([allTime], series);
+}
+
 /**
  * Habit detail > PROGRESO for a series and movies habit: movies and episodes of the month
  * against the last, the series in progress ("Viendo: Dark · 5 de 26 episodios") and the links.
@@ -57,12 +72,7 @@ export function WatchProgress({
           <div className="min-w-0 flex-1">
             <p className="text-small text-muted">Viendo</p>
             <p className="break-words text-body text-ink">
-              {series.title} · <span className="font-mono text-small">{seriesProgress(
-                  seenEpisodes == null
-                    ? entries
-                    : [{ date: "", mediaId: series.id, episodes: seenEpisodes, season: null, episodeTo: null, minutes: null, completed: false }],
-                  series,
-                )}</span>
+              {series.title} · <span className="font-mono text-small">{progressText(series, entries, seenEpisodes)}</span>
             </p>
           </div>
         </div>

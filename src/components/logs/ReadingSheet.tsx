@@ -15,7 +15,7 @@ import type { PickerBook } from "@/lib/reading-books";
 import { BookPicker } from "./BookPicker";
 
 export type ReadingSheetMode =
-  /** Hoy: "Guardar" checks the habit in and saves the reading; "Omitir" only checks it in. */
+  /** Hoy: "Guardar" checks the habit in and saves the reading; "Solo marcar" only checks it in. */
   | { kind: "checkin"; habitId: string }
   /** Any day with a check-in: add, edit or delete its reading. Never touches the check-in. */
   | { kind: "edit"; checkinId: string; entry: { bookId: string; fromPage: number; toPage: number } | null };
@@ -53,7 +53,7 @@ export function ReadingSheet({
 }
 
 /**
- * Book chips, Desde/Hasta with live pages, "Terminé este libro". Check-in mode: Guardar / Omitir.
+ * Book chips, Desde/Hasta with live pages, "Terminé este libro". Check-in mode: Guardar / Solo marcar.
  * Edit mode: Guardar / Borrar lectura. `onFinished` runs after a successful save, skip or delete.
  */
 export function ReadingForm({
@@ -258,7 +258,7 @@ export function ReadingForm({
         </Button>
         {mode.kind === "checkin" ? (
           <Button variant="secondary" onClick={skip} disabled={pending}>
-            Omitir
+            Solo marcar
           </Button>
         ) : existing ? (
           confirmDelete ? (

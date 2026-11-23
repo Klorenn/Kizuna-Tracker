@@ -5,8 +5,11 @@ import {
   createQuantityQueue,
   goalMet,
   newEntryId,
+  offlineAfter,
   parseTypedAmount,
   parseTypedAmountResult,
+  refusalText,
+  goalIssue,
   doneAfterSync,
   resetSharedQuantityQueue,
   resolveTarget,
@@ -181,6 +184,120 @@ describe('burst with a rejection', () => {
     expect(refused).toHaveLength(1)
     expect(refused[0]).toMatchObject({ sum: { entryId: 'q2' }, result: { error: 'Es demasiado para un día.' } })
     expect(events.at(-1)).toEqual({ kind: 'drained' })
+  })
+})
+
+describe('taps never count for a later day', () => {
+  const ZONE = 'America/Santiago' // UTC-3 in November
+  beforeEach(() => vi.useFakeTimers())
+  afterEach(() => vi.useRealTimers())
+
+  it('a tap queued before local midnight and flushed after is dropped, never sent', async () => {
+    vi.setSystemTime(new Date('2026-11-23T02:55:00Z')) // 23:55 on the 22nd in Santiago
+    const send = vi.fn<Send>().mockResolvedValueOnce(NET).mockResolvedValue(OK(250))
+    const events: QueueEvent[] = []
+    const q = createQuantityQueue(send, ids)
+    q.subscribe((e) => events.push(e))
+    q.add('h1', 250, ZONE)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(send).toHaveBeenCalledTimes(1) // offline: stays pending
+    expect(q.pending()).toHaveLength(1)
+    vi.setSystemTime(new Date('2026-11-23T03:10:00Z')) // 00:10 on the 23rd
+    await vi.advanceTimersByTimeAsync(2000) // the retry fires
+    expect(send).toHaveBeenCalledTimes(1) // not sent again
+    expect(q.pending()).toEqual([])
+    expect(events.at(-2)).toMatchObject({ kind: 'settled', result: { ok: false, error: 'Una suma de ayer no se guardó.' } })
+    expect(events.at(-1)).toEqual({ kind: 'drained' })
+    expect(q.takeNotices('h1')).toEqual([{ habitId: 'h1', entryId: 'q1', error: 'Una suma de ayer no se guardó.' }])
+    expect(q.optimisticTotal('h1')).toBe(0)
+  })
+
+  it('a tap flushed on the same local day is sent', async () => {
+    vi.setSystemTime(new Date('2026-11-23T14:00:00Z'))
+    const send = vi.fn<Send>().mockResolvedValue(OK(250))
+    const q = createQuantityQueue(send, ids)
+    q.add('h1', 250, ZONE)
+    await vi.advanceTimersByTimeAsync(0)
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('the day is the profile zone\'s, not UTC: 23:55 local is already tomorrow in UTC and still counts', async () => {
+    vi.setSystemTime(new Date('2026-11-23T02:55:00Z'))
+    const send = vi.fn<Send>().mockResolvedValue(OK(250))
+    const q = createQuantityQueue(send, ids)
+    q.add('h1', 250, ZONE)
+    vi.setSystemTime(new Date('2026-11-23T02:59:00Z'))
+    await vi.advanceTimersByTimeAsync(0)
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('a backlog restored from storage is judged by the day it was tapped', async () => {
+    vi.setSystemTime(new Date('2026-11-23T02:55:00Z'))
+    const never = vi.fn<Send>(() => new Promise<never>(() => {}))
+    createQuantityQueue(never, ids).add('h1', 250, ZONE)
+    vi.setSystemTime(new Date('2026-11-24T15:00:00Z')) // two days later, a reload
+    const send = vi.fn<Send>().mockResolvedValue(OK(250))
+    const q2 = createQuantityQueue(send, ids)
+    await q2.flush()
+    expect(send).not.toHaveBeenCalled()
+    expect(q2.pending()).toEqual([])
+  })
+
+  it('sums stored before the day was recorded are still sent', async () => {
+    storage.setItem('kizuna:quantity-queue', JSON.stringify([{ entryId: 'old', habitId: 'h1', amount: 250 }]))
+    const send = vi.fn<Send>().mockResolvedValue(OK(250))
+    await createQuantityQueue(send, ids).flush()
+    expect(send).toHaveBeenCalledTimes(1)
+  })
+
+  it('refusalText: one stale sum, several, or any other refusal', () => {
+    const n = (error: string) => ({ habitId: 'h1', entryId: 'x', error })
+    expect(refusalText([n('Una suma de ayer no se guardó.')])).toBe('Una suma de ayer no se guardó.')
+    expect(refusalText([n('Una suma de ayer no se guardó.'), n('Una suma de ayer no se guardó.')])).toBe('2 sumas de ayer no se guardaron.')
+    expect(refusalText([n('Una suma de ayer no se guardó.'), n('Es demasiado para un día.')])).toBe('Es demasiado para un día.')
+  })
+})
+
+describe('offlineAfter (the offline line of a control)', () => {
+  const sum = (habitId: string) => ({ entryId: 'e1', habitId, amount: 250 })
+  const LINE = 'Sin conexión.'
+
+  it('an offline event of this habit shows its line', () => {
+    expect(offlineAfter(null, { kind: 'offline', sum: sum('h1'), error: LINE }, 'h1')).toBe(LINE)
+  })
+
+  it('any settled event of this habit clears it: accepted or refused by the server', () => {
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h1'), result: OK(250) }, 'h1')).toBeNull()
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h1'), result: NO('Es demasiado.') }, 'h1')).toBeNull()
+  })
+
+  it('the queue draining clears it', () => {
+    expect(offlineAfter(LINE, { kind: 'drained' }, 'h1')).toBeNull()
+  })
+
+  it('events of another habit leave it alone', () => {
+    expect(offlineAfter(LINE, { kind: 'offline', sum: sum('h2'), error: 'otra' }, 'h1')).toBe(LINE)
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h2'), result: OK(1) }, 'h1')).toBe(LINE)
+  })
+
+  it('a retried tap that ends in a refusal clears the line the queue showed (end to end)', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn<Send>().mockResolvedValueOnce(NET).mockResolvedValue(NO('Es demasiado para un día.'))
+      const q = createQuantityQueue(send, ids)
+      let line: string | null = null
+      q.subscribe((e) => {
+        line = offlineAfter(line, e, 'h1')
+      })
+      q.add('h1', 250)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(line).toBe('Sin conexión.')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(line).toBeNull()
+      expect(q.pending()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
@@ -444,5 +561,22 @@ describe('resolveTarget (locked goal)', () => {
     expect(resolveTarget('5000', c, null)).toBe(5000)
     expect(resolveTarget('abc', c, 8000)).toBeNaN()
     expect(validateQuantityConfig({ ...c, target: resolveTarget('5000', c, 8000) }).ok).toBe(false)
+  })
+})
+
+describe('goalIssue (locked goal)', () => {
+  const water: QuantityConfig = { unit: 'ml', label: null, target: 2000, step: 250, display: 'base', glassMl: 250 }
+  it('empty or non-numeric text is "invalid", never the lock', () => {
+    expect(goalIssue('', water, 2000)).toEqual({ kind: 'invalid', error: 'Revisa la cantidad.' })
+    expect(goalIssue('abc', water, 2000)).toEqual({ kind: 'invalid', error: 'Revisa la cantidad.' })
+    expect(goalIssue('1.5', water, 2000)).toMatchObject({ kind: 'invalid' })
+  })
+  it('a valid number below the locked value is "below"', () => {
+    expect(goalIssue('1500', water, 2000)).toEqual({ kind: 'below' })
+  })
+  it('a valid number at or above the lock is fine; without a lock any valid number is', () => {
+    expect(goalIssue('2000', water, 2000)).toBeNull()
+    expect(goalIssue('3000', water, 2000)).toBeNull()
+    expect(goalIssue('100', water, null)).toBeNull()
   })
 })

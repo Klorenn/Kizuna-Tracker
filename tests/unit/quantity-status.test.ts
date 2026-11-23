@@ -69,3 +69,21 @@ describe('QuantityStatus: goal met follows the confirmed total', () => {
     expect(render({ shown: 0, confirmed: 0, serverDone: true })).toContain('Meta de hoy cumplida')
   })
 })
+
+describe('QuantityStatus: parts (notices live under the buttons, so a new line never moves them)', () => {
+  const busy = { shown: 250, pending: 1, rejection: 'Revisa la cantidad.', offline: OFFLINE }
+  it('head: the number and ring, none of the notices', () => {
+    const html = render({ ...busy, part: 'head' })
+    expect(html).toContain('de 8 vasos')
+    expect(html).not.toContain('pendiente')
+    expect(html).not.toContain(OFFLINE)
+    expect(html).not.toContain('Revisa la cantidad.')
+  })
+  it('notices: the three lines, no number', () => {
+    const html = render({ ...busy, part: 'notices' })
+    expect(html).toContain('1 suma pendiente de guardar')
+    expect(html).toContain(OFFLINE)
+    expect(html).toContain('Revisa la cantidad.')
+    expect(html).not.toContain('de 8 vasos')
+  })
+})

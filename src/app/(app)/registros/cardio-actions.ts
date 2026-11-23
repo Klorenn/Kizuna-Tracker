@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { CARDIO_KINDS, validateCardioInput, type CardioKind } from "@/domain/cardio";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
 
 // Distance outings (cardio). Every write goes through the RPCs of 0018; none touches the check-in.
 
@@ -46,6 +46,13 @@ function refresh() {
 
 /** The checks the database repeats, so the sheet can answer before any round trip. */
 function check(entry: CardioInput): { ok: true; note: string | null } | { ok: false; error: string } {
+  // a fractional amount is a format problem, not an out-of-range one: it gets its own copy
+  if (Number.isFinite(entry.distanceM) && entry.distanceM > 0 && !Number.isInteger(entry.distanceM)) {
+    return { ok: false, error: "La distancia debe ser un número entero de metros." };
+  }
+  if (Number.isFinite(entry.durationS) && entry.durationS > 0 && !Number.isInteger(entry.durationS)) {
+    return { ok: false, error: "El tiempo debe ser un número entero de segundos." };
+  }
   // 0 (or a non-number) means "nothing typed": the same copy as an empty field
   const valid = validateCardioInput({
     kind: entry.kind,
@@ -75,7 +82,7 @@ function fields(entry: CardioInput, note: string | null) {
 }
 
 /**
- * "Guardar" / "Omitir" in the sheet on Hoy: checks the habit in (create_checkin) and, with an
+ * "Guardar" / "Solo marcar" in the sheet on Hoy: checks the habit in (create_checkin) and, with an
  * entry, adds the outing to that check-in. When the outing fails the habit stays checked in
  * (`checkedIn: true`) so the sheet can say so and retry with addCardio.
  */
@@ -83,9 +90,11 @@ export async function checkInWithCardio(
   habitId: string,
   entry: CardioInput | null,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string; checkedIn: boolean }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error, checkedIn: false };
+  const { supabase } = auth;
   const valid = entry ? check(entry) : null;
   if (valid && !valid.ok) return { ok: false, error: valid.error, checkedIn: false };
-  const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message), checkedIn: false };
@@ -108,9 +117,11 @@ export async function addCardio(
   checkinId: string,
   entry: CardioInput,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const valid = check(entry);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("add_cardio_entry", { p_checkin_id: checkinId, ...fields(entry, valid.note) });
   if (error || !data) return { ok: false, error: messageFor(error?.message) };
   refresh();
@@ -118,9 +129,11 @@ export async function addCardio(
 }
 
 export async function updateCardio(entryId: string, entry: CardioInput): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const valid = check(entry);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
   const { error } = await supabase.rpc("update_cardio_entry", { p_entry_id: entryId, ...fields(entry, valid.note) });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -128,16 +141,24 @@ export async function updateCardio(entryId: string, entry: CardioInput): Promise
 }
 
 export async function deleteCardio(entryId: string): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { error } = await supabase.rpc("delete_cardio_entry", { p_entry_id: entryId });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
   return { ok: true };
 }
 
-/** The most recent outing of the habit, for "Repetir el último". */
+/**
+ * The most recent outing of the habit, for "Repetir el último". It degrades silently on purpose:
+ * no session, a failed read or no outings all answer null and the sheet says "Aún no tienes salidas
+ * para repetir." (a convenience read: nothing is lost, and a lost session shows up on the next save).
+ */
 export async function lastCardio(habitId: string): Promise<CardioInput | null> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return null;
+  const { supabase } = auth;
   const { data } = await supabase
     .from("cardio_entries")
     .select("kind,distance_m,duration_s,effort,note")

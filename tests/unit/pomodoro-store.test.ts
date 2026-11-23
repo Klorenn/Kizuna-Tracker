@@ -238,6 +238,39 @@ describe('user namespace and guarded storage', () => {
     expect(base.getItem('unrelated')).toBe('1')
   })
 
+  it('removes the old un-namespaced keys once, when the storage is first opened', () => {
+    const base = new MemoryStorage()
+    base.setItem('kizuna:pomodoro:h1', '{}')
+    base.setItem('kizuna:pomodoro:config:h1', '{}')
+    base.setItem('kizuna:pomodoro:session:h1', '{}')
+    base.setItem('kizuna:user:user-x:kizuna:pomodoro:h9', '{"keep":true}')
+    base.setItem('unrelated', '1')
+    openPomodoroStorage('user-x', () => base)
+    expect(base.getItem('kizuna:pomodoro:h1')).toBeNull()
+    expect(base.getItem('kizuna:pomodoro:config:h1')).toBeNull()
+    expect(base.getItem('kizuna:pomodoro:session:h1')).toBeNull()
+    expect(base.getItem('kizuna:user:user-x:kizuna:pomodoro:h9')).toBe('{"keep":true}')
+    expect(base.getItem('unrelated')).toBe('1')
+    // once: a later open of the same storage does not sweep again
+    base.setItem('kizuna:pomodoro:late', '{}')
+    openPomodoroStorage('user-x', () => base)
+    expect(base.getItem('kizuna:pomodoro:late')).toBe('{}')
+  })
+
+  it('the sweep of old keys never throws on a blocked or failing storage', () => {
+    const failing = new MemoryStorage()
+    failing.removeItem = () => {
+      throw new DOMException('denied', 'SecurityError')
+    }
+    failing.setItem('kizuna:pomodoro:h1', '{}')
+    expect(() => openPomodoroStorage('user-y', () => failing)).not.toThrow()
+    expect(() =>
+      openPomodoroStorage('user-y', () => {
+        throw new DOMException('denied', 'SecurityError')
+      }),
+    ).not.toThrow()
+  })
+
   it('blocked storage (the getter throws): the timer still works in memory and says so', () => {
     const s = openPomodoroStorage('user-e', () => {
       throw new DOMException('denied', 'SecurityError')

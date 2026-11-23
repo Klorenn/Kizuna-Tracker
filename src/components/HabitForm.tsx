@@ -3,7 +3,7 @@
 import { Minus, Plus, Warning, X } from "@phosphor-icons/react";
 import { radioKeyTarget } from "@/lib/radio-keys";
 import { useRouter } from "next/navigation";
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { createHabit, updateHabit } from "@/app/(app)/habitos/actions";
 import {
   MAX_ITEMS,
@@ -18,6 +18,7 @@ import {
 import { LOG_TYPES, LOG_TYPE_LABEL, type LogType } from "@/domain/logs";
 import type { QuantityConfig } from "@/domain/quantity";
 import { draftExtraError } from "@/lib/habit-draft-checks";
+import { TYPED_AMOUNT_COPY, type GoalIssue } from "@/lib/quantity-queue";
 import { ColorPicker } from "./ColorPicker";
 import { IconPicker } from "./IconPicker";
 import { VisibilityPicker } from "./VisibilityPicker";
@@ -72,6 +73,8 @@ export function HabitForm({
     habitId ? null : "other",
   );
   const [error, setError] = useState<string | null>(null);
+  // why the quantity goal cannot be saved, reported by the fields (draft.target is NaN for both causes)
+  const goalIssue = useRef<GoalIssue>(null);
   const [pending, start] = useTransition();
   const editing = habitId !== undefined;
   const logHintId = useId();
@@ -101,9 +104,11 @@ export function HabitForm({
   }
   function submit(e: React.FormEvent) {
     e.preventDefault();
-    // a goal typed below the challenge lock arrives as NaN: say why, not "mayor que 0"
+    // an unusable goal arrives as NaN: the lock reason only when it is a valid number below the lock;
+    // an empty or non-numeric goal gets the invalid-number message
     if (quantityLockedReason && draft.logType === "quantity" && draft.quantity && !Number.isFinite(draft.quantity.target)) {
-      return setError(quantityLockedReason);
+      const issue = goalIssue.current;
+      return setError(issue?.kind === "below" ? quantityLockedReason : issue?.kind === "invalid" ? issue.error : TYPED_AMOUNT_COPY.invalid);
     }
     const valid = validateHabitDraft(draft);
     if (!valid.ok) return setError(valid.error);
@@ -331,6 +336,9 @@ export function HabitForm({
             value={draft.quantity ?? DEFAULT_QUANTITY}
             onChange={(quantity) => patch({ quantity })}
             lockedReason={quantityLockedReason}
+            onGoalIssue={(issue) => {
+              goalIssue.current = issue;
+            }}
           />
         ) : null}
       </div>

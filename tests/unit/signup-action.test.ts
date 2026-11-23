@@ -22,8 +22,15 @@ vi.mock("next/headers", () => ({
   headers: async () => new Headers({ "x-real-ip": "9.9.9.9" }),
   cookies: async () => ({ getAll: () => cookieJar(), delete: cookieDelete }),
 }));
+// Next's redirect() throws; this flag makes it return instead, to prove no code runs after it
+let redirectReturns = false;
+const redirected: string[] = [];
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
+    if (redirectReturns) {
+      redirected.push(to);
+      return;
+    }
     throw new Redirect(to);
   },
 }));
@@ -84,6 +91,8 @@ async function run() {
 beforeEach(() => {
   for (const m of [adminRpc, createUser, signUp, signInWithPassword, serviceKey, skip, profileUsername, serverSignOut, cookieDelete, cookieJar]) m.mockReset();
   order.length = 0;
+  redirectReturns = false;
+  redirected.length = 0;
   cookieJar.mockReturnValue([{ name: 'sb-abc-auth-token' }, { name: 'sb-abc-auth-token.1' }, { name: 'theme' }]);
   skip.mockReturnValue(false);
   serviceKey.mockReturnValue("svc");
@@ -233,6 +242,30 @@ describe("signUp with a service key", () => {
     expect(await run()).toEqual({ redirect: "/login?notice=cuenta-lista" });
     expect(signInWithPassword).toHaveBeenCalledTimes(1);
     expect(createUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("with a service key the non-admin fallback can never run", () => {
+  it.each([
+    ["the account is created and the session opens", () => {}],
+    ["the sign-in after creation fails", () => signInWithPassword.mockResolvedValue({ error: { message: "x" } })],
+    ["the sign-in after creation throws", () => signInWithPassword.mockRejectedValue(new TypeError("fetch failed"))],
+    ["createUser fails and the handle is free", () => createUser.mockResolvedValue({ data: { user: null }, error: { message: "boom" } })],
+    [
+      "createUser fails and the handle reads as taken",
+      () => {
+        createUser.mockResolvedValue({ data: { user: null }, error: { message: "dup" } });
+        adminRpc.mockImplementation(async (name: string) => ({
+          data: name === "username_available" ? (adminRpc.mock.calls.filter((c) => c[0] === "username_available").length <= 1) : true,
+          error: null,
+        }));
+      },
+    ],
+  ])("even if redirect() returned instead of throwing: %s", async (_name, arrange) => {
+    redirectReturns = true;
+    arrange();
+    await signUpAction(INPUT);
+    expect(signUp).not.toHaveBeenCalled();
   });
 });
 

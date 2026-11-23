@@ -48,7 +48,7 @@ import {
   type PomodoroStorage,
   type PomodoroPresetKey,
 } from "@/lib/pomodoro-store";
-import { createRetryScheduler, expiredMessage, flushPendingDetailed } from "@/lib/pomodoro-sync";
+import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/pomodoro-sync";
 
 /*
  * PomodoroScreen: the timer of one habit (`/habitos/<id>/pomodoro`).
@@ -156,12 +156,7 @@ function Timer({
     });
     if (report.events.length > 0) act.apply(report.events);
     if (report.totalMinutes !== null) setToday(report.totalMinutes);
-    const lines = [
-      report.expired > 0 ? expiredMessage(report.expired) : null,
-      ...report.dropped.map((d) => d.message),
-      report.topicRejected ? "No guardamos el tema, pero sí los minutos." : null,
-      report.signedOut ? "Inicia sesión para guardar tus bloques." : null,
-    ].filter((l): l is string => l !== null);
+    const lines = reportLines(report);
     if (lines.length > 0) setNotice(lines.join(" "));
     return report.retryable > 0;
   }, [act, getState, timeZone]);
@@ -347,8 +342,8 @@ function Timer({
       {state.phase === "done" ? (
         <>
           {today > 0 ? (
-            <p className="text-center font-mono text-body text-ink">
-              Hoy: {formatDuration(today)}
+            <p className="text-center text-body text-ink">
+              Hoy: <span className="font-mono">{formatDuration(today)}</span>
               {prefs.topic.trim() ? ` · ${prefs.topic.trim()}` : ""}
             </p>
           ) : null}
@@ -412,9 +407,10 @@ function Clock({ state }: { state: PomodoroState }) {
           className="stroke-accent"
         />
       </svg>
-      <p role="timer" className="font-mono text-6xl font-medium leading-none tracking-tight text-ink">
+      {/* a display figure, not prose: tight leading is intended */}
+      <div role="timer" className="font-mono text-6xl font-medium leading-none tracking-tight text-ink">
         {formatClock(v.remainingMs)}
-      </p>
+      </div>
     </div>
   );
 }
@@ -514,7 +510,7 @@ function IdlePanel({
         autoComplete="off"
         onChange={(e) => setTopic(e.target.value)}
       />
-      {today > 0 ? <p className="font-mono text-body text-ink">Hoy: {formatDuration(today)}</p> : null}
+      {today > 0 ? <p className="text-body text-ink">Hoy: <span className="font-mono">{formatDuration(today)}</span></p> : null}
       {error ? (
         <p role="alert" className="flex items-start gap-1 text-small text-pretty text-ink">
           <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />

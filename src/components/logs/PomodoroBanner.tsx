@@ -19,7 +19,7 @@ import {
   useNow,
   type PomodoroStorage,
 } from "@/lib/pomodoro-store";
-import { createRetryScheduler, expiredMessage, flushPendingDetailed } from "@/lib/pomodoro-sync";
+import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/pomodoro-sync";
 
 /*
  * PomodoroBanner: the "Pomodoro en curso · Estudiar · 18:42" strip on Hoy. Self-contained (plain
@@ -103,10 +103,7 @@ export function PomodoroBanner({
           if (cur !== fresh) savePomodoro({ ...cur, rev: cur.rev + ACTION_REV_BUMP }, store);
         }
       }
-      if (report.expired > 0) lines.push(expiredMessage(report.expired));
-      lines.push(...report.dropped.map((d) => d.message));
-      if (report.topicRejected) lines.push("No guardamos el tema, pero sí los minutos.");
-      if (report.signedOut) lines.push("Inicia sesión para guardar tus bloques.");
+      lines.push(...reportLines(report));
       if (report.retryable > 0) retry = true;
     }
     if (lines.length > 0) setMessages((prev) => [...new Set([...prev, ...lines])]);

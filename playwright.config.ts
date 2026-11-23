@@ -36,6 +36,14 @@ function localSupabaseEnv(): Record<string, string> {
 const supabaseEnv = localSupabaseEnv();
 // Specs that need a running Supabase (tests/e2e/*) skip unless this is set.
 if (supabaseEnv.NEXT_PUBLIC_SUPABASE_URL && !process.env.E2E_SUPABASE) process.env.E2E_SUPABASE = "1";
+// In CI a run where every Supabase spec would skip is a green run with no coverage: fail it instead.
+// Local runs keep today's behaviour (the specs skip).
+if (process.env.CI && !process.env.E2E_SUPABASE) {
+  throw new Error(
+    "CI is set but no Supabase configuration could be resolved: the e2e specs that need it would all skip. " +
+      "Set NEXT_PUBLIC_SUPABASE_URL, NEXT_PUBLIC_SUPABASE_ANON_KEY and SUPABASE_SERVICE_ROLE_KEY (or run a local stack that `supabase status` can read).",
+  );
+}
 Object.assign(process.env, Object.fromEntries(Object.entries(supabaseEnv).filter(([k]) => !process.env[k])));
 
 // E2E_PORT lets a second checkout (worktree) run its own dev server next to the main one.

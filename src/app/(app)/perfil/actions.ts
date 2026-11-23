@@ -80,7 +80,8 @@ export async function uploadAvatar(file: File): Promise<Result> {
   return { ok: true };
 }
 
-export async function deleteAccount(confirmUsername: string): Promise<Result> {
+/** `userId` lets the client clear this account's data kept on the device (Pomodoro timers) before it leaves. */
+export async function deleteAccount(confirmUsername: string): Promise<{ ok: true; userId: string } | { ok: false; error: string }> {
   const { supabase, uid } = await currentUserId();
   if (!uid) return { ok: false, error: LOGIN };
   const { data: profile } = await supabase.from("profiles").select("username").eq("id", uid).maybeSingle();
@@ -95,5 +96,5 @@ export async function deleteAccount(confirmUsername: string): Promise<Result> {
     return { ok: false, error: "No pudimos borrar tu cuenta. Inténtalo de nuevo." };
   }
   await supabase.auth.signOut().catch(() => {});
-  return { ok: true };
+  return { ok: true, userId: uid };
 }

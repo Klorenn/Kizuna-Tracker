@@ -39,7 +39,9 @@ const client = {
       const c: Record<string, unknown> = {}
       c.eq = () => c
       deleted = true
-      c.then = (res: (v: unknown) => unknown) => res({ error: deleteError })
+      // the delete asks for the removed rows (zero rows is "nothing to undo")
+      c.select = () => c
+      c.then = (res: (v: unknown) => unknown) => res({ data: deleteError ? null : [{ id: 'c1' }], error: deleteError })
       return c
     },
   }),

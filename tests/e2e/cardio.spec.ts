@@ -5,7 +5,6 @@ import { logIn, PASSWORD, randomHandle } from "./helpers";
 test.skip(!process.env.E2E_SUPABASE, "needs the local Supabase stack (E2E_SUPABASE=1)");
 
 const TZ = "America/Santiago";
-const today = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 
 const admin = () =>
   createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
@@ -30,7 +29,13 @@ async function setup() {
     .select("id")
     .single();
   expect(he).toBeNull();
-  const { error: ce } = await db.from("checkins").insert({ habit_id: habit!.id, user_id: userId, local_date: today });
+  // the check-in goes through the same RPC the app uses, as the signed-in user (never the service role)
+  const user = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { error: signIn } = await user.auth.signInWithPassword({ email: `${handle}@example.com`, password: PASSWORD });
+  expect(signIn).toBeNull();
+  const { error: ce } = await user.rpc("create_checkin", { p_habit_id: habit!.id });
   expect(ce).toBeNull();
   return { habitId: habit!.id as string, email: `${handle}@example.com` };
 }
@@ -124,4 +129,39 @@ test("invalid fields are marked; 375 px has no horizontal scroll", async ({ page
   // an empty pace never reads NaN or Infinity
   await expect(sheet(page).getByText("—", { exact: true })).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(375);
+});
+
+test("minutes above 59 have their own message tied to the time fields; repeat copies effort and note", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const { habitId, email } = await setup();
+  await logIn(page, email, PASSWORD);
+  await page.goto(`/habitos/${habitId}/distancia`);
+  await expect(page.getByRole("heading", { name: "Distancia" })).toBeVisible();
+
+  await page.getByRole("button", { name: "Salida", exact: true }).click();
+  await fillOuting(page, "5", "0", "75", "0");
+  await sheet(page).getByRole("button", { name: "Guardar" }).click();
+  const timeError = sheet(page).getByText("Minutos y segundos van de 0 a 59.");
+  await expect(timeError).toBeVisible();
+  const errorId = await timeError.getAttribute("id");
+  expect(errorId).toBeTruthy();
+  for (const label of ["Horas", "Minutos", "Segundos"]) {
+    await expect(sheet(page).getByLabel(label)).toHaveAttribute("aria-describedby", errorId!);
+  }
+
+  // a valid outing with effort and note, then repeat it
+  await sheet(page).getByLabel("Minutos").fill("25");
+  await sheet(page).getByRole("radio", { name: "4" }).click();
+  await sheet(page).getByLabel("Nota (opcional)").fill("Parque");
+  await sheet(page).getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("Trote · 5 km · 25:00 · 5:00 /km")).toBeVisible();
+  await expect(sheet(page)).toHaveCount(0);
+
+  await page.getByRole("button", { name: "Salida", exact: true }).click();
+  await expect(sheet(page).getByRole("radio", { name: "4" })).toHaveAttribute("aria-checked", "false");
+  await sheet(page).getByRole("button", { name: "Repetir el último" }).click();
+  await expect(sheet(page).getByRole("radio", { name: "4" })).toHaveAttribute("aria-checked", "true");
+  await expect(sheet(page).getByLabel("Nota (opcional)")).toHaveValue("Parque");
+  await expect(sheet(page).getByText("Copiamos tu última salida, con esfuerzo y nota.")).toBeVisible();
 });
