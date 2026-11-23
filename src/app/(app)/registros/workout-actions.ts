@@ -26,6 +26,9 @@ const ERRORS: Record<string, string> = {
   invalid_set: SETS,
   invalid_day_types: SETS,
   too_many_sets: SETS,
+  too_many_exercises: "Puedes registrar hasta 20 ejercicios.",
+  exercise_name_catalog: "Ese ejercicio ya está en el catálogo.",
+  exercise_limit: "Puedes tener hasta 100 ejercicios propios. Archiva alguno para crear otro.",
   not_authenticated: NOT_AUTHENTICATED,
 };
 

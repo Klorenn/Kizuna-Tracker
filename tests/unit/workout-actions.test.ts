@@ -102,6 +102,12 @@ describe('saveWorkout', () => {
     expect(r).toEqual({ ok: false, error: copy })
   })
 
+  it('maps too_many_exercises (more than 20 distinct exercises) to its copy', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'too_many_exercises' } })
+    const r = await saveWorkout('c1', { dayTypes: ['cardio'], exercises: [] })
+    expect(r).toEqual({ ok: false, error: 'Puedes registrar hasta 20 ejercicios.' })
+  })
+
   it('falls back to a generic message for unknown errors', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'boom' } })
     const r = await saveWorkout('c1', { dayTypes: ['cardio'], exercises: [] })
@@ -146,6 +152,20 @@ describe('createExercise', () => {
     expect(await createExercise({ name: 'Sentadilla', group: 'legs' })).toEqual({
       ok: false,
       error: 'Ya tienes un ejercicio con ese nombre.',
+    })
+  })
+  it('maps a catalog name to its copy', async () => {
+    insertResult = { data: null, error: { message: 'exercise_name_catalog', code: 'P0001' } }
+    expect(await createExercise({ name: 'Sentadilla', group: 'legs' })).toEqual({
+      ok: false,
+      error: 'Ese ejercicio ya está en el catálogo.',
+    })
+  })
+  it('maps the 100 own exercises cap to its copy', async () => {
+    insertResult = { data: null, error: { message: 'exercise_limit', code: 'P0001' } }
+    expect(await createExercise({ name: 'Otro', group: 'legs' })).toEqual({
+      ok: false,
+      error: 'Puedes tener hasta 100 ejercicios propios. Archiva alguno para crear otro.',
     })
   })
   it('requires a session', async () => {

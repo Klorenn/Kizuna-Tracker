@@ -3,7 +3,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(33);
+select plan(39);
 
 -- ===== schema =====
 select col_type_is('public', 'profiles', 'avatar_preset', 'smallint', 'profiles.avatar_preset is a smallint');
@@ -62,7 +62,8 @@ insert into public.friendships (requester_id, addressee_id, status) values
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   ('b1700000-0000-0000-0000-000000000001', 'a1700000-0000-0000-0000-000000000001', 'Leer', 'book', 'daily', 'public');
 insert into public.invites (inviter_id, code, expires_at) values
-  ('a1700000-0000-0000-0000-000000000001', 'ava_code', now() + interval '1 day');
+  ('a1700000-0000-0000-0000-000000000001', 'ava_code', now() + interval '1 day'),
+  ('a1700000-0000-0000-0000-000000000008', 'ava_gone', now() + interval '1 day');
 update public.profiles set deleted_at = now() where id = 'a1700000-0000-0000-0000-000000000008';
 
 -- ===== public_profiles view =====
@@ -98,6 +99,23 @@ select is(public.public_profile('ava_one')->>'avatarPreset', '5', 'public_profil
 select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000007'), 8::smallint,
   'a stranger row (7) keeps its preset after A changed their own');
 
+select is((select array_agg(k order by k) from jsonb_object_keys(public.public_profile('ava_one')) k),
+  array['avatarPath', 'avatarPreset', 'avatarUpdatedAt', 'displayName', 'habits', 'username'],
+  'public_profile() returns exactly the whitelisted keys (no height or birth data)');
+select is((select array_agg(k order by k) from jsonb_object_keys(public.invite_preview('ava_code')) k),
+  array['avatarPath', 'avatarPreset', 'displayName', 'username'],
+  'invite_preview() returns exactly the whitelisted keys');
+select is(public.invite_preview('ava_gone'), null, 'invite_preview is null when the inviter was deleted');
+create temp table b_before as select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000002';
+select lives_ok($$ select public.set_avatar_preset(1) $$, 'A sets another preset');
+select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000002'),
+  (select avatar_preset from b_before), 'set_avatar_preset never touches another user row (B)');
+
+-- ===== B: a friend reads A's preset through public_profiles =====
+select set_config('request.jwt.claims', '{"sub":"a1700000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000001'), 1::smallint,
+  'a friend reads the preset through public_profiles');
+
 -- ===== deleted account =====
 select set_config('request.jwt.claims', '{"sub":"a1700000-0000-0000-0000-000000000008","role":"authenticated"}', true);
 select throws_ok($$ select public.set_avatar_preset(2) $$, 'P0001', 'not_authenticated', 'a deleted account cannot set a preset');
@@ -106,7 +124,7 @@ select throws_ok($$ select public.set_avatar_preset(2) $$, 'P0001', 'not_authent
 set local role anon;
 select set_config('request.jwt.claims', '{"role":"anon"}', true);
 select throws_ok($$ select public.set_avatar_preset(2) $$, '42501', null, 'anon cannot execute set_avatar_preset');
-select is(public.public_profile('ava_one')->>'avatarPreset', '5', 'anon reads the preset only through public_profile()');
+select is(public.public_profile('ava_one')->>'avatarPreset', '1', 'anon reads the preset only through public_profile()');
 select is(public.public_profile('ava_eight'), null, 'a deleted account has no public profile, so no preset');
 
 select * from finish();
