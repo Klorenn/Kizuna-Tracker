@@ -19,16 +19,16 @@ import { DaySheet, type CalendarHabitView } from "./DaySheet";
 import { WEEKDAY_NAMES, monthBounds, monthGrid, monthTitle, type MonthKey } from "@/domain/calendar";
 import { addDays, weekStart } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
-import { dayAriaLabel, type HabitDay } from "@/lib/calendar-days";
+import { dayAriaLabel, onlyRejected, type HabitDay } from "@/lib/calendar-days";
+import { navDir, swipeDirection, swipeStarted, type NavDir } from "@/lib/calendar-nav";
 
 export type { CalendarHabitView } from "./DaySheet";
 
 const WEEKDAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"];
 const MAX_MARKS = 4;
-const SWIPE_MIN = 56;
 const EASE = "cubic-bezier(.32,.72,0,1)";
 
-type Dir = "next" | "prev";
+type Dir = NavDir;
 
 const reducedMotion = () =>
   typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -102,6 +102,8 @@ export function MonthCalendar({
   const afterNav = useRef<"grid" | "title" | null>(null);
   const drag = useRef<{ x: number; y: number; active: boolean } | null>(null);
   const swallowClickUntil = useRef(0);
+  // the tapped day cell: the sheet gives focus back to it (Safari does not focus buttons on tap)
+  const returnFocus = useRef<HTMLElement | null>(null);
 
   const [shown, setShown] = useState<{ month: MonthKey; dir: Dir | null }>({ month, dir: null });
   const [focusDate, setFocusDate] = useState<LocalDate>(() => defaultFocus(month, today));
@@ -109,7 +111,7 @@ export function MonthCalendar({
 
   // A new month arrived from the server: reset focus and selection during render.
   if (shown.month !== month) {
-    setShown({ month, dir: month > shown.month ? "next" : "prev" });
+    setShown({ month, dir: navDir(shown.month, month) });
     setFocusDate(defaultFocus(month, today));
     setSelected(null);
   }
@@ -205,7 +207,7 @@ export function MonthCalendar({
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (!d.active) {
-      if (Math.abs(dx) < 10 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+      if (!swipeStarted(dx, dy)) return;
       d.active = true;
     }
     const el = bodyRef.current;
@@ -223,10 +225,10 @@ export function MonthCalendar({
     const dx = e.clientX - d.x;
     const dy = e.clientY - d.y;
     if (d.active) swallowClickUntil.current = performance.now() + 400;
-    const swiped = !cancelled && Math.abs(dx) >= SWIPE_MIN && Math.abs(dx) > Math.abs(dy) * 1.5;
-    const href = swiped ? (dx < 0 ? nextHref : prevHref) : null;
-    if (href) {
-      go(href, dx < 0 ? "next" : "prev");
+    const dir = swipeDirection({ dx, dy, cancelled });
+    const href = dir === "next" ? nextHref : dir === "prev" ? prevHref : null;
+    if (dir && href) {
+      go(href, dir);
       return;
     }
     const el = bodyRef.current;
@@ -243,7 +245,7 @@ export function MonthCalendar({
     }
   }
 
-  // Sheet restores focus to the tapped day cell on close.
+  // Sheet gives focus back to the tapped day cell on close (returnFocus).
   const closeSheet = useCallback(() => setSelected(null), []);
 
   function cell(date: LocalDate, inMonth: boolean) {
@@ -251,7 +253,7 @@ export function MonthCalendar({
     const height = mode === "all" ? "h-12" : "h-11";
     if (!inMonth) {
       return (
-        <div key={date} role="gridcell" className={`flex ${height} items-center justify-center`}>
+        <div key={date} role="gridcell" className={`flex ${height} min-w-0 items-center justify-center`}>
           <span aria-hidden className="font-mono text-[13px] text-outline-strong opacity-50">
             {n}
           </span>
@@ -260,7 +262,7 @@ export function MonthCalendar({
     }
     if (date > today) {
       return (
-        <div key={date} role="gridcell" className={`flex ${height} items-center justify-center`}>
+        <div key={date} role="gridcell" className={`flex ${height} min-w-0 items-center justify-center`}>
           <span className="font-mono text-[13px] text-outline-strong">{n}</span>
         </div>
       );
@@ -302,11 +304,13 @@ export function MonthCalendar({
       );
     } else {
       const marks = entries.filter((e) => e.status === "done" || e.status === "partial");
+      // only a rejected check-in that day: dashed outline (shape, not color), explained in the legend
+      const rejected = onlyRejected(entries) ? "border border-dashed border-outline-strong" : "";
       const shownMarks = marks.length > MAX_MARKS ? marks.slice(0, MAX_MARKS - 1) : marks;
       face = (
         <>
           <span
-            className={`flex size-[30px] items-center justify-center rounded-full font-mono text-[13px] tabular-nums text-ink ${ring} ${focusRing} ${
+            className={`flex size-[30px] items-center justify-center rounded-full font-mono text-[13px] tabular-nums text-ink ${rejected} ${ring} ${focusRing} ${
               isToday || done.length > 0 ? "font-semibold" : ""
             }`}
           >
@@ -331,7 +335,7 @@ export function MonthCalendar({
     }
 
     return (
-      <div key={date} role="gridcell" aria-selected={isSelected} className="flex justify-center">
+      <div key={date} role="gridcell" aria-selected={isSelected} className="flex min-w-0 justify-center">
         <button
           ref={(el) => {
             if (el) buttons.current.set(date, el);
@@ -343,8 +347,11 @@ export function MonthCalendar({
           aria-haspopup="dialog"
           aria-current={isToday ? "date" : undefined}
           onFocus={() => setFocusDate(date)}
-          onClick={() => setSelected(date)}
-          className={`group flex ${height} w-full min-w-11 flex-col items-center justify-center gap-[3px] rounded-md outline-none`}
+          onClick={(e) => {
+            returnFocus.current = e.currentTarget;
+            setSelected(date);
+          }}
+          className={`group flex ${height} w-full min-w-0 flex-col items-center justify-center gap-[3px] rounded-md outline-none`}
         >
           {face}
         </button>
@@ -354,10 +361,11 @@ export function MonthCalendar({
 
   const selectedEntries = selected ? (days[selected] ?? []) : [];
   const single = mode === "single" ? habits[0] : null;
+  const rejectedOnlyDays = mode === "all" && Object.values(days).some(onlyRejected);
 
   return (
     <div className="flex flex-col gap-3" data-habit-color={single?.color}>
-      <div className="flex items-center gap-1 pl-1">
+      <div className="flex items-center gap-1 pl-2">
         <h2
           ref={titleRef}
           id={titleId}
@@ -371,7 +379,7 @@ export function MonthCalendar({
         {todayHref ? (
           <button
             type="button"
-            onClick={() => go(todayHref, "next", "title")}
+            onClick={() => go(todayHref, navDir(month, today.slice(0, 7)), "title")}
             className="inline-flex h-11 items-center rounded-md px-3 text-small font-medium text-accent transition-colors duration-[120ms] hover:bg-accent-soft"
           >
             Hoy
@@ -417,7 +425,7 @@ export function MonthCalendar({
         </div>
       </div>
 
-      <div className="flex flex-col gap-1.5 text-small text-muted">
+      <div className="flex flex-col gap-1.5 px-2 text-small text-muted">
         {mode === "single" ? (
           <ul className="flex flex-wrap items-center gap-x-4 gap-y-1.5" aria-label="Leyenda">
             <li className="flex items-center gap-1.5">
@@ -452,6 +460,12 @@ export function MonthCalendar({
           </ul>
         )}
         {mode === "all" && statuses.has("partial") ? <p>Punto lleno: hecho. Punto hueco: en progreso.</p> : null}
+        {rejectedOnlyDays ? (
+          <p className="flex items-center gap-1.5">
+            <span aria-hidden className="size-2.5 shrink-0 rounded-full border border-dashed border-outline-strong" />
+            Borde punteado: foto rechazada, no cuenta.
+          </p>
+        ) : null}
         {note ? <p>{note}</p> : null}
         <p>Toca un día para ver el detalle.</p>
       </div>
@@ -464,6 +478,7 @@ export function MonthCalendar({
           habits={habits}
           single={mode === "single"}
           onClose={closeSheet}
+          returnFocusRef={returnFocus}
         />
       ) : null}
     </div>

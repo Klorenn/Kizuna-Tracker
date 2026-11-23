@@ -190,7 +190,8 @@ export default async function ResumenPage({
     calendarSection = (
       <>
         <SectionHeader label="Calendario" action="Ver por meses" href={href(month, MONTHS_VIEW)} scroll={false} />
-        <Card className="px-3 py-4">
+        {/* thin side padding: seven >= 44 px day cells fit from 360 px wide */}
+        <Card className="px-1 py-4">
           <MonthCalendar
             month={month}
             today={today}

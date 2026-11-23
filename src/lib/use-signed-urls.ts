@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { mergeSignedUrls } from "@/lib/signed-url-state";
 import { createBrowserClient } from "@/lib/supabase/client";
 
 /** Signed URLs for the private `proofs` bucket last 300 s; reuse them for at most 240 s. */
@@ -23,14 +24,15 @@ export function useSignedUrls(paths: string[]): Record<string, string | null | u
 
   useEffect(() => {
     const list = key ? key.split("|") : [];
-    const known: Record<string, string | null> = {};
+    const known: Record<string, string> = {};
     const missing: string[] = [];
     for (const p of list) {
       const hit = fresh(p);
       if (hit) known[p] = hit.url;
       else missing.push(p);
     }
-    setUrls(known);
+    // keep what is already on screen while the rest signs (no flash back to "loading")
+    setUrls((prev) => mergeSignedUrls(prev, list, known));
     if (missing.length === 0) return;
     let live = true;
     createBrowserClient()

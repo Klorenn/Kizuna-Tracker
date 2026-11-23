@@ -136,6 +136,11 @@ export function hasRecords(entries: HabitDay[]): boolean {
   return entries.some((e) => RECORD.has(e.status))
 }
 
+/** The day's only record is a rejected check-in (the all-habits grid marks it apart). */
+export function onlyRejected(entries: HabitDay[]): boolean {
+  return entries.some((e) => e.status === 'rejected') && !entries.some((e) => e.status === 'done' || e.status === 'partial')
+}
+
 function statusPhrase(e: HabitDay): string {
   switch (e.status) {
     case 'done':
