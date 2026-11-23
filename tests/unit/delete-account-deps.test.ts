@@ -65,6 +65,43 @@ describe('supabaseDeleteDeps', () => {
     expect(upd.filters).toContainEqual(['in', ['id', ['h1']]])
   })
 
+  test('borra las filas propias de registros detallados y peso por user_id', async () => {
+    const { client, calls } = fakeAdmin()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deps = supabaseDeleteDeps(client as any)
+    for (const t of ['workout_sets', 'workout_sessions', 'reading_entries', 'books', 'exercises', 'body_weights'] as const) {
+      await deps.deleteRows(t, UID)
+    }
+    const dels = calls.filter((c) => c.op === 'delete')
+    expect(dels.map((c) => c.table)).toEqual([
+      'workout_sets',
+      'workout_sessions',
+      'reading_entries',
+      'books',
+      'exercises',
+      'body_weights',
+    ])
+    // exercises: only the user's own (the catalog rows have user_id null and are never touched)
+    for (const d of dels) expect(d.filters).toEqual([['eq', ['user_id', UID]]])
+  })
+
+  test('scrubProfile guarda height_cm en null junto al resto del perfil', async () => {
+    const { client, calls } = fakeAdmin()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await supabaseDeleteDeps(client as any).scrubProfile(UID, {
+      username: 'deleted_x',
+      first_name: 'Cuenta',
+      last_name: 'eliminada',
+      birth_date: null,
+      avatar_path: null,
+      height_cm: null,
+      deleted_at: '2026-11-25T12:00:00.000Z',
+    })
+    const upd = calls.find((c) => c.table === 'profiles' && c.op === 'update')!
+    expect(upd.payload).toMatchObject({ height_cm: null })
+    expect(upd.filters).toContainEqual(['eq', ['id', UID]])
+  })
+
   test('limpia todas las claves de metadata del registro con null', async () => {
     const { client, auth } = fakeAdmin()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

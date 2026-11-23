@@ -50,11 +50,23 @@ describe('deleteAccountWith', () => {
     expect(removed).toContainEqual({ bucket: 'avatars', paths: [`${UID}.jpg`] })
   })
 
-  test('borra goals, checkin_items, checkins, habit_items y habits en ese orden, nunca debts', async () => {
+  test('borra registros detallados, peso, goals, checkin_items, checkins, habit_items y habits en ese orden, nunca debts', async () => {
     const { deps, calls } = fake()
     await deleteAccountWith(deps, UID, NOW)
     const deleted = calls.filter((c) => c.startsWith('delete:')).map((c) => c.split(':')[1])
-    expect(deleted).toEqual(['goals', 'checkin_items', 'checkins', 'habit_items', 'habits'])
+    expect(deleted).toEqual([
+      'workout_sets',
+      'workout_sessions',
+      'reading_entries',
+      'books',
+      'exercises',
+      'body_weights',
+      'goals',
+      'checkin_items',
+      'checkins',
+      'habit_items',
+      'habits',
+    ])
     expect(calls.some((c) => c.includes('debts'))).toBe(false)
   })
 
@@ -74,6 +86,7 @@ describe('deleteAccountWith', () => {
       last_name: 'eliminada',
       birth_date: null,
       avatar_path: null,
+      height_cm: null,
       deleted_at: NOW.toISOString(),
     })
     expect(calls).toContain(`ban:${UID}:deleted-${UID}@invalid.kizuna`)
