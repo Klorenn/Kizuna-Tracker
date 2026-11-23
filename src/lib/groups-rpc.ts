@@ -43,7 +43,7 @@ export type MyGroupRow = {
   commitment_icon: string
   target_per_week: number
   requires_photo: boolean
-  my_habit_id: string
+  my_habit_id: string | null
   my_done: number
   my_counts: boolean
   complied_count: number
@@ -67,13 +67,12 @@ export type GroupDetailRow = {
   next_target_per_week: number | null
   next_requires_photo: boolean | null
   next_effective_from: string | null
-  /** The brief says "my role"; the column name is not fixed, so the loader accepts `my_role` or `role`. */
-  my_role?: GroupRoleValue
-  role?: GroupRoleValue
-  my_habit_id: string
+  my_role: GroupRoleValue
+  my_habit_id: string | null
   streak: number
   member_count: number
-  archived?: boolean
+  /** Null while the group is live. */
+  archived_at: string | null
 }
 
 type PersonColumns = {
@@ -195,7 +194,7 @@ export const groupInvitePreview = (c: GroupsClient, code: string) =>
 
 export const myGroups = (c: GroupsClient) => call<MyGroupRow[]>(c, 'my_groups')
 
-/** The contract does not say whether `group_detail` returns one row or a one-element set: the loader accepts both. */
+/** `group_detail` returns a set with one row (none for a stranger). */
 export const groupDetail = (c: GroupsClient, groupId: string) =>
   call<GroupDetailRow[]>(c, 'group_detail', { p_group_id: groupId })
 
