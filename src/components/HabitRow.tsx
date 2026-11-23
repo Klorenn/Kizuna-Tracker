@@ -9,6 +9,7 @@ import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayRow } from "@/dom
 import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
 import { addLogOffered, habitRowPropsEqual } from "./habit-row-equal";
+import { GroupChip } from "./groups/GroupChip";
 import { ItemChecklist } from "./ItemChecklist";
 import type { CardioSheetMode } from "./logs/CardioSheet";
 import { QuantityControl } from "./logs/QuantityControl";
@@ -71,6 +72,7 @@ function HabitRowView({
   checkinId,
   reading,
   logsKnown = true,
+  group,
 }: {
   row: TodayRow;
   /** local date of Hoy (`YYYY-MM-DD`), for the "Añadir registro" link */
@@ -81,6 +83,8 @@ function HabitRowView({
   reading?: RowReading;
   /** false when today's logs could not be read: no "Añadir registro" then (Hoy itself shows a retry instead of rows) */
   logsKnown?: boolean;
+  /** the live group this habit is linked to: a small chip next to the name */
+  group?: { name: string; color: string };
 }) {
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -205,6 +209,7 @@ function HabitRowView({
         >
           {row.name}
         </Link>
+        {group ? <GroupChip name={group.name} color={group.color} /> : null}
       </span>
       {/* fixed height: the mono streak figure must not change this line when a streak starts */}
       <span className="flex h-5 items-center gap-1 text-small text-muted">

@@ -1,6 +1,8 @@
 import { addDays, localDate } from "@/domain/dates";
+import { groupChipsByHabit } from "@/domain/group-habits";
 import type { CheckinInput, HabitInput, ItemCheckInput, ItemInput } from "@/domain/today";
 import { loadCheckinDates } from "@/lib/checkin-dates";
+import { loadMyGroups } from "@/lib/groups-data";
 import { loadPickerBooksOrNull, type PickerBook } from "@/lib/reading-books";
 import type { createServerClient } from "@/lib/supabase/server";
 import { loadTodayLogs, type TodayLogsResult } from "@/lib/today-logs";
@@ -22,6 +24,8 @@ export type TodayData =
       todayLogs: Extract<TodayLogsResult, { ok: true }>;
       checkins: CheckinInput[];
       books: PickerBook[];
+      /** Habit id to the live group it is linked to. Decoration: empty when that read failed. */
+      groupChips: Map<string, { name: string; color: string }>;
     }
   /** `missingProfile`: the signed-in user has no profile row (the page redirects); otherwise a read failed. */
   | { ok: false; missingProfile?: boolean };
@@ -75,6 +79,11 @@ export async function loadTodayData(
   const booksRead: Promise<PickerBook[] | null> = habitsRead.then(({ data, error }) =>
     error ? null : (data ?? []).some((h) => h.log_type === "reading") ? loadPickerBooksOrNull(supabase, userId) : [],
   );
+  // the group chips are decoration: a failed or odd answer is "no chips", never a failed Hoy
+  const chipsRead: Promise<Map<string, { name: string; color: string }>> = loadMyGroups(supabase).then(
+    (r) => (r.ok ? groupChipsByHabit(r.data) : new Map()),
+    () => new Map(),
+  );
   // everything that needs today's local date
   const dayReads = profileRead.then(async (profile) => {
     if (!profile) return null;
@@ -87,7 +96,14 @@ export async function loadTodayData(
     return { today, timeZone: profile.timezone, itemChecks, todayCheckins, todayLogs };
   });
 
-  const [habits, items, day, raw, books] = await Promise.all([habitsRead, itemsRead, dayReads, rawHistory, booksRead]);
+  const [habits, items, day, raw, books, groupChips] = await Promise.all([
+    habitsRead,
+    itemsRead,
+    dayReads,
+    rawHistory,
+    booksRead,
+    chipsRead,
+  ]);
   if (!day) return { ok: false, missingProfile: true };
   if (habits.error || items.error || day.itemChecks.error || day.todayCheckins.error || !day.todayLogs.ok || !raw.ok || books === null) {
     // any failed read makes the whole screen a retry state: rows built from partial data would lie
@@ -109,5 +125,6 @@ export async function loadTodayData(
     todayLogs: day.todayLogs,
     checkins,
     books,
+    groupChips,
   };
 }

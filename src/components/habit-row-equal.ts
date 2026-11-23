@@ -12,7 +12,8 @@ export function habitRowPropsEqual(a: HabitRowProps, b: HabitRowProps): boolean 
     a.checkinId === b.checkinId &&
     a.logsKnown === b.logsKnown &&
     JSON.stringify(a.row) === JSON.stringify(b.row) &&
-    JSON.stringify(a.reading) === JSON.stringify(b.reading)
+    JSON.stringify(a.reading) === JSON.stringify(b.reading) &&
+    JSON.stringify(a.group) === JSON.stringify(b.group)
   );
 }
 

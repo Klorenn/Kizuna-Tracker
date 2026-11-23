@@ -43,7 +43,7 @@ export default async function Home() {
     );
   }
 
-  const { today, timeZone, habits, items, itemChecks, todayCheckins, todayLogs, checkins, books } = data;
+  const { today, timeZone, habits, items, itemChecks, todayCheckins, todayLogs, checkins, books, groupChips } = data;
   const view = buildToday({
     habits,
     items,
@@ -128,6 +128,7 @@ export default async function Home() {
                   today={today}
                   timeZone={timeZone}
                   checkinId={checkinByHabit.get(row.id) ?? null}
+                  group={groupChips.get(row.id)}
                   reading={row.logType === "reading" ? readingFor(row.id) : undefined}
                 />
               ))}
