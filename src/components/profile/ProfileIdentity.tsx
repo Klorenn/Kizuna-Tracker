@@ -9,11 +9,13 @@ export function ProfileIdentity({
   name,
   username,
   src,
+  preset,
   since,
 }: {
   name: string;
   username: string;
   src: string | null;
+  preset?: number | null;
   since: string | null;
 }) {
   const { input, pick, busy, error } = useAvatarUpload();
@@ -21,12 +23,12 @@ export function ProfileIdentity({
     <div className="flex flex-col">
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
-          <Avatar name={name} size="XL" src={src} />
+          <Avatar name={name} size="XL" src={src} preset={preset} />
           <button
             type="button"
             onClick={pick}
             disabled={busy}
-            aria-label={src ? "Cambiar foto de perfil" : "Agregar foto de perfil"}
+            aria-label="Cambiar foto de perfil"
             className="group absolute -bottom-[9px] -right-[9px] flex size-11 items-center justify-center rounded-full"
           >
             <span className="flex size-8 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-card ring-2 ring-paper transition-colors duration-[120ms] group-hover:bg-field group-disabled:text-muted">

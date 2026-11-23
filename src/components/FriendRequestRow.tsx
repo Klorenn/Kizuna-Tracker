@@ -12,11 +12,13 @@ export function FriendRequestRow({
   displayName,
   username,
   avatar = null,
+  avatarPreset = null,
 }: {
   id: string;
   displayName: string;
   username: string;
   avatar?: string | null;
+  avatarPreset?: number | null;
 }) {
   const [busy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -38,7 +40,7 @@ export function FriendRequestRow({
           href={`/@${username}`}
           className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
         >
-          <Avatar name={displayName} src={avatar} />
+          <Avatar name={displayName} src={avatar} preset={avatarPreset} />
           <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
             <span className="truncate text-body font-medium text-ink">{displayName}</span>
             <span className="truncate font-mono text-[13px] text-muted">@{username}</span>

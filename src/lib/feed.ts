@@ -174,7 +174,7 @@ export function parseCursor(value: unknown): FeedCursor | null {
 export type FeedEntry = {
   id: string
   cursor: FeedCursor
-  person: { id: string; username: string; name: string; avatar: string | null }
+  person: { id: string; username: string; name: string; avatar: string | null; avatarPreset?: number | null }
   habit: { name: string; color: HabitColor }
   copy: string
   localDate: LocalDate

@@ -2,6 +2,7 @@ import { Plus } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
+import { avatarUrl } from "@/lib/avatar";
 import { ChallengeCard, type ChallengeCardData } from "@/components/ChallengeCard";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -65,7 +66,7 @@ export default async function RetosPage() {
   const [{ data: profiles }, { data: habits }, { data: myHabits }, debts, checkins] =
     await Promise.all([
       people.length
-        ? supabase.from("public_profiles").select("id,display_name").in("id", people)
+        ? supabase.from("public_profiles").select("id,display_name,avatar_path,avatar_preset").in("id", people)
         : Promise.resolve({ data: [] }),
       habitIds.length
         ? supabase.from("habits").select("id,name").in("id", habitIds)
@@ -98,6 +99,7 @@ export default async function RetosPage() {
         : Promise.resolve([]),
     ]);
   const nameOf = new Map((profiles ?? []).map((p) => [p.id, firstName(p.display_name)]));
+  const avatarOf = new Map((profiles ?? []).map((p) => [p.id, p]));
   const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
   const eligible = (myHabits ?? []).map((h) => ({ id: h.id, name: h.name, requiresPhoto: h.requires_photo }));
   const datesByHabit = new Map<string, string[]>();
@@ -115,6 +117,8 @@ export default async function RetosPage() {
     const base = {
       id: c.id,
       otherName: other,
+      otherAvatar: avatarUrl(avatarOf.get(otherOf(c))?.avatar_path ?? null),
+      otherPreset: avatarOf.get(otherOf(c))?.avatar_preset ?? null,
       habitName: myHabit,
       fine: c.fine_amount,
       requiresPhoto: c.requires_photo,

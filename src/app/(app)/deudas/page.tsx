@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Pill } from "@/components/ChallengeCard";
 import { DebtButton } from "@/components/DebtButton";
 import { Avatar } from "@/components/ui/Avatar";
+import { avatarUrl } from "@/lib/avatar";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { periodsFor } from "@/domain/challenges";
@@ -63,8 +64,10 @@ export default async function DeudasPage() {
 
   const [{ data: profiles }, { data: habits }] = await Promise.all([
     people.length
-      ? supabase.from("public_profiles").select("id,display_name").in("id", people)
-      : Promise.resolve({ data: [] as { id: string | null; display_name: string | null }[] }),
+      ? supabase.from("public_profiles").select("id,display_name,avatar_path,avatar_preset").in("id", people)
+      : Promise.resolve({
+          data: [] as { id: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null }[],
+        }),
     habitIds.length
       ? supabase.from("habits").select("id,name").in("id", habitIds)
       : Promise.resolve({ data: [] as { id: string; name: string }[] }),
@@ -72,6 +75,7 @@ export default async function DeudasPage() {
   // A profile missing from public_profiles is a deleted account.
   const nameOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p.display_name ?? ""] as const] : [])));
   const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
+  const profileOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p] as const] : [])));
   const personName = (id: string) => (nameOf.has(id) ? nameOf.get(id) || DELETED : DELETED);
   const shortName = (id: string) => (nameOf.has(id) ? firstName(nameOf.get(id), DELETED) : DELETED);
 
@@ -153,7 +157,12 @@ export default async function DeudasPage() {
               return (
                 <div key={f.id} className={`flex flex-col gap-3 py-3 ${i > 0 ? "border-t border-line" : ""}`}>
                   <div className="flex items-center gap-3">
-                    <Avatar name={personName(f.id)} />
+                    <Avatar
+                      name={personName(f.id)}
+                      src={avatarUrl(profileOf.get(f.id)?.avatar_path ?? null)}
+                      preset={profileOf.get(f.id)?.avatar_preset}
+                      deleted={!profileOf.has(f.id)}
+                    />
                     <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
                       <p className="text-body font-medium text-ink">{title}</p>
                       <p className="text-small text-muted">{sub}</p>

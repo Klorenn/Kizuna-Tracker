@@ -26,7 +26,7 @@ async function currentUserId() {
   return { supabase, uid: data.user?.id ?? null };
 }
 
-export type UserHit = { id: string; username: string; displayName: string; avatarPath: string | null };
+export type UserHit = { id: string; username: string; displayName: string; avatarPath: string | null; avatarPreset: number | null };
 
 /** Username prefix search (max 20) through the 4-column public_profiles view. */
 export async function searchUsers(q: string): Promise<UserHit[]> {
@@ -36,14 +36,14 @@ export async function searchUsers(q: string): Promise<UserHit[]> {
   if (!uid) return [];
   const { data } = await supabase
     .from("public_profiles")
-    .select("id,username,display_name,avatar_path")
+    .select("id,username,display_name,avatar_path,avatar_preset")
     .ilike("username", `${term.replaceAll("_", "\\_")}%`)
     .neq("id", uid)
     .order("username")
     .limit(20);
   return (data ?? []).flatMap((p) =>
     p.id && p.username && p.display_name
-      ? [{ id: p.id, username: p.username, displayName: p.display_name, avatarPath: p.avatar_path }]
+      ? [{ id: p.id, username: p.username, displayName: p.display_name, avatarPath: p.avatar_path, avatarPreset: p.avatar_preset }]
       : [],
   );
 }

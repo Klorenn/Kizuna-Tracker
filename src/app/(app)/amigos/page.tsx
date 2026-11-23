@@ -27,12 +27,14 @@ function PersonLink({
   username,
   name,
   avatar,
+  preset,
   hint,
   chevron = false,
 }: {
   username: string;
   name: string;
   avatar: string | null;
+  preset?: number | null;
   hint?: string;
   chevron?: boolean;
 }) {
@@ -41,7 +43,7 @@ function PersonLink({
       href={`/@${username}`}
       className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
     >
-      <Avatar name={name} src={avatar} />
+      <Avatar name={name} src={avatar} preset={preset} />
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
         <span className="truncate text-body font-medium text-ink">{name}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-small text-muted">
@@ -98,7 +100,7 @@ export default async function AmigosPage({
     // on failure: no status line at all (never a false "Sin racha activa")
     friendStreaks(supabase, friendIds, today).catch((): Map<string, ListStreak> => new Map()),
     rows.length
-      ? supabase.from("public_profiles").select("id,username,display_name,avatar_path").in("id", rows.map(other))
+      ? supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", rows.map(other))
       : Promise.resolve({ data: [] }),
   ]);
   const byId = new Map((people ?? []).map((p) => [p.id, p]));
@@ -112,6 +114,7 @@ export default async function AmigosPage({
         username: p?.username ?? "",
         name: p?.display_name ?? "Usuario",
         avatar: avatarUrl(p?.avatar_path ?? null),
+        preset: p?.avatar_preset ?? null,
         status: streaks.has(id) ? friendStatusText(streaks.get(id)!) : undefined,
       };
     })
@@ -154,7 +157,7 @@ export default async function AmigosPage({
               const isIncoming = f?.status === "pending" && f.addressee_id === user.id;
               return (
                 <div key={h.id} className="flex items-center gap-3 px-4 py-3">
-                  <PersonLink username={h.username} name={h.displayName} avatar={avatarUrl(h.avatarPath)} />
+                  <PersonLink username={h.username} name={h.displayName} avatar={avatarUrl(h.avatarPath)} preset={h.avatarPreset} />
                   <AddFriendButton
                     username={h.username}
                     compact
@@ -188,6 +191,7 @@ export default async function AmigosPage({
                     displayName={p?.display_name ?? "Usuario"}
                     username={p?.username ?? ""}
                     avatar={avatarUrl(p?.avatar_path ?? null)}
+                    avatarPreset={p?.avatar_preset ?? null}
                   />
                 </div>
               );
@@ -203,7 +207,7 @@ export default async function AmigosPage({
             <ul className="divide-y divide-line">
               {friendRows.map((r) => (
                 <li key={r.key} className="px-4 py-2.5 transition-colors duration-[120ms] hover:bg-field">
-                  <PersonLink username={r.username} name={r.name} avatar={r.avatar} hint={r.status} chevron />
+                  <PersonLink username={r.username} name={r.name} avatar={r.avatar} preset={r.preset} hint={r.status} chevron />
                 </li>
               ))}
             </ul>

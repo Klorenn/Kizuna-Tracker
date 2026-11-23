@@ -9,7 +9,7 @@ import { uploadAvatar } from "@/app/(app)/perfil/actions";
  * Profile photo picker: compressed to 512 px in the browser, re-validated and stripped of EXIF on
  * the server. Render `input` once and call `pick()` from a button.
  */
-export function useAvatarUpload() {
+export function useAvatarUpload(onUploaded?: () => void) {
   const router = useRouter();
   const ref = useRef<HTMLInputElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -31,7 +31,10 @@ export function useAvatarUpload() {
         const jpeg = new File([small], "avatar.jpg", { type: "image/jpeg" });
         const r = await uploadAvatar(jpeg);
         if (!r.ok) setError(r.error);
-        else router.refresh();
+        else {
+          router.refresh();
+          onUploaded?.();
+        }
       } catch {
         setError("No pudimos procesar la foto. Inténtalo con otra.");
       }

@@ -75,7 +75,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   let friendshipId: string | null = null;
   // name, @handle and avatar from public_profiles: enough to show who is asking even when the
   // public_profile RPC has nothing (no public habits)
-  let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null } | null = null;
+  let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null } | null = null;
   if (user) {
     const { data: viewer } = await supabase
       .from("profiles")
@@ -86,7 +86,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
     if (viewer?.username === username) redirect("/perfil");
     const { data: found } = await supabase
       .from("public_profiles")
-      .select("id,username,display_name,avatar_path")
+      .select("id,username,display_name,avatar_path,avatar_preset")
       .eq("username", username)
       .maybeSingle();
     target = found;
@@ -112,6 +112,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
                 username: target.username ?? username,
                 name: target.display_name ?? "Tu amigo",
                 avatar: avatarUrl(target.avatar_path),
+                avatarPreset: target.avatar_preset,
               }}
               data={data}
               today={today}
@@ -134,6 +135,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         username: asking!.username!,
         displayName: asking!.display_name ?? asking!.username!,
         avatarPath: asking!.avatar_path,
+        avatarPreset: asking!.avatar_preset,
         habits: [],
       };
   const view = toPublicProfileView(row, localDate(new Date(), timezone));
@@ -142,7 +144,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const page = (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
       <header className="flex items-center gap-4">
-        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} />
+        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} preset={view.avatarPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <h1 className="truncate text-title font-semibold text-ink">{view.displayName}</h1>
           <p className="truncate font-mono text-[14px] text-muted">@{view.username}</p>

@@ -1,5 +1,6 @@
 import { isAdult } from '@/domain/age'
 import type { LocalDate } from '@/domain/types'
+import { isAvatarPreset } from '@/lib/avatar-presets'
 
 export type SignupInput = {
   firstName: string
@@ -11,6 +12,8 @@ export type SignupInput = {
   passwordConfirm: string
   acceptTerms: boolean
   timezone: string
+  /** Optional cat avatar (1..8) chosen in step 3; missing means the database picks one at random. */
+  avatarPreset?: number
 }
 
 export type SignupStep = 1 | 2 | 3 | 4 | 5
@@ -80,6 +83,9 @@ export function validateSignupStep(
       }
       if (username.startsWith(RESERVED_USERNAME_PREFIX)) {
         return fail('username', 'Ese usuario no está disponible.')
+      }
+      if (input.avatarPreset !== undefined && !isAvatarPreset(input.avatarPreset)) {
+        return fail('avatarPreset', 'Elige uno de los avatares.')
       }
       return { ok: true }
     }

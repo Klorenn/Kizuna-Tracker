@@ -62,8 +62,8 @@ select is_empty(
 select is_empty(
   $$ select 1 from information_schema.role_table_grants where table_schema = 'public' and grantee = 'anon' $$,
   'anon has no table privileges in public');
-select is((select count(*)::int from information_schema.columns where table_schema = 'public' and table_name = 'public_profiles'), 4,
-  'public_profiles exposes exactly 4 columns');
+select is((select count(*)::int from information_schema.columns where table_schema = 'public' and table_name = 'public_profiles'), 5,
+  'public_profiles exposes exactly 5 columns');
 select is((select public from storage.buckets where id = 'proofs'), false, 'proofs bucket is private');
 
 -- ===== C: stranger =====

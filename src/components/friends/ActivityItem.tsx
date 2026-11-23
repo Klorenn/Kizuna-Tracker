@@ -78,7 +78,7 @@ export function ActivityItem({ entry, showPerson = true }: { entry: FeedEntry; s
     <li className="flex gap-3 px-4 py-3.5" data-habit-color={entry.habit.color}>
       {showPerson ? (
         <Link href={href} tabIndex={-1} aria-hidden className="-m-0.5 flex size-11 shrink-0 items-center justify-center self-start rounded-full">
-          <Avatar name={entry.person.name} src={entry.person.avatar} />
+          <Avatar name={entry.person.name} src={entry.person.avatar} preset={entry.person.avatarPreset} />
         </Link>
       ) : null}
       <article className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label={`${entry.person.name}: ${entry.copy}`}>

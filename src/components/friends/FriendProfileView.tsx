@@ -42,7 +42,7 @@ export function FriendProfileView({
   data,
   today,
 }: {
-  friend: { id: string; username: string; name: string; avatar: string | null };
+  friend: { id: string; username: string; name: string; avatar: string | null; avatarPreset?: number | null };
   data: FriendProfileData;
   today: string;
 }) {
@@ -62,7 +62,7 @@ export function FriendProfileView({
           Amigos
         </Link>
         <div className="flex items-center gap-4">
-          <Avatar name={friend.name} size="XL" src={friend.avatar} />
+          <Avatar name={friend.name} size="XL" src={friend.avatar} preset={friend.avatarPreset} />
           <div className="flex min-w-0 flex-1 flex-col items-start gap-1">
             <h1 className="line-clamp-2 break-words text-[26px] font-semibold leading-[1.15] tracking-[-0.02em] text-ink">
               {friend.name}

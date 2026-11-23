@@ -16,12 +16,12 @@ insert into auth.users (
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-00000000000a', 'authenticated', 'authenticated',
    'user_a@example.com', extensions.crypt('kizuna-test-1', extensions.gen_salt('bf')), now(),
    '{"provider":"email","providers":["email"]}',
-   '{"username":"user_a","first_name":"Ana","last_name":"Prueba","birth_date":"1990-01-01","timezone":"America/Santiago","terms_accepted":true}',
+   '{"username":"user_a","avatar_preset":1,"first_name":"Ana","last_name":"Prueba","birth_date":"1990-01-01","timezone":"America/Santiago","terms_accepted":true}',
    now(), now(), '', '', '', ''),
   ('00000000-0000-0000-0000-000000000000', 'a0000000-0000-0000-0000-00000000000b', 'authenticated', 'authenticated',
    'user_b@example.com', extensions.crypt('kizuna-test-1', extensions.gen_salt('bf')), now(),
    '{"provider":"email","providers":["email"]}',
-   '{"username":"user_b","first_name":"Beto","last_name":"Prueba","birth_date":"1990-01-01","timezone":"America/Santiago","terms_accepted":true}',
+   '{"username":"user_b","avatar_preset":7,"first_name":"Beto","last_name":"Prueba","birth_date":"1990-01-01","timezone":"America/Santiago","terms_accepted":true}',
    now(), now(), '', '', '', '');
 
 insert into auth.identities (provider_id, user_id, identity_data, provider, last_sign_in_at, created_at, updated_at)

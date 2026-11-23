@@ -867,6 +867,7 @@ export type Database = {
       profiles: {
         Row: {
           avatar_path: string | null
+          avatar_preset: number
           avatar_updated_at: string | null
           birth_date: string | null
           created_at: string
@@ -884,6 +885,7 @@ export type Database = {
         }
         Insert: {
           avatar_path?: string | null
+          avatar_preset?: number
           avatar_updated_at?: string | null
           birth_date?: string | null
           created_at?: string
@@ -901,6 +903,7 @@ export type Database = {
         }
         Update: {
           avatar_path?: string | null
+          avatar_preset?: number
           avatar_updated_at?: string | null
           birth_date?: string | null
           created_at?: string
@@ -1197,18 +1200,21 @@ export type Database = {
       public_profiles: {
         Row: {
           avatar_path: string | null
+          avatar_preset: number | null
           display_name: string | null
           id: string | null
           username: string | null
         }
         Insert: {
           avatar_path?: string | null
+          avatar_preset?: number | null
           display_name?: string | null
           id?: string | null
           username?: string | null
         }
         Update: {
           avatar_path?: string | null
+          avatar_preset?: number | null
           display_name?: string | null
           id?: string | null
           username?: string | null
@@ -1299,6 +1305,7 @@ export type Database = {
         Args: { p_checkin_id: string; p_day_types: string[]; p_sets: Json }
         Returns: string
       }
+      set_avatar_preset: { Args: { p_preset: number }; Returns: undefined }
       set_height: { Args: { p_cm: number }; Returns: undefined }
       set_timezone: { Args: { p_tz: string }; Returns: undefined }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }

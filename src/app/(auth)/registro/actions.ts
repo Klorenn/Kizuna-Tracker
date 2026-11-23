@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { localDate } from "@/domain/dates";
+import { isAvatarPreset } from "@/lib/avatar-presets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { clientIp } from "@/lib/request-ip";
 import { createServerClient } from "@/lib/supabase/server";
@@ -61,6 +62,8 @@ export async function signUp(
     lastName: input.lastName.trim(),
     username: normalizeUsername(input.username),
     email: input.email.trim().toLowerCase(),
+    // an invalid choice is dropped: the database then assigns a random preset
+    avatarPreset: isAvatarPreset(input.avatarPreset) ? input.avatarPreset : undefined,
   };
   const checked = validateSignup(clean, todayIn(clean.timezone));
   if (!checked.ok) return { ok: false, error: checked.error };
@@ -91,6 +94,7 @@ export async function signUp(
         username: clean.username,
         timezone: clean.timezone,
         terms_accepted: true,
+        ...(clean.avatarPreset !== undefined ? { avatar_preset: clean.avatarPreset } : {}),
       },
     },
   });

@@ -15,7 +15,7 @@ const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
   "habit_items",
 ]);
 /** Every key registro/actions.ts sends as signup metadata. */
-export const SIGNUP_METADATA_KEYS = ["username", "first_name", "last_name", "birth_date", "timezone", "terms_accepted"] as const;
+export const SIGNUP_METADATA_KEYS = ["username", "first_name", "last_name", "birth_date", "timezone", "terms_accepted", "avatar_preset"] as const;
 
 /**
  * Service-role adapter for deleteAccountWith. Habits that a challenge still references

@@ -133,3 +133,26 @@ describe('normalizeUsername', () => {
     expect(normalizeUsername('  @Pau_K ')).toBe('pau_k')
   })
 })
+
+describe('avatar preset (step 3)', () => {
+  it('accepts presets 1..8 and a missing choice', () => {
+    for (let n = 1; n <= 8; n++) {
+      expect(validateSignupStep(3, { username: 'pau_k', avatarPreset: n }, today)).toEqual({ ok: true })
+    }
+    expect(validateSignupStep(3, { username: 'pau_k' }, today)).toEqual({ ok: true })
+  })
+
+  it('rejects anything else', () => {
+    for (const bad of [0, 9, -3, 2.5, NaN, '3' as unknown as number]) {
+      expect(validateSignupStep(3, { username: 'pau_k', avatarPreset: bad }, today)).toMatchObject({
+        ok: false,
+        field: 'avatarPreset',
+      })
+    }
+  })
+
+  it('validateSignup carries the same rule', () => {
+    expect(validateSignup({ ...valid, avatarPreset: 3 }, today)).toEqual({ ok: true })
+    expect(validateSignup({ ...valid, avatarPreset: 12 }, today)).toMatchObject({ ok: false, field: 'avatarPreset' })
+  })
+})

@@ -5,6 +5,7 @@ import { Avatar } from "@/components/ui/Avatar";
 import { Button, ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { avatarUrl } from "@/lib/avatar";
 import { INVITE_ERRORS, INVITE_GENERIC } from "@/lib/invites";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -30,7 +31,12 @@ export default async function InvitePage({
   if (!user) redirect(`/login?next=${encodeURIComponent(`/invite/${code}`)}`);
 
   const { data: preview } = await supabase.rpc("invite_preview", { p_code: code });
-  const inviter = preview as { username: string; displayName: string } | null;
+  const inviter = preview as {
+    username: string;
+    displayName: string;
+    avatarPath?: string | null;
+    avatarPreset?: number | null;
+  } | null;
   const failure = error ? (INVITE_ERRORS[error] ?? INVITE_GENERIC) : null;
 
   return (
@@ -38,7 +44,12 @@ export default async function InvitePage({
       <Card>
         {inviter ? (
           <div className="flex flex-col items-center gap-4 px-6 py-8 text-center">
-            <Avatar name={inviter.displayName} size="L" />
+            <Avatar
+              name={inviter.displayName}
+              size="L"
+              src={avatarUrl(inviter.avatarPath ?? null)}
+              preset={inviter.avatarPreset}
+            />
             <div className="flex flex-col gap-1">
               <p className="text-[17px] font-semibold tracking-[-0.02em] text-ink">{inviter.displayName}</p>
               <p className="text-small text-muted">@{inviter.username}</p>
