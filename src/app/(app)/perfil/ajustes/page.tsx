@@ -14,7 +14,7 @@ import { loadDiscoverable } from "@/lib/discover-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { timezoneLock } from "@/lib/profile-view";
 import { getSessionUser, getViewerProfile, viewerMissingDestination } from "@/lib/viewer";
-import { THEME_COOKIE, parseTheme } from "@/lib/theme";
+import { COLOR_COOKIE, THEME_COOKIE, parseColor, parseTheme } from "@/lib/theme";
 import { DiscoverableSwitch } from "./DiscoverableSwitch";
 
 export const metadata: Metadata = { title: "Ajustes" };
@@ -35,6 +35,7 @@ export default async function AjustesPage() {
   if (!profile) redirect(await viewerMissingDestination());
 
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
+  const color = parseColor((await cookies()).get(COLOR_COOKIE)?.value);
   const reminderTime = profile.reminderTime.slice(0, 5);
   const tzLock = timezoneLock(profile.timezoneChangedAt, new Date(), profile.timezone);
 
@@ -67,6 +68,7 @@ export default async function AjustesPage() {
           reminderTime={reminderTime}
           timezone={profile.timezone}
           theme={theme}
+          color={color}
           tzLock={tzLock}
         />
       </ListSection>

@@ -7,6 +7,7 @@ describe('error boundaries', () => {
   it('global-error brings its own html/body and follows the system theme like the root layout does for "system"', () => {
     const s = src('src/app/global-error.tsx')
     expect(s).toMatch(/<html[^>]*lang="es"[^>]*data-theme="system"/)
+    expect(s).toMatch(/<html[^>]*data-color="indigo"/) // no cookie here: the default colour
     expect(s).toMatch(/<body/)
   })
   it('the retry of both boundaries refetches the server components, not only the client tree', () => {

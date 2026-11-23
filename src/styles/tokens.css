@@ -107,6 +107,178 @@
   --habit-indigo-soft: color-mix(in oklab, var(--habit-indigo) var(--habit-soft-mix), transparent);
 }
 
+/* The mascot keeps its own colour whatever the colour setting is: today's indigo accent and accent2,
+   in each mode (dark values live in both dark blocks below). No colour overrides these two tokens.
+   Aliasing them (--color-cat: var(--color-accent); --color-cat2: var(--color-accent2);) is the
+   one-line switch to make the cat follow the chosen colour. */
+:root {
+  --color-cat: #5a5ac2;
+  --color-cat2: #2e3a5e;
+}
+
+/* ---------- Color themes ----------
+   Seven colours (src/lib/theme.ts COLORS). A colour changes ONLY the accent family: accent, accent-hover,
+   accent2, accent2-hover, accent-soft and heat-1..4. Neutrals, alert, habits, cream, shu and shadows stay.
+   Each colour writes its values ONCE per mode, as palette variables on [data-color="x"]:
+   --pal-* (light) and --pal-dark-* (dark). Three generic rules, shared by all colours, map them onto the
+   tokens for the current mode: light here, explicit dark after the dark theme, system dark inside its media
+   query. Their second selector (`:root [data-color]`) also scopes the tokens to any element carrying
+   data-color, so a swatch shows its colour as it looks in the current mode, without hex in the component.
+   Indigo is today's accent, unchanged (a test pins it). */
+[data-color="indigo"] {
+  --pal-accent: #5a5ac2;
+  --pal-accent-hover: #4c4ca5;
+  --pal-accent2: #2e3a5e;
+  --pal-accent2-hover: #273150;
+  --pal-accent-soft: #efeff9;
+  --pal-heat-1: #8080d0;
+  --pal-heat-2: #6363c0;
+  --pal-heat-3: #4c4cab;
+  --pal-heat-4: #38388a;
+  --pal-dark-accent: #8c8cf0;
+  --pal-dark-accent-hover: #a3a3f5;
+  --pal-dark-accent2: #9ba6d9;
+  --pal-dark-accent2-hover: #b3bce3;
+  --pal-dark-accent-soft: #222238;
+  --pal-dark-heat-1: #6666ab;
+  --pal-dark-heat-2: #7b7bd2;
+  --pal-dark-heat-3: #9d9df3;
+  --pal-dark-heat-4: #cdcdfa;
+}
+[data-color="sakura"] {
+  --pal-accent: #b93f78;
+  --pal-accent-hover: #9e3667;
+  --pal-accent2: #572c3e;
+  --pal-accent2-hover: #4a2534;
+  --pal-accent-soft: #fbeef3;
+  --pal-heat-1: #c4688e;
+  --pal-heat-2: #af4475;
+  --pal-heat-3: #98295f;
+  --pal-heat-4: #791749;
+  --pal-dark-accent: #f08db5;
+  --pal-dark-accent-hover: #fba9c9;
+  --pal-dark-accent2: #cc98ab;
+  --pal-dark-accent2-hover: #d9b1c0;
+  --pal-dark-accent-soft: #38222c;
+  --pal-dark-heat-1: #9d5874;
+  --pal-dark-heat-2: #bc678a;
+  --pal-dark-heat-3: #de8aab;
+  --pal-dark-heat-4: #f1c4d4;
+}
+[data-color="matcha"] {
+  --pal-accent: #3a7a4b;
+  --pal-accent-hover: #31673f;
+  --pal-accent2: #2c4231;
+  --pal-accent2-hover: #253829;
+  --pal-accent-soft: #edf5ef;
+  --pal-heat-1: #669470;
+  --pal-heat-2: #487f55;
+  --pal-heat-3: #2f693f;
+  --pal-heat-4: #1d512d;
+  --pal-dark-accent: #7cc792;
+  --pal-dark-accent-hover: #9dd8ad;
+  --pal-dark-accent2: #8fb499;
+  --pal-dark-accent2-hover: #abc6b1;
+  --pal-dark-accent-soft: #1f3024;
+  --pal-dark-heat-1: #497c58;
+  --pal-dark-heat-2: #56976a;
+  --pal-dark-heat-3: #7bb98c;
+  --pal-dark-heat-4: #bcdbc4;
+}
+[data-color="yuzu"] {
+  --pal-accent: #9a6200;
+  --pal-accent-hover: #835404;
+  --pal-accent2: #4c381f;
+  --pal-accent2-hover: #412f1a;
+  --pal-accent-soft: #faf1e0;
+  --pal-heat-1: #ac814c;
+  --pal-heat-2: #96651e;
+  --pal-heat-3: #7e4f00;
+  --pal-heat-4: #613c00;
+  --pal-dark-accent: #e3b04b;
+  --pal-dark-accent-hover: #f0c77c;
+  --pal-dark-accent2: #bfa678;
+  --pal-dark-accent2-hover: #cfbb99;
+  --pal-dark-accent-soft: #352b18;
+  --pal-dark-heat-1: #8b6921;
+  --pal-dark-heat-2: #aa7e1f;
+  --pal-dark-heat-3: #cba04f;
+  --pal-dark-heat-4: #e5cfa9;
+}
+[data-color="umi"] {
+  --pal-accent: #0e7785;
+  --pal-accent-hover: #0d6571;
+  --pal-accent2: #244146;
+  --pal-accent2-hover: #1f373c;
+  --pal-accent-soft: #e9f5f6;
+  --pal-heat-1: #55939d;
+  --pal-heat-2: #2e7d89;
+  --pal-heat-3: #006774;
+  --pal-heat-4: #004f59;
+  --pal-dark-accent: #5cc4d1;
+  --pal-dark-accent-hover: #88d6e0;
+  --pal-dark-accent2: #84b3b9;
+  --pal-dark-accent2-hover: #a2c6ca;
+  --pal-dark-accent-soft: #183034;
+  --pal-dark-heat-1: #337b84;
+  --pal-dark-heat-2: #3895a1;
+  --pal-dark-heat-3: #63b7c2;
+  --pal-dark-heat-4: #b3dae0;
+}
+[data-color="ume"] {
+  --pal-accent: #8b3f86;
+  --pal-accent-hover: #753470;
+  --pal-accent2: #4d314a;
+  --pal-accent2-hover: #41293f;
+  --pal-accent-soft: #f7eef6;
+  --pal-heat-1: #ae73a8;
+  --pal-heat-2: #975392;
+  --pal-heat-3: #813c7d;
+  --pal-heat-4: #662962;
+  --pal-dark-accent: #d08bcb;
+  --pal-dark-accent-hover: #dda5d9;
+  --pal-dark-accent2: #c09cbc;
+  --pal-dark-accent2-hover: #d0b4cd;
+  --pal-dark-accent-soft: #332232;
+  --pal-dark-heat-1: #8d5e8a;
+  --pal-dark-heat-2: #aa6ea6;
+  --pal-dark-heat-3: #cb91c7;
+  --pal-dark-heat-4: #e6c7e3;
+}
+[data-color="sumi"] {
+  --pal-accent: #3d3d45;
+  --pal-accent-hover: #2e2e35;
+  --pal-accent2: #2d2d34;
+  --pal-accent2-hover: #25252a;
+  --pal-accent-soft: #efeff1;
+  --pal-heat-1: #898a90;
+  --pal-heat-2: #6f6f77;
+  --pal-heat-3: #5a5a62;
+  --pal-heat-4: #44444b;
+  --pal-dark-accent: #c9c9d1;
+  --pal-dark-accent-hover: #dedee4;
+  --pal-dark-accent2: #a9a9ad;
+  --pal-dark-accent2-hover: #bebec1;
+  --pal-dark-accent-soft: #2a2a2f;
+  --pal-dark-heat-1: #6e6e74;
+  --pal-dark-heat-2: #86868c;
+  --pal-dark-heat-3: #a7a7ad;
+  --pal-dark-heat-4: #d1d1d5;
+}
+
+/* Light: <html data-color> (specificity 0,2,0 beats @theme's :root) and any swatch inside it. */
+:root[data-color], :root [data-color] {
+  --color-accent: var(--pal-accent);
+  --color-accent-hover: var(--pal-accent-hover);
+  --color-accent2: var(--pal-accent2);
+  --color-accent2-hover: var(--pal-accent2-hover);
+  --color-accent-soft: var(--pal-accent-soft);
+  --color-heat-1: var(--pal-heat-1);
+  --color-heat-2: var(--pal-heat-2);
+  --color-heat-3: var(--pal-heat-3);
+  --color-heat-4: var(--pal-heat-4);
+}
+
 /* "Sistema": form controls and scrollbars follow the OS until the media query below kicks in. */
 :root[data-theme="system"] {
   color-scheme: light dark;
@@ -144,6 +316,8 @@
   --color-heat-2: #7b7bd2;
   --color-heat-3: #9d9df3;
   --color-heat-4: #cdcdfa;
+  --color-cat: #8c8cf0;
+  --color-cat2: #9ba6d9;
   --shadow-card: none;
   --habit-on: #0f0f10;
   --habit-soft-mix: 24%;
@@ -155,6 +329,19 @@
   --habit-rosa: #c58999;
   --habit-oliva: #949d5a;
   --habit-indigo: #878ee3;
+}
+
+/* Color themes, explicit dark (0,3,0: beats the dark block above and the light rule). */
+:root[data-theme="dark"][data-color], :root[data-theme="dark"] [data-color] {
+  --color-accent: var(--pal-dark-accent);
+  --color-accent-hover: var(--pal-dark-accent-hover);
+  --color-accent2: var(--pal-dark-accent2);
+  --color-accent2-hover: var(--pal-dark-accent2-hover);
+  --color-accent-soft: var(--pal-dark-accent-soft);
+  --color-heat-1: var(--pal-dark-heat-1);
+  --color-heat-2: var(--pal-dark-heat-2);
+  --color-heat-3: var(--pal-dark-heat-3);
+  --color-heat-4: var(--pal-dark-heat-4);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -187,6 +374,8 @@
     --color-heat-2: #7b7bd2;
     --color-heat-3: #9d9df3;
     --color-heat-4: #cdcdfa;
+    --color-cat: #8c8cf0;
+    --color-cat2: #9ba6d9;
     --shadow-card: none;
     --habit-on: #0f0f10;
     --habit-soft-mix: 24%;
@@ -198,5 +387,18 @@
     --habit-rosa: #c58999;
     --habit-oliva: #949d5a;
     --habit-indigo: #878ee3;
+  }
+
+  /* Color themes, system dark: same declarations as the explicit dark rule above (a test compares them). */
+  :root[data-theme="system"][data-color], :root[data-theme="system"] [data-color] {
+    --color-accent: var(--pal-dark-accent);
+    --color-accent-hover: var(--pal-dark-accent-hover);
+    --color-accent2: var(--pal-dark-accent2);
+    --color-accent2-hover: var(--pal-dark-accent2-hover);
+    --color-accent-soft: var(--pal-dark-accent-soft);
+    --color-heat-1: var(--pal-dark-heat-1);
+    --color-heat-2: var(--pal-dark-heat-2);
+    --color-heat-3: var(--pal-dark-heat-3);
+    --color-heat-4: var(--pal-dark-heat-4);
   }
 }
