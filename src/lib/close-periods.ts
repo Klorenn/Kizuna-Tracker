@@ -13,6 +13,8 @@ export type ActiveChallenge = {
   fineAmount: number
   startsOn: LocalDate
   timezone: string
+  /** Only photo check-ins count: a day completed through steps (no photo, not rejectable) does not. */
+  requiresPhoto: boolean
   /** Set when the challenge was cancelled/unfriended after it started; only periods that ended before it still count. */
   cancelledAt: Date | null
 }
@@ -26,18 +28,27 @@ export type NewDebt = {
 }
 
 export interface ClosePeriodsRepo {
-  /** Active challenges, plus started challenges cancelled with `cancelled_at` set (their ended periods still owe). */
+  /**
+   * Every active challenge, plus started challenges cancelled with `cancelled_at` set (their ended
+   * periods still owe) that are not settled yet. Must read ALL of them (paged), never a capped subset.
+   */
   activeChallenges(): Promise<ActiveChallenge[]>
   closedPeriodStarts(challengeId: string): Promise<LocalDate[]>
   /** `local_date` of the habit's non-rejected check-ins inside [from, to]. */
   checkinDates(habitId: string, from: LocalDate, to: LocalDate): Promise<LocalDate[]>
   /** Non-rejected photo check-ins of these habits whose day is inside [from, to]. */
-  photoCheckins(habitIds: string[], from: LocalDate, to: LocalDate): Promise<{ localDate: LocalDate; createdAt: Date }[]>
+  photoCheckins(
+    habitIds: string[],
+    from: LocalDate,
+    to: LocalDate,
+  ): Promise<{ habitId: string; localDate: LocalDate; createdAt: Date }[]>
   /** Insert-if-absent. Resolves true only when this call inserted the row. */
   insertPeriod(challengeId: string, period: Period, closedAt: Date): Promise<boolean>
   /** Insert-if-absent. Resolves true only when this call inserted the row. */
   insertDebt(debt: NewDebt): Promise<boolean>
   finishChallenge(challengeId: string): Promise<void>
+  /** Marks a cancelled challenge as having nothing left to bill, so later runs skip it. */
+  settleChallenge(challengeId: string): Promise<void>
   insertNotification(userId: string, type: string, payload: Record<string, unknown>): Promise<void>
 }
 
@@ -84,17 +95,22 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
   type Loaded = {
     creator: LocalDate[]
     rival: LocalDate[]
-    photos: { localDate: LocalDate; createdAt: Date }[]
+    photos: { habitId: string; localDate: LocalDate; createdAt: Date }[]
   }
   let loaded: Loaded | null = null
   const load = async (): Promise<Loaded> => {
     if (loaded) return loaded
     const from = periods[0].start
     const to = periods[periods.length - 1].end
-    const [creator, rival, photos] = await Promise.all([
+    const photos = await repo.photoCheckins([c.creatorHabitId, c.rivalHabitId], from, to)
+    if (c.requiresPhoto) {
+      // a photo challenge is met only with photos the rival could see and reject
+      const datesOf = (habitId: string) => photos.filter((k) => k.habitId === habitId).map((k) => k.localDate)
+      return (loaded = { creator: datesOf(c.creatorHabitId), rival: datesOf(c.rivalHabitId), photos })
+    }
+    const [creator, rival] = await Promise.all([
       repo.checkinDates(c.creatorHabitId, from, to),
       repo.checkinDates(c.rivalHabitId, from, to),
-      repo.photoCheckins([c.creatorHabitId, c.rivalHabitId], from, to),
     ])
     return (loaded = { creator, rival, photos })
   }
@@ -137,8 +153,11 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     done.add(period.start)
   }
 
-  // A cancelled challenge never becomes 'finished'.
-  if (!c.cancelledAt && periods.length > 0 && periods.every((p) => done.has(p.start))) {
+  // A cancelled challenge never becomes 'finished'. Once every period that ended before the
+  // cancel is closed it has nothing left to bill: settle it so later runs stop reading it.
+  if (cutoff !== null) {
+    if (periods.filter((p) => p.end < cutoff).every((p) => done.has(p.start))) await repo.settleChallenge(c.id)
+  } else if (periods.length > 0 && periods.every((p) => done.has(p.start))) {
     await repo.finishChallenge(c.id)
   }
   return { closed, debtsCreated }

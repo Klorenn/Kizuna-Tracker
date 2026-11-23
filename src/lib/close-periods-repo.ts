@@ -2,6 +2,7 @@ import 'server-only'
 import type { SupabaseClient } from '@supabase/supabase-js'
 import { challengeFrequency } from '@/lib/challenge-view'
 import type { ClosePeriodsRepo } from '@/lib/close-periods'
+import { fetchAll } from '@/lib/paginate'
 import type { Database, Json } from '@/lib/supabase/database.types'
 
 /** Service-role implementation. Reads challenges and check-ins directly (no RLS, no is_friend). */
@@ -11,16 +12,21 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
   }
   return {
     async activeChallenges() {
-      const { data, error } = await db
-        .from('challenges')
-        .select(
-          'id,creator_id,rival_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,fine_amount,starts_on,timezone,cancelled_at',
-        )
-        .or('status.eq.active,and(status.eq.cancelled,cancelled_at.not.is.null)')
-        .not('starts_on', 'is', null)
-        .not('rival_habit_id', 'is', null)
-      if (error) fail('activeChallenges', error)
-      return (data ?? []).flatMap((c) =>
+      // paged: a single select stops at max_rows and would silently skip challenges (and debts)
+      const data = await fetchAll((from, to) =>
+        db
+          .from('challenges')
+          .select(
+            'id,creator_id,rival_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,fine_amount,starts_on,timezone,requires_photo,cancelled_at',
+          )
+          .or('status.eq.active,and(status.eq.cancelled,cancelled_at.not.is.null)')
+          .is('settled_at', null)
+          .not('starts_on', 'is', null)
+          .not('rival_habit_id', 'is', null)
+          .order('id')
+          .range(from, to),
+      ).catch((e: Error) => fail('activeChallenges', e))
+      return data.flatMap((c) =>
         c.starts_on && c.rival_habit_id
           ? [
               {
@@ -34,6 +40,7 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
                 fineAmount: c.fine_amount,
                 startsOn: c.starts_on,
                 timezone: c.timezone,
+                requiresPhoto: c.requires_photo,
                 cancelledAt: c.cancelled_at ? new Date(c.cancelled_at) : null,
               },
             ]
@@ -66,14 +73,14 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
     async photoCheckins(habitIds, from, to) {
       const { data, error } = await db
         .from('checkins')
-        .select('local_date,created_at')
+        .select('habit_id,local_date,created_at')
         .in('habit_id', habitIds)
         .is('rejected_at', null)
         .not('photo_path', 'is', null)
         .gte('local_date', from)
         .lte('local_date', to)
       if (error) fail('photoCheckins', error)
-      return (data ?? []).map((k) => ({ localDate: k.local_date, createdAt: new Date(k.created_at) }))
+      return (data ?? []).map((k) => ({ habitId: k.habit_id, localDate: k.local_date, createdAt: new Date(k.created_at) }))
     },
 
     async insertPeriod(challengeId, period, closedAt) {
@@ -109,6 +116,16 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
     async finishChallenge(challengeId) {
       const { error } = await db.from('challenges').update({ status: 'finished' }).eq('id', challengeId).eq('status', 'active')
       if (error) fail('finishChallenge', error)
+    },
+
+    async settleChallenge(challengeId) {
+      const { error } = await db
+        .from('challenges')
+        .update({ settled_at: new Date().toISOString() })
+        .eq('id', challengeId)
+        .eq('status', 'cancelled')
+        .is('settled_at', null)
+      if (error) fail('settleChallenge', error)
     },
 
     async insertNotification(userId, type, payload) {

@@ -13,6 +13,7 @@ import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { addDays, localDate } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
+import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 
 export default async function Home() {
@@ -43,12 +44,18 @@ export default async function Home() {
       .select("id,habit_id,label,position,requires_photo")
       .eq("user_id", user.id)
       .is("archived_at", null),
-    supabase
-      .from("checkins")
-      .select("habit_id,local_date")
-      .eq("user_id", user.id)
-      .is("rejected_at", null)
-      .gte("local_date", addDays(today, -400)),
+    // 400 days of every habit passes the 1000-row cap within months: read it page by page
+    fetchAll((from, to) =>
+      supabase
+        .from("checkins")
+        .select("habit_id,local_date")
+        .eq("user_id", user.id)
+        .is("rejected_at", null)
+        .gte("local_date", addDays(today, -400))
+        .order("local_date")
+        .order("habit_id")
+        .range(from, to),
+    ),
     supabase
       .from("checkin_items")
       .select("item_id,local_date,created_at")
@@ -59,7 +66,7 @@ export default async function Home() {
   const view = buildToday({
     habits: habits.data ?? [],
     items: items.data ?? [],
-    checkins: checkins.data ?? [],
+    checkins,
     itemChecks: itemChecks.data ?? [],
     today,
     timeZone: profile.timezone,

@@ -19,6 +19,7 @@ import {
   periodStatus,
   weekdayLabel,
 } from "@/lib/challenge-view";
+import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Retos" };
@@ -30,14 +31,19 @@ export default async function RetosPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
 
-  const { data: rows } = await supabase
-    .from("challenges")
-    .select(
-      "id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at",
-    )
-    .in("status", ["proposed", "active", "finished", "cancelled"])
-    .order("created_at", { ascending: false });
-  const challenges = rows ?? [];
+  // every list here grows with time: read past the 1000-row cap instead of truncating
+  const challenges = await fetchAll((from, to) =>
+    supabase
+      .from("challenges")
+      .select(
+        "id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at",
+      )
+      .in("status", ["proposed", "active", "finished", "cancelled"])
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
+  const now = new Date();
 
   const otherOf = (c: { creator_id: string; rival_id: string }) =>
     c.creator_id === user.id ? c.rival_id : c.creator_id;
@@ -45,8 +51,18 @@ export default async function RetosPage() {
   const habitIds = [
     ...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
   ];
+  // progress is only shown for the period running now: read just those days, not every check-in
+  const running = challenges.flatMap((c) => {
+    if (c.status !== "active") return [];
+    const st = periodStatus(c, localDate(now, c.timezone));
+    return st.state === "running" ? [{ c, start: st.period.start }] : [];
+  });
+  const runningHabitIds = [
+    ...new Set(running.flatMap(({ c }) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
+  ];
+  const since = running.reduce<string | null>((min, r) => (min === null || r.start < min ? r.start : min), null);
 
-  const [{ data: profiles }, { data: habits }, { data: myHabits }, { data: debts }, { data: checkins }] =
+  const [{ data: profiles }, { data: habits }, { data: myHabits }, debts, checkins] =
     await Promise.all([
       people.length
         ? supabase.from("public_profiles").select("id,display_name").in("id", people)
@@ -60,18 +76,33 @@ export default async function RetosPage() {
         .eq("user_id", user.id)
         .is("archived_at", null)
         .neq("visibility", "private"),
-      supabase.from("debts").select("challenge_id,debtor_id,creditor_id,amount,paid_at"),
-      habitIds.length
-        ? supabase.from("checkins").select("habit_id,local_date").in("habit_id", habitIds).is("rejected_at", null)
-        : Promise.resolve({ data: [] }),
+      fetchAll((from, to) =>
+        supabase
+          .from("debts")
+          .select("id,challenge_id,debtor_id,creditor_id,amount,paid_at")
+          .order("id")
+          .range(from, to),
+      ),
+      runningHabitIds.length && since
+        ? fetchAll((from, to) =>
+            supabase
+              .from("checkins")
+              .select("habit_id,local_date")
+              .in("habit_id", runningHabitIds)
+              .is("rejected_at", null)
+              .gte("local_date", since)
+              .order("local_date")
+              .order("habit_id")
+              .range(from, to),
+          )
+        : Promise.resolve([]),
     ]);
   const nameOf = new Map((profiles ?? []).map((p) => [p.id, firstName(p.display_name)]));
   const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
   const eligible = (myHabits ?? []).map((h) => ({ id: h.id, name: h.name, requiresPhoto: h.requires_photo }));
   const datesByHabit = new Map<string, string[]>();
-  for (const k of checkins ?? []) datesByHabit.set(k.habit_id, [...(datesByHabit.get(k.habit_id) ?? []), k.local_date]);
+  for (const k of checkins) datesByHabit.set(k.habit_id, [...(datesByHabit.get(k.habit_id) ?? []), k.local_date]);
 
-  const now = new Date();
   const cards = challenges.map((c): { status: string; data: ChallengeCardData } => {
     const mine = c.creator_id === user.id;
     const other = nameOf.get(otherOf(c)) ?? "Tu amigo";
@@ -135,7 +166,7 @@ export default async function RetosPage() {
     }
 
     // finished / cancelled
-    const mineDebts = (debts ?? []).filter((d) => d.challenge_id === c.id);
+    const mineDebts = debts.filter((d) => d.challenge_id === c.id);
     const iOwe = mineDebts.filter((d) => d.debtor_id === user.id).reduce((s, d) => s + d.amount, 0);
     const theyOwe = mineDebts.filter((d) => d.creditor_id === user.id).reduce((s, d) => s + d.amount, 0);
     const theyFailed = mineDebts.filter((d) => d.debtor_id !== user.id).length;

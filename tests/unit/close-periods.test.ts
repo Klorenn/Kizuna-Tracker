@@ -19,6 +19,7 @@ function challenge(over: Partial<ActiveChallenge> = {}): ActiveChallenge {
     fineAmount: 4500,
     startsOn: '2026-11-23',
     timezone: 'America/Santiago',
+    requiresPhoto: false,
     cancelledAt: null,
     ...over,
   }
@@ -40,9 +41,10 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
   const debts = new Map<string, { debtorId: string; creditorId: string; amount: number }>()
   const notifications: { userId: string; type: string; payload: Record<string, unknown> }[] = []
   const finished: string[] = []
+  const settled: string[] = []
   const calls = { photo: 0 }
   const repo: ClosePeriodsRepo = {
-    activeChallenges: async () => challenges.filter((c) => !finished.includes(c.id)),
+    activeChallenges: async () => challenges.filter((c) => !finished.includes(c.id) && !settled.includes(c.id)),
     closedPeriodStarts: async (id) =>
       [...periods].filter((k) => k.startsWith(`${id}|`)).map((k) => k.split('|')[1]),
     checkinDates: async (habitId, from, to) =>
@@ -53,7 +55,7 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
       calls.photo++
       return checkins
         .filter((k) => habitIds.includes(k.habitId) && k.photo && !k.rejected && k.localDate >= from && k.localDate <= to)
-        .map((k) => ({ localDate: k.localDate, createdAt: k.createdAt }))
+        .map((k) => ({ habitId: k.habitId, localDate: k.localDate, createdAt: k.createdAt }))
     },
     insertPeriod: async (id, p) => {
       const key = `${id}|${p.start}`
@@ -70,11 +72,14 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
     finishChallenge: async (id) => {
       finished.push(id)
     },
+    settleChallenge: async (id) => {
+      settled.push(id)
+    },
     insertNotification: async (userId, type, payload) => {
       notifications.push({ userId, type, payload })
     },
   }
-  return { repo, periods, debts, notifications, finished, calls }
+  return { repo, periods, debts, notifications, finished, settled, calls }
 }
 
 const NOW = new Date('2026-12-01T12:00:00Z') // first week (23 nov to 29 nov) is over, second is not
@@ -181,6 +186,49 @@ describe('cancelled challenges', () => {
   it('bills nothing when cancelled during the first period', async () => {
     const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-25T15:00:00Z') })], [])
     await expect(closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))).resolves.toEqual({ closed: 0, debtsCreated: 0 })
+    expect(m.settled).toEqual([CH])
+  })
+
+  it('settles once nothing is left to bill, so later runs skip it', async () => {
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-30T15:00:00Z') })], [])
+    await closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))
+    expect(m.settled).toEqual([CH])
+    await expect(closeDuePeriods(m.repo, new Date('2026-12-21T12:00:00Z'))).resolves.toEqual({ closed: 0, debtsCreated: 0 })
+    expect(m.calls.photo).toBe(1)
+  })
+
+  it('does not settle while an ended period still waits for the photo window', async () => {
+    // cancelled 1 dec 08:00 Santiago: week 1 is billable, but a photo of 29 nov is still rejectable
+    const photo = days('hr', ['2026-11-29'], { photo: true, createdAt: new Date('2026-11-30T23:00:00Z') })
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-12-01T11:00:00Z') })], photo)
+    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 0 })
+    expect(m.settled).toEqual([])
+  })
+
+  it('never settles a challenge that is still active', async () => {
+    const m = memoryRepo([challenge({ weeks: 1 })], [])
+    await closeDuePeriods(m.repo, NOW)
+    expect(m.settled).toEqual([])
+    expect(m.finished).toEqual([CH])
+  })
+})
+
+describe('photo challenges', () => {
+  it('counts only photo check-ins: a day completed through steps does not meet the goal', async () => {
+    const m = memoryRepo(
+      [challenge({ requiresPhoto: true })],
+      [...days('hc', week1), ...days('hr', week1, { photo: true })],
+    )
+    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 1, debtsCreated: 1 })
+    expect([...m.debts.values()]).toEqual([{ debtorId: CREATOR, creditorId: RIVAL, amount: 4500 }])
+  })
+
+  it('both meet the goal with photos', async () => {
+    const m = memoryRepo(
+      [challenge({ requiresPhoto: true })],
+      [...days('hc', week1, { photo: true }), ...days('hr', week1, { photo: true })],
+    )
+    await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 1, debtsCreated: 0 })
   })
 })
 

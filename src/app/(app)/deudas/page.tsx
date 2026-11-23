@@ -10,6 +10,7 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { periodsFor } from "@/domain/challenges";
 import { formatCLP, formatSignedCLP, netBalances } from "@/domain/ledger";
 import { challengeFrequency, firstName } from "@/lib/challenge-view";
+import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Deudas" };
@@ -35,11 +36,15 @@ export default async function DeudasPage() {
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
 
-  const { data: debtRows } = await supabase
-    .from("debts")
-    .select("id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at")
-    .order("created_at", { ascending: false });
-  const debts = debtRows ?? [];
+  // balances are summed from every debt: a capped read (1000 rows) would misreport money
+  const debts = await fetchAll((from, to) =>
+    supabase
+      .from("debts")
+      .select("id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at")
+      .order("created_at", { ascending: false })
+      .order("id")
+      .range(from, to),
+  );
 
   const otherOf = (d: { debtor_id: string; creditor_id: string }) => (d.debtor_id === user.id ? d.creditor_id : d.debtor_id);
   const people = [...new Set(debts.map(otherOf))];

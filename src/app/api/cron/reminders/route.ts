@@ -16,7 +16,7 @@ export async function POST(request: Request) {
     // 1) push notifications inserted by SQL (photo_rejected) or by the debts cron (new_debt)
     const swept = await pushPendingNotifications()
     // 2) daily reminders
-    const due = dueReminderEntries(await loadReminderCandidates(db, now), now)
+    const due = dueReminderEntries(await loadReminderCandidates(db), now)
     const targets = await claimReminders(db, due) // once per user per local date
     for (let i = 0; i < targets.length; i += 10) {
       await Promise.all(targets.slice(i, i + 10).map((id) => notify(id, 'reminder', {})))
