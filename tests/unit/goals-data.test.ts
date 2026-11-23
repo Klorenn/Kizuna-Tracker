@@ -4,14 +4,12 @@ import { fakeSupabase } from './support/fake-supabase'
 
 const TODAY = '2026-11-25' // Wednesday; the week runs Monday 2026-11-23 to Sunday 2026-11-29
 
+const H1 = { name: 'Correr', color: 'sage' }
+const H2 = { name: 'Leer', color: 'indigo' }
 const GOALS = [
-  { id: 'g-week', habit_id: 'h1', kind: 'weekly', target: 4, starts_on: '2026-11-01', deadline: null, created_at: '2026-11-01T00:00:00Z' },
-  { id: 'g-total', habit_id: 'h1', kind: 'total', target: 100, starts_on: '2026-10-01', deadline: '2026-12-31', created_at: '2026-11-02T00:00:00Z' },
-  { id: 'g-open', habit_id: 'h2', kind: 'total', target: 10, starts_on: '2026-11-10', deadline: null, created_at: '2026-11-03T00:00:00Z' },
-]
-const HABITS = [
-  { id: 'h1', name: 'Correr', color: 'sage' },
-  { id: 'h2', name: 'Leer', color: 'indigo' },
+  { id: 'g-week', habit_id: 'h1', habits: H1, kind: 'weekly', target: 4, starts_on: '2026-11-01', deadline: null, created_at: '2026-11-01T00:00:00Z' },
+  { id: 'g-total', habit_id: 'h1', habits: H1, kind: 'total', target: 100, starts_on: '2026-10-01', deadline: '2026-12-31', created_at: '2026-11-02T00:00:00Z' },
+  { id: 'g-open', habit_id: 'h2', habits: H2, kind: 'total', target: 10, starts_on: '2026-11-10', deadline: null, created_at: '2026-11-03T00:00:00Z' },
 ]
 // h1: two days this week, plus October and early November days; h2: one day before its goal started, two after
 const DATES = [
@@ -22,7 +20,6 @@ const DATES = [
 function load(over: { dates?: { data: unknown; error?: { message: string } }; goals?: unknown[] } = {}) {
   const f = fakeSupabase((q) => {
     if (q.table === 'goals') return { data: over.goals ?? GOALS }
-    if (q.table === 'habits') return { data: HABITS }
     if (q.table === 'rpc:checkin_dates') return over.dates ?? { data: DATES }
     return { data: [] }
   })
@@ -41,6 +38,14 @@ describe('loadGoals', () => {
     expect(byId.get('g-total')).toMatchObject({ current: 4, target: 100 })
     // total without a deadline: from starts_on to today
     expect(byId.get('g-open')).toMatchObject({ current: 2, target: 10 })
+  })
+
+  test('goals and their habit come in one read: no habits query, archived habits filtered in the database', async () => {
+    const { queries } = await load()
+    expect(queries.map((q) => q.table)).toEqual(['goals', 'rpc:checkin_dates'])
+    const goals = queries[0]
+    expect(String(goals.calls.find((c) => c.method === 'select')?.args[0])).toContain('habits!inner(')
+    expect(goals.calls.filter((c) => c.method === 'is').map((c) => c.args)).toContainEqual(['habits.archived_at', null])
   })
 
   test('asks for dates from the earliest window start of the habits that have goals', async () => {
