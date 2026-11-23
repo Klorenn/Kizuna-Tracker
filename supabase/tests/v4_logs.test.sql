@@ -2,7 +2,7 @@ begin;
 -- v4 logs (0018): time, pomodoro blocks, watch titles and entries, quantity sums and cardio
 -- outings, plus the habit columns and guards behind them.
 create extension if not exists pgtap with schema extensions;
-select plan(197);
+select plan(199);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -122,7 +122,7 @@ select is((select count(*)::int from pg_indexes where schemaname = 'public' and 
   'the lookup indexes exist');
 select ok((select bool_and(not has_function_privilege('anon', f, 'EXECUTE') and has_function_privilege('authenticated', f, 'EXECUTE'))
            from unnest(array[
-             'public.add_time(uuid,int,text)', 'public.add_pomodoro_block(uuid,uuid,int,text)', 'public.set_time_entry(uuid,int,text)',
+             'public.add_time(uuid,int,text)', 'public.add_pomodoro_block(uuid,uuid,int,text,timestamptz)', 'public.set_time_entry(uuid,int,text)',
              'public.delete_time_entry(uuid)', 'public.save_watch_entry(uuid,uuid,int,int,int,int,boolean,boolean)',
              'public.delete_watch_entry(uuid)', 'public.add_quantity_entry(uuid,uuid,numeric)', 'public.remove_quantity_entry(uuid)',
              'public.add_cardio_entry(uuid,text,int,int,int,text)', 'public.update_cardio_entry(uuid,text,int,int,int,text)',
@@ -144,7 +144,7 @@ select ok(exists (select 1 from pg_indexes where schemaname = 'public' and index
   'pomodoro_blocks.checkin_id is indexed (the set-null cascade of every check-in delete)');
 select ok(not (select prosecdef from pg_proc where oid = 'public.habits_log_photo()'::regprocedure),
   'habits_log_photo does not need SECURITY DEFINER');
-select ok(pg_get_functiondef('public.add_pomodoro_block(uuid,uuid,int,text)'::regprocedure) ~ 't\.user_id = v_uid and t\.habit_id',
+select ok(pg_get_functiondef('public.add_pomodoro_block(uuid,uuid,int,text,timestamptz)'::regprocedure) ~ 't\.user_id = v_uid and t\.habit_id',
   'the pomodoro retry lookup filters by user (it uses the user/date index)');
 select is((select array_agg(public.habit_preset_color(p) order by p) from unnest(array['watch', 'run', 'water', 'zzz']) p),
   array['durazno', 'rosa', 'cielo', 'indigo'], 'the new presets have their palette color (run durazno, watch rosa)');
@@ -486,7 +486,7 @@ select lives_ok($$ update public.habits set log_type = 'quantity', quantity_unit
 select throws_ok($$ update public.habit_items set archived_at = null where id = '11800000-0000-0000-0000-000000000001' $$,
   'P0001', 'items_with_log', 'the archived step cannot be activated again');
 select throws_ok($$ select * from public.check_item('11800000-0000-0000-0000-000000000001') $$,
-  'P0001', 'item_not_found', 'check_item cannot complete the day of a quantity habit');
+  'P0001', 'item_not_found', 'check_item refuses an archived step (item_not_found, before any quantity rule)');
 reset role;
 insert into public.checkins (habit_id, user_id, local_date)
 values ('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', tests.today());
@@ -495,6 +495,32 @@ select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-0000000
 select throws_ok($$ select public.uncheck_item('11800000-0000-0000-0000-000000000001') $$,
   'P0001', 'quantity_habit', 'uncheck_item cannot delete the check-in of a quantity habit');
 select is(tests.n($$ select 1 from public.checkins where habit_id = 'b1800000-0000-0000-0000-00000000000a' $$), 1, 'the check-in is still there');
+
+-- complete_day_from_items itself refuses a quantity habit. An active step on one can only exist
+-- through a pre-0018 row, so it is planted with triggers off; the control is a plain habit with a
+-- done step, for which the same call answers true.
+reset role;
+set local session_replication_role = replica;
+insert into public.habit_items (id, habit_id, user_id, label, position) values
+  ('11800000-0000-0000-0000-000000000002', 'b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Paso activo', 1);
+set local session_replication_role = origin;
+insert into public.checkin_items (item_id, habit_id, user_id, local_date) values
+  ('11800000-0000-0000-0000-000000000002', 'b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', tests.today()),
+  ((select id from public.habit_items where habit_id = 'b1800000-0000-0000-0000-000000000008'),
+   'b1800000-0000-0000-0000-000000000008', 'a1800000-0000-0000-0000-000000000001', tests.today());
+select set_config('tests.today', tests.today()::text, true);
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select is(public.complete_day_from_items('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', current_setting('tests.today')::date), false,
+  'complete_day_from_items refuses a quantity habit even with every active step done');
+select is(public.complete_day_from_items('b1800000-0000-0000-0000-000000000008', 'a1800000-0000-0000-0000-000000000001', current_setting('tests.today')::date), true,
+  'control: the same call completes the day of a plain habit with every step done');
+reset role;
+delete from public.checkins where habit_id = 'b1800000-0000-0000-0000-000000000008';
+delete from public.checkin_items where habit_id in ('b1800000-0000-0000-0000-00000000000a', 'b1800000-0000-0000-0000-000000000008');
+delete from public.habit_items where id = '11800000-0000-0000-0000-000000000002';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
 -- more guard branches in a challenge (custom label, leaving quantity)
 select throws_ok($$ update public.habits set quantity_label = 'hojas' where id = 'b1800000-0000-0000-0000-000000000009' $$,

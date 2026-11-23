@@ -4,7 +4,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(52);
+select plan(54);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -79,9 +79,20 @@ select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-0000000
 select is(public.remove_friend('a0000000-0000-0000-0000-000000000001'), true, 'remove_friend cancels even without a friendship row');
 select is(public.remove_friend('a0000000-0000-0000-0000-000000000001'), false, 'second call has nothing left to do');
 reset role;
-select is((select count(*)::int from public.challenges where status = 'cancelled'), 2, 'both open challenges were cancelled');
--- back to the active state for the I4 checks below
+select is((select count(*)::int from public.challenges where status = 'cancelled' and cancelled_at is not null), 2,
+  'both open challenges were cancelled and stamped');
+-- since 0017 cancelled_at is write-once: setting it back to null is silently ignored, so the old
+-- "back to active" update left the stamp behind
 update public.challenges set status = 'active', cancelled_at = null;
+select is((select count(*)::int from public.challenges where status = 'active' and cancelled_at is not null), 2,
+  'cancelled_at is write-once: resetting it to null is ignored');
+-- back to a clean active state for the I4 checks below: the stamp trigger is switched off for this
+-- one statement (this transaction is rolled back)
+alter table public.challenges disable trigger challenges_stamp_cancelled;
+update public.challenges set status = 'active', cancelled_at = null;
+alter table public.challenges enable trigger challenges_stamp_cancelled;
+select is((select count(*)::int from public.challenges where status = 'active' and cancelled_at is null), 2,
+  'the challenges are active again without a stamp');
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'accepted');
 
