@@ -5,7 +5,7 @@ import { notFound, redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { localDate } from "@/domain/dates";
 import { groupPageNotFound } from "@/domain/group-invite";
-import { initialSection } from "@/components/groups/detail/fines-wiring";
+import { initialSection, isJustJoined } from "@/components/groups/detail/fines-wiring";
 import { loadGroupBoard, loadGroupDetail, loadGroupHistory, loadGroupWall } from "@/lib/groups-data";
 import { loadGroupFineState, loadGroupFund, loadGroupRejected } from "@/lib/groups-fines-data";
 import { createServerClient } from "@/lib/supabase/server";
@@ -19,10 +19,10 @@ export default async function GrupoPage({
   searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ seccion?: string | string[] }>;
+  searchParams: Promise<{ seccion?: string | string[]; unido?: string | string[] }>;
 }) {
   const { id } = await params;
-  const { seccion } = await searchParams;
+  const { seccion, unido } = await searchParams;
   const viewer = await getViewer();
   if (!viewer) redirect(await viewerMissingDestination());
   const supabase = await createServerClient();
@@ -58,6 +58,7 @@ export default async function GrupoPage({
           rejected={rejected.ok ? rejected.data : null}
           now={Date.now()}
           initialSection={initialSection(seccion, true)}
+          justJoined={isJustJoined(unido)}
           myUserId={viewer.id}
           today={localDate(new Date(), viewer.timezone)}
         />

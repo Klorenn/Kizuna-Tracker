@@ -373,7 +373,9 @@ describe('FundSection', () => {
     expect(admin.match(/Marcar como pagada/g)).toHaveLength(1)
     const single = section({ ...base, role: 'admin', state: state({ active, singleAdmin: true }) })
     expect(single.match(/Marcar como pagada/g)).toHaveLength(2)
-    expect(section({ ...base, role: 'admin', archived: true })).not.toContain('Marcar como pagada')
+    // an archived group still lets admins mark payments, and nobody else
+    expect(section({ ...base, role: 'admin', archived: true })).toContain('Marcar como pagada')
+    expect(section({ ...base, role: 'member', archived: true })).not.toContain('Marcar como pagada')
   })
 
   it('"Terminar multa" is for admins of a live group', () => {
@@ -382,9 +384,15 @@ describe('FundSection', () => {
     expect(text(section({ role: 'admin', archived: true, state: state({ active }) }))).not.toContain('Terminar multa')
   })
 
-  it('archived: nothing to press (read-only)', () => {
+  it('archived: the only thing to press is the payment mark', () => {
     const h = section({ role: 'admin', archived: true, state: state({ active, proposal }) })
-    expect(h).not.toContain('<button')
+    const labels = [...h.matchAll(/<button[^>]*>(.*?)<\/button>/g)].map((m) => text(m[1]))
+    expect(labels.length).toBeGreaterThan(0)
+    for (const l of labels) expect(l).toMatch(/^(Marcar como pagada|Desmarcar)$/)
+  })
+
+  it('the rule line stays when the fund read failed but a fine is active', () => {
+    expect(text(section({ state: state({ active }), fund: null }))).toContain(RULE)
   })
 
   it('privacy: only names, avatars and amounts of members', () => {

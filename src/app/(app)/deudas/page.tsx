@@ -119,6 +119,8 @@ export default async function DeudasPage() {
         <p className="text-small text-muted">La app solo registra deudas. El pago se hace fuera de la app.</p>
       </Card>
 
+      <GroupFundsSection data={fundDebts} />
+
       {friends.length === 0 ? (
         <Card className="p-4">
           <p className="text-body text-muted">Aún no tienes deudas. Aparecen cuando alguien no cumple un reto.</p>
@@ -205,8 +207,6 @@ export default async function DeudasPage() {
           </Card>
         </>
       )}
-
-      <GroupFundsSection data={fundDebts} />
     </main>
   );
 }

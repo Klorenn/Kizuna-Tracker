@@ -75,6 +75,15 @@ describe('GroupDetailView: the Fondo section', () => {
     expect(t).toContain('Multa activa')
     expect(t).toContain(RULE)
   })
+  it('a member who opened ?seccion=fondo without a Fondo tab stays on the board', () => {
+    const h = render({ detail: detail({ role: 'member' }), myUserId: 'u-beto', initialSection: 'fund' })
+    expect(h).not.toMatch(/data-panel="board" hidden/)
+  })
+  it('an admin of a group without a photo rule and nothing rejected sees no empty "Fotos rechazadas"', () => {
+    const d = detail({ commitment: { name: 'G', icon: 'barbell', targetPerWeek: 3, requiresPhoto: false } })
+    expect(text(render({ detail: d }, { rejected: [] }))).not.toContain('Fotos rechazadas')
+    expect(text(render({ detail: d }, { rejected: null }))).toContain('Fotos rechazadas')
+  })
   it('a failed read shows LoadFailed inside the section, never an empty fund', () => {
     const t = text(render({}, { state: null, fund: null }))
     expect(t).toContain('No pudimos cargar')
@@ -84,6 +93,28 @@ describe('GroupDetailView: the Fondo section', () => {
     expect(render({ initialSection: 'fund' }, { state: active })).not.toMatch(/data-panel="fund" hidden/)
     expect(render({ initialSection: 'fund' }, { state: active })).toMatch(/data-panel="board" hidden/)
     expect(render({ initialSection: 'fund' }, null)).not.toMatch(/data-panel="board" hidden/)
+  })
+})
+
+describe('GroupDetailView: the question after joining', () => {
+  const member = { detail: detail({ role: 'member' }), myUserId: 'u-beto', initialSection: 'fund' as const }
+  it('asks the person who just joined a group with a fine in force', () => {
+    const t = text(render({ ...member, justJoined: true }, { state: active }))
+    expect(t).toContain('Este grupo tiene una multa de $2.500 por cada semana que no cumplas. Va al fondo: Asado. Solo aplica si la aceptas.')
+    expect(t).toContain('Aceptar multa')
+    expect(t).toContain('Ahora no')
+    expect(t).toContain(RULE)
+  })
+  it('only when they just joined: the normal fund section otherwise', () => {
+    const t = text(render({ ...member }, { state: active }))
+    expect(t).not.toContain('Aceptar multa')
+    expect(t).not.toContain('Ahora no')
+    expect(t).toContain('Sumarme desde el próximo lunes')
+  })
+  it('not when already bound, or with only a proposal', () => {
+    const bound: GroupFineState = { ...active, active: { ...active.active!, iAmBound: true, myBoundFrom: '2026-12-07' } }
+    expect(text(render({ ...member, justJoined: true }, { state: bound }))).not.toContain('Aceptar multa')
+    expect(text(render({ ...member, justJoined: true }, { state: noFine }))).not.toContain('Aceptar multa')
   })
 })
 

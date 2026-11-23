@@ -4,7 +4,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /**
  * The fine in force of an invitation (`group_invite_fine_for`, granted to the service role only): amount and purpose, or
- * null when the code is not valid, the group has none, or it has not started. Called only after a successful preview and
+ * null when the code is not valid or the group has no fine (one approved to start next Monday is returned too). Called only after a successful preview and
  * it never counts attempts. Any failure means "no fine shown": the join must not break because of it. The code is never logged.
  */
 export type InviteFine = { amount: number; purpose: string };

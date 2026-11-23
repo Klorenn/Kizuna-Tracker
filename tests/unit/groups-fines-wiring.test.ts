@@ -1,5 +1,6 @@
-import { describe, expect, it } from 'vitest'
-import { initialSection, rejectButtonProps, showFundSection, showRejectedList } from '@/components/groups/detail/fines-wiring'
+import { describe, expect, it, vi } from 'vitest'
+import { createRunner } from '@/components/groups/detail/group-logic'
+import { answerJoinQuestion, initialSection, isJustJoined, joinQuestionVisible, rejectButtonProps, showFundSection, showRejectedList } from '@/components/groups/detail/fines-wiring'
 import type { GroupWallItem } from '@/lib/groups-contract'
 import type { GroupFineState, GroupFund, GroupRejectedItem } from '@/lib/groups-fines-contract'
 
@@ -87,13 +88,76 @@ describe('rejectButtonProps: the real values reach RejectPhotoButton', () => {
 
 describe('showRejectedList', () => {
   const rej = { checkinId: 'c' } as GroupRejectedItem
-  it('admins always see it', () => {
-    expect(showRejectedList({ role: 'admin', items: [] })).toBe(true)
-    expect(showRejectedList({ role: 'admin', items: null })).toBe(true)
+  it('an admin sees it when the group asks for photos, something was rejected, or the read failed', () => {
+    expect(showRejectedList({ role: 'admin', items: [], requiresPhoto: true })).toBe(true)
+    expect(showRejectedList({ role: 'admin', items: [rej], requiresPhoto: false })).toBe(true)
+    expect(showRejectedList({ role: 'admin', items: null, requiresPhoto: false })).toBe(true)
+  })
+  it('an admin of a group without a photo rule and nothing rejected sees no empty card', () => {
+    expect(showRejectedList({ role: 'admin', items: [], requiresPhoto: false })).toBe(false)
   })
   it('a member sees it when the read returned something, or failed', () => {
-    expect(showRejectedList({ role: 'member', items: [rej] })).toBe(true)
-    expect(showRejectedList({ role: 'member', items: [] })).toBe(false)
-    expect(showRejectedList({ role: 'member', items: null })).toBe(true)
+    expect(showRejectedList({ role: 'member', items: [rej], requiresPhoto: true })).toBe(true)
+    expect(showRejectedList({ role: 'member', items: [], requiresPhoto: true })).toBe(false)
+    expect(showRejectedList({ role: 'member', items: null, requiresPhoto: true })).toBe(true)
+  })
+})
+
+describe('isJustJoined: only the literal 1', () => {
+  it.each([
+    ['1', true],
+    ['true', false],
+    ['0', false],
+    ['', false],
+    [undefined, false],
+    [['1'], false],
+  ])('%j', (v, expected) => expect(isJustJoined(v as string | string[] | undefined)).toBe(expected))
+})
+
+describe('joinQuestionVisible', () => {
+  const act = (over: Partial<NonNullable<GroupFineState['active']>> = {}): GroupFineState => ({
+    ...noFine,
+    active: { ...active.active!, ...over },
+  })
+  it('a fine in force or approved, the person not bound, just joined', () => {
+    expect(joinQuestionVisible({ justJoined: true, state: act() })).toBe(true)
+  })
+  it('not when they did not just join', () => expect(joinQuestionVisible({ justJoined: false, state: act() })).toBe(false))
+  it('not when already bound', () => expect(joinQuestionVisible({ justJoined: true, state: act({ iAmBound: true }) })).toBe(false))
+  it('not when the fine is ending', () => expect(joinQuestionVisible({ justJoined: true, state: act({ endsOn: '2026-12-07' }) })).toBe(false))
+  it('not without a fine, with only a proposal, or with a failed read', () => {
+    expect(joinQuestionVisible({ justJoined: true, state: noFine })).toBe(false)
+    expect(joinQuestionVisible({ justJoined: true, state: proposal })).toBe(false)
+    expect(joinQuestionVisible({ justJoined: true, state: null })).toBe(false)
+  })
+})
+
+describe('answerJoinQuestion', () => {
+  it('"Aceptar multa" calls acceptActive for the group and closes the card', async () => {
+    const accept = vi.fn(async () => ({ ok: true as const, data: undefined }))
+    expect(await answerJoinQuestion({ accept: true, groupId: 'g', acceptActive: accept, runner: createRunner() })).toEqual({ kind: 'closed' })
+    expect(accept).toHaveBeenCalledWith('g')
+  })
+  it('"Ahora no" calls nothing and binds nothing', async () => {
+    const accept = vi.fn()
+    expect(await answerJoinQuestion({ accept: false, groupId: 'g', acceptActive: accept, runner: createRunner() })).toEqual({ kind: 'closed' })
+    expect(accept).not.toHaveBeenCalled()
+  })
+  it('an action error keeps the card with the mapped error', async () => {
+    const accept = vi.fn(async () => ({ ok: false as const, error: 'Ya participas en la multa.' }))
+    expect(await answerJoinQuestion({ accept: true, groupId: 'g', acceptActive: accept, runner: createRunner() })).toEqual({
+      kind: 'error',
+      error: 'Ya participas en la multa.',
+    })
+  })
+  it('a second press while one is running is ignored', async () => {
+    let release: () => void = () => undefined
+    const accept = vi.fn(() => new Promise<{ ok: true; data: undefined }>((r) => (release = () => r({ ok: true, data: undefined }))))
+    const runner = createRunner()
+    const first = answerJoinQuestion({ accept: true, groupId: 'g', acceptActive: accept, runner })
+    expect(await answerJoinQuestion({ accept: true, groupId: 'g', acceptActive: accept, runner })).toEqual({ kind: 'busy' })
+    release()
+    await first
+    expect(accept).toHaveBeenCalledTimes(1)
   })
 })

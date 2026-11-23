@@ -150,10 +150,11 @@ describe('copy and derived state', () => {
 
 describe('canMarkPaid', () => {
   const debt = { userId: 'u-b', mine: false }
-  it('only admins of a live group', () => {
+  it('only admins (an archived group still lets them mark payments)', () => {
     expect(canMarkPaid({ role: 'admin', archived: false, debt, myUserId: 'u-a', singleAdmin: false })).toBe(true)
     expect(canMarkPaid({ role: 'member', archived: false, debt, myUserId: 'u-a', singleAdmin: false })).toBe(false)
-    expect(canMarkPaid({ role: 'admin', archived: true, debt, myUserId: 'u-a', singleAdmin: false })).toBe(false)
+    expect(canMarkPaid({ role: 'admin', archived: true, debt, myUserId: 'u-a', singleAdmin: false })).toBe(true)
+    expect(canMarkPaid({ role: 'member', archived: true, debt, myUserId: 'u-a', singleAdmin: false })).toBe(false)
   })
   it('absent on the admin own debt unless they are the only admin', () => {
     const own = { userId: 'u-a', mine: true }

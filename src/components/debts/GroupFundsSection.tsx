@@ -4,7 +4,7 @@
  * Props: `data: MyFundDebts | null` (null = the read failed: `LoadFailed`, never a $0).
  * Shows what the caller owes to each group's fund ("Le debes $X al fondo de <grupo>") and, for the
  * groups they administer, what is pending ("<grupo>: $X pendiente en el fondo"). Rows with nothing
- * pending are left out; with nothing to show the section is absent. Each row links to its group.
+ * pending are left out; with nothing to show the section is absent. Each row links to that group's fund.
  * A server-safe component (no state, no client hooks): the page can render it directly.
  */
 import Link from "next/link";
@@ -37,7 +37,7 @@ export function GroupFundsSection({ data }: { data: MyFundDebts | null }) {
         <ul className="divide-y divide-line">
           {owed.map((g) => (
             <li key={`owed-${g.groupId}`}>
-              <Link href={`/grupos/${g.groupId}`} className={ROW}>
+              <Link href={`/grupos/${g.groupId}?seccion=fondo`} className={ROW}>
                 <span className="min-w-0">
                   Le debes <span className="font-mono font-medium">{formatCLP(g.pending)}</span> al fondo de {g.groupName}
                 </span>
@@ -46,7 +46,7 @@ export function GroupFundsSection({ data }: { data: MyFundDebts | null }) {
           ))}
           {administered.map((g) => (
             <li key={`admin-${g.groupId}`}>
-              <Link href={`/grupos/${g.groupId}`} className={ROW}>
+              <Link href={`/grupos/${g.groupId}?seccion=fondo`} className={ROW}>
                 <span className="min-w-0">
                   {g.groupName}: <span className="font-mono font-medium">{formatCLP(g.pending)}</span> pendiente en el fondo
                 </span>

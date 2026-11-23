@@ -28,6 +28,7 @@ export function GroupDetail(props: {
   rejected: GroupRejectedItem[] | null;
   now: number;
   initialSection: GroupSection;
+  justJoined: boolean;
   myUserId: string;
   today: string;
 }) {

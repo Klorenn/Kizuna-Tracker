@@ -35,8 +35,8 @@ describe('Deudas: fund debts hand-off', () => {
         data: { owed: [{ groupId: 'g1', groupName: 'A', pending: 100 }], administered: [{ groupId: 'g2', groupName: 'B', pending: 200 }] },
       }),
     )
-    expect(h).toContain('href="/grupos/g1"')
-    expect(h).toContain('href="/grupos/g2"')
+    expect(h).toContain('href="/grupos/g1?seccion=fondo"')
+    expect(h).toContain('href="/grupos/g2?seccion=fondo"')
     expect(text(h)).toContain('La app solo registra. El pago se hace fuera de la app.')
   })
 

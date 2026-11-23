@@ -47,7 +47,7 @@ export function JoinGroup({
       code={code}
       actions={actions}
       fine={fine}
-      onJoined={(id) => router.replace(fine ? `/grupos/${id}?seccion=fondo` : `/grupos/${id}`)}
+      onJoined={(id) => router.replace(fine ? `/grupos/${id}?seccion=fondo&unido=1` : `/grupos/${id}`)}
     />
   );
 }

@@ -1,5 +1,5 @@
 import { createClient } from "@supabase/supabase-js";
-import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
+import { expect, test, type Browser, type BrowserContext, type Locator, type Page } from "@playwright/test";
 import { logIn, PASSWORD, randomHandle } from "./helpers";
 
 // Written in phase 42a and NOT run yet: it needs migration 0025 (the optional fine) applied locally.
@@ -93,6 +93,12 @@ async function expectFits(page: Page, label: string) {
   await page.emulateMedia({ colorScheme: "light" });
 }
 
+/** The content of an open sheet does not scroll sideways either (a fixed sheet is invisible to the page's scrollWidth). */
+async function expectSheetFits(sheet: Locator, label: string) {
+  const [scroll, client] = await sheet.evaluate((el) => [el.scrollWidth, el.clientWidth]);
+  expect(scroll, `${label}: sheet content`).toBeLessThanOrEqual(client);
+}
+
 /** A tiny generated JPEG, sent through the photo page of a habit. */
 async function sendPhoto(page: Page, habitHref: string) {
   const jpeg = await page.evaluate(() => {
@@ -146,6 +152,7 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   const sheet = pa.getByRole("dialog", { name: "Proponer multa" });
   await expect(sheet.getByText(RULE)).toBeVisible();
   await expectFits(pa, "proposal sheet");
+  await expectSheetFits(sheet, "proposal sheet");
   await sheet.getByLabel("Monto por semana incumplida (CLP)").fill("2500");
   await sheet.getByLabel("¿Para qué es el fondo?").fill("Asado de fin de mes");
   await sheet.getByRole("button", { name: "Proponer", exact: true }).click();
@@ -163,7 +170,8 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await expect(pc.getByText("No participas").first()).toBeVisible();
   await pa.reload();
   await showSection(pa, "Fondo");
-  await expect(pa.getByText(/Aceptaron \d+ de \d+ necesarios/)).toBeVisible();
+  // 3 members, the proposer counts, C declined: 1 of the 2 needed
+  await expect(pa.getByText("Aceptaron 1 de 2 necesarios")).toBeVisible();
 
   await pb.goto(`/grupos/${groupId}`);
   await showSection(pb, "Fondo");
@@ -185,6 +193,20 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await showSection(pc, "Fondo");
   await expect(pc.getByText("No participas").first()).toBeVisible();
 
+  // --- backdate the group by one week, so that last week can be closed later with A and B bound and not complying.
+  // (It also makes the members count from last Monday, so the board shows their count of this week.)
+  // Produced by BACKDATING the group by one week through the service role (test tooling) and then calling
+  // close_due_group_weeks() with the real clock: it closes exactly the week that has just ended, and only for groups
+  // whose week is due, so it does not touch other specs' groups. A global call with a future p_now would close every group.
+  const lastWeek = day(new Date(new Date(`${mondayOfThisWeek()}T12:00:00Z`).getTime() - 7 * 86_400_000));
+  const db = admin();
+  const stamp = `${lastWeek}T12:00:00Z`;
+  expect((await db.from("groups").update({ created_at: stamp }).eq("id", groupId)).error).toBeNull();
+  expect((await db.from("group_members").update({ counts_from: lastWeek, joined_on: lastWeek, joined_at: stamp }).eq("group_id", groupId)).error).toBeNull();
+  expect((await db.from("group_fines").update({ starts_on: lastWeek }).eq("group_id", groupId).eq("status", "active")).error).toBeNull();
+  expect((await db.from("group_fine_members").update({ bound_from: lastWeek }).eq("group_id", groupId)).error).toBeNull();
+
+
   // --- B checks in with a photo; A rejects it with a reason; B sees the reason, C does not; A undoes it
   await pb.goto("/");
   await pb.getByRole("link", { name: "Foto", exact: true }).first().click();
@@ -192,12 +214,15 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await sendPhoto(pb, pb.url());
   await expect(pb).not.toHaveURL(/\/foto$/);
 
+  const bRow = (page: Page) => page.getByRole("region", { name: "Tablero" }).getByRole("listitem").filter({ hasText: b.name });
   await pa.goto(`/grupos/${groupId}`);
+  await expect(bRow(pa)).toContainText("1 de 3");
   await showSection(pa, "Muro");
   await expect(pa.getByRole("img", { name: new RegExp(`Foto de ${b.name}`) })).toBeVisible();
   await pa.getByRole("button", { name: `Rechazar foto de ${b.name}` }).click();
   const reject = pa.getByRole("dialog", { name: "Rechazar foto" });
   await expectFits(pa, "wall with the reject sheet");
+  await expectSheetFits(reject, "reject sheet");
   await reject.getByLabel("Motivo (lo verá solo esa persona)").fill("Foto borrosa");
   await reject.getByRole("button", { name: "Rechazar", exact: true }).click();
   await expect(reject).toHaveCount(0);
@@ -206,6 +231,9 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await expect(rejectedA.getByRole("button", { name: "Deshacer rechazo" })).toBeVisible();
   // a rejected photo is off the wall and no longer counts
   await expect(pa.getByRole("img", { name: /Foto de/ })).toHaveCount(0);
+  await showSection(pa, "Tablero");
+  await expect(bRow(pa)).toContainText("0 de 3");
+  await showSection(pa, "Muro");
 
   await pb.goto(`/grupos/${groupId}`);
   await showSection(pb, "Muro");
@@ -221,20 +249,22 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await rejectedA.getByRole("button", { name: "Deshacer rechazo" }).click();
   await expect(pa.getByRole("img", { name: new RegExp(`Foto de ${b.name}`) })).toBeVisible();
   await expect(pa.getByText("Foto borrosa")).toHaveCount(0);
+  await showSection(pa, "Tablero");
+  await expect(bRow(pa)).toContainText("1 de 3");
 
-  // --- one closed week with A and B bound and not complying.
-  // Produced by BACKDATING the group by one week through the service role (test tooling) and then calling
-  // close_due_group_weeks() with the real clock: it closes exactly the week that has just ended, and only for groups
-  // whose week is due, so it does not touch other specs' groups. A global call with a future p_now would close every group.
-  const lastWeek = day(new Date(new Date(`${mondayOfThisWeek()}T12:00:00Z`).getTime() - 7 * 86_400_000));
-  const db = admin();
-  const stamp = `${lastWeek}T12:00:00Z`;
-  expect((await db.from("groups").update({ created_at: stamp }).eq("id", groupId)).error).toBeNull();
-  expect((await db.from("group_members").update({ counts_from: lastWeek, joined_on: lastWeek, joined_at: stamp }).eq("group_id", groupId)).error).toBeNull();
-  expect((await db.from("group_fines").update({ starts_on: lastWeek }).eq("group_id", groupId).eq("status", "active")).error).toBeNull();
-  expect((await db.from("group_fine_members").update({ bound_from: lastWeek }).eq("group_id", groupId)).error).toBeNull();
-  const closed = await db.rpc("close_due_group_weeks");
-  expect(closed.error).toBeNull();
+  // --- close last week: A and B were bound and did not comply. The closing function handles at most 500 groups per run
+  // (oldest first), so call it until this group's week is there.
+  const closeLastWeek = async () => {
+    for (let i = 0; i < 3; i++) {
+      expect((await db.rpc("close_due_group_weeks")).error).toBeNull();
+      const { data } = await db.from("group_weeks").select("week_start").eq("group_id", groupId).eq("week_start", lastWeek);
+      if (data && data.length > 0) return;
+    }
+    throw new Error("last week did not close");
+  };
+  await closeLastWeek();
+  const { data: debts } = await db.from("group_fund_debts").select("debtor_id").eq("group_id", groupId);
+  expect((debts ?? []).map((x) => x.debtor_id).sort()).toEqual([a.id, b.id].sort());
 
   // B owes $2.500 to the fund, in Deudas under "Fondos de grupo", and the line of the rule is there
   await pb.goto("/deudas");
@@ -265,11 +295,25 @@ test("propose, vote and activate a fine; reject and undo a photo; a closed week 
   await expect(pd.getByText(RULE)).toBeVisible();
   await expectFits(pd, "invitation with a fine");
   await pd.getByRole("button", { name: "Unirme" }).click();
-  await expect(pd).toHaveURL(new RegExp(`/grupos/${groupId}\\?seccion=fondo$`));
-  await expect(pd.getByText(/Multa activa:/)).toBeVisible();
-  // not pressing anything binds nothing
+  await expect(pd).toHaveURL(new RegExp(`/grupos/${groupId}\\?seccion=fondo&unido=1$`));
+
+  // the question: "Ahora no" binds nothing and closes the card; the normal fund section follows
+  await expect(
+    pd.getByText(/Este grupo tiene una multa de \$2\.500 por cada semana que no cumplas\. Va al fondo: Asado de fin de mes\. Solo aplica si la aceptas\./),
+  ).toBeVisible();
+  await expect(pd.getByText(RULE).first()).toBeVisible();
+  await expectFits(pd, "join question");
+  await pd.getByRole("button", { name: "Ahora no" }).click();
+  await expect(pd.getByRole("button", { name: "Aceptar multa" })).toHaveCount(0);
   await expect(pd.getByText("No participas").first()).toBeVisible();
-  await expect(pd.getByRole("button", { name: "Sumarme desde el próximo lunes" })).toBeVisible();
+  const { data: dBound } = await db.from("group_fine_members").select("user_id").eq("group_id", groupId).eq("user_id", d.id);
+  expect(dBound ?? []).toHaveLength(0);
+
+  // reloading without ?unido=1 shows no question; accepting from the fund binds from next Monday
+  await pd.goto(`/grupos/${groupId}?seccion=fondo`);
+  await expect(pd.getByRole("button", { name: "Aceptar multa" })).toHaveCount(0);
+  await pd.getByRole("button", { name: "Sumarme desde el próximo lunes" }).click();
+  await expect(pd.getByText(/Participas desde el lunes/)).toBeVisible();
 
   await Promise.all([A.ctx.close(), B.ctx.close(), C.ctx.close(), D.ctx.close()]);
 });

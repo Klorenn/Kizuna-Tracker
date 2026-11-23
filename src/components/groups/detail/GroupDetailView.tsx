@@ -18,13 +18,14 @@
  *  - `today?: string` (optional addition: the viewer's local date "YYYY-MM-DD" for "Hoy"/"Ayer" on the
  *    wall; without it the device's date is used after mount)
  * Members come from `board` (it is the only read that carries roles).
- * The three sections stay mounted while hidden, so each keeps its own state (loaded wall pages,
+ * The sections stay mounted while hidden, so each keeps its own state (loaded wall pages,
  * open sheets, scroll) when the control switches. Of other members: name, @usuario, avatar, role,
  * the week's count and, on the wall, the check-in's date and photo. Nothing else.
  */
 import { Archive } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { FundSection } from "@/components/groups/fund/FundSection";
+import { JoinFineQuestion } from "@/components/groups/fund/JoinFineQuestion";
 import { RejectedList } from "@/components/groups/reject/RejectedList";
 import { HabitIcon } from "@/components/habit-icon";
 import { Segmented } from "@/components/ui/Segmented";
@@ -41,7 +42,7 @@ import {
   iconKeyOf,
   type Overlay,
 } from "./group-logic";
-import { type GroupSection, showFundSection, showRejectedList } from "./fines-wiring";
+import { type GroupSection, joinQuestionVisible, showFundSection, showRejectedList } from "./fines-wiring";
 import { HistoryList } from "./HistoryList";
 import { MembersList } from "./MembersList";
 import { CommitmentText, Mono } from "./parts";
@@ -135,6 +136,7 @@ export function GroupDetailView({
   today,
   fines,
   initialSection = "board",
+  justJoined = false,
 }: {
   detail: GroupDetail;
   board: GroupBoardRow[] | null;
@@ -146,8 +148,16 @@ export function GroupDetailView({
   today?: string;
   fines?: GroupFines;
   initialSection?: GroupSection;
+  /** Arrived from joining (`?unido=1`): a fine in force is put to the person as a question. */
+  justJoined?: boolean;
 }) {
-  const [section, setSection] = useState<GroupSection>(initialSection);
+  // "fund" is opened only when the section exists for this person: otherwise it would appear on its own after a refresh
+  const [section, setSection] = useState<GroupSection>(() =>
+    initialSection === "fund" &&
+    !(fines && showFundSection({ role: detail.role, archived: detail.archived, state: fines.state, fund: fines.fund }))
+      ? "board"
+      : initialSection,
+  );
   const [overlay, setOverlay] = useState<Overlay>(EMPTY_OVERLAY);
   // a refresh hands down new data: it replaces what was applied locally (adjust state during render)
   const [seen, setSeen] = useState({ detail, board });
@@ -199,7 +209,7 @@ export function GroupDetailView({
       </div>
 
       <div data-panel="wall" hidden={current !== "wall"} className="flex flex-col gap-4">
-        {fines && showRejectedList({ role: view.role, items: fines.rejected }) ? (
+        {fines && showRejectedList({ role: view.role, items: fines.rejected, requiresPhoto: view.commitment.requiresPhoto }) ? (
           <RejectedList
             groupId={detail.id}
             items={fines.rejected}
@@ -239,7 +249,16 @@ export function GroupDetailView({
       </div>
 
       {fines && fundShown ? (
-        <div data-panel="fund" hidden={current !== "fund"}>
+        <div data-panel="fund" hidden={current !== "fund"} className="flex flex-col gap-3">
+          {joinQuestionVisible({ justJoined, state: fines.state }) && fines.state?.active ? (
+            <JoinFineQuestion
+              groupId={detail.id}
+              amount={fines.state.active.amount}
+              purpose={fines.state.active.purpose}
+              acceptActive={fines.actions.acceptActive}
+              onAccepted={fines.onChanged}
+            />
+          ) : null}
           <FundSection
             groupId={detail.id}
             state={fines.state}
