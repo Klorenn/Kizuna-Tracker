@@ -1,7 +1,7 @@
 "use client";
 
 const track = (checked: boolean) =>
-  `relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors duration-[120ms] ${
+  `relative h-[31px] w-[51px] shrink-0 rounded-full transition-colors duration-[120ms] motion-reduce:transition-none ${
     checked ? "bg-accent" : "bg-outline-strong"
   }`;
 
@@ -9,7 +9,7 @@ function Knob({ checked }: { checked: boolean }) {
   return (
     <span
       aria-hidden
-      className={`absolute top-0.5 size-[27px] rounded-full shadow-card transition-[left] duration-[120ms] ${
+      className={`absolute top-0.5 size-[27px] rounded-full shadow-card transition-[left] duration-[120ms] motion-reduce:transition-none ${
         checked ? "left-[22px] bg-on-accent" : "left-0.5 bg-knob"
       }`}
     />

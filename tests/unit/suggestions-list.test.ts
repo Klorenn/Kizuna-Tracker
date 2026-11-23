@@ -64,6 +64,15 @@ describe('SuggestionsSection', () => {
     expect(render([])).toBe('')
   })
 
+  it('recovers when a retry brings data after a failed read (null first, rows later)', () => {
+    expect(render(null)).toContain('Reintentar')
+    const after = render([p(4), p(5)])
+    expect(after).toContain('user_4')
+    expect(after).not.toContain('Reintentar')
+    // and from then on the rows are frozen
+    expect(render([p(9)])).toBe(after)
+  })
+
   it('shows the retry line when the read failed', () => {
     const out = render(null)
     expect(out).toContain('Reintentar')

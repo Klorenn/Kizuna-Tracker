@@ -10,10 +10,13 @@ import type { Person } from "@/lib/discover-data";
 /**
  * Amigos > Sugerencias. The people shown are fixed on first render: when a row's action refreshes
  * the page (Enviadas changes), the server no longer lists that person, but the row stays where it
- * is, showing its new state, until the person leaves the page. `people` is null when the read failed.
+ * is, showing its new state, until the person leaves the page. `people` is null when the read failed (a later non-null value is adopted).
  */
 export function SuggestionsSection({ people }: { people: Person[] | null }) {
-  const [shown] = useState(people);
+  const [frozen, setFrozen] = useState(people);
+  // only data is frozen: a failed read (null) adopts the rows a retry brings
+  const shown = frozen ?? people;
+  if (frozen === null && people !== null) setFrozen(people);
   if (shown && shown.length === 0) return null;
   return (
     <section aria-label="Sugerencias" className="flex flex-col gap-2">

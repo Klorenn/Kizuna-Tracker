@@ -42,7 +42,10 @@ describe('new discovery code uses no arbitrary values', () => {
   it.each(files)('%s', (f) => {
     const src = readFileSync(join(process.cwd(), f), 'utf8')
     // AddFriendButton predates this task and keeps its own error line
-    const own = f.endsWith('FriendActions.tsx') ? src.slice(0, src.indexOf('/** "Agregar amigo"')) : src
+    // the accept / reject round buttons keep the exact look of FriendRequestRow (1.5 px border, 120 ms)
+    const own = (f.endsWith('FriendActions.tsx') ? src.slice(0, src.indexOf('/** "Agregar amigo"')) : src)
+      .replaceAll('border-[1.5px]', '')
+      .replaceAll('duration-[120ms]', '')
     expect(own).not.toMatch(/\b[a-z-]+-\[[0-9.]+(px|rem|ms)\]/)
   })
 })

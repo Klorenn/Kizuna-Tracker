@@ -74,7 +74,7 @@ export function DiscoverPersonRow({ person }: { person: Person }) {
               return r.ok ? { ok: true, next: "none" } : r;
             })
           }
-          className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-accent text-accent transition-colors duration-150 hover:bg-accent-soft disabled:opacity-50"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-accent text-accent transition-colors duration-[120ms] hover:bg-accent-soft disabled:opacity-50"
         >
           <X size={20} weight="light" aria-hidden />
         </button>
@@ -88,7 +88,7 @@ export function DiscoverPersonRow({ person }: { person: Person }) {
               return r.ok ? { ok: true, next: "accepted" } : r;
             })
           }
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-colors duration-150 hover:bg-accent-hover disabled:opacity-50"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover disabled:opacity-50"
         >
           <Check size={20} weight="light" aria-hidden />
         </button>
