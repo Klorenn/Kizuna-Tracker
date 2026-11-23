@@ -4,10 +4,13 @@ import {
   activePomodoros,
   adoptRemote,
   clearPomodoroStorage,
+  DEFAULT_POMODORO_PREFS,
   discardPending,
   EMPTY_SESSION,
   isFreshEnd,
   loadPomodoro,
+  loadPrefs,
+  savePrefs,
   openPomodoroStorage,
   pendingPomodoros,
   pomodoroBoxReducer,
@@ -362,5 +365,52 @@ describe('isFreshEnd (decided from the last live tick)', () => {
   })
   it('a tick that already came after the end was not the first to see it', () => {
     expect(isFreshEnd(END + 1000, END, END + 2000)).toBe(false)
+  })
+})
+
+describe('modes (timer and stopwatch)', () => {
+  const idle = (mode: 'pomodoro' | 'timer' | 'stopwatch' = 'pomodoro') => ({
+    s: initialPomodoro('h1', config, mode),
+    session: EMPTY_SESSION,
+  })
+
+  it('remembers the last mode per user and per habit', () => {
+    const base = new MemoryStorage()
+    const a = openPomodoroStorage('user-a', () => base)
+    const b = openPomodoroStorage('user-b', () => base)
+    expect(loadPrefs('h1', a).mode).toBe('pomodoro')
+    expect(loadPrefs('h1', a).timerMin).toBe(25)
+    savePrefs('h1', { ...loadPrefs('h1', a), mode: 'stopwatch', timerMin: 45 }, a)
+    expect(loadPrefs('h1', a)).toMatchObject({ mode: 'stopwatch', timerMin: 45 })
+    expect(loadPrefs('h2', a).mode).toBe('pomodoro')
+    expect(loadPrefs('h1', b).mode).toBe('pomodoro')
+  })
+
+  it('ignores a stored mode or timer length that makes no sense', () => {
+    storage.setItem('kizuna:pomodoro:config:h1', JSON.stringify({ ...DEFAULT_POMODORO_PREFS, mode: 'nap', timerMin: 500 }))
+    expect(loadPrefs('h1', storage)).toMatchObject({ mode: 'pomodoro', timerMin: 25 })
+  })
+
+  it('changes the mode only while idle or done, keeping unsent blocks', () => {
+    const t = pomodoroBoxReducer(idle(), { type: 'setMode', mode: 'timer', config: { ...config, focusMin: 15 } })
+    expect([t.s.mode, t.s.config.focusMin, t.s.phase]).toEqual(['timer', 15, 'idle'])
+    const running = pomodoroBoxReducer(t, { type: 'start', at: NOW, blockId: 'b1' })
+    expect(running.s.phase).toBe('focus')
+    expect(pomodoroBoxReducer(running, { type: 'setMode', mode: 'stopwatch', config })).toBe(running)
+    const done = pomodoroBoxReducer(running, { type: 'finish', at: NOW + 3 * 60_000 })
+    expect(done.s.phase).toBe('done')
+    const sw = pomodoroBoxReducer(done, { type: 'setMode', mode: 'stopwatch', config })
+    expect([sw.s.mode, sw.s.phase, sw.s.pending]).toEqual(['stopwatch', 'idle', done.s.pending])
+  })
+
+  it('a stopwatch tallies each closed block', () => {
+    const ids: [string, string, string] = ['a', 'b', 'c']
+    let box = pomodoroBoxReducer(idle('stopwatch'), { type: 'start', at: NOW, blockId: 'x', blockIds: ids })
+    expect(box.s.blockIds).toEqual(ids)
+    box = pomodoroBoxReducer(box, { type: 'tick', at: NOW + 91 * 60_000 })
+    expect(box.s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: NOW + 90 * 60_000 }])
+    expect(box.session).toMatchObject({ blocks: 1, minutes: 90, lastId: 'a', lastStatus: 'pending' })
+    box = pomodoroBoxReducer(box, { type: 'finish', at: NOW + 100 * 60_000 })
+    expect(box.session).toMatchObject({ blocks: 2, minutes: 100, lastId: 'b' })
   })
 })

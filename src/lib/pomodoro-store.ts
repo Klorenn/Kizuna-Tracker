@@ -10,6 +10,7 @@ import {
   type PomodoroConfig,
   type PomodoroEvent,
   type PomodoroState,
+  type TimerMode,
 } from "@/domain/pomodoro";
 
 // Local persistence of the timer (one key per habit) and the hook that drives it. The state is a
@@ -50,7 +51,7 @@ function settleStale(s: PomodoroState, now: number): PomodoroState {
   if (s.phase !== "idle" && s.phase !== "ready" && s.phase !== "done") return s;
   const ref = s.lastTickAt ?? s.phaseStartedAt;
   if (ref === null || now - ref <= STALE_MS) return s;
-  return { ...initialPomodoro(s.habitId, s.config), pending: s.pending, rev: s.rev };
+  return { ...initialPomodoro(s.habitId, s.config, s.mode), pending: s.pending, rev: s.rev };
 }
 
 export function loadPomodoro(habitId: string, storage: Storage, now: number = Date.now()): PomodoroState | null {
@@ -313,6 +314,10 @@ export type PomodoroPrefs = {
   config: PomodoroConfig;
   topic: string;
   muted: boolean;
+  /** The last mode used on this habit: the screen opens on it. */
+  mode: TimerMode;
+  /** The minutes of the countdown timer (the pomodoro keeps its own focus length in `config`). */
+  timerMin: number;
   /** Remembered so Hoy can name a habit whose blocks are stuck even after it was archived. */
   habitName: string;
 };
@@ -322,6 +327,8 @@ export const DEFAULT_POMODORO_PREFS: PomodoroPrefs = {
   config: { focusMin: 25, breakMin: 5, cycles: 4 },
   topic: "",
   muted: false,
+  mode: "pomodoro",
+  timerMin: 25,
   habitName: "",
 };
 
@@ -338,6 +345,8 @@ export function loadPrefs(habitId: string, storage: Storage): PomodoroPrefs {
       config: { focusMin: d.config.focusMin, breakMin: d.config.breakMin, cycles: d.config.cycles },
       topic: typeof d.topic === "string" ? d.topic.slice(0, 60) : "",
       muted: d.muted === true,
+      mode: d.mode === "timer" || d.mode === "stopwatch" ? d.mode : "pomodoro",
+      timerMin: Number.isInteger(d.timerMin) && (d.timerMin as number) >= 1 && (d.timerMin as number) <= 90 ? (d.timerMin as number) : 25,
       habitName: typeof d.habitName === "string" ? d.habitName.slice(0, 80) : "",
     };
   } catch {
@@ -447,7 +456,8 @@ export type PomodoroAction =
   | PomodoroEvent
   | { type: "hydrate"; box: Box }
   | { type: "adopt"; state: PomodoroState }
-  | { type: "configure"; config: PomodoroConfig };
+  | { type: "configure"; config: PomodoroConfig; mode?: TimerMode }
+  | { type: "setMode"; mode: TimerMode; config: PomodoroConfig };
 type Action = PomodoroAction;
 
 /**
@@ -464,7 +474,17 @@ export function pomodoroBoxReducer(box: Box, a: Action): Box {
     case "configure": {
       if (box.s.phase !== "idle") return box;
       const s: PomodoroState = {
-        ...initialPomodoro(box.s.habitId, a.config),
+        ...initialPomodoro(box.s.habitId, a.config, a.mode ?? box.s.mode),
+        pending: box.s.pending,
+        rev: box.s.rev + ACTION_REV_BUMP,
+      };
+      return { s, session: box.session };
+    }
+    case "setMode": {
+      // the mode changes only while nothing runs (idle or done); unsent blocks stay
+      if (box.s.phase !== "idle" && box.s.phase !== "done") return box;
+      const s: PomodoroState = {
+        ...initialPomodoro(box.s.habitId, a.config, a.mode),
         pending: box.s.pending,
         rev: box.s.rev + ACTION_REV_BUMP,
       };
@@ -494,11 +514,11 @@ export type PhaseEnd =
 export function usePomodoro(
   habitId: string,
   config: PomodoroConfig,
-  opts: { storage: PomodoroStorage; onPhaseEnd?: (end: PhaseEnd) => void },
+  opts: { storage: PomodoroStorage; mode?: TimerMode; onPhaseEnd?: (end: PhaseEnd) => void },
 ) {
-  const { storage, onPhaseEnd } = opts;
+  const { storage, onPhaseEnd, mode } = opts;
   const [box, dispatch] = useReducer(pomodoroBoxReducer, undefined, (): Box => ({
-    s: initialPomodoro(habitId, config),
+    s: initialPomodoro(habitId, config, mode),
     session: EMPTY_SESSION,
   }));
   const [hydrated, setHydrated] = useState(false);
@@ -574,7 +594,8 @@ export function usePomodoro(
       dispatch({ type: "tick", at });
       const known = new Set(cur.pending.map((p) => p.blockId));
       const fresh = next.pending.filter((p) => !known.has(p.blockId));
-      if (cur.phase === "focus" && fresh.length > 0) {
+      // a stopwatch closes 90-minute blocks silently; only its end (the cap) calls for an alert
+      if (cur.phase === "focus" && fresh.length > 0 && (cur.mode !== "stopwatch" || next.phase === "done")) {
         const block = fresh[fresh.length - 1];
         if (isFreshEnd(prevTick, block.endedAt, at)) {
           endRef.current?.({ kind: "focus", minutes: block.minutes, lastRound: next.phase === "done" });
@@ -602,13 +623,21 @@ export function usePomodoro(
 
   const act = useMemo(
     () => ({
-      start: () => dispatch({ type: "start", at: Date.now(), blockId: newBlockId() }),
+      // the mode of the state decides which ids it uses: one for pomodoro and timer, three for the stopwatch
+      start: () =>
+        dispatch({
+          type: "start",
+          at: Date.now(),
+          blockId: newBlockId(),
+          blockIds: [newBlockId(), newBlockId(), newBlockId()],
+        }),
       pause: () => dispatch({ type: "pause", at: Date.now() }),
       resume: () => dispatch({ type: "resume", at: Date.now() }),
       skip: () => dispatch({ type: "skip", at: Date.now(), blockId: newBlockId() }),
       finish: () => dispatch({ type: "finish", at: Date.now() }),
       reset: () => dispatch({ type: "reset" }),
-      configure: (c: PomodoroConfig) => dispatch({ type: "configure", config: c }),
+      configure: (c: PomodoroConfig, m?: TimerMode) => dispatch({ type: "configure", config: c, mode: m }),
+      setMode: (m: TimerMode, c: PomodoroConfig) => dispatch({ type: "setMode", mode: m, config: c }),
       apply: (events: PomodoroEvent[]) => events.forEach((e) => dispatch(e)),
     }),
     [],

@@ -406,3 +406,41 @@ describe('retry schedule (I-2)', () => {
     expect(run).toHaveBeenCalledTimes(1)
   })
 })
+
+describe('stopwatch blocks', () => {
+  const watch = (): PomodoroState => ({
+    ...initialPomodoro('h1', config, 'stopwatch'),
+    pending: [
+      { blockId: 'a', minutes: 90, endedAt: 1000 },
+      { blockId: 'b', minutes: 90, endedAt: 2000 },
+      { blockId: 'c', minutes: 17, endedAt: 3000 },
+    ],
+  })
+
+  it('sends each block once with its own id, minutes and end instant, and confirms each', async () => {
+    const send = vi.fn<Send>(async () => ok)
+    const events = await flushPending(watch(), send, 'Álgebra', DAY0)
+    expect(send).toHaveBeenCalledTimes(3)
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'a', minutes: 90, endedAt: 1000 }, 'Álgebra')
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'b', minutes: 90, endedAt: 2000 }, 'Álgebra')
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'c', minutes: 17, endedAt: 3000 }, 'Álgebra')
+    expect(events).toEqual([
+      { type: 'confirm', blockId: 'a' },
+      { type: 'confirm', blockId: 'b' },
+      { type: 'confirm', blockId: 'c' },
+    ])
+  })
+
+  it('a retry reuses the ids and keeps only the blocks the network lost', async () => {
+    const send = vi.fn<Send>(async (_h, b) => (b.blockId === 'b' ? { ok: false, error: 'red', retry: true } : ok))
+    const first = await flushPendingDetailed(watch(), send, null, DAY0)
+    expect(first.retryable).toBe(1)
+    expect(first.events).toEqual([
+      { type: 'confirm', blockId: 'a' },
+      { type: 'confirm', blockId: 'c' },
+    ])
+    const left = { ...watch(), pending: watch().pending.filter((p) => p.blockId === 'b') }
+    await flushPending(left, send, null, DAY0)
+    expect(send).toHaveBeenLastCalledWith('h1', { blockId: 'b', minutes: 90, endedAt: 2000 }, null)
+  })
+})

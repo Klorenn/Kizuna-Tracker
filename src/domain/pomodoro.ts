@@ -1,4 +1,4 @@
-// Pomodoro timer as a pure reducer. Everything derives from stored instants: the screen only
+// Pomodoro, timer and stopwatch as one pure reducer. Everything derives from stored instants: the screen only
 // redraws, and `tick` (every second and when the page comes back) settles whatever expired.
 // Time is always passed in (`at`, `now`); nothing here reads a clock.
 
@@ -15,7 +15,25 @@ export const POMODORO_PRESETS = [
   { key: '50-10', focusMin: 50, breakMin: 10 },
 ] as const
 
-export function validatePomodoroConfig(c: PomodoroConfig): Result {
+/** The three ways to measure: Pomodoro rounds, a countdown of chosen minutes, a count-up stopwatch. */
+export type TimerMode = 'pomodoro' | 'timer' | 'stopwatch'
+const MODES: readonly TimerMode[] = ['pomodoro', 'timer', 'stopwatch']
+
+export const TIMER_CHIPS = [15, 25, 45, 60] as const
+/** A stopwatch closes a block every time this many minutes of running time accumulate. */
+export const STOPWATCH_BLOCK_MIN = 90
+/** A stopwatch ends by itself after this much running time (pauses never count). */
+export const STOPWATCH_CAP_MIN = 240
+const STOPWATCH_SLOTS = 3
+
+export function validatePomodoroConfig(c: PomodoroConfig, mode: TimerMode = 'pomodoro'): Result {
+  if (mode === 'stopwatch') return { ok: true }
+  if (mode === 'timer') {
+    if (!Number.isInteger(c.focusMin) || c.focusMin < 1 || c.focusMin > 90) {
+      return { ok: false, error: 'Elige entre 1 y 90 minutos.' }
+    }
+    return { ok: true }
+  }
   if (!Number.isInteger(c.focusMin) || c.focusMin < 5 || c.focusMin > 90) {
     return { ok: false, error: 'El foco va de 5 a 90 minutos.' }
   }
@@ -34,9 +52,13 @@ const PHASES: readonly PomodoroPhase[] = ['idle', 'focus', 'break', 'ready', 'do
 /** A finished focus block waiting to reach the server (idempotent by `blockId`). */
 export type PendingBlock = { blockId: string; minutes: number; endedAt: number }
 
+/** Why a session ended by itself: the stopwatch reached its cap. */
+export type EndReason = 'cap'
+
 export type PomodoroState = {
   v: 1
   habitId: string
+  mode: TimerMode
   config: PomodoroConfig
   phase: PomodoroPhase
   /** Current round, 1-based; 0 while idle. */
@@ -49,10 +71,19 @@ export type PomodoroState = {
   pending: PendingBlock[]
   credited: number
   rev: number
+  /** Stopwatch only: the three block ids made when it starts (90 + 90 + 60 at most), reused on every retry. */
+  blockIds: string[]
+  /** Stopwatch only: how many blocks it already closed (they are in `pending` until the server answers). */
+  chunks: number
+  endReason: EndReason | null
+  /** The last finish had less than one whole minute: nothing was queued and the screen says so. */
+  tooShort: boolean
 }
 
 export type PomodoroEvent =
-  | { type: 'start'; at: number; blockId: string }
+  // pomodoro and timer use `blockId`; the stopwatch uses `blockIds` (the screen may send both: the mode decides)
+  | { type: 'start'; at: number; blockId: string; blockIds?: [string, string, string] }
+  | { type: 'start'; at: number; blockIds: [string, string, string]; blockId?: string }
   | { type: 'pause'; at: number }
   | { type: 'resume'; at: number }
   | { type: 'tick'; at: number }
@@ -62,10 +93,11 @@ export type PomodoroEvent =
   | { type: 'drop'; blockId: string }
   | { type: 'reset' }
 
-export function initialPomodoro(habitId: string, config: PomodoroConfig): PomodoroState {
+export function initialPomodoro(habitId: string, config: PomodoroConfig, mode: TimerMode = 'pomodoro'): PomodoroState {
   return {
     v: 1,
     habitId,
+    mode,
     config: { ...config },
     phase: 'idle',
     cycle: 0,
@@ -77,11 +109,21 @@ export function initialPomodoro(habitId: string, config: PomodoroConfig): Pomodo
     pending: [],
     credited: 0,
     rev: 0,
+    blockIds: [],
+    chunks: 0,
+    endReason: null,
+    tooShort: false,
   }
 }
 
 const phaseMs = (s: PomodoroState): number =>
-  s.phase === 'focus' ? s.config.focusMin * MIN_MS : s.phase === 'break' ? s.config.breakMin * MIN_MS : 0
+  s.phase === 'focus'
+    ? s.mode === 'stopwatch'
+      ? STOPWATCH_CAP_MIN * MIN_MS
+      : s.config.focusMin * MIN_MS
+    : s.phase === 'break'
+      ? s.config.breakMin * MIN_MS
+      : 0
 
 /** Elapsed time of the running phase, bounded to [0, duration]. */
 function elapsedAt(s: PomodoroState, now: number): number {
@@ -90,7 +132,8 @@ function elapsedAt(s: PomodoroState, now: number): number {
   return Math.min(Math.max(raw, 0), phaseMs(s))
 }
 
-const isLastCycle = (s: PomodoroState): boolean => s.config.cycles !== null && s.cycle >= s.config.cycles
+const isLastCycle = (s: PomodoroState): boolean =>
+  s.mode !== 'pomodoro' || (s.config.cycles !== null && s.cycle >= s.config.cycles)
 
 const bump = (s: PomodoroState, patch: Partial<PomodoroState>): PomodoroState => ({ ...s, ...patch, rev: s.rev + 1 })
 
@@ -111,16 +154,47 @@ function closeFocus(s: PomodoroState, minutes: number, endedAt: number): Pomodor
   })
 }
 
-function startFocus(s: PomodoroState, at: number, blockId: string, cycle: number): PomodoroState {
+function startFocus(s: PomodoroState, at: number, blockId: string | null, cycle: number): PomodoroState {
   return bump(s, {
     phase: 'focus',
     cycle,
     blockId,
+    blockIds: [],
+    chunks: 0,
+    endReason: null,
+    tooShort: false,
     phaseStartedAt: at,
     pausedAt: null,
     pausedMs: 0,
     lastTickAt: at,
   })
+}
+
+/**
+ * Stopwatch: closes every 90-minute block of running time that already passed by `at` (each at the
+ * instant its 90th minute completed) and ends the session at the 4-hour cap. Pauses move the
+ * boundaries, so this must run before any pause starts (the reducer does).
+ */
+function settleStopwatch(s: PomodoroState, at: number): PomodoroState {
+  if (s.mode !== 'stopwatch' || s.phase !== 'focus' || s.pausedAt !== null || s.phaseStartedAt === null) return s
+  const runStart = s.phaseStartedAt + s.pausedMs
+  const block = STOPWATCH_BLOCK_MIN * MIN_MS
+  let cur = s
+  while (cur.chunks < STOPWATCH_SLOTS - 1 && at >= runStart + (cur.chunks + 1) * block) {
+    cur = addChunk(cur, STOPWATCH_BLOCK_MIN, runStart + (cur.chunks + 1) * block)
+  }
+  if (at >= runStart + STOPWATCH_CAP_MIN * MIN_MS) {
+    const end = runStart + STOPWATCH_CAP_MIN * MIN_MS
+    cur = addChunk(cur, STOPWATCH_CAP_MIN - cur.chunks * STOPWATCH_BLOCK_MIN, end)
+    cur = { ...cur, phase: 'done', endReason: 'cap', blockIds: [], phaseStartedAt: end, pausedAt: null, pausedMs: 0, lastTickAt: at }
+  }
+  return cur
+}
+
+function addChunk(s: PomodoroState, minutes: number, endedAt: number): PomodoroState {
+  const id = s.blockIds[s.chunks]
+  const pending = id !== undefined ? [...s.pending, { blockId: id, minutes, endedAt }] : s.pending
+  return { ...s, pending, chunks: s.chunks + 1, rev: s.rev + 1 }
 }
 
 function tick(s: PomodoroState, at: number): PomodoroState {
@@ -137,6 +211,10 @@ function tick(s: PomodoroState, at: number): PomodoroState {
   }
   // Catch up: a focus may expire, then its break; a break never starts another focus by itself.
   while (cur.pausedAt === null && cur.phaseStartedAt !== null) {
+    if (cur.mode === 'stopwatch') {
+      cur = settleStopwatch(cur, at)
+      break
+    }
     if (cur.phase === 'focus') {
       const end = cur.phaseStartedAt + cur.pausedMs + cur.config.focusMin * MIN_MS
       if (at < end) break
@@ -154,18 +232,37 @@ function tick(s: PomodoroState, at: number): PomodoroState {
   return { ...cur, lastTickAt: cur.phase !== s.phase ? at : cur.lastTickAt, rev: s.rev + 1 }
 }
 
+/** Back to idle without a block: under one whole minute never counts. */
+function tooShortReset(s: PomodoroState): PomodoroState {
+  return { ...initialPomodoro(s.habitId, s.config, s.mode), pending: s.pending, tooShort: true, rev: s.rev + 1 }
+}
+
+function finishStopwatch(s: PomodoroState, at: number): PomodoroState {
+  const cur = settleStopwatch(s, at)
+  if (cur.phase !== 'focus') return cur // the cap already ended it
+  const minutes = Math.floor(elapsedAt(cur, at) / MIN_MS) - cur.chunks * STOPWATCH_BLOCK_MIN
+  if (minutes < 1 && cur.chunks === 0) return tooShortReset(cur)
+  const closed = minutes >= 1 ? addChunk(cur, minutes, at) : cur
+  return bump(closed, { phase: 'done', blockIds: [], phaseStartedAt: at, pausedAt: null, pausedMs: 0, lastTickAt: at })
+}
+
 export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroState {
   switch (e.type) {
     case 'start': {
-      if (s.phase === 'idle' || s.phase === 'done') {
-        return { ...startFocus(s, e.at, e.blockId, 1), credited: 0 }
+      if (s.phase !== 'idle' && s.phase !== 'done' && s.phase !== 'ready') return s
+      if (s.mode === 'stopwatch') {
+        if (e.blockIds === undefined || e.blockIds.length !== STOPWATCH_SLOTS || s.phase === 'ready') return s
+        return { ...startFocus(s, e.at, null, 1), blockIds: [...e.blockIds], credited: 0 }
       }
+      if (e.blockId === undefined) return s
       if (s.phase === 'ready') return startFocus(s, e.at, e.blockId, s.cycle + 1)
-      return s
+      return { ...startFocus(s, e.at, e.blockId, 1), credited: 0 }
     }
     case 'pause': {
-      if ((s.phase !== 'focus' && s.phase !== 'break') || s.pausedAt !== null) return s
-      return bump(s, { pausedAt: e.at, lastTickAt: e.at })
+      // timer and stopwatch settle what already expired first: a pause moves their boundaries
+      const base = s.mode === 'pomodoro' ? s : tick(s, e.at)
+      if ((base.phase !== 'focus' && base.phase !== 'break') || base.pausedAt !== null) return base
+      return bump(base, { pausedAt: e.at, lastTickAt: e.at })
     }
     case 'resume': {
       if (s.pausedAt === null) return s
@@ -174,6 +271,15 @@ export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroSta
     case 'tick':
       return tick(s, e.at)
     case 'finish': {
+      if (s.phase === 'focus' && s.mode === 'stopwatch') return finishStopwatch(s, e.at)
+      if (s.phase === 'focus' && s.mode === 'timer') {
+        const elapsed = elapsedAt(s, e.at)
+        const endedAt = elapsed >= phaseMs(s) && s.phaseStartedAt !== null ? s.phaseStartedAt + s.pausedMs + phaseMs(s) : e.at
+        const minutes = Math.floor(elapsed / MIN_MS)
+        if (minutes < 1) return tooShortReset(s)
+        const pending = s.blockId !== null ? [...s.pending, { blockId: s.blockId, minutes, endedAt }] : s.pending
+        return bump(s, { phase: 'done', pending, blockId: null, phaseStartedAt: e.at, pausedAt: null, pausedMs: 0, lastTickAt: e.at })
+      }
       if (s.phase === 'focus') {
         const elapsed = elapsedAt(s, e.at)
         const endedAt = elapsed >= phaseMs(s) && s.phaseStartedAt !== null ? s.phaseStartedAt + s.pausedMs + phaseMs(s) : e.at
@@ -188,6 +294,7 @@ export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroSta
       return s
     }
     case 'skip': {
+      if (s.mode !== 'pomodoro') return s
       if (s.phase === 'focus') {
         const elapsed = elapsedAt(s, e.at)
         const minutes = Math.floor(elapsed / MIN_MS)
@@ -207,7 +314,7 @@ export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroSta
     case 'reset':
       // Back to idle, keeping blocks that have not reached the server yet.
       return {
-        ...initialPomodoro(s.habitId, s.config),
+        ...initialPomodoro(s.habitId, s.config, s.mode),
         pending: s.pending,
         rev: s.rev + 1,
       }
@@ -224,17 +331,37 @@ export function pomodoroView(
   cycle: number
   cyclesTotal: number | null
   paused: boolean
+  /** What the big readout shows: time left (pomodoro, timer) or time elapsed (stopwatch). */
+  displayMs: number
+  direction: 'down' | 'up'
 } {
   const elapsedMs = elapsedAt(s, now)
+  const up = s.mode === 'stopwatch'
   const duration = s.phase === 'idle' ? s.config.focusMin * MIN_MS : phaseMs(s)
+  const remainingMs = s.phase === 'idle' ? duration : duration - elapsedMs
   return {
+    displayMs: up ? elapsedMs : remainingMs,
+    direction: up ? 'up' : 'down',
     phase: s.phase,
-    remainingMs: s.phase === 'idle' ? duration : duration - elapsedMs,
+    remainingMs,
     elapsedMs,
     cycle: s.cycle,
     cyclesTotal: s.config.cycles,
     paused: s.pausedAt !== null,
   }
+}
+
+const pad2 = (n: number): string => String(n).padStart(2, '0')
+
+/** The big readout: a countdown rounds up ("25:00"), a stopwatch rounds down and shows hours past 59:59 ("1:05:09"). */
+export function formatReadout(ms: number, direction: 'down' | 'up'): string {
+  if (!Number.isFinite(ms)) return '00:00'
+  const total = Math.max(0, direction === 'down' ? Math.ceil(ms / 1000) : Math.floor(ms / 1000))
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const sec = total % 60
+  if (direction === 'up' && h > 0) return `${h}:${pad2(m)}:${pad2(sec)}`
+  return `${pad2(Math.floor(total / 60))}:${pad2(sec)}`
 }
 
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v)
@@ -254,9 +381,20 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
   if (d.v !== 1 || typeof d.habitId !== 'string') return null
   const c = d.config as Record<string, unknown> | null
   if (typeof c !== 'object' || c === null) return null
+  // states stored before the timer and the stopwatch existed have no mode: they are pomodoros
+  const mode = d.mode === undefined ? 'pomodoro' : d.mode
+  if (typeof mode !== 'string' || !(MODES as readonly string[]).includes(mode)) return null
   const config: PomodoroConfig = { focusMin: c.focusMin as number, breakMin: c.breakMin as number, cycles: c.cycles as number | null }
   if (!isNum(config.focusMin) || !isNum(config.breakMin) || !isNumOrNull(config.cycles)) return null
-  if (!validatePomodoroConfig(config).ok) return null
+  if (!validatePomodoroConfig(config, mode as TimerMode).ok) return null
+  const blockIds = d.blockIds === undefined ? [] : d.blockIds
+  if (!Array.isArray(blockIds) || blockIds.length > STOPWATCH_SLOTS || !blockIds.every((x) => typeof x === 'string')) return null
+  const chunks = d.chunks === undefined ? 0 : d.chunks
+  if (typeof chunks !== 'number' || !Number.isInteger(chunks) || chunks < 0 || chunks > STOPWATCH_SLOTS) return null
+  const endReason = d.endReason === undefined ? null : d.endReason
+  if (endReason !== null && endReason !== 'cap') return null
+  const tooShort = d.tooShort === undefined ? false : d.tooShort
+  if (typeof tooShort !== 'boolean') return null
   if (typeof d.phase !== 'string' || !(PHASES as readonly string[]).includes(d.phase)) return null
   if (!isNum(d.cycle) || !isNum(d.pausedMs) || !isNum(d.credited) || !isNum(d.rev)) return null
   if (!Number.isInteger(d.cycle) || d.cycle < 0 || d.cycle > 1000) return null
@@ -278,10 +416,12 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
   }
   const phase = d.phase as PomodoroPhase
   if ((phase === 'focus' || phase === 'break') && d.phaseStartedAt === null) return null
-  if (phase === 'focus' && d.blockId === null) return null
+  if (phase === 'focus' && mode !== 'stopwatch' && d.blockId === null) return null
+  if (phase === 'focus' && mode === 'stopwatch' && blockIds.length !== STOPWATCH_SLOTS) return null
   return {
     v: 1,
     habitId: d.habitId,
+    mode: mode as TimerMode,
     config,
     phase,
     cycle: d.cycle,
@@ -293,5 +433,9 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
     pending,
     credited: d.credited,
     rev: d.rev,
+    blockIds: blockIds as string[],
+    chunks,
+    endReason: endReason as EndReason | null,
+    tooShort,
   }
 }

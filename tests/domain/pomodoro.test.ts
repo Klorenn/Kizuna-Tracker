@@ -5,6 +5,10 @@ import {
   parsePomodoroState,
   pomodoroReducer,
   pomodoroView,
+  formatReadout,
+  STOPWATCH_BLOCK_MIN,
+  STOPWATCH_CAP_MIN,
+  TIMER_CHIPS,
   validatePomodoroConfig,
 } from '@/domain/pomodoro'
 
@@ -24,6 +28,8 @@ describe('pomodoro state machine', () => {
     expect(pomodoroView(s, T + 10 * M + 30_000)).toEqual({
       phase: 'focus',
       remainingMs: 14.5 * M,
+      displayMs: 14.5 * M,
+      direction: 'down',
       elapsedMs: 10.5 * M,
       cycle: 1,
       cyclesTotal: 2,
@@ -161,5 +167,175 @@ describe('pomodoro config and persistence', () => {
     for (const bad of [null, '', '{', '{"v":2}', JSON.stringify({ ...open, phase: 'nap' })]) {
       expect(parsePomodoroState(bad)).toBeNull()
     }
+  })
+})
+
+// ---------------------------------------------------------------- Task 30: timer and stopwatch
+
+const timerAt = (min: number, at = T, id = 'tb') =>
+  pomodoroReducer(initialPomodoro('h1', { focusMin: min, breakMin: 5, cycles: 4 }, 'timer'), {
+    type: 'start',
+    at,
+    blockId: id,
+  })
+const ids: [string, string, string] = ['a', 'b', 'c']
+const watchAt = (at = T) =>
+  pomodoroReducer(initialPomodoro('h1', cfg, 'stopwatch'), { type: 'start', at, blockIds: ids })
+
+describe('timer mode', () => {
+  it('counts down to zero by itself with one block and no break', () => {
+    const s = pomodoroReducer(timerAt(25), { type: 'tick', at: T + 25 * M })
+    expect(s.phase).toBe('done')
+    expect(s.pending).toEqual([{ blockId: 'tb', minutes: 25, endedAt: T + 25 * M }])
+    expect(pomodoroReducer(s, { type: 'tick', at: T + 99 * M }).phase).toBe('done')
+    const mid = pomodoroReducer(timerAt(25), { type: 'tick', at: T + 24 * M })
+    expect(mid.phase).toBe('focus')
+    expect(pomodoroView(mid, T + 24 * M)).toMatchObject({ direction: 'down', displayMs: M, paused: false })
+  })
+
+  it('does not count pause time', () => {
+    let s = timerAt(25)
+    s = pomodoroReducer(s, { type: 'pause', at: T + 10 * M })
+    s = pomodoroReducer(s, { type: 'resume', at: T + 17 * M })
+    expect(pomodoroReducer(s, { type: 'tick', at: T + 31 * M }).phase).toBe('focus')
+    s = pomodoroReducer(s, { type: 'tick', at: T + 32 * M })
+    expect(s.phase).toBe('done')
+    expect(s.pending).toEqual([{ blockId: 'tb', minutes: 25, endedAt: T + 32 * M }])
+  })
+
+  it('finishing early queues the whole minutes; under a minute signals tooShort', () => {
+    const early = pomodoroReducer(timerAt(25), { type: 'finish', at: T + 10 * M + 40_000 })
+    expect(early.phase).toBe('done')
+    expect(early.pending).toEqual([{ blockId: 'tb', minutes: 10, endedAt: T + 10 * M + 40_000 }])
+    const short = pomodoroReducer(timerAt(25), { type: 'finish', at: T + 50_000 })
+    expect(short.pending).toEqual([])
+    expect(short.tooShort).toBe(true)
+    expect(short.phase).toBe('idle')
+  })
+
+  it('validates the minutes as 1..90 whole numbers', () => {
+    const v = (m: number) => validatePomodoroConfig({ focusMin: m, breakMin: 5, cycles: 4 }, 'timer')
+    for (const bad of [0, 91, 12.5]) expect(v(bad)).toEqual({ ok: false, error: 'Elige entre 1 y 90 minutos.' })
+    expect(v(1)).toEqual({ ok: true })
+    expect(v(90)).toEqual({ ok: true })
+    expect(validatePomodoroConfig({ focusMin: 3, breakMin: 5, cycles: 4 }).ok).toBe(false)
+  })
+
+  it('ignores skip and exports its chips', () => {
+    const s = timerAt(25)
+    expect(pomodoroReducer(s, { type: 'skip', at: T + 5 * M, blockId: 'x' })).toBe(s)
+    expect(TIMER_CHIPS).toEqual([15, 25, 45, 60])
+  })
+})
+
+describe('stopwatch mode', () => {
+  it('finishing queues the whole elapsed minutes with the first id', () => {
+    const s = pomodoroReducer(watchAt(), { type: 'finish', at: T + 37 * M + 59_000 })
+    expect(s.phase).toBe('done')
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 37, endedAt: T + 37 * M + 59_000 }])
+    expect(pomodoroView(watchAt(), T + 61 * M + 9_000)).toMatchObject({ direction: 'up', displayMs: 61 * M + 9_000 })
+  })
+
+  it('closes a 90-minute block by itself and keeps counting', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M })
+    expect(s.phase).toBe('focus')
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 90 * M }])
+    expect(pomodoroView(s, T + 95 * M).displayMs).toBe(95 * M)
+    s = pomodoroReducer(s, { type: 'finish', at: T + 100 * M })
+    expect(s.pending).toEqual([
+      { blockId: 'a', minutes: 90, endedAt: T + 90 * M },
+      { blockId: 'b', minutes: 10, endedAt: T + 100 * M },
+    ])
+  })
+
+  it('stops at the 4-hour cap with 90 + 90 + 60', () => {
+    const s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 241 * M })
+    expect(s.pending).toEqual([
+      { blockId: 'a', minutes: 90, endedAt: T + 90 * M },
+      { blockId: 'b', minutes: 90, endedAt: T + 180 * M },
+      { blockId: 'c', minutes: 60, endedAt: T + 240 * M },
+    ])
+    expect(s.phase).toBe('done')
+    expect(s.endReason).toBe('cap')
+    expect(STOPWATCH_BLOCK_MIN).toBe(90)
+    expect(STOPWATCH_CAP_MIN).toBe(240)
+  })
+
+  it('has no day-change cut', () => {
+    const start = new Date(2026, 10, 22, 23, 30).getTime()
+    let s = watchAt(start)
+    s = pomodoroReducer(s, { type: 'tick', at: start + 40 * M })
+    expect(s.phase).toBe('focus')
+    expect(s.pending).toEqual([])
+    s = pomodoroReducer(s, { type: 'finish', at: start + 40 * M })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 40, endedAt: start + 40 * M }])
+  })
+
+  it('does not count pause time toward the minutes, the 90 or the cap', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 30 * M })
+    s = pomodoroReducer(s, { type: 'resume', at: T + 50 * M })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 109 * M })
+    expect(s.pending).toEqual([])
+    s = pomodoroReducer(s, { type: 'tick', at: T + 110 * M })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 110 * M }])
+    const fin = pomodoroReducer(watchAt(), { type: 'pause', at: T + 30 * M })
+    expect(pomodoroReducer(fin, { type: 'tick', at: T + 600 * M }).phase).toBe('focus')
+  })
+
+  it('settles a chunk that passed while the page was away before a pause', () => {
+    const s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 100 * M })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 90 * M }])
+    const fin = pomodoroReducer(s, { type: 'finish', at: T + 120 * M })
+    expect(fin.pending[1]).toEqual({ blockId: 'b', minutes: 10, endedAt: T + 120 * M })
+  })
+
+  it('under a minute never queues and returns to idle', () => {
+    const s = pomodoroReducer(watchAt(), { type: 'finish', at: T + 59_000 })
+    expect([s.phase, s.pending, s.tooShort]).toEqual(['idle', [], true])
+  })
+})
+
+describe('readout', () => {
+  it('counts down rounding up and counts up rounding down, with hours past 59:59', () => {
+    expect(formatReadout(25 * M, 'down')).toBe('25:00')
+    expect(formatReadout(24 * M + 59_100, 'down')).toBe('25:00')
+    expect(formatReadout(0, 'up')).toBe('00:00')
+    expect(formatReadout(999, 'up')).toBe('00:00')
+    expect(formatReadout(59 * M + 59_999, 'up')).toBe('59:59')
+    expect(formatReadout(3600_000, 'up')).toBe('1:00:00')
+    expect(formatReadout(3909_000, 'up')).toBe('1:05:09')
+    expect(formatReadout(Number.NaN, 'up')).toBe('00:00')
+  })
+})
+
+describe('mode persistence and ticks', () => {
+  it('parses a state without mode as pomodoro and keeps the mode of new ones', () => {
+    const { mode: _m, blockIds: _b, chunks: _c, endReason: _e, tooShort: _t, ...legacy } = open
+    const parsed = parsePomodoroState(JSON.stringify(legacy))
+    expect(parsed?.mode).toBe('pomodoro')
+    expect(parsed?.phase).toBe('focus')
+    expect(parsePomodoroState(JSON.stringify(watchAt()))).toEqual(watchAt())
+    expect(parsePomodoroState(JSON.stringify(timerAt(25)))).toEqual(timerAt(25))
+  })
+
+  it('rejects a running stopwatch with fewer than three ids and a bad mode', () => {
+    const w = watchAt()
+    expect(parsePomodoroState(JSON.stringify({ ...w, blockIds: ['a', 'b'] }))).toBeNull()
+    expect(parsePomodoroState(JSON.stringify({ ...w, mode: 'nap' }))).toBeNull()
+    const idle = initialPomodoro('h1', cfg, 'stopwatch')
+    expect(parsePomodoroState(JSON.stringify({ ...idle, pending: [{ blockId: 'x', minutes: 5, endedAt: T }] }))).not.toBeNull()
+  })
+
+  it('returns the same object for ticks a second apart in every mode', () => {
+    for (const s of [open, timerAt(25), watchAt()]) {
+      expect(pomodoroReducer(s, { type: 'tick', at: T + 1000 })).toBe(s)
+      expect(pomodoroReducer(s, { type: 'tick', at: T + 2000 })).toBe(s)
+    }
+  })
+
+  it('reset keeps the mode and the unsent blocks', () => {
+    const done = pomodoroReducer(watchAt(), { type: 'finish', at: T + 5 * M })
+    const r = pomodoroReducer(done, { type: 'reset' })
+    expect([r.mode, r.phase, r.pending.length]).toEqual(['stopwatch', 'idle', 1])
   })
 })
