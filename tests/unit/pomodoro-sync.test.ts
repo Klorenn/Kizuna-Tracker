@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { initialPomodoro, type PomodoroState } from '@/domain/pomodoro'
 import { canOfferNotifications } from '@/lib/pomodoro-alerts'
 import {
@@ -9,10 +9,8 @@ import {
   flushPending,
   flushPendingDetailed,
   reportLines,
-  resetCreditedBlocks,
 } from '@/lib/pomodoro-sync'
 
-beforeEach(() => resetCreditedBlocks())
 
 type Send = Parameters<typeof flushPending>[1]
 
@@ -175,14 +173,6 @@ describe('flushPendingDetailed', () => {
     pending: [{ blockId, minutes: 25, endedAt }],
   })
 
-  it('does not send a block that ended on an earlier local day: it leaves the queue and is counted', async () => {
-    const send = vi.fn<Send>(async () => ok)
-    const r = await flushPendingDetailed(pendingAt('old', at('2026-11-22T23:50:00Z')), send, null, day)
-    expect(send).not.toHaveBeenCalled()
-    expect(r.events).toEqual([{ type: 'drop', blockId: 'old' }])
-    expect(r.expired).toBe(1)
-  })
-
   it('sends a block from today', async () => {
     const send = vi.fn<Send>(async () => ok)
     const r = await flushPendingDetailed(pendingAt('new', at('2026-11-23T11:00:00Z')), send, null, day)
@@ -250,48 +240,53 @@ describe('flushPendingDetailed: connection trouble and blocks already credited',
     expect(r.unreachable).toBe(true)
   })
 
-  it('a block the server credited is a confirmation even when a later retry finds the day over', async () => {
-    const ended = at('2026-11-23T11:00:00Z')
-    const first = vi.fn<Send>(async () => ({ ok: true, credited: true, totalMinutes: 25 }))
-    const r1 = await flushPendingDetailed(pendingAt('c1', ended), first, null, day)
-    expect(r1.events).toEqual([{ type: 'confirm', blockId: 'c1' }])
-    // the confirmation never reached the stored state (another tab wrote over it): the block is pending again, next day
-    const next = { timeZone: 'UTC', now: at('2026-11-24T09:00:00Z') }
-    const again = vi.fn<Send>()
-    const r2 = await flushPendingDetailed(pendingAt('c1', ended), again, null, next)
-    expect(again).not.toHaveBeenCalled()
-    expect(r2.events).toEqual([{ type: 'confirm', blockId: 'c1' }])
-    expect(r2.expired).toBe(0)
-    expect(r2.dropped).toEqual([])
+  describe('a block whose local day is over is still sent once: the server is the authority', () => {
+    const ended = at('2026-11-22T23:50:00Z')
+    const nextDay = { timeZone: 'UTC', now: at('2026-11-23T09:00:00Z') }
+
+    it('the server already has the receipt (answers ok): confirmed as credited, nothing shown as lost', async () => {
+      const send = vi.fn<Send>(async () => ({ ok: true, credited: false, totalMinutes: 50 }))
+      const r = await flushPendingDetailed(pendingAt('late-ok', ended), send, null, nextDay)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(r.events).toEqual([{ type: 'confirm', blockId: 'late-ok' }])
+      expect(r.expired).toBe(0)
+      expect(r.late).toBe(1)
+      expect(r.dropped).toEqual([])
+      expect(r.totalMinutes).toBe(50)
+      expect(reportLines(r)).toEqual([])
+    })
+
+    it('the server refuses it (block_expired): it leaves the queue with the "terminó ayer" line', async () => {
+      const send = vi.fn<Send>(async () => ({
+        ok: false,
+        error: 'Un bloque terminó ayer y ya no se puede sumar.',
+        retry: false,
+        code: 'block_expired',
+      }))
+      const r = await flushPendingDetailed(pendingAt('late-no', ended), send, null, nextDay)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(r.events).toEqual([{ type: 'drop', blockId: 'late-no' }])
+      expect(reportLines(r)).toEqual(['Un bloque terminó ayer y ya no se puede sumar.'])
+    })
+
+    it('a network failure keeps it for the normal retry schedule', async () => {
+      const send = vi.fn<Send>(async () => ({ ok: false, error: '', retry: true }))
+      const r = await flushPendingDetailed(pendingAt('late-net', ended), send, null, nextDay)
+      expect(send).toHaveBeenCalledTimes(1)
+      expect(r.events).toEqual([])
+      expect(r.retryable).toBe(1)
+      expect(r.expired).toBe(0)
+    })
+
+    it('a block without its end instant cannot be sent: expired locally', async () => {
+      const send = vi.fn<Send>(async () => ok)
+      const legacy = { ...pendingAt('legacy', ended), pending: [{ blockId: 'legacy', minutes: 25 } as never] }
+      const r = await flushPendingDetailed(legacy, send, null, nextDay)
+      expect(send).not.toHaveBeenCalled()
+      expect(r.expired).toBe(1)
+    })
   })
 
-  it('a block_expired for a block already credited is shown as credited, not expired', async () => {
-    const ended = at('2026-11-23T11:30:00Z')
-    const ok1 = vi.fn<Send>(async () => ({ ok: true, credited: true, totalMinutes: 25 }))
-    await flushPendingDetailed(pendingAt('c2', ended), ok1, null, day)
-    const expired = vi.fn<Send>(async () => ({
-      ok: false,
-      error: 'Un bloque terminó ayer y ya no se puede sumar.',
-      retry: false,
-      code: 'block_expired',
-    }))
-    // same local day by the clock here, so the send happens and the server answers block_expired
-    const r = await flushPendingDetailed(pendingAt('c2', ended), expired, null, day)
-    expect(r.events).toEqual([{ type: 'confirm', blockId: 'c2' }])
-    expect(r.dropped).toEqual([])
-  })
-
-  it('a block never credited that the server refuses as expired is still dropped with the message', async () => {
-    const expired = vi.fn<Send>(async () => ({
-      ok: false,
-      error: 'Un bloque terminó ayer y ya no se puede sumar.',
-      retry: false,
-      code: 'block_expired',
-    }))
-    const r = await flushPendingDetailed(pendingAt('never', at('2026-11-23T11:30:00Z')), expired, null, day)
-    expect(r.events).toEqual([{ type: 'drop', blockId: 'never' }])
-    expect(r.dropped).toHaveLength(1)
-  })
 })
 
 describe('reportLines', () => {
@@ -304,6 +299,7 @@ describe('reportLines', () => {
     retryable: 0,
     signedOut: false,
     unreachable: false,
+    late: 0,
   }
   it('says nothing when there is nothing to say', () => {
     expect(reportLines(base)).toEqual([])
