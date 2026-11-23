@@ -4,6 +4,7 @@ import { dayLabel, monthBounds, monthGrid, type MonthKey } from '@/domain/calend
 import { addDays } from '@/domain/dates'
 import type { LocalDate } from '@/domain/types'
 import { REJECT_REASONS, type RejectReason } from '@/lib/challenge-form'
+import type { DayLog } from '@/lib/logs-data'
 
 /** An item (step) of a habit, active from `since` and until the day before `until`. */
 export type CalendarItem = { id: string; label: string; position: number; since: LocalDate; until: LocalDate | null }
@@ -39,6 +40,8 @@ export type HabitDay = {
   /** Storage paths in the private `proofs` bucket: the check-in photo first, then item photos. */
   photos: { path: string; label: string | null }[]
   rejectReason: RejectReason | null
+  /** What was read or trained that day (the detail of the check-in), if logged. */
+  log: DayLog | null
 }
 
 const RECORD: ReadonlySet<DayStatus> = new Set(['done', 'rejected', 'partial'])
@@ -59,8 +62,10 @@ export function buildDaySummaries(input: {
   dates: LocalDate[]
   today: LocalDate
   timezone: string
+  /** Logs by check-in id (`toDayLogs`). */
+  logs?: Map<string, DayLog>
 }): Record<LocalDate, HabitDay[]> {
-  const { habits, checkins, checkinItems, today, timezone } = input
+  const { habits, checkins, checkinItems, today, timezone, logs } = input
   const key = (habitId: string, date: LocalDate) => `${habitId}|${date}`
   const checkinBy = new Map(checkins.map((c) => [key(c.habit_id, c.local_date), c]))
   const itemsBy = new Map<string, CheckinItemRow[]>()
@@ -124,6 +129,7 @@ export function buildDaySummaries(input: {
         items,
         photos,
         rejectReason: c?.rejected_at ? toReason(c.reject_reason) : null,
+        log: c ? (logs?.get(c.id) ?? null) : null,
       })
     }
     out[date] = entries

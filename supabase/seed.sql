@@ -93,3 +93,126 @@ insert into public.debts (challenge_id, period_start, debtor_id, creditor_id, am
 select 'c0000000-0000-0000-0000-00000000000a', d.starts_on,
        'a0000000-0000-0000-0000-00000000000b', 'a0000000-0000-0000-0000-00000000000a', 2500
 from seed_dates d;
+
+-- ============================================================ detailed logs and body (v3)
+-- Self-contained and idempotent (deterministic ids, ON CONFLICT DO NOTHING, guarded inserts),
+-- so it can also be applied on its own to an existing local database:
+--   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f <this block>
+-- Dates are relative to today in America/Santiago: m0 = first day of this month, m1 / m2 = one
+-- and two months before. user_a reads (Leer) and trains (Gimnasio); everything is private.
+-- Expectations used by tests/e2e/logs.spec.ts: this month 26 pages (Dune 14 -> 40 today),
+-- Dune "40 de 412", "El nombre del viento" finished in m1, pierna +40 kg this month
+-- (Sentadilla 60 -> 80, Prensa 100 -> 120, Extensión nueva), latest weight 71,9 kg today.
+drop table if exists seed_log_dates;
+create temp table seed_log_dates as
+select t.today,
+       date_trunc('month', t.today)::date as m0,
+       (date_trunc('month', t.today) - interval '1 month')::date as m1,
+       (date_trunc('month', t.today) - interval '2 months')::date as m2
+from (select (now() at time zone 'America/Santiago')::date as today) t;
+
+update public.habits set log_type = 'reading'
+where id = 'b0000000-0000-0000-0000-00000000000a' and log_type <> 'reading';
+update public.habits set log_type = 'workout'
+where id = 'b0000000-0000-0000-0000-0000000000a2' and log_type <> 'workout';
+
+-- Books: Dune (reading), two finished on m1 + 17 and m2 + 17.
+insert into public.books (id, user_id, title, author, total_pages, status, finished_on)
+select v.id, 'a0000000-0000-0000-0000-00000000000a', v.title, v.author, v.pages, v.status, v.finished_on
+from seed_log_dates d,
+lateral (values
+  ('e0000000-0000-0000-0000-0000000000b1'::uuid, 'Dune', 'Frank Herbert', 412, 'reading', null::date),
+  ('e0000000-0000-0000-0000-0000000000b2'::uuid, 'El nombre del viento', 'Patrick Rothfuss', 662, 'finished', d.m1 + 17),
+  ('e0000000-0000-0000-0000-0000000000b3'::uuid, 'Rayuela', 'Julio Cortázar', 600, 'finished', d.m2 + 17)
+) as v (id, title, author, pages, status, finished_on)
+where exists (select 1 from public.profiles p where p.id = 'a0000000-0000-0000-0000-00000000000a')
+on conflict (id) do nothing;
+
+-- Leer: check-ins on m1/m2 + 3, + 10, + 17 (the challenge weeks are already covered or earlier).
+insert into public.checkins (habit_id, user_id, local_date)
+select 'b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', m + n
+from seed_log_dates d, unnest(array[d.m1, d.m2]) as m, unnest(array[3, 10, 17]) as n
+where exists (select 1 from public.habits h where h.id = 'b0000000-0000-0000-0000-00000000000a')
+on conflict (habit_id, local_date) do nothing;
+insert into public.checkins (habit_id, user_id, local_date)
+select 'b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', d.today
+from seed_log_dates d
+where exists (select 1 from public.habits h where h.id = 'b0000000-0000-0000-0000-00000000000a')
+on conflict (habit_id, local_date) do nothing;
+
+-- Readings: El nombre del viento in m1 (62 pages, finishing it), Rayuela in m2 (60 pages),
+-- Dune 14 -> 40 today. Dune has no readings before today.
+insert into public.reading_entries (user_id, habit_id, checkin_id, book_id, local_date, from_page, to_page)
+select c.user_id, c.habit_id, c.id, v.book_id, c.local_date, v.from_page, v.to_page
+from seed_log_dates d,
+lateral (values
+  (d.m1 + 3, 'e0000000-0000-0000-0000-0000000000b2'::uuid, 600, 620),
+  (d.m1 + 10, 'e0000000-0000-0000-0000-0000000000b2'::uuid, 620, 640),
+  (d.m1 + 17, 'e0000000-0000-0000-0000-0000000000b2'::uuid, 640, 662),
+  (d.m2 + 3, 'e0000000-0000-0000-0000-0000000000b3'::uuid, 540, 560),
+  (d.m2 + 10, 'e0000000-0000-0000-0000-0000000000b3'::uuid, 560, 580),
+  (d.m2 + 17, 'e0000000-0000-0000-0000-0000000000b3'::uuid, 580, 600),
+  (d.today, 'e0000000-0000-0000-0000-0000000000b1'::uuid, 14, 40)
+) as v (local_date, book_id, from_page, to_page)
+join public.checkins c
+  on c.habit_id = 'b0000000-0000-0000-0000-00000000000a' and c.local_date = v.local_date
+join public.books b on b.id = v.book_id
+on conflict (checkin_id) do nothing;
+
+-- Gimnasio: photo check-ins (path shape {user}/{checkin}.jpg, objects not seeded) on m2 + 3,
+-- m1 + 3, m1 + 10 and today, with deterministic ids so the path can be computed.
+insert into public.checkins (id, habit_id, user_id, local_date, photo_path)
+select md5('seed-gym-' || x.local_date)::uuid, 'b0000000-0000-0000-0000-0000000000a2',
+       'a0000000-0000-0000-0000-00000000000a', x.local_date,
+       'a0000000-0000-0000-0000-00000000000a/' || md5('seed-gym-' || x.local_date)::uuid || '.jpg'
+from seed_log_dates d, unnest(array[d.m2 + 3, d.m1 + 3, d.m1 + 10, d.today]) as x (local_date)
+where exists (select 1 from public.habits h where h.id = 'b0000000-0000-0000-0000-0000000000a2')
+on conflict do nothing;
+
+-- Workouts (['legs']) on those check-ins, whatever their id.
+insert into public.workout_sessions (user_id, habit_id, checkin_id, local_date, day_types)
+select c.user_id, c.habit_id, c.id, c.local_date, array['legs']
+from seed_log_dates d
+join public.checkins c
+  on c.habit_id = 'b0000000-0000-0000-0000-0000000000a2'
+ and c.local_date in (d.m2 + 3, d.m1 + 3, d.m1 + 10, d.today)
+on conflict (checkin_id) do nothing;
+
+-- Sets, only into sessions that have none yet (m2: 55/90; m1: 60/100 and RDL 50; today:
+-- Sentadilla 75/80, Prensa 120, Extensión 30).
+insert into public.workout_sets (session_id, user_id, local_date, exercise_id, position, reps, weight_kg)
+select s.id, s.user_id, s.local_date, x.id, v.position, v.reps, v.kg
+from seed_log_dates d,
+lateral (values
+  (d.m2 + 3, 0, 'squat', 8, 55.0),
+  (d.m2 + 3, 1, 'leg_press', 10, 90.0),
+  (d.m1 + 3, 0, 'squat', 8, 55.0),
+  (d.m1 + 3, 1, 'squat', 8, 60.0),
+  (d.m1 + 3, 2, 'leg_press', 10, 100.0),
+  (d.m1 + 10, 0, 'romanian_deadlift', 10, 50.0),
+  (d.today, 0, 'squat', 5, 75.0),
+  (d.today, 1, 'squat', 5, 80.0),
+  (d.today, 2, 'leg_press', 10, 120.0),
+  (d.today, 3, 'leg_extension', 12, 30.0)
+) as v (local_date, position, key, reps, kg)
+join public.workout_sessions s
+  on s.habit_id = 'b0000000-0000-0000-0000-0000000000a2' and s.local_date = v.local_date
+join public.exercises x on x.key = v.key
+where not exists (select 1 from public.workout_sets w where w.session_id = s.id);
+
+-- Private body weights (9 across the last three months, 71,9 kg today) and the height.
+insert into public.body_weights (user_id, measured_on, weight_kg)
+select 'a0000000-0000-0000-0000-00000000000a', v.measured_on, v.kg
+from seed_log_dates d,
+lateral (values
+  (d.m2 + 2, 74.0), (d.m2 + 12, 73.6), (d.m2 + 24, 73.3),
+  (d.m1 + 2, 72.9), (d.m1 + 12, 72.6), (d.m1 + 25, 72.4),
+  (d.today - 14, 72.3), (d.today - 7, 72.1), (d.today, 71.9)
+) as v (measured_on, kg)
+where exists (select 1 from public.profiles p where p.id = 'a0000000-0000-0000-0000-00000000000a')
+on conflict (user_id, measured_on) do nothing;
+
+update public.profiles set height_cm = 168
+where id = 'a0000000-0000-0000-0000-00000000000a' and height_cm is null;
+
+drop table seed_log_dates;

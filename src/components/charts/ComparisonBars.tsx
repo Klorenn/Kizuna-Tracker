@@ -1,0 +1,78 @@
+import type { MonthKey } from "@/domain/calendar";
+import type { HabitColor } from "@/domain/habit-colors";
+
+const SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
+const LETTER = ["E", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
+const PLOT = 96; // px of bar area
+
+/**
+ * One value per month, oldest first, the last (or `current`) month highlighted in the habit
+ * color. `null` draws no bar (nothing to compare). Negative values hang below a baseline.
+ * With more than six months the values live only in the accessible label (no room on top).
+ * Plain HTML (no client JS), so `format` can be passed from a server component.
+ */
+export function ComparisonBars({
+  data,
+  color,
+  format,
+  label,
+  current,
+}: {
+  data: { month: MonthKey; value: number | null }[];
+  color: HabitColor;
+  format: (n: number) => string;
+  label: string;
+  /** Highlighted month; defaults to the last one. */
+  current?: MonthKey;
+}) {
+  const highlight = current ?? data[data.length - 1]?.month;
+  const values = data.map((d) => d.value ?? 0);
+  const maxPos = Math.max(0, ...values);
+  const maxNeg = Math.max(0, ...values.map((v) => -v));
+  const span = maxPos + maxNeg || 1;
+  const posH = maxNeg === 0 ? PLOT : Math.round((PLOT * maxPos) / span);
+  const negH = PLOT - posH;
+  const compact = data.length > 6;
+  const monthName = (m: MonthKey) => SHORT[Number(m.slice(5, 7)) - 1];
+
+  return (
+    <div
+      role="img"
+      data-habit-color={color}
+      aria-label={`${label}: ${data.map((d) => `${monthName(d.month)} ${d.value === null ? "sin dato" : format(d.value)}`).join(", ")}`}
+      className="flex w-full items-end gap-1"
+    >
+      {data.map((d) => {
+        const on = d.month === highlight;
+        const v = d.value;
+        const h = v === null || span === 0 ? 0 : Math.max(v === 0 ? 0 : 2, Math.round((Math.abs(v) / span) * PLOT));
+        const bar = `w-full max-w-8 ${on ? "bg-(--habit)" : "bg-(--habit-soft) ring-1 ring-inset ring-(--habit)"}`;
+        return (
+          <div key={d.month} aria-hidden className="flex min-w-0 flex-1 flex-col items-center gap-1">
+            {compact ? null : (
+              <span
+                className={`h-4 max-w-full truncate font-mono text-[13px] leading-4 ${on ? "font-medium text-ink" : "text-muted"}`}
+              >
+                {v !== null ? format(v) : ""}
+              </span>
+            )}
+            <div className="flex w-full flex-col items-center">
+              <div className="flex w-full items-end justify-center" style={{ height: posH }}>
+                {v !== null && v > 0 ? <div className={`${bar} rounded-t-[4px]`} style={{ height: h }} /> : null}
+              </div>
+              <div className="h-px w-full bg-line" />
+              {negH > 0 ? (
+                <div className="flex w-full items-start justify-center" style={{ height: negH }}>
+                  {v !== null && v < 0 ? <div className={`${bar} rounded-b-[4px]`} style={{ height: h }} /> : null}
+                </div>
+              ) : null}
+            </div>
+            <span className={`font-mono text-[13px] uppercase ${on ? "text-ink" : "text-muted"}`}>
+              {compact ? LETTER[Number(d.month.slice(5, 7)) - 1] : monthName(d.month)}
+            </span>
+          </div>
+        );
+      })}
+    </div>
+  );
+}

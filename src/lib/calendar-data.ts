@@ -2,6 +2,7 @@ import { monthBounds, type MonthKey } from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
 import { buildDaySummaries, type HabitDay } from "@/lib/calendar-days";
+import { loadMonthLogs, loadWeights } from "@/lib/logs-data";
 import { fetchAll } from "@/lib/paginate";
 import type { createServerClient } from "@/lib/supabase/server";
 
@@ -46,7 +47,7 @@ export async function loadMonthDays(
   const until = last < today ? last : today;
   if (until < first) return {};
 
-  const [checkins, checkinItems, items] = await Promise.all([
+  const [checkins, checkinItems, items, logs] = await Promise.all([
     fetchAll((from, to) =>
       supabase
         .from("checkins")
@@ -81,6 +82,7 @@ export async function loadMonthDays(
         .order("id")
         .range(from, to),
     ),
+    loadMonthLogs(supabase, userId, { first, until }),
   ]);
 
   const dates: LocalDate[] = [];
@@ -106,5 +108,20 @@ export async function loadMonthDays(
     dates,
     today,
     timezone,
+    logs,
   });
+}
+
+/**
+ * The owner's weigh-ins of one month by date (private: only for the user's own calendar,
+ * read with their session). Never call this for anyone else's view.
+ */
+export async function loadMonthWeights(
+  supabase: Supabase,
+  userId: string,
+  month: MonthKey,
+): Promise<Record<LocalDate, number>> {
+  const { first, last } = monthBounds(month);
+  const entries = await loadWeights(supabase, userId, first, last);
+  return Object.fromEntries(entries.map((e) => [e.date, e.kg]));
 }

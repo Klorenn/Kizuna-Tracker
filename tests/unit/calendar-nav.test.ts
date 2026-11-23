@@ -48,6 +48,7 @@ const day = (status: HabitDay['status']): HabitDay => ({
   items: null,
   photos: [],
   rejectReason: status === 'rejected' ? 'other' : null,
+  log: null,
 })
 
 describe('onlyRejected', () => {
