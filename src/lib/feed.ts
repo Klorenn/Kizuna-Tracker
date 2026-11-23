@@ -1,5 +1,6 @@
 import { addDays } from '@/domain/dates'
 import { dailyStreak, weeklyStreak } from '@/domain/streaks'
+import type { HabitColor } from '@/domain/habit-colors'
 import type { Frequency, LocalDate } from '@/domain/types'
 
 const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
@@ -135,20 +136,43 @@ export function reviewStatus(
   return c ? { kind: 'pending', hours: Math.ceil(left / 3_600_000), challengeId: c.id } : null
 }
 
-/** Keyset cursor (created_at, id) of the last item shown. */
-export type FeedCursor = { at: string; id: string }
+/**
+ * Keyset cursor of the last item shown. The feed is ordered by (local_date, created_at, id), all
+ * descending, so a day's check-ins stay together even across friends in other timezones.
+ */
+export type FeedCursor = { day: LocalDate; at: string; id: string }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/
 const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /** Cursors come back from the client: strict shapes only (they end up in a PostgREST filter). */
 export function parseCursor(value: unknown): FeedCursor | null {
   if (!value || typeof value !== 'object') return null
-  const { at, id } = value as Record<string, unknown>
-  if (typeof at !== 'string' || typeof id !== 'string') return null
-  if (!ISO.test(at) || Number.isNaN(Date.parse(at)) || !UUID.test(id)) return null
-  return { at, id }
+  const { day, at, id } = value as Record<string, unknown>
+  if (typeof day !== 'string' || typeof at !== 'string' || typeof id !== 'string') return null
+  if (!DAY.test(day) || !ISO.test(at) || Number.isNaN(Date.parse(at)) || !UUID.test(id)) return null
+  return { day, at, id }
 }
+
+/** One check-in as the feed and the friend profile show it (plain data, crosses to the client). */
+export type FeedEntry = {
+  id: string
+  cursor: FeedCursor
+  person: { id: string; username: string; name: string; avatar: string | null }
+  habit: { name: string; color: HabitColor }
+  copy: string
+  localDate: LocalDate
+  /** "HH:mm" in the viewer's timezone. */
+  time: string
+  hasPhoto: boolean
+  /** Signed URL (300 s, viewer's session); null when storage would not sign it. */
+  photoUrl: string | null
+  streak: { text: string; milestone: boolean } | null
+  status: ReviewStatus
+}
+
+export type FeedPage = { items: FeedEntry[]; next: FeedCursor | null }
 
 export type FeedFilter = 'all' | 'photos'
 export const parseFilter = (value: unknown): FeedFilter => (value === 'photos' ? 'photos' : 'all')

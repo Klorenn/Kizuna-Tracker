@@ -1,44 +1,69 @@
-import { TZDate } from "@date-fns/tz";
-import { MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
-import { format, isSameDay, subDays } from "date-fns";
+import { CaretRight, MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
+import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AddFriendButton, RemoveFriendButton } from "@/components/FriendActions";
-import { FeedItem, type FeedEntry } from "@/components/FeedItem";
+import { AddFriendButton } from "@/components/FriendActions";
 import { FriendRequestRow } from "@/components/FriendRequestRow";
+import { ActivityFeed } from "@/components/friends/ActivityFeed";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Avatar } from "@/components/ui/Avatar";
-import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
-import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { localDate } from "@/domain/dates";
+import { loadFeedPage } from "@/lib/activity-feed";
+import { avatarUrl } from "@/lib/avatar";
+import type { FeedPage } from "@/lib/feed";
+import { friendStatusText } from "@/lib/friend-view";
+import { friendStreaks } from "@/lib/friends-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { searchUsers } from "./actions";
 
 export const metadata: Metadata = { title: "Amigos" };
 
-const PAGE = 20;
-const MAX = 100;
-const SIGNED_SECONDS = 300;
-const REVIEW_WINDOW_HOURS = 24;
-
-function whenLabel(instant: Date, now: Date, tz: string): string {
-  const t = new TZDate(instant, tz);
-  const n = new TZDate(now, tz);
-  const hm = format(t, "HH:mm");
-  if (isSameDay(t, n)) return `Hoy ${hm}`;
-  if (isSameDay(t, subDays(n, 1))) return `Ayer ${hm}`;
-  return `${format(t, "d MMM")} ${hm}`;
+/** Avatar + name + @usuario that opens the profile; the 44 px row is the target. */
+function PersonLink({
+  username,
+  name,
+  avatar,
+  hint,
+  chevron = false,
+}: {
+  username: string;
+  name: string;
+  avatar: string | null;
+  hint?: string;
+  chevron?: boolean;
+}) {
+  return (
+    <Link
+      href={`/@${username}`}
+      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
+    >
+      <Avatar name={name} src={avatar} />
+      <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+        <span className="truncate text-body font-medium text-ink">{name}</span>
+        <span className="flex min-w-0 items-center gap-1.5 text-small text-muted">
+          <span className="truncate font-mono text-[13px]">@{username}</span>
+          {hint ? (
+            <>
+              <span aria-hidden>·</span>
+              <span className="shrink-0">{hint}</span>
+            </>
+          ) : null}
+        </span>
+      </span>
+      {chevron ? <CaretRight size={18} weight="light" aria-hidden className="-mr-1 shrink-0 text-muted" /> : null}
+    </Link>
+  );
 }
 
 export default async function AmigosPage({
   searchParams,
 }: {
-  searchParams: Promise<{ q?: string; n?: string; amigo?: string }>;
+  searchParams: Promise<{ q?: string; amigo?: string }>;
 }) {
-  const { q = "", n, amigo } = await searchParams;
+  const { q = "", amigo } = await searchParams;
   const justAdded = amigo && /^[a-z0-9_]{3,20}$/.test(amigo) ? amigo : null;
-  const limit = Math.min(MAX, Math.max(PAGE, Number.parseInt(n ?? "", 10) || PAGE));
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -50,60 +75,45 @@ export default async function AmigosPage({
     .eq("id", user.id)
     .maybeSingle();
   if (!me) redirect("/login?error=perfil");
+  const today = localDate(new Date(), me.timezone);
 
   const { data: friendships } = await supabase
     .from("friendships")
     .select("id,requester_id,addressee_id,status")
-    .order("created_at", { ascending: false });
+    .order("created_at", { ascending: false })
+    .limit(1000);
   const rows = friendships ?? [];
   const other = (f: { requester_id: string; addressee_id: string }) =>
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
   const incoming = rows.filter((f) => f.status === "pending" && f.addressee_id === user.id);
   const friends = rows.filter((f) => f.status === "accepted");
   const related = new Map(rows.map((f) => [other(f), f]));
+  const friendIds = friends.map(other);
 
-  const hits = q.trim() ? await searchUsers(q) : [];
-
-  const { data: feedRows } = await supabase
-    .from("checkins")
-    .select("id,user_id,created_at,photo_path,habits(name,icon)")
-    .neq("user_id", user.id)
-    .is("rejected_at", null)
-    .order("created_at", { ascending: false })
-    .limit(limit + 1);
-  const feed = (feedRows ?? []).slice(0, limit);
-  const hasMore = (feedRows ?? []).length > limit;
-
-  const ids = [...new Set([...rows.map(other), ...feed.map((c) => c.user_id)])];
-  const { data: people } = ids.length
-    ? await supabase.from("public_profiles").select("id,username,display_name").in("id", ids)
-    : { data: [] };
+  const [hits, feed, streaks, { data: people }] = await Promise.all([
+    q.trim() ? searchUsers(q) : Promise.resolve([]),
+    loadFeedPage(supabase, user.id, { timezone: me.timezone }).catch((): FeedPage => ({ items: [], next: null })),
+    friendStreaks(supabase, friendIds, today).catch(() => new Map<string, { value: number; unit: "days" | "weeks" }>()),
+    rows.length
+      ? supabase.from("public_profiles").select("id,username,display_name,avatar_path").in("id", rows.map(other))
+      : Promise.resolve({ data: [] }),
+  ]);
   const byId = new Map((people ?? []).map((p) => [p.id, p]));
 
-  const photoPaths = feed.flatMap((c) => (c.photo_path ? [c.photo_path] : []));
-  const signed = photoPaths.length
-    ? await supabase.storage.from("proofs").createSignedUrls(photoPaths, SIGNED_SECONDS)
-    : { data: [] };
-  const urlByPath = new Map(
-    (signed.data ?? []).flatMap((s) => (s.path && s.signedUrl ? [[s.path, s.signedUrl] as const] : [])),
-  );
-
-  const now = new Date();
-  const entries: FeedEntry[] = feed.map((c) => {
-    const left = Math.ceil(
-      REVIEW_WINDOW_HOURS - (now.getTime() - new Date(c.created_at).getTime()) / 3_600_000,
-    );
-    const photoUrl = c.photo_path ? (urlByPath.get(c.photo_path) ?? null) : null;
-    return {
-      id: c.id,
-      who: byId.get(c.user_id)?.display_name?.split(" ")[0] ?? "Un amigo",
-      habit: c.habits?.name ?? "Hábito",
-      icon: c.habits?.icon ?? "target",
-      when: whenLabel(new Date(c.created_at), now, me.timezone),
-      photoUrl,
-      note: photoUrl && left > 0 ? `se aprueba sola en ${left} h` : null,
-    };
-  });
+  const friendRows = friends
+    .map((f) => {
+      const id = other(f);
+      const p = byId.get(id);
+      return {
+        key: f.id,
+        username: p?.username ?? "",
+        name: p?.display_name ?? "Usuario",
+        avatar: avatarUrl(p?.avatar_path ?? null),
+        status: friendStatusText(streaks.get(id) ?? { value: 0, unit: "days" }),
+      };
+    })
+    .filter((r) => r.username)
+    .sort((a, b) => a.name.localeCompare(b.name, "es"));
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
@@ -140,12 +150,8 @@ export default async function AmigosPage({
               const f = related.get(h.id);
               const isIncoming = f?.status === "pending" && f.addressee_id === user.id;
               return (
-                <div key={h.id} className="flex items-center gap-3 p-4">
-                  <Avatar name={h.displayName} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                    <p className="truncate text-body font-medium text-ink">{h.displayName}</p>
-                    <p className="truncate text-small text-muted">@{h.username}</p>
-                  </div>
+                <div key={h.id} className="flex items-center gap-3 px-4 py-3">
+                  <PersonLink username={h.username} name={h.displayName} avatar={avatarUrl(h.avatarPath)} />
                   <AddFriendButton
                     username={h.username}
                     compact
@@ -164,7 +170,7 @@ export default async function AmigosPage({
       <ShareProfileButton kind="invite" />
 
       {incoming.length > 0 ? (
-        <>
+        <section aria-label="Solicitudes" className="flex flex-col gap-2">
           <SectionHeader
             label="Solicitudes"
             action={incoming.length === 1 ? "1 nueva" : `${incoming.length} nuevas`}
@@ -173,66 +179,55 @@ export default async function AmigosPage({
             {incoming.map((f) => {
               const p = byId.get(f.requester_id);
               return (
-                <div key={f.id} className="p-4">
+                <div key={f.id} className="px-4 py-3">
                   <FriendRequestRow
                     id={f.id}
                     displayName={p?.display_name ?? "Usuario"}
                     username={p?.username ?? ""}
+                    avatar={avatarUrl(p?.avatar_path ?? null)}
                   />
                 </div>
               );
             })}
           </Card>
-        </>
+        </section>
       ) : null}
 
-      {friends.length > 0 ? (
-        <>
-          <SectionHeader label="Tus amigos" action={String(friends.length)} />
-          <Card className="divide-y divide-line">
-            {friends.map((f) => {
-              const id = other(f);
-              const p = byId.get(id);
-              const name = p?.display_name ?? "Usuario";
-              return (
-                <div key={f.id} className="flex items-center gap-3 p-4">
-                  <Avatar name={name} />
-                  <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                    <p className="truncate text-body font-medium text-ink">{name}</p>
-                    <p className="truncate text-small text-muted">@{p?.username}</p>
-                  </div>
-                  <RemoveFriendButton userId={id} name={name} />
-                </div>
-              );
-            })}
+      {friendRows.length > 0 ? (
+        <section aria-label="Tus amigos" className="flex flex-col gap-2">
+          <SectionHeader label="Tus amigos" action={String(friendRows.length)} />
+          <Card>
+            <ul className="divide-y divide-line">
+              {friendRows.map((r) => (
+                <li key={r.key} className="px-4 py-2.5 transition-colors duration-[120ms] hover:bg-field">
+                  <PersonLink username={r.username} name={r.name} avatar={r.avatar} hint={r.status} chevron />
+                </li>
+              ))}
+            </ul>
           </Card>
-        </>
+        </section>
       ) : null}
 
-      <SectionHeader label="Actividad" />
-      {entries.length === 0 ? (
-        <Card>
-          <EmptyState
-            title={friends.length === 0 ? "Aún no tienes amigos" : "Todavía no hay actividad"}
-            body={
-              friends.length === 0
-                ? "Invita a alguien con un link o búscalo por su usuario."
-                : "Cuando tus amigos registren un hábito, lo verás aquí."
-            }
-          />
-        </Card>
-      ) : (
-        <>
-          {entries.map((e) => (
-            <FeedItem key={e.id} entry={e} />
-          ))}
-          {hasMore && limit < MAX ? (
-            <ButtonLink variant="secondary" href={`/amigos?${q ? `q=${encodeURIComponent(q)}&` : ""}n=${limit + PAGE}`}>
-              Ver más
-            </ButtonLink>
-          ) : null}
-        </>
-      )}
+      <section aria-label="Actividad" className="flex flex-col gap-2">
+        <SectionHeader label="Actividad" />
+        <ActivityFeed
+          initial={feed}
+          today={today}
+          empty={
+            friends.length === 0
+              ? {
+                  title: "Aún no tienes amigos",
+                  body: "Invita a alguien con un link o búscalo por su usuario.",
+                  action: <ShareProfileButton kind="invite" label="Invitar" />,
+                }
+              : {
+                  title: "Todavía no hay actividad",
+                  body: "Cuando tus amigos registren un hábito, lo verás aquí.",
+                  action: <ShareProfileButton kind="invite" label="Invitar" />,
+                }
+          }
+        />
+      </section>
     </main>
   );
 }

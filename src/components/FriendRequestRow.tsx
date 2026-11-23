@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Warning, X } from "@phosphor-icons/react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { respondFriendRequest } from "@/app/(app)/amigos/actions";
@@ -10,10 +11,12 @@ export function FriendRequestRow({
   id,
   displayName,
   username,
+  avatar = null,
 }: {
   id: string;
   displayName: string;
   username: string;
+  avatar?: string | null;
 }) {
   const [busy, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -31,11 +34,16 @@ export function FriendRequestRow({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
-        <Avatar name={displayName} />
-        <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <p className="truncate text-body font-medium text-ink">{displayName}</p>
-          <p className="truncate text-small text-muted">@{username}</p>
-        </div>
+        <Link
+          href={`/@${username}`}
+          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
+        >
+          <Avatar name={displayName} src={avatar} />
+          <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
+            <span className="truncate text-body font-medium text-ink">{displayName}</span>
+            <span className="truncate font-mono text-[13px] text-muted">@{username}</span>
+          </span>
+        </Link>
         <button
           type="button"
           disabled={busy}

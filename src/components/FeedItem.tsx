@@ -16,17 +16,17 @@ export type FeedEntry = {
 export function FeedItem({ entry }: { entry: FeedEntry }) {
   if (entry.photoUrl) {
     return (
-      <article className="relative flex h-[220px] flex-col justify-end gap-[2px] overflow-hidden rounded-lg border border-line bg-field p-4">
+      <article className="relative flex h-[220px] flex-col justify-end gap-[2px] overflow-hidden rounded-lg border border-line bg-media p-4">
         {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
         <img src={entry.photoUrl} alt="" className="absolute inset-0 size-full object-cover" />
         <span
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-b from-transparent from-40% to-ink/75"
+          className="absolute inset-0 bg-gradient-to-b from-transparent from-40% to-media/75"
         />
-        <p className="relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-accent">
+        <p className="relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-media">
           {entry.who} · {entry.habit}
         </p>
-        <p className="relative text-small text-on-accent">
+        <p className="relative text-small text-on-media">
           {entry.when}
           {entry.note ? ` · ${entry.note}` : ""}
         </p>

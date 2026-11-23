@@ -3,6 +3,8 @@
 import { revalidatePath } from "next/cache";
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { loadFeedPage } from "@/lib/activity-feed";
+import { parseCursor, parseFilter, type FeedPage } from "@/lib/feed";
 import { INVITE_ERRORS, INVITE_GENERIC, inviteErrorKey } from "@/lib/invites";
 import { notify } from "@/lib/notify";
 import { siteOrigin } from "@/lib/site-url";
@@ -117,6 +119,32 @@ export async function respondFriendRequest(id: string, accept: boolean): Promise
   if (!data || data.length === 0) return { ok: false, error: "Esta solicitud ya no existe." };
   refresh();
   return { ok: true };
+}
+
+/**
+ * Next page of the Amigos activity feed ("Ver más", filter chips). Cursor and filter come from the
+ * client and are re-validated; reads go through the user's own session (RLS).
+ */
+export async function loadActivity(input: {
+  cursor?: unknown;
+  filter?: unknown;
+}): Promise<{ ok: true; page: FeedPage } | { ok: false; error: string }> {
+  const { supabase, uid } = await currentUserId();
+  if (!uid) return { ok: false, error: INVITE_ERRORS.not_authenticated };
+  const raw = input && typeof input === "object" ? input : {};
+  const cursor = raw.cursor == null ? null : parseCursor(raw.cursor);
+  if (raw.cursor != null && !cursor) return { ok: false, error: GENERIC };
+  const { data: me } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
+  try {
+    const page = await loadFeedPage(supabase, uid, {
+      timezone: me?.timezone ?? "UTC",
+      filter: parseFilter(raw.filter),
+      cursor,
+    });
+    return { ok: true, page };
+  } catch {
+    return { ok: false, error: "No pudimos cargar la actividad. Inténtalo de nuevo." };
+  }
 }
 
 export async function removeFriend(userId: string): Promise<Result> {

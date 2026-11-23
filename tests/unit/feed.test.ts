@@ -146,13 +146,16 @@ describe('reviewStatus', () => {
 })
 
 describe('parseCursor', () => {
-  test('acepta instante ISO y uuid', () => {
-    const c = { at: '2026-11-22T13:45:01.123456+00:00', id: '22222222-2222-4222-8222-222222222222' }
+  const id = '22222222-2222-4222-8222-222222222222'
+  test('acepta día local, instante ISO y uuid', () => {
+    const c = { day: '2026-11-22', at: '2026-11-22T13:45:01.123456+00:00', id }
     expect(parseCursor(c)).toEqual(c)
   })
   test('rechaza cualquier otra cosa', () => {
     expect(parseCursor(null)).toBeNull()
-    expect(parseCursor({ at: 'x),or(id.gt.0', id: '22222222-2222-4222-8222-222222222222' })).toBeNull()
-    expect(parseCursor({ at: '2026-11-22T13:45:01Z', id: 'nope' })).toBeNull()
+    expect(parseCursor({ day: '2026-11-22', at: 'x),or(id.gt.0', id })).toBeNull()
+    expect(parseCursor({ day: '2026-11-22', at: '2026-11-22T13:45:01Z', id: 'nope' })).toBeNull()
+    expect(parseCursor({ day: '22-11-2026', at: '2026-11-22T13:45:01Z', id })).toBeNull()
+    expect(parseCursor({ at: '2026-11-22T13:45:01Z', id })).toBeNull()
   })
 })

@@ -42,10 +42,13 @@ const client = {
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
 vi.mock('@/lib/notify', () => ({ notify: vi.fn(async () => {}) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const loadFeedPage = vi.fn(async (...args: unknown[]) => (void args, { items: [], next: null }))
+vi.mock('@/lib/activity-feed', () => ({ loadFeedPage: (...a: unknown[]) => loadFeedPage(...a) }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers({ host: 'kizuna.app', 'x-forwarded-proto': 'https' }) }))
 
 import {
   acceptInvite,
+  loadActivity,
   removeFriend,
   respondFriendRequest,
   sendFriendRequest,
@@ -137,5 +140,42 @@ describe('friend actions', () => {
   it('removeFriend reports a friendship that no longer exists', async () => {
     rpc.mockResolvedValue({ data: false, error: null })
     await expect(removeFriend(U2)).resolves.toEqual({ ok: false, error: 'Esta persona ya no está en tus amigos.' })
+  })
+})
+
+describe('loadActivity', () => {
+  beforeEach(() => loadFeedPage.mockClear())
+
+  it('pages with a validated cursor and filter through the user session', async () => {
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    const cursor = { day: '2026-11-22', at: '2026-11-22T13:45:01.123456+00:00', id: U2 }
+    await expect(loadActivity({ cursor, filter: 'photos' })).resolves.toEqual({
+      ok: true,
+      page: { items: [], next: null },
+    })
+    expect(loadFeedPage).toHaveBeenCalledWith(client, 'me', {
+      timezone: 'America/Santiago',
+      filter: 'photos',
+      cursor,
+    })
+  })
+
+  it('rejects a malformed cursor without querying', async () => {
+    const r = await loadActivity({ cursor: { day: '2026-11-22', at: 'x),or(id.gt.0', id: U2 } })
+    expect(r.ok).toBe(false)
+    expect(loadFeedPage).not.toHaveBeenCalled()
+  })
+
+  it('unknown filters fall back to everything', async () => {
+    await loadActivity({ filter: 'nope' })
+    expect(loadFeedPage.mock.calls[0][2]).toMatchObject({ filter: 'all', cursor: null })
+  })
+
+  it('returns an error union when the read fails', async () => {
+    loadFeedPage.mockRejectedValueOnce(new Error('boom'))
+    await expect(loadActivity({})).resolves.toEqual({
+      ok: false,
+      error: 'No pudimos cargar la actividad. Inténtalo de nuevo.',
+    })
   })
 })
