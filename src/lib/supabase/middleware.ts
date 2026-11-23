@@ -43,15 +43,17 @@ export async function updateSession(request: NextRequest) {
     },
   );
 
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  // getClaims verifies the JWT locally against the cached JWKS (no Auth round trip) and still
+  // refreshes an expired session through the cookie adapter above. Anything it cannot verify
+  // (no session, bad or unrefreshable token) counts as signed out.
+  const { data: claimsData } = await supabase.auth.getClaims();
+  const userId = claimsData?.claims?.sub ?? null;
   const path = request.nextUrl.pathname;
   const isPublic = isPublicPath(path);
   const isAuthPage = AUTH_PAGES.includes(path);
   const isInvite = path.startsWith("/invite/");
 
-  if (!user) {
+  if (!userId) {
     if (path === "/") return redirectTo(request, "/bienvenida", response);
     if (isInvite) {
       return redirectTo(request, "/login", response, nextQuery(safeNextPath(path)));
@@ -66,7 +68,7 @@ export async function updateSession(request: NextRequest) {
   const { data: profile, error: profileError } = await supabase
     .from("profiles")
     .select("id")
-    .eq("id", user.id)
+    .eq("id", userId)
     .is("deleted_at", null)
     .maybeSingle();
 

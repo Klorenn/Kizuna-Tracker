@@ -5,19 +5,18 @@ import { Avatar } from "@/components/ui/Avatar";
 import { ButtonLink } from "@/components/ui/Button";
 import { avatarUrl } from "@/lib/avatar";
 import { createServerClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Listo" };
 
 export default async function ListoPage() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/bienvenida");
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
     .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset")
-    .eq("id", user.id)
+    .eq("id", viewer.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
 

@@ -22,15 +22,14 @@ import {
 } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Retos" };
 
 export default async function RetosPage() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/bienvenida");
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
 
   // every list here grows with time: read past the 1000-row cap instead of truncating
   const challenges = await fetchAll((from, to) =>
@@ -47,7 +46,7 @@ export default async function RetosPage() {
   const now = new Date();
 
   const otherOf = (c: { creator_id: string; rival_id: string }) =>
-    c.creator_id === user.id ? c.rival_id : c.creator_id;
+    c.creator_id === viewer.id ? c.rival_id : c.creator_id;
   const people = [...new Set(challenges.map(otherOf))];
   const habitIds = [
     ...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
@@ -74,7 +73,7 @@ export default async function RetosPage() {
       supabase
         .from("habits")
         .select("id,name,requires_photo")
-        .eq("user_id", user.id)
+        .eq("user_id", viewer.id)
         .is("archived_at", null)
         .neq("visibility", "private"),
       fetchAll((from, to) =>
@@ -106,7 +105,7 @@ export default async function RetosPage() {
   for (const k of checkins) datesByHabit.set(k.habit_id, [...(datesByHabit.get(k.habit_id) ?? []), k.local_date]);
 
   const cards = challenges.map((c): { status: string; data: ChallengeCardData } => {
-    const mine = c.creator_id === user.id;
+    const mine = c.creator_id === viewer.id;
     const other = nameOf.get(otherOf(c)) ?? "Tu amigo";
     const creatorHabit = habitName.get(c.creator_habit_id) ?? "Hábito";
     const rivalHabit = c.rival_habit_id ? habitName.get(c.rival_habit_id) : undefined;
@@ -171,9 +170,9 @@ export default async function RetosPage() {
 
     // finished / cancelled
     const mineDebts = debts.filter((d) => d.challenge_id === c.id);
-    const iOwe = mineDebts.filter((d) => d.debtor_id === user.id).reduce((s, d) => s + d.amount, 0);
-    const theyOwe = mineDebts.filter((d) => d.creditor_id === user.id).reduce((s, d) => s + d.amount, 0);
-    const theyFailed = mineDebts.filter((d) => d.debtor_id !== user.id).length;
+    const iOwe = mineDebts.filter((d) => d.debtor_id === viewer.id).reduce((s, d) => s + d.amount, 0);
+    const theyOwe = mineDebts.filter((d) => d.creditor_id === viewer.id).reduce((s, d) => s + d.amount, 0);
+    const theyFailed = mineDebts.filter((d) => d.debtor_id !== viewer.id).length;
     const outcome =
       c.status === "cancelled" ? cancelledLabel(c) : theyOwe > iOwe ? "Ganaste" : theyOwe < iOwe ? "Perdiste" : "Empate";
     const unit = f.type === "daily" ? "días" : "semanas";

@@ -11,20 +11,21 @@ import { ListRow, ListSection } from "@/components/ui/ListRow";
 import { avatarUrl } from "@/lib/avatar";
 import { timezoneLock } from "@/lib/profile-view";
 import { createServerClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
 export default async function AjustesPage() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/bienvenida");
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
+  // the email is a signed claim: read locally, no Auth round trip
+  const { data: claimsData } = await supabase.auth.getClaims();
   const { data: profile } = await supabase
     .from("profiles")
     .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,timezone_changed_at,reminder_time")
-    .eq("id", user.id)
+    .eq("id", viewer.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
 
@@ -48,7 +49,7 @@ export default async function AjustesPage() {
           lastName={profile.last_name}
           reminderTime={reminderTime}
           username={profile.username}
-          email={user.email ?? null}
+          email={claimsData?.claims?.email ?? null}
           avatarSrc={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
           avatarPreset={profile.avatar_preset}
         />

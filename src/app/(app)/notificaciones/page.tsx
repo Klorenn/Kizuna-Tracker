@@ -12,6 +12,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { addDays, localDate } from "@/domain/dates";
 import { notificationView } from "@/lib/notification-copy";
 import { createServerClient } from "@/lib/supabase/server";
+import { getViewer } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Notificaciones" };
 
@@ -26,14 +27,10 @@ const ICONS = {
 type Row = { id: string; type: string; payload: unknown; read_at: string | null; created_at: string };
 
 export default async function NotificacionesPage() {
+  const viewer = await getViewer();
+  if (!viewer) redirect("/bienvenida");
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
-  const tz = profile.timezone;
+  const tz = viewer.timezone;
 
   const { data } = await supabase
     .from("notifications")
