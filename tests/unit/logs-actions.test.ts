@@ -194,7 +194,7 @@ describe('books', () => {
 
   it('updateBook updates the fields of that book', async () => {
     await expect(updateBook('b1', { title: 'Rayuela', author: null, totalPages: 600 })).resolves.toEqual({ ok: true })
-    expect(calls[0]).toMatchObject({
+    expect(calls.find((c) => c.op === 'update')).toMatchObject({
       table: 'books',
       op: 'update',
       payload: { title: 'Rayuela', author: null, total_pages: 600 },
@@ -204,7 +204,7 @@ describe('books', () => {
 
   it('updateBook sets the total pages of a book that had none', async () => {
     await expect(updateBook('b1', { title: 'Dune', author: null, totalPages: 412 })).resolves.toEqual({ ok: true })
-    expect(calls[0]).toMatchObject({
+    expect(calls.find((c) => c.op === 'update')).toMatchObject({
       table: 'books',
       op: 'update',
       payload: { title: 'Dune', author: null, total_pages: 412 },
@@ -214,12 +214,35 @@ describe('books', () => {
 
   it('setBookTotalPages changes only total_pages (title and author stay)', async () => {
     await expect(setBookTotalPages('b1', 412)).resolves.toEqual({ ok: true })
-    expect(calls[0]).toMatchObject({ table: 'books', op: 'update', payload: { total_pages: 412 }, filters: [['id', 'b1']] })
-    expect(Object.keys(calls[0].payload as object)).toEqual(['total_pages'])
+    expect(calls.find((c) => c.op === 'update')).toMatchObject({ table: 'books', op: 'update', payload: { total_pages: 412 }, filters: [['id', 'b1']] })
+    expect(Object.keys(calls.find((c) => c.op === 'update')?.payload as object)).toEqual(['total_pages'])
     calls.length = 0
     await expect(setBookTotalPages('b1', 0)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
     await expect(setBookTotalPages('b1', 1.5)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
     expect(calls).toEqual([])
+  })
+
+  it('setBookTotalPages and updateBook refuse a total below the highest logged page', async () => {
+    results['reading_entries.select'] = { data: { to_page: 150 }, error: null }
+    const copy = 'Ya registraste hasta la página 150: el total no puede ser menor.'
+    await expect(setBookTotalPages('b1', 120)).resolves.toEqual({ ok: false, error: copy })
+    await expect(updateBook('b1', { title: 'Dune', author: null, totalPages: 149 })).resolves.toEqual({ ok: false, error: copy })
+    expect(calls.some((c) => c.op === 'update')).toBe(false)
+    // the read is for this book only
+    expect(calls.find((c) => c.table === 'reading_entries')?.filters).toEqual([['book_id', 'b1']])
+    // exactly the highest page is fine, and so is a book without readings
+    await expect(setBookTotalPages('b1', 150)).resolves.toEqual({ ok: true })
+    results['reading_entries.select'] = { data: null, error: null }
+    await expect(setBookTotalPages('b1', 10)).resolves.toEqual({ ok: true })
+  })
+
+  it('setBookTotalPages refuses the change when the pages cannot be read', async () => {
+    results['reading_entries.select'] = { data: null, error: { message: 'boom' } }
+    await expect(setBookTotalPages('b1', 300)).resolves.toEqual({
+      ok: false,
+      error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+    })
+    expect(calls.some((c) => c.op === 'update')).toBe(false)
   })
 
   it('updateBook and setBookTotalPages report a book that matched no row (foreign or deleted id)', async () => {
@@ -230,7 +253,7 @@ describe('books', () => {
     })
     await expect(setBookTotalPages('b9', 412)).resolves.toEqual({ ok: false, error: 'No encontramos ese libro.' })
     // the update asked for the affected rows
-    expect(calls.every((c) => c.op === 'update')).toBe(true)
+    expect(calls.filter((c) => c.table === 'books').every((c) => c.op === 'update')).toBe(true)
   })
 
   it('updateBook and setBookTotalPages need a session', async () => {

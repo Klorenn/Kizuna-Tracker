@@ -298,6 +298,25 @@ describe('media titles', () => {
     expect(calls.find((c) => c.table === 'watch_entries')?.filters).toEqual([['media_id', 'm1']])
   })
 
+  it('updateMedia counts distinct episodes: a rewatch does not block a legitimate lower total', async () => {
+    results['media_items.select'] = { data: { kind: 'series' }, error: null }
+    // the same five episodes logged twice add up to 10 as a plain sum, but only 5 are distinct
+    results['watch_entries.select'] = {
+      data: [
+        { episodes: 5, season: 1, episode_to: 5 },
+        { episodes: 5, season: 1, episode_to: 5 },
+      ],
+      error: null,
+    }
+    const input = { title: 'Dark', totalSeasons: 3, totalEpisodes: 8, runtimeMin: null }
+    await expect(updateMedia('m1', input)).resolves.toEqual({ ok: true })
+    // still refused below the distinct count
+    await expect(updateMedia('m1', { ...input, totalEpisodes: 4 })).resolves.toEqual({
+      ok: false,
+      error: 'Ya registraste 5 episodios: el total no puede ser menor.',
+    })
+  })
+
   it('setMediaFinished refuses a date after today in the profile timezone', async () => {
     results['profiles.select'] = { data: { timezone: 'Pacific/Kiritimati' }, error: null }
     const tomorrow = addDays(localDate(new Date(), 'Pacific/Kiritimati'), 1)

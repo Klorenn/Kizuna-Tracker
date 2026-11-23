@@ -6,6 +6,7 @@ import type { LocalDate } from "@/domain/types";
 import { validateMedia, validateWatchInput, type MediaInput } from "@/domain/watch";
 import { isLocalDate } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
+import { loggedCoverage } from "@/lib/watch-coverage";
 import type { Database } from "@/lib/supabase/database.types";
 
 // Series and movies: the titles library and the watch entry of a check-in. Every write of an
@@ -198,17 +199,12 @@ export async function updateMedia(id: string, input: Omit<MediaInput, "kind">): 
   const valid = validateMedia({ ...input, kind });
   if (!valid.ok) return valid;
   if (kind === "series") {
-    // totals must still cover what is logged (episodes added up, highest season, highest "hasta")
+    // totals must still cover what is logged: distinct episodes (a rewatch adds nothing), highest season
     const { data: logged } = await supabase
       .from("watch_entries")
       .select("episodes,season,episode_to")
       .eq("media_id", id);
-    const rows = logged ?? [];
-    const episodes = Math.max(
-      rows.reduce((n, e) => n + (e.episodes ?? 0), 0),
-      ...rows.map((e) => e.episode_to ?? 0),
-    );
-    const season = Math.max(0, ...rows.map((e) => e.season ?? 0));
+    const { episodes, season } = loggedCoverage(logged ?? []);
     if (input.totalEpisodes !== null && input.totalEpisodes < episodes) {
       return { ok: false, error: `Ya registraste ${episodes} episodios: el total no puede ser menor.` };
     }

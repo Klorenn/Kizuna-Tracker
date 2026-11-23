@@ -140,6 +140,20 @@ async function updateOwnBook(id: string, fields: { total_pages: number | null; t
   const supabase = await createServerClient();
   const { data: auth } = await supabase.auth.getUser();
   if (!auth.user?.id) return { ok: false, error: NOT_AUTHENTICATED };
+  if (fields.total_pages !== null) {
+    // the total must still cover what is logged (reading_entries are owner-only, so this is the caller's own)
+    const { data: top, error: topError } = await supabase
+      .from("reading_entries")
+      .select("to_page")
+      .eq("book_id", id)
+      .order("to_page", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (topError) return { ok: false, error: GENERIC };
+    if (top && fields.total_pages < top.to_page) {
+      return { ok: false, error: `Ya registraste hasta la página ${top.to_page}: el total no puede ser menor.` };
+    }
+  }
   const { data, error } = await supabase.from("books").update(fields).eq("id", id).select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
   if (!data || data.length === 0) return { ok: false, error: ERRORS.book_not_found };
