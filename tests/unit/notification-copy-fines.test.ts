@@ -2,7 +2,8 @@ import { describe, expect, it } from 'vitest'
 import { notificationView } from '@/lib/notification-copy'
 
 const G = '11111111-1111-4111-8111-111111111111'
-const URL = `/grupos/${G}`
+const URL = `/grupos/${G}?seccion=fondo`
+const WALL = `/grupos/${G}?seccion=muro`
 
 describe('notificationView: the fine types', () => {
   it('group_fine_proposed', () => {
@@ -37,7 +38,7 @@ describe('notificationView: the fine types', () => {
     expect(notificationView('group_photo_rejected', { group_id: G, group_name: 'Gym', local_date: '2026-11-22', reason: 'Foto borrosa' })).toEqual({
       title: 'Gym: rechazaron tu foto del 22 de noviembre',
       body: 'Motivo: Foto borrosa',
-      url: URL,
+      url: WALL,
     })
   })
 
@@ -64,7 +65,7 @@ describe('notificationView: the fine types', () => {
       expect(notificationView('group_photo_rejected', { group_id: G, group_name: 'Gym' })).toEqual({
         title: 'Gym: rechazaron tu foto',
         body: 'Revisa el grupo para ver el detalle.',
-        url: URL,
+        url: WALL,
       })
     })
     it('a non-date local_date is ignored; a blank reason is ignored', () => {

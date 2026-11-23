@@ -148,7 +148,8 @@ export function canMarkPaid(a: {
   myUserId: string;
   singleAdmin: boolean;
 }): boolean {
-  if (a.role !== "admin" || a.archived) return false;
+  // an archived group is read-only except for this: admins can still mark a payment or undo the mark
+  if (a.role !== "admin") return false;
   const own = a.debt.mine || a.debt.userId === a.myUserId;
   return !own || a.singleAdmin;
 }

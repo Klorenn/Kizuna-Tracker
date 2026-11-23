@@ -125,7 +125,7 @@ export async function rejectPhoto(groupId: string, checkinId: string, reason: st
   if (!valid.ok) return valid;
   const r = await attempt(() => rpc.rejectGroupCheckin(auth.supabase, groupId, checkinId, valid.reason));
   if ("error" in r) return fail(r.error);
-  revalidate([groupPage(groupId)]);
+  revalidate([groupPage(groupId), { path: "/grupos" }]); // the list shows "cumplen N de M", which a rejection changes
   return { ok: true, data: undefined };
 }
 
@@ -138,7 +138,7 @@ export async function undoRejectPhoto(groupId: string, checkinId: string): Retur
     own_checkin: UNDO_OWN_CHECKIN_COPY,
   });
   if ("error" in r) return fail(r.error);
-  revalidate([groupPage(groupId)]);
+  revalidate([groupPage(groupId), { path: "/grupos" }]);
   return { ok: true, data: undefined };
 }
 

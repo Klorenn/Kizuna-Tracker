@@ -13,7 +13,7 @@ import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
 import { FINE_LIMITS } from "@/lib/groups-fines-contract";
 import { ErrorLine } from "../detail/parts";
-import { prepareProposal } from "./fund-logic";
+import { prepareProposal, RULE_LINE } from "./fund-logic";
 
 type FormProps = {
   singleAdmin: boolean;
@@ -63,6 +63,7 @@ export function ProposalForm({ singleAdmin, pending, error, onSubmit }: FormProp
       <p className="text-small text-pretty text-muted">
         Se activa si acepta al menos la mitad del grupo en 7 días. Solo obliga a quienes acepten.
       </p>
+      <p className="text-small text-pretty text-muted">{RULE_LINE}</p>
       {singleAdmin ? (
         <p className="text-small text-pretty text-ink">Eres el único administrador: nadie podrá rechazar tus fotos.</p>
       ) : null}

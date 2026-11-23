@@ -120,7 +120,7 @@ const cases: Case[] = [
     run: () => actions.rejectPhoto(G, C, '  Foto borrosa '),
     rpcName: 'reject_group_checkin',
     args: { p_group_id: G, p_checkin_id: C, p_reason: 'Foto borrosa' },
-    paths: [[`/grupos/${G}`]],
+    paths: [[`/grupos/${G}`], ['/grupos']],
     codes: ['group_not_found', 'group_archived', 'not_group_admin', 'no_photo_rule', 'checkin_not_found', 'own_checkin', 'reject_window_closed', 'week_closed', 'invalid_reason'],
   },
   {
@@ -128,7 +128,7 @@ const cases: Case[] = [
     run: () => actions.undoRejectPhoto(G, C),
     rpcName: 'undo_group_checkin_rejection',
     args: { p_group_id: G, p_checkin_id: C },
-    paths: [[`/grupos/${G}`]],
+    paths: [[`/grupos/${G}`], ['/grupos']],
     codes: ['group_not_found', 'group_archived', 'not_group_admin', 'checkin_not_found', 'own_checkin', 'week_closed'],
     copy: { own_checkin: 'No puedes deshacer el rechazo de tu propia foto. Pídeselo a otro admin.' },
   },

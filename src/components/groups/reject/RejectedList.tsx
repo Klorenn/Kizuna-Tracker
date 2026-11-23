@@ -7,7 +7,8 @@
  * (an archived group is read-only: no "Deshacer rechazo"), `retryHref`,
  * `actions: Pick<GroupFineActions, "undoRejectPhoto">`, `onUndone?(checkinId)` (optional: the page
  * can refresh; the row is already gone from the list).
- * Absent for members: the rejection reason is shown only here, where the contract carries it.
+ * Absent for members unless `ownerView` (the page passes it when the read gave a member their own rejected photos:
+ * the reason is for them, without "Deshacer").
  * Of each rejection: the person (name, @usuario, avatar), the day, the reason, who rejected it.
  */
 import { ArrowCounterClockwise } from "@phosphor-icons/react";
@@ -30,6 +31,7 @@ export function RejectedList({
   retryHref,
   actions,
   onUndone,
+  ownerView = false,
 }: {
   groupId: string;
   items: GroupRejectedItem[] | null;
@@ -38,6 +40,8 @@ export function RejectedList({
   retryHref: string;
   actions: Pick<GroupFineActions, "undoRejectPhoto">;
   onUndone?: (checkinId: string) => void;
+  /** A member reads the reasons of their own rejected photos (the read returns only theirs); no "Deshacer" for them. */
+  ownerView?: boolean;
 }) {
   const [runner] = useState(createRunner);
   const [pendingId, setPendingId] = useState<string | null>(null);
@@ -50,7 +54,7 @@ export function RejectedList({
     setUndone([]);
   }
 
-  if (role !== "admin") return null;
+  if (role !== "admin" && !ownerView) return null;
 
   async function undo(checkinId: string) {
     if (runner.busy()) return;
@@ -85,7 +89,7 @@ export function RejectedList({
                 />
                 <p className="text-small text-pretty break-words text-ink">{i.reason}</p>
                 <p className="truncate text-small text-muted">Rechazó {i.rejectedByName}</p>
-                {!archived ? (
+                {role === "admin" && !archived ? (
                   <Button
                     variant="ghost"
                     className="h-11! w-auto! self-start px-3!"

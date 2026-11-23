@@ -20,7 +20,7 @@ describe('GroupFundsSection (Deudas)', () => {
   it('what I owe: "Le debes $X al fondo de <grupo>" linking to the group, in the mono face', () => {
     const h = render({ owed: [{ groupId: 'g1', groupName: 'Gym del sur', pending: 2500 }], administered: [] })
     expect(text(h)).toContain('Le debes $2.500 al fondo de Gym del sur')
-    expect(h).toContain('href="/grupos/g1"')
+    expect(h).toContain('href="/grupos/g1?seccion=fondo"')
     expect(h).toContain('font-mono')
   })
 

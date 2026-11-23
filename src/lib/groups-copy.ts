@@ -26,6 +26,7 @@ const COPY: Record<string, string> = {
   cannot_remove_self: 'Para salir, usa «Salir del grupo».',
   too_many_attempts: 'Demasiados intentos. Prueba de nuevo en unos minutos.',
   not_authenticated: GROUP_SIGN_IN_COPY,
+  commitment_change_pending: 'Ya hay un cambio de compromiso para la próxima semana. Espera a que empiece para hacer otro.',
 }
 
 export const GROUP_ERROR_CODES = Object.keys(COPY)

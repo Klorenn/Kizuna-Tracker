@@ -2172,6 +2172,7 @@ export type Database = {
           week_start: string
         }[]
       }
+      group_invite_fine_for: { Args: { p_code: string }; Returns: Json }
       group_invite_lookup: {
         Args: {
           p_code: string

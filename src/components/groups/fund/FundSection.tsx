@@ -8,7 +8,7 @@
  *  - `state: GroupFineState | null`, `fund: GroupFund | null` (null = that read failed: its part
  *    shows `LoadFailed`, never a $0)
  *  - `role: GroupRole`, `archived: boolean` (admin controls are absent, not disabled, for members
- *    and in an archived group, which is read-only), `myUserId: string`
+ *    and in an archived group, which is read-only except that admins can still mark a payment), `myUserId: string`
  *  - `retryHref: string` (where the "Reintentar" of a failed read points: the group's page)
  *  - `now: number` (the page's clock, epoch ms: a proposal past its expiry shows no buttons)
  *  - `actions: Pick<GroupFineActions, "propose" | "vote" | "acceptActive" | "stepOut" | "end" | "setDebtPaid">`
@@ -257,9 +257,9 @@ export function FundSection({
               </Card>
             </>
           ) : null}
-          <p className="text-small text-pretty text-muted">{RULE_LINE}</p>
         </div>
       ) : null}
+      {showFund || proposal || state?.active ? <p className="text-small text-pretty text-muted">{RULE_LINE}</p> : null}
 
       {admin && state ? (
         <ProposalSheet
