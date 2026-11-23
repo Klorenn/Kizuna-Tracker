@@ -232,3 +232,204 @@ Marca: logo = gato + wordmark KIZUNA + sello 絆. Íconos de app exportados desd
 - **Enumeración de correos en el registro:** sin confirmación de correo, intentar registrar un correo existente revela que existe. Se acepta en la v1; el login sí es genérico.
 - **Límites de Supabase Auth por IP:** las llamadas de login salen del servidor, así que el límite por IP de Supabase lo comparten todos. La app aplica su propio límite y el del proyecto alojado debe subirse.
 - **Textos legales:** borrador pendiente de revisión de un abogado.
+
+---
+
+## Registros detallados (v3)
+
+Revisión v3: 2026-11-22. Pedido del dueño: en Leer, anotar qué libro y de qué página a qué página; en el gimnasio, anotar el tipo de día (pierna, pecho…), los ejercicios y los pesos; ver todo eso en el calendario, ver cómo uno avanza y tener gráficos mensuales ("este mes leí 3 libros", "fui 4 veces al gym", "le subí 40 kg a pierna", tocar y ver en qué ejercicio) comparando con meses anteriores.
+
+### Intención
+
+Un hábito sigue siendo "lo hice o no" (rachas, retos, deudas y metas no cambian). Un **registro** es el detalle opcional de un día cumplido: qué leíste o qué entrenaste. Los registros alimentan una capa de progreso personal: calendario, detalle del hábito y Resumen.
+
+### Objetivos
+
+- Tipo de registro por hábito (`log_type`): **ninguno**, **lectura** o **entrenamiento**. Leer trae lectura; Gimnasio trae entrenamiento; un hábito propio lo elige en el formulario.
+- Lectura: libro (de una lista propia) y páginas desde–hasta; marcar "Terminé este libro".
+- Entrenamiento: tipos de día (multi), ejercicios (catálogo + propios) y series `reps × kg`; repetir el último entrenamiento del mismo tipo.
+- Ver el registro en la hoja del día del calendario, en el detalle del hábito (sección "Progreso") y en la fila de Hoy.
+- Resumen mensual con tarjetas tocables y comparación con los meses anteriores (6 o 12 meses).
+
+### No objetivos (v3)
+
+- Libras u otras unidades (solo kg). Cardio con minutos o distancia. 1RM estimado, RPE, descansos, supersets.
+- Buscar libros en internet (ISBN, portadas). Audiolibros o porcentaje de e-book.
+- Registrar un día sin check-in (no se puede crear un check-in de un día pasado; ver Brechas).
+- Que los amigos o el perfil público vean registros.
+
+### Antiobjetivos
+
+- **Un registro nunca cambia una racha, un reto, un período, una deuda ni una meta.** Agregar, editar o borrar un registro nunca crea ni borra un check-in. La única excepción es el flujo natural de entrada de Leer, donde "Guardar" u "Omitir" marcan el hábito (el check-in lo crea la RPC de siempre).
+- Gamificar el peso: nada de rankings, medallas ni comparación con amigos. Los números se muestran sobrios, en Geist Mono.
+- Formularios largos para un día normal: registrar lectura toma un toque más; repetir un entrenamiento, dos.
+
+### Modelo de datos
+
+Migración nueva `0015_detailed_logs.sql` (la siguiente libre al implementar; hoy la más alta en `feat/mvp` es `0014` y la rama del calendario no agrega migraciones).
+
+| Tabla / columna | Contenido | Reglas |
+|---|---|---|
+| `habits.log_type` | `text not null default 'none'`, `check in ('none','reading','workout')` | Relleno: `preset = 'read'` → `reading`, `preset = 'gym'` → `workout`. Grant de insert/update de la columna a `authenticated`. |
+| `books` | `id`, `user_id → profiles`, `title` (1–120), `author` (null o 1–80), `total_pages` (null o 1–20 000), `status` (`reading`/`finished`), `finished_on date`, `created_at` | `check ((status = 'finished') = (finished_on is not null))`. RLS solo dueño. Insert (`user_id, title, author, total_pages`), update (`title, author, total_pages, status, finished_on`) y delete por grants de columna, como `goals`. |
+| `reading_entries` | `id`, `user_id`, `habit_id`, `checkin_id → checkins on delete cascade` **único**, `book_id → books on delete cascade`, `local_date`, `from_page`, `to_page`, `created_at`, `updated_at` | `check (from_page >= 0 and to_page >= from_page and to_page <= 20000)`. Sin escritura de clientes: solo RPC. |
+| `exercises` | `id`, `user_id` (null = catálogo), `key` (solo catálogo, único), `name` (1–60), `muscle_group` (`legs, chest, back, shoulders, arms, core`), `archived_at`, `created_at` | Catálogo de 30 ejercicios sembrado en la migración. Lectura: catálogo o propios. Insert (`user_id, name, muscle_group`), update (`name, archived_at`) solo propios. Nombre único por usuario sin distinguir mayúsculas entre los no archivados. El grupo no se cambia después de crear. |
+| `workout_sessions` | `id`, `user_id`, `habit_id`, `checkin_id → checkins on delete cascade` **único**, `local_date`, `day_types text[]`, `created_at`, `updated_at` | `day_types` no vacío, sin repetidos, subconjunto de `legs, chest, back, shoulders, arms, core, cardio, full_body`. Solo RPC. |
+| `workout_sets` | `id`, `session_id → workout_sessions on delete cascade`, `user_id`, `local_date`, `exercise_id → exercises`, `position smallint`, `reps int` (1–1000), `weight_kg numeric(6,2)` (0–999,99) | `user_id` y `local_date` copiados de la sesión para leer por rango sin join. Máximo 20 ejercicios y 10 series por ejercicio (200 filas por sesión). Solo RPC. |
+
+**Escrituras.** Libros y ejercicios propios usan grants de columna + RLS (mismo patrón que `goals`): son datos simples del dueño sin otra tabla que validar. Lecturas y entrenamientos usan RPC `security definer` (mismo patrón que `create_checkin`/`check_item`) porque deben validar contra otras tablas en una sola transacción: el check-in es propio, el hábito tiene el `log_type` correcto, la fecha sale del check-in (nunca del cliente), el libro y los ejercicios son visibles para quien llama, y un entrenamiento reemplaza todas sus series de forma atómica.
+
+- `save_reading_entry(p_checkin_id uuid, p_book_id uuid, p_from_page int, p_to_page int, p_finished boolean default false) returns uuid` — upsert por `checkin_id`. Con `p_finished`, marca el libro `finished` con `finished_on` = fecha del check-in. Errores: `not_authenticated`, `checkin_not_found`, `log_type_mismatch`, `book_not_found`, `invalid_pages` (incluye `to_page > total_pages`).
+- `delete_reading_entry(p_checkin_id uuid) returns void`.
+- `save_workout(p_checkin_id uuid, p_day_types text[], p_sets jsonb) returns uuid` — `p_sets = [{ "exercise_id", "reps", "kg" }]` en orden; borra e inserta las series en la misma transacción. Errores: `not_authenticated`, `checkin_not_found`, `log_type_mismatch`, `invalid_day_types`, `invalid_set`, `too_many_sets`, `exercise_not_found`.
+- `delete_workout(p_checkin_id uuid) returns void`.
+
+**RLS y grants.** Las cinco tablas con RLS activado; `select` solo `user_id = auth.uid()` (y catálogo con `user_id is null` en `exercises`). `anon` sin grants. Ninguna política para amigos. Las cinco tablas entran en `forbid_deleted_actor` (0014). `service_role` recibe DML por los default privileges de `0014` (se verifica en pgTAP con `has_table_privilege`).
+
+### Flujos de entrada
+
+**Leer (sin foto).** Tocar "Hecho" en Hoy abre la hoja antes de marcar:
+
+```
+┌────────────────────────────────────┐
+│ ¿Qué leíste hoy?                 ✕ │
+│ LIBRO                              │
+│ (Dune) (Rayuela) (+ Nuevo libro)   │  chips de libros "leyendo", el último usado primero
+│ DESDE            HASTA             │
+│ [ 14 ]           [ 40 ]            │  "desde" se rellena con el último "hasta" del libro
+│ 26 páginas                         │  mono, se actualiza al escribir
+│ ☐ Terminé este libro               │
+│ [        Guardar        ]          │  marca el hábito + guarda la lectura
+│ [        Omitir         ]          │  marca el hábito sin lectura
+└────────────────────────────────────┘
+```
+
+Cerrar con ✕ no marca nada. Sin libros, "Nuevo libro" aparece abierto (título y páginas totales opcionales). Si el check-in se crea pero la lectura falla, el hábito queda marcado y la hoja muestra "Marcamos el hábito, pero no guardamos la lectura. Inténtalo de nuevo." Un hábito de lectura con foto (propio) registra la lectura después, desde la fila de Hoy o el calendario.
+
+**Gimnasio (con foto).** Después de la foto y de "Entrenamiento cumplido", la hoja suma el botón secundario **"Registrar entrenamiento"**, que abre la pantalla del registro. También se llega desde el detalle del hábito y desde la hoja del día del calendario. Un hábito de entrenamiento sin celebración (propio) muestra en Hoy el enlace "Añadir registro".
+
+```
+┌ Entrenamiento · sáb 21 nov ────────┐
+│ TIPO DE DÍA                        │
+│ (Pierna✓)(Pecho)(Espalda)(Hombros) │
+│ (Brazos)(Core✓)(Cardio)(Cuerpo c.) │
+│ [Repetir último de Pierna y core]  │  solo si existe uno anterior igual
+│ EJERCICIOS                         │
+│ Sentadilla                       ⋯ │
+│   1  [ 5 ] × [ 80 ] kg             │
+│   2  [ 5 ] × [ 80 ] kg   + Serie   │
+│ Prensa                           ⋯ │
+│   1  [10 ] × [120 ] kg             │
+│ [ + Agregar ejercicio ]            │  hoja con buscador, catálogo por grupo y "Crear ejercicio"
+│ [        Guardar        ]          │
+└────────────────────────────────────┘
+```
+
+Una serie nueva copia reps y kg de la anterior. Los kg aceptan coma o punto (`42,5`) y se muestran con coma. 0 kg = peso corporal. Un día de solo Cardio se guarda sin ejercicios.
+
+**Libros** (`/libros`, desde la hoja de lectura y el detalle de Leer): secciones LEYENDO y TERMINADOS; agregar, editar, marcar terminado (fecha local de hoy, editable, nunca futura) o volver a "leyendo", borrar.
+
+**Formulario de hábito:** "Registro detallado" con `Segmented` Ninguno / Lectura / Entrenamiento. No aparece en hábitos con pasos (un hábito con pasos no lleva registro en v3).
+
+**Celebraciones con el gato (agregado del dueño).** Recurso nuevo del dueño: `public/brand/cat-read.gif` (gato blanco sentado leyendo, 720 × 720, 73 cuadros de 80 ms) y `public/brand/cat-read-still.png` (cuadro 0). Se registra como cuarto recurso `read` del sistema compartido (`CatAnimation` + `cat-animation.ts`: silueta índigo por máscara de luminancia recortada a la caja del gato; con movimiento reducido, el PNG quieto).
+
+- La hoja "¿Qué leíste hoy?" lleva el gato lector pequeño y **quieto** en el encabezado.
+- Tras guardar una lectura: hoja de confirmación "Lectura registrada · 26 páginas" con el gato lector animado una vez.
+- Si marcaste "Terminé este libro": "Terminaste Dune" con el gato que salta (`jump`) en lugar del lector.
+- El registro de entrenamiento confirma con un aviso breve ("Entrenamiento guardado"), sin segunda animación: el gato que levanta pesas ya salió en "Entrenamiento cumplido".
+- **Una sola hoja a la vez.** Si varias aplican en el mismo momento, gana una, en este orden: **gimnasio > libro terminado > día completo > comidas > lectura registrada**. Ejemplo: Leer era el último hábito del día y terminaste el libro → "Terminaste Dune" (no "Día completo"); Leer era el último hábito sin terminar libro → "Día completo" (la lectura igual queda en el subtítulo de Hoy).
+
+### Definiciones de estadísticas
+
+Todas usan `local_date` del check-in (fecha local del dueño calculada por el servidor). Mes = `YYYY-MM` de esa fecha.
+
+- **Páginas leídas de un registro** = `hasta − desde` (se valida `hasta ≥ desde ≥ 0`). "Desde" es la página donde retomaste; "hasta", donde dejaste el separador. Ejemplo del dueño: 14 → 40 = **26 páginas**. Si un día lees dos libros, v3 registra uno (una lectura por check-in).
+- **Páginas del mes** = suma de los registros del mes. **Días con lectura** = fechas distintas con registro.
+- **Libros terminados en el mes** = libros con `status = 'finished'` y `finished_on` en el mes (no hace falta tener registros de ese libro).
+- **Visitas al gimnasio en el mes** = **fechas distintas** con un check-in no rechazado de un hábito cuyo `log_type` actual es `workout`. *Refinamiento sobre "check-ins":* con dos hábitos de entrenamiento marcados el mismo día, cuenta una visita, no dos. Incluye hábitos archivados.
+- **Mejor peso de un ejercicio en un mes** = máximo `weight_kg` de cualquier serie de ese ejercicio en el mes (sin importar reps).
+- **Cambio de kg en un grupo** (mes M vs. M−1) = suma, sobre los ejercicios del grupo con mejor peso **> 0 en ambos meses**, de `mejor(M) − mejor(M−1)`. Los ejercicios nuevos en M se listan como "Nuevo" y no suman; los que no aparecen en M no se listan. Si ningún ejercicio es comparable, no hay cambio ("Sin comparación con octubre"). *Refinamiento:* los de 0 kg (peso corporal) no son comparables; el detalle siempre muestra cada ejercicio con su delta, porque una suma puede esconder una baja (+40 y −20 = +20).
+- **Volumen** = Σ `reps × kg` de las series; por grupo y total. Métrica secundaria.
+- **Serie de comparación**: los últimos 6 meses (o 12), del más antiguo al actual, con ceros.
+- **Progreso de un ejercicio** = por cada sesión (fecha), el máximo kg de ese ejercicio; puntos en orden de fecha, últimos 12 meses.
+- Los registros de un check-in **rechazado** se guardan y cuentan en páginas, pesos y volumen (son datos tuyos); solo la visita no cuenta.
+- Redondeo: kg con 2 decimales como máximo; las sumas se redondean a 2 decimales antes de mostrar.
+
+**Ejemplo trabajado (pierna, "le subí 40 kg").**
+
+| Ejercicio | Octubre (mejor) | Noviembre (mejor) | Delta |
+|---|---|---|---|
+| Prensa | 100 kg | 120 kg | +20 kg |
+| Sentadilla | 60 kg (series 8×55, 8×60, 8×57,5) | 80 kg (series 5×75, 5×80, 5×80) | +20 kg |
+| Extensión de cuádriceps | — | 30 kg | Nuevo |
+| Peso muerto rumano | 50 kg | — | no se lista |
+
+Pierna en noviembre: **Subiste 40 kg en pierna** (20 + 20). Volumen de pierna en noviembre: Sentadilla 375 + 400 + 400 = 1.175; Prensa 1.100 + 1.200 = 2.300; Extensión 12 × 30 = 360 → **3.835 kg**. Copy: positivo "Subiste 40 kg en pierna"; negativo "Bajaste 5 kg en pierna"; cero "Igual que octubre en pierna".
+
+**Ejemplo de lectura.** Noviembre: Dune 14 → 40 (26) y 40 → 75 (35), Rayuela 580 → 600 (20) → **81 páginas en 3 días**; terminados Pedro Páramo (2 nov) y Rayuela (20 nov) → **2 libros**. Octubre: 50 páginas, 1 libro.
+
+### Dónde se ve
+
+- **Hoy:** con registro, el subtítulo de la fila cambia a "26 páginas · Dune" o "Pierna · 5 ejercicios" ("Pierna y core · 1 ejercicio"; "Cardio" sin ejercicios). Hecho sin registro en un hábito con `log_type`: enlace "Añadir registro" (44 px).
+- **Hoja del día del calendario:** bajo el hábito, el libro y "14 → 40 · 26 páginas" (más "Terminado" si lo marcaste ese día); o los tipos de día y cada ejercicio con sus series (`5 × 80 kg`) y el volumen. Botón "Editar" / "Añadir registro".
+- **Detalle de hábito, sección PROGRESO:** lectura: páginas y libros del mes vs. mes anterior, libro actual ("75 de 412"), enlace a Libros y a la vista de lectura. Entrenamiento: visitas del mes vs. anterior, último entrenamiento, los 3 ejercicios más usados con su mejor peso, enlace a la vista de gimnasio.
+- **Resumen, sección REGISTROS · NOVIEMBRE** (solo si tienes un hábito con registro o algún registro): tarjetas Libros terminados, Páginas, Visitas al gym, Kg por grupo (el grupo con más sesiones, ej. "Pierna +40 kg"), cada una con el valor del mes anterior en pequeño y tocable:
+  - `/resumen/lectura?mes=` — totales del mes, barras de páginas y de libros por mes (6/12), lista de registros del mes.
+  - `/resumen/gimnasio?mes=` — visitas y volumen, barras por mes, filas por grupo con su cambio de kg.
+  - `/resumen/gimnasio/[grupo]?mes=` — "Subiste 40 kg en pierna" y cada ejercicio con anterior → actual y delta; barras de cambio y volumen por mes.
+  - `/resumen/ejercicio/[id]` — línea de mejor peso por sesión, mejor marca y última sesión.
+
+### Casos borde
+
+- **Editar o borrar un registro:** siempre posible, para cualquier día con check-in, incluso rechazado. Nunca toca el check-in.
+- **Deshacer un check-in** (Hoy) con registro: pide confirmar ("Se borrará también la lectura de hoy."); el registro se borra en cascada. Si el check-in no existe, no hay registro: no hay huérfanos.
+- **Foto rechazada:** el registro se queda; la visita no cuenta; pesos y volumen sí.
+- **Dos entrenamientos el mismo día en un hábito:** imposible, hay un check-in por hábito y día; se edita el registro existente. Dos hábitos de entrenamiento distintos el mismo día tienen un registro cada uno y cuentan una visita.
+- **Borrar un libro con registros:** confirmación con el conteo ("Se borrarán 3 lecturas (81 páginas). Tus check-ins no cambian."); las lecturas se borran en cascada.
+- **Bajar `total_pages`** por debajo de un "hasta" ya guardado: permitido; la validación aplica a las lecturas nuevas o editadas.
+- **Renombrar un ejercicio propio:** cambia el nombre en todo el historial (las series apuntan al id). Los del catálogo no se renombran. Archivar lo saca del buscador y conserva el historial. El grupo no se cambia.
+- **Decimales:** kg con hasta 2 decimales (`42,5`, `21,25`); páginas y reps enteras.
+- **Cambiar el `log_type` de un hábito:** los registros guardados se conservan y siguen en las estadísticas; solo los nuevos exigen el tipo actual (`log_type_mismatch`). Las visitas usan el tipo actual del hábito.
+- **Hábito archivado:** sus registros siguen en Resumen; su detalle ya no se abre.
+- **Borrar la cuenta:** se borran series, sesiones, lecturas, libros y ejercicios propios **antes** de los check-ins (algunos check-ins se conservan porque un reto los referencia; sus registros no).
+- **Cuenta borrada con JWT vigente:** `forbid_deleted_actor` rechaza cualquier escritura.
+- **Zona horaria:** el registro hereda la fecha del check-in; un cambio de zona posterior no lo mueve.
+
+### Privacidad
+
+v3: libros, lecturas, ejercicios propios, sesiones y series son **solo del dueño**. No hay política de amigos, el feed y `public_profile()` no cambian y nunca devuelven registros. Opción futura: una línea de resumen por hábito ("Leyó 26 páginas", "Entrenó pierna") que el dueño activa por hábito, servida por una RPC que devuelve solo ese texto, nunca la tabla.
+
+### Brechas conocidas (v3)
+
+- No se puede registrar un día olvidado sin check-in (crear check-ins pasados está prohibido por diseño anti-trampa).
+- Comparación estricta con el mes anterior: un ejercicio que no hiciste el mes pasado no compara aunque lo hayas hecho hace dos.
+- "Mejor peso" ignora reps (100 × 1 gana a 90 × 10); 1RM estimado queda para después.
+- Cardio sin minutos ni distancia; solo kg; una lectura por día.
+- Las visitas siguen el `log_type` actual del hábito, no el que tenía en cada fecha.
+
+### Cambios v3 (2026-11-22)
+
+| Área | v2 | v3 |
+|---|---|---|
+| Hábitos | Sin detalle del día | `log_type` ninguno / lectura / entrenamiento; Leer → lectura, Gimnasio → entrenamiento |
+| Datos nuevos | — | `books`, `reading_entries`, `exercises` (catálogo de 30 + propios), `workout_sessions`, `workout_sets` |
+| Hoy | Subtítulo de frecuencia | Subtítulo del registro; hoja "¿Qué leíste hoy?" al marcar Leer |
+| Gimnasio | "Entrenamiento cumplido" | + "Registrar entrenamiento" y pantalla del registro |
+| Calendario | Estado, hora y fotos del día | + lectura o entrenamiento del día |
+| Resumen | Rachas y check-ins | + REGISTROS del mes con 4 vistas de detalle y comparación 6/12 meses |
+
+Decisiones tomadas por el arquitecto (con autoridad delegada del dueño):
+
+1. Escritura: libros y ejercicios por grants de columna + RLS; lecturas y entrenamientos por RPC definer (validan check-in, tipo y fecha en una transacción).
+2. Cerrar la hoja de lectura con ✕ no marca el hábito; solo "Guardar" y "Omitir" marcan.
+3. Visitas al gimnasio = fechas distintas, no check-ins.
+4. Ejercicios de 0 kg no comparan; los nuevos se muestran como "Nuevo".
+5. Registros de check-ins rechazados cuentan en páginas y pesos, no en visitas.
+6. Cardio es solo un tipo de día (sin catálogo); "Cuerpo completo" permite ejercicios de cualquier grupo.
+7. Hábitos con pasos no llevan registro en v3.
+8. Grupo muscular fijo al crear un ejercicio; renombrar cambia el historial.
+9. Borrar un libro borra sus lecturas (con confirmación).
+10. Límites: 20 ejercicios y 10 series por ejercicio por sesión; kg 0–999,99 con 2 decimales; páginas 0–20 000.
+11. Repetir último: la sesión más reciente con los mismos tipos de día; si no hay, la más reciente que comparta alguno.
+12. Las vistas de detalle viven bajo `/resumen/*` y la gestión de libros en `/libros`.
+13. Prioridad de hojas de celebración: gimnasio > libro terminado > día completo > comidas > lectura registrada (una sola a la vez).
