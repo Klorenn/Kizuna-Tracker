@@ -87,9 +87,14 @@ test("friend request by @usuario is accepted from Solicitudes", async ({ browser
   await signUp(a, handleA, "Cami");
   await signUp(b, handleB, "Dani");
 
-  await a.goto(`/amigos?q=${handleB}`);
-  await a.getByRole("button", { name: "Agregar", exact: true }).click();
-  await expect(a.getByText("Solicitud enviada")).toBeVisible();
+  // the search box now opens Explorar with the term (an old /amigos?q= link lands there too)
+  await a.goto("/amigos");
+  await a.getByPlaceholder("Buscar por nombre o @usuario").fill(handleB);
+  await a.keyboard.press("Enter");
+  await expect(a).toHaveURL(new RegExp(`/amigos/explorar\\?q=${handleB}$`));
+  const row = a.getByRole("listitem").filter({ hasText: `@${handleB}` });
+  await row.getByRole("button", { name: "Agregar", exact: true }).click();
+  await expect(row.getByText("Solicitud enviada")).toBeVisible();
 
   await b.goto("/amigos");
   await b.getByRole("button", { name: "Aceptar a Cami E2E" }).click();

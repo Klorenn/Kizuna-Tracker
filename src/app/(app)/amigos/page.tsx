@@ -1,8 +1,8 @@
-import { CaretRight, MagnifyingGlass } from "@phosphor-icons/react/dist/ssr";
+import { CaretRight } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { AddFriendButton } from "@/components/FriendActions";
+import { DiscoverPersonRow, SentRequestRow } from "@/components/FriendActions";
 import { FriendRequestRow } from "@/components/FriendRequestRow";
 import { LoadFailed } from "@/components/LoadFailed";
 import { ActivityFeed } from "@/components/friends/ActivityFeed";
@@ -13,13 +13,14 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
 import { loadFeedPage } from "@/lib/activity-feed";
 import { avatarUrl } from "@/lib/avatar";
+import { SUGGESTION_COUNT, SUGGESTION_POOL, loadPeople } from "@/lib/discover-data";
 import type { FeedPage } from "@/lib/feed";
 import { friendStatusText } from "@/lib/friend-view";
 import { friendStreaks } from "@/lib/friends-data";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
-import { searchUsers } from "./actions";
+import { PeopleSearch } from "./PeopleSearch";
 
 export const metadata: Metadata = { title: "Amigos" };
 
@@ -70,23 +71,25 @@ export default async function AmigosPage({
   searchParams: Promise<{ q?: string; amigo?: string }>;
 }) {
   const { q = "", amigo } = await searchParams;
+  // the inline result card moved to Explorar: an old /amigos?q=x link lands there
+  if (typeof q === "string" && q.trim()) redirect(`/amigos/explorar?q=${encodeURIComponent(q)}`);
   const justAdded = amigo && /^[a-z0-9_]{3,20}$/.test(amigo) ? amigo : null;
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  // the session check is the only read everything else waits on: profile, friendships, search and the feed
+  // the session check is the only read everything else waits on: profile, friendships, suggestions and the feed
   // start together. The feed needs the timezone just to format times, so it gets the promise.
   const meRead = getViewerProfile();
   // never rejects: nobody may be awaiting it (an empty feed returns before formatting times)
   const timezone = meRead.then((p) => p?.timezone ?? "UTC").catch(() => "UTC");
-  const [me, friendshipsRes, hits, feed] = await Promise.all([
+  const [me, friendshipsRes, suggestions, feed] = await Promise.all([
     meRead,
     supabase
       .from("friendships")
       .select("id,requester_id,addressee_id,status")
       .order("created_at", { ascending: false })
       .limit(1000),
-    q.trim() ? searchUsers(q) : Promise.resolve([]),
+    loadPeople({ query: null, offset: 0, limit: SUGGESTION_POOL }),
     loadFeedPage(supabase, user.id, { timezone }).catch((): null => null),
   ]);
   if (!me) redirect("/login?error=perfil");
@@ -96,8 +99,8 @@ export default async function AmigosPage({
   const other = (f: { requester_id: string; addressee_id: string }) =>
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
   const incoming = rows.filter((f) => f.status === "pending" && f.addressee_id === user.id);
+  const sent = rows.filter((f) => f.status === "pending" && f.requester_id === user.id);
   const friends = rows.filter((f) => f.status === "accepted");
-  const related = new Map(rows.map((f) => [other(f), f]));
   const friendIds = friends.map(other);
 
   const [streakRead, peopleRes] = await Promise.all([
@@ -107,6 +110,8 @@ export default async function AmigosPage({
       ? supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", rows.map(other))
       : Promise.resolve({ data: [] }),
   ]);
+  // pending requests already have their own lists (Solicitudes, Enviadas)
+  const suggested = suggestions.ok ? suggestions.people.filter((p) => p.relation === "none").slice(0, SUGGESTION_COUNT) : [];
   const streaks = streakRead.ok ? streakRead.streaks : null;
   const byId = new Map(readRows(peopleRes).map((p) => [p.id, p]));
 
@@ -136,72 +141,79 @@ export default async function AmigosPage({
         </p>
       ) : null}
 
-      <form action="/amigos" role="search" className="flex">
-        <label className="flex h-12 w-full items-center gap-3 rounded-lg bg-field px-4 focus-within:shadow-[inset_0_0_0_2px_var(--color-accent)]">
-          <MagnifyingGlass size={20} weight="light" className="shrink-0 text-muted" aria-hidden />
-          <span className="sr-only">Buscar por @usuario</span>
-          <input
-            name="q"
-            defaultValue={q}
-            placeholder="Buscar por @usuario"
-            autoCapitalize="none"
-            autoCorrect="off"
-            maxLength={21}
-            className="min-w-0 flex-1 bg-transparent text-[17px] text-ink outline-none placeholder:text-muted"
-          />
-        </label>
-      </form>
+      <PeopleSearch />
 
-      {q.trim() ? (
-        <Card className="divide-y divide-line">
-          {hits.length === 0 ? (
-            <p className="p-4 text-body text-muted">No encontramos a nadie con ese usuario.</p>
+      {suggestions.ok && suggested.length === 0 ? null : (
+        <section aria-label="Sugerencias" className="flex flex-col gap-2">
+          <SectionHeader label="Sugerencias" action="Ver todos" href="/amigos/explorar" />
+          {suggestions.ok ? (
+            <Card>
+              <ul className="divide-y divide-line">
+                {suggested.map((p) => (
+                  <li key={p.id}>
+                    <DiscoverPersonRow person={p} />
+                  </li>
+                ))}
+              </ul>
+            </Card>
           ) : (
-            hits.map((h) => {
-              const f = related.get(h.id);
-              const isIncoming = f?.status === "pending" && f.addressee_id === user.id;
-              return (
-                <div key={h.id} className="flex items-center gap-3 px-4 py-3">
-                  <PersonLink username={h.username} name={h.displayName} avatar={avatarUrl(h.avatarPath)} preset={h.avatarPreset} />
-                  <AddFriendButton
-                    username={h.username}
-                    compact
-                    incoming={isIncoming}
-                    initial={
-                      f?.status === "accepted" ? "accepted" : f && !isIncoming ? "pending" : "idle"
-                    }
-                  />
-                </div>
-              );
-            })
+            <LoadFailed href="/amigos" />
           )}
-        </Card>
-      ) : null}
+        </section>
+      )}
 
       <ShareProfileButton kind="invite" />
 
-      {incoming.length > 0 ? (
+      {incoming.length > 0 || sent.length > 0 ? (
         <section aria-label="Solicitudes" className="flex flex-col gap-2">
           <SectionHeader
             label="Solicitudes"
-            action={incoming.length === 1 ? "1 nueva" : `${incoming.length} nuevas`}
+            action={incoming.length === 0 ? undefined : incoming.length === 1 ? "1 nueva" : `${incoming.length} nuevas`}
           />
-          <Card className="divide-y divide-line">
-            {incoming.map((f) => {
-              const p = byId.get(f.requester_id);
-              return (
-                <div key={f.id} className="px-4 py-3">
-                  <FriendRequestRow
-                    id={f.id}
-                    displayName={p?.display_name ?? "Usuario"}
-                    username={p?.username ?? ""}
-                    avatar={avatarUrl(p?.avatar_path ?? null)}
-                    avatarPreset={p?.avatar_preset ?? null}
-                  />
-                </div>
-              );
-            })}
-          </Card>
+          {incoming.length > 0 ? (
+            <Card className="divide-y divide-line">
+              {incoming.map((f) => {
+                const p = byId.get(f.requester_id);
+                return (
+                  <div key={f.id} className="px-4 py-3">
+                    <FriendRequestRow
+                      id={f.id}
+                      displayName={p?.display_name ?? "Usuario"}
+                      username={p?.username ?? ""}
+                      avatar={avatarUrl(p?.avatar_path ?? null)}
+                      avatarPreset={p?.avatar_preset ?? null}
+                    />
+                  </div>
+                );
+              })}
+            </Card>
+          ) : null}
+          {sent.length > 0 ? (
+            <>
+              <h3 className="section-label pt-2 text-muted">Enviadas</h3>
+              <Card>
+                <ul className="divide-y divide-line">
+                  {sent.flatMap((f) => {
+                    const p = byId.get(f.addressee_id);
+                    if (!p?.username) return [];
+                    return [
+                      <li key={f.id}>
+                        <SentRequestRow
+                          person={{
+                            id: f.addressee_id,
+                            username: p.username,
+                            displayName: p.display_name ?? "Usuario",
+                            avatarSrc: avatarUrl(p.avatar_path ?? null),
+                            avatarPreset: p.avatar_preset ?? null,
+                          }}
+                        />
+                      </li>,
+                    ];
+                  })}
+                </ul>
+              </Card>
+            </>
+          ) : null}
         </section>
       ) : null}
 
