@@ -88,7 +88,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         .from("friendships")
         .select("id,requester_id,addressee_id,status")
         .or(
-          `and(requester_id.eq.${viewer.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.)`,
+          `and(requester_id.eq.${viewer.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${viewer.id})`,
         )
         .maybeSingle();
       state = viewerState(viewer.id, target.id, f);
