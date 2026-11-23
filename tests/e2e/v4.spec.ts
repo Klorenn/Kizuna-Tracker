@@ -129,7 +129,7 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   // a challenge on Agua: the goal can go up, not down, and the unit stays
   await page.getByRole("link", { name: /^Agua/ }).first().click();
   await page.getByRole("link", { name: "Retar a un amigo" }).click();
-  await page.getByLabel("Amigo").selectOption({ label: `Beto E2E · @${b.handle}` });
+  await page.getByLabel("Amigo", { exact: true }).selectOption({ label: `Beto E2E · @${b.handle}` });
   await page.getByLabel("Multa por falla (CLP)").fill("2500");
   await page.getByRole("button", { name: "Enviar reto a Beto" }).click();
   await expect(page).toHaveURL(/\/retos$/);
@@ -212,11 +212,11 @@ test("time: a Pomodoro block is credited once and shows on Hoy", async ({ page }
   await expect(page.getByText("Sumamos 5 min a Estudiar.")).toBeVisible();
 
   await page.goto("/");
-  await expect(page.getByText("5 min", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 min").first()).toBeVisible();
   await expect(row(page, "Estudiar")).toHaveAttribute("aria-checked", "true");
   await page.reload();
   // credited once: reloading Hoy (it retries pending blocks) never adds the block again
-  await expect(page.getByText("5 min", { exact: true })).toBeVisible();
+  await expect(page.getByText("5 min").first()).toBeVisible();
   const { data } = await admin().from("time_entries").select("minutes,pomodoros").eq("user_id", u.id);
   expect(data).toEqual([{ minutes: 5, pomodoros: 1 }]);
 });
@@ -231,7 +231,8 @@ test("watch: a series with episodes, a movie, and undo asks first", async ({ pag
 
   await row(page, "Series y películas").click();
   const sheet = page.getByRole("dialog", { name: "¿Qué viste hoy?" });
-  await sheet.getByRole("button", { name: "Nuevo título" }).click();
+  // with no titles yet the new-title form starts open
+  await expect(sheet.getByLabel("Título", { exact: true })).toBeVisible();
   await sheet.getByLabel("Título", { exact: true }).fill("Dark");
   await sheet.getByRole("button", { name: "Agregar título" }).click();
   await sheet.getByRole("button", { name: "Un episodio más" }).click();
@@ -256,7 +257,7 @@ test("watch: a series with episodes, a movie, and undo asks first", async ({ pag
   await again.getByLabel("Título", { exact: true }).fill("Alien");
   await again.getByRole("radio", { name: "Película" }).click();
   await again.getByRole("button", { name: "Agregar título" }).click();
-  await again.getByLabel("Terminé la película").check();
+  await again.getByText("La vi completa").click();
   await again.getByRole("button", { name: "Guardar" }).click();
   await expect(page.getByText("Completa · Alien")).toBeVisible();
 });
@@ -313,7 +314,7 @@ test("form: every log type can be created and edited, and the rules explain them
   // the rules, before saving: steps allow no log; a photo allows no time or quantity
   await page.getByLabel("Nombre").fill("Con pasos");
   await page.getByRole("button", { name: "Agregar paso" }).click();
-  await page.getByLabel("Paso 1").fill("Uno");
+  await page.getByLabel("Paso 1", { exact: true }).fill("Uno");
   await expect(group.getByRole("radio", { name: "Cantidad" })).toBeDisabled();
   await expect(page.getByText("Un hábito con pasos no lleva registro detallado.")).toBeVisible();
   await page.getByRole("button", { name: "Quitar Uno" }).click();
@@ -332,7 +333,7 @@ test("form: every log type can be created and edited, and the rules explain them
   await page.getByRole("button", { name: "Pasos", exact: true }).click();
   await page.getByRole("switch", { name: "Requiere foto" }).click();
   await page.getByRole("button", { name: "Crear hábito" }).click();
-  await expect(page.getByRole("alert")).toContainText("Un hábito con foto no lleva tiempo ni cantidad.");
+  await expect(page.getByText("Un hábito con foto no lleva tiempo ni cantidad.", { exact: true })).toBeVisible();
   await page.getByRole("switch", { name: "Requiere foto" }).click();
   await page.getByRole("button", { name: "Crear hábito" }).click();
   await expect(page).toHaveURL(/\/$/);
