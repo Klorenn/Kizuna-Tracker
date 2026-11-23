@@ -13,12 +13,14 @@ export const HABIT_ICONS = [
   'book',
   'laptop',
   'desk',
+  'television',
   'sneaker-move',
   'moon',
   'fork-knife',
   'flame',
   'target',
   'clock',
+  'timer',
   'calendar-blank',
   'bell',
   'camera',
@@ -121,7 +123,7 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
   watch: {
     ...base('watch'),
     name: 'Series y películas',
-    icon: 'laptop', // TODO: 'television' once the icon set gets it (owner's decision)
+    icon: 'television',
     frequency: { type: 'weekly', target: 3 },
     preset: 'watch',
     logType: 'watch',
