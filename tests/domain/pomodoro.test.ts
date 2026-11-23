@@ -310,7 +310,8 @@ describe('readout', () => {
 
 describe('mode persistence and ticks', () => {
   it('parses a state without mode as pomodoro and keeps the mode of new ones', () => {
-    const { mode: _m, blockIds: _b, chunks: _c, endReason: _e, tooShort: _t, ...legacy } = open
+    const added = ['mode', 'blockIds', 'chunks', 'endReason', 'tooShort']
+    const legacy = Object.fromEntries(Object.entries(open).filter(([k]) => !added.includes(k)))
     const parsed = parsePomodoroState(JSON.stringify(legacy))
     expect(parsed?.mode).toBe('pomodoro')
     expect(parsed?.phase).toBe('focus')

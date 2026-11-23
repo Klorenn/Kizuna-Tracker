@@ -244,8 +244,8 @@ test("time: Estudiar asks how long, then adds more; the Pomodoro screen leaves i
   await addHabit(v, "Estudiar", "book-open", "time", { preset: "study" });
   await page.context().clearCookies();
   await logIn(page, v.email, PASSWORD);
-  await page.getByRole("link", { name: /^Pomodoro/ }).click();
-  await expect(page.getByRole("heading", { name: "Pomodoro · Estudiar" })).toBeVisible();
+  await page.getByRole("link", { name: /^Medir tiempo de/ }).click();
+  await expect(page.getByRole("heading", { name: "Medir tiempo · Estudiar" })).toBeVisible();
   await page.getByRole("button", { name: "Empezar foco" }).click();
   await expect(page.getByRole("timer")).toBeVisible();
   await page.goto("/");
@@ -260,7 +260,7 @@ test("time: a Pomodoro block is credited once and shows on Hoy", async ({ page }
   await logIn(page, u.email, PASSWORD);
   await page.clock.install();
   await page.goto("/");
-  await page.getByRole("link", { name: /^Pomodoro/ }).click();
+  await page.getByRole("link", { name: /^Medir tiempo de/ }).click();
   await page.getByRole("button", { name: "Personalizado" }).click();
   await page.getByLabel("Foco (min)").fill("5");
   await page.getByText("Sin límite", { exact: true }).click();

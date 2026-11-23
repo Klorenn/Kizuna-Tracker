@@ -35,7 +35,7 @@ test("a pomodoro session: focus, break, reload, next round, finish early", async
   const id = await studyHabit(page, "pomo");
   await page.clock.install();
   await page.goto(`/habitos/${id}/pomodoro`);
-  await expect(page.getByRole("heading", { name: "Pomodoro · Estudiar" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Medir tiempo · Estudiar" })).toBeVisible();
   await shot(page, "01-idle");
 
   await page.getByRole("button", { name: "Personalizado" }).click();
@@ -202,4 +202,162 @@ test("non-time and unknown habits are 404; 375 px fits; reduced motion keeps cat
   await expect(cat).toBeVisible();
   const mask = await cat.evaluate((el) => getComputedStyle(el).maskImage || getComputedStyle(el).webkitMaskImage);
   expect(mask).toContain("still");
+});
+
+// ---------------------------------------------------------------- Task 30: timer and stopwatch
+
+const mode = (page: Page, name: "Pomodoro" | "Temporizador" | "Cronómetro") => page.getByRole("radio", { name });
+/** The readout as seconds ("1:05:09" -> 3909). */
+const seconds = async (page: Page) =>
+  (await page.getByRole("timer").innerText()).split(":").reduce((acc, p) => acc * 60 + Number(p), 0);
+
+test("a timer of 15 minutes counts down, survives a reload and credits 15 minutes", async ({ page }) => {
+  test.setTimeout(180_000);
+  const id = await studyHabit(page, "ptim");
+  await page.clock.install();
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await mode(page, "Temporizador").click();
+  await page.getByRole("button", { name: "15 minutos" }).click();
+  await expect(page.getByRole("timer")).toHaveText("15:00");
+  await shot(page, "10-timer-idle");
+  await page.getByLabel("Qué estudiaste").fill("Álgebra");
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await expect(page.getByRole("timer")).toHaveText("15:00");
+  await shot(page, "11-timer-running");
+
+  // the mode cannot change while it runs
+  await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-disabled", "true");
+  await mode(page, "Cronómetro").click();
+  await expect(mode(page, "Temporizador")).toHaveAttribute("aria-checked", "true");
+  await expect(page.getByText("Termina la sesión para cambiar de modo.")).toBeVisible();
+
+  await page.clock.runFor(5 * MIN);
+  await page.reload();
+  await expect.poll(() => seconds(page)).toBeGreaterThan(9 * 60 + 40);
+  await expect.poll(() => seconds(page)).toBeLessThanOrEqual(10 * 60);
+
+  await page.clock.runFor(11 * MIN);
+  await expect(page.getByText("TERMINADO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Sumamos 15 min a Estudiar.")).toBeVisible();
+  await expect(page.getByText("Hoy: 15 min · Álgebra")).toBeVisible();
+  await shot(page, "12-timer-done");
+  await page.goto(`/habitos/${id}/tiempo`);
+  await expect(page.getByText("15 min", { exact: true })).toBeVisible();
+});
+
+test("a stopwatch stopped at 3 min 20 s credits 3 minutes; under a minute credits nothing", async ({ page }) => {
+  test.setTimeout(180_000);
+  const id = await studyHabit(page, "psw");
+  await page.clock.install();
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await mode(page, "Cronómetro").click();
+  await expect(page.getByRole("timer")).toHaveText("00:00");
+  await shot(page, "13-stopwatch-idle");
+
+  // under a minute: nothing to add
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await page.clock.runFor(30_000);
+  await page.getByRole("button", { name: "Terminar", exact: true }).click();
+  await expect(page.getByText("Menos de un minuto no se suma.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Empezar", exact: true })).toBeVisible();
+
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await page.clock.runFor(65_000);
+  await page.reload();
+  await expect.poll(() => seconds(page)).toBeGreaterThanOrEqual(65);
+  await expect.poll(() => seconds(page)).toBeLessThan(90);
+  await page.clock.runFor(2 * MIN + 15_000);
+  await shot(page, "14-stopwatch-running");
+  await page.getByRole("button", { name: "Pausar" }).click();
+  await expect(page.getByText("En pausa.")).toBeVisible();
+  await page.getByRole("button", { name: "Reanudar" }).click();
+  await page.getByRole("button", { name: "Terminar", exact: true }).click();
+  await expect(page.getByText(/^Sumamos [34] min a Estudiar\.$/)).toBeVisible();
+  await page.goto(`/habitos/${id}/tiempo`);
+  await expect(page.getByText(/^[34] min$/)).toBeVisible();
+});
+
+test("a stopwatch closes a 90-minute block by itself and keeps counting past an hour", async ({ page }) => {
+  test.setTimeout(240_000);
+  const id = await studyHabit(page, "pchunk");
+  await page.clock.install();
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await mode(page, "Cronómetro").click();
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await page.clock.runFor(65 * MIN + 9_000);
+  await expect.poll(() => page.getByRole("timer").innerText()).toMatch(/^1:05:\d\d$/);
+  await page.clock.runFor(26 * MIN);
+  await expect(page.getByText("Sumamos 90 min a Estudiar.")).toBeVisible();
+  await shot(page, "15-stopwatch-chunk");
+  await expect(page.getByRole("timer")).toHaveText(/^1:3[01]:\d\d$/);
+  await page.getByRole("button", { name: "Terminar", exact: true }).click();
+  await expect(page.getByText(/^Sumamos 9[12] min a Estudiar\.$/)).toBeVisible();
+});
+
+test("the mode switch moves with the arrow keys and Hoy opens the last mode used", async ({ page }) => {
+  test.setTimeout(120_000);
+  const id = await studyHabit(page, "pmode");
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await expect(mode(page, "Pomodoro")).toHaveAttribute("aria-checked", "true");
+  await mode(page, "Pomodoro").focus();
+  await page.keyboard.press("ArrowRight");
+  await expect(mode(page, "Temporizador")).toHaveAttribute("aria-checked", "true");
+  await expect(mode(page, "Temporizador")).toBeFocused();
+  await page.keyboard.press("ArrowRight");
+  await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-checked", "true");
+
+  await page.goto("/");
+  const open = page.getByRole("link", { name: "Medir tiempo de Estudiar" });
+  await expect(open).toHaveText("Medir");
+  await open.click();
+  await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-checked", "true");
+  await page.reload();
+  await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-checked", "true");
+});
+
+test("Hoy shows a running timer and links back to the screen", async ({ page }) => {
+  test.setTimeout(120_000);
+  const id = await studyHabit(page, "pbanner");
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await mode(page, "Temporizador").click();
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await expect(page.getByRole("timer")).toBeVisible();
+  await page.goto("/");
+  const strip = page.getByRole("link", { name: /^Temporizador · Estudiar/ });
+  await expect(strip).toBeVisible();
+  await expect(strip).toContainText(/\d\d:\d\d$/);
+  await shot(page, "16-hoy-banner");
+  await strip.click();
+  await expect(page.getByRole("heading", { name: "Medir tiempo · Estudiar" })).toBeVisible();
+  await expect(page.getByRole("timer")).toBeVisible();
+});
+
+test("the readout never moves between modes and 375 px fits in every mode", async ({ page }) => {
+  test.setTimeout(120_000);
+  const id = await studyHabit(page, "pshift");
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto(`/habitos/${id}/pomodoro`);
+  const fits = async () => {
+    const wide = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
+    expect(wide).toBe(false);
+  };
+  await fits();
+  await mode(page, "Temporizador").click();
+  const top = async () => (await page.getByRole("timer").boundingBox())!.y;
+  const timerIdle = await top();
+  await fits();
+  await page.getByRole("button", { name: "Otro" }).click();
+  await page.getByLabel("Minutos (1 a 90)").fill("200");
+  await expect(page.getByText("Elige entre 1 y 90 minutos.")).toBeVisible();
+  expect(await top()).toBe(timerIdle);
+  await fits();
+  await page.getByLabel("Minutos (1 a 90)").fill("12");
+  await expect(page.getByRole("timer")).toHaveText("12:00");
+  await mode(page, "Cronómetro").click();
+  expect(await top()).toBe(timerIdle);
+  await fits();
+  await page.getByRole("button", { name: "Empezar", exact: true }).click();
+  await expect(page.getByRole("timer")).toBeVisible();
+  expect(await top()).toBe(timerIdle);
+  await fits();
 });

@@ -5,8 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sendPomodoroBlock } from "@/app/(app)/registros/time-actions";
 import { IconButton } from "@/components/ui/IconButton";
-import { pomodoroReducer, pomodoroView, type PomodoroState } from "@/domain/pomodoro";
-import { formatClock } from "@/domain/time";
+import { formatReadout, pomodoroReducer, pomodoroView, type PomodoroState } from "@/domain/pomodoro";
 import {
   ACTION_REV_BUMP,
   discardPending,
@@ -22,7 +21,8 @@ import {
 import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/pomodoro-sync";
 
 /*
- * PomodoroBanner: the "Pomodoro en curso · Estudiar · 18:42" strip on Hoy. Self-contained (plain
+ * PomodoroBanner: the "Pomodoro en curso · Estudiar · 18:42" strip on Hoy (a timer or a stopwatch
+ * shows as "Temporizador · Estudiar" / "Cronómetro · Estudiar" with its readout). Self-contained (plain
  * props); Hoy (Task 28) mounts it.
  *
  *   <PomodoroBanner userId timeZone habits={[{ id, name }]} />
@@ -38,6 +38,8 @@ import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/p
  */
 
 type Row = { state: PomodoroState; name: string; orphan: boolean };
+
+const MODE_TITLE = { pomodoro: "Pomodoro en curso", timer: "Temporizador", stopwatch: "Cronómetro" } as const;
 
 export function PomodoroBanner({
   userId,
@@ -196,7 +198,7 @@ export function PomodoroBanner({
             <span className="min-w-0 flex-1 truncate">
               {r.state.phase === "idle" || r.state.phase === "done"
                 ? `Pendiente de sumar · ${r.name}`
-                : `Pomodoro en curso · ${r.name}${r.state.pending.length > 0 ? " · Pendiente de sumar" : ""}`}
+                : `${MODE_TITLE[r.state.mode]} · ${r.name}${r.state.pending.length > 0 ? " · Pendiente de sumar" : ""}`}
             </span>
             {r.state.phase === "ready" ? (
               <span className="shrink-0">Listo</span>
@@ -227,5 +229,6 @@ function sameRows(a: Row[], b: Row[]): boolean {
 /** The ticking readout: only this span redraws every second. */
 function BannerClock({ state }: { state: PomodoroState }) {
   const now = useNow(state.pausedAt === null, 1000);
-  return <span className="shrink-0 font-mono text-ink">{formatClock(pomodoroView(state, now).remainingMs)}</span>;
+  const v = pomodoroView(state, now);
+  return <span className="shrink-0 font-mono text-ink">{formatReadout(v.displayMs, v.direction)}</span>;
 }

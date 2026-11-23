@@ -57,7 +57,7 @@ const ACTION = "inline-flex h-11 shrink-0 items-center text-small font-medium te
 /**
  * List-style row inside a Card. Plain habit: tap to check. Photo: "Foto" chip. Items: checklist
  * below. Reading, time, watch and cardio habits: "Hecho" opens their sheet ("¿Qué leíste hoy?",
- * "¿Cuánto rato?", "¿Qué viste hoy?", "¿Cuánto trotaste hoy?"); time also offers "Pomodoro" and,
+ * "¿Cuánto rato?", "¿Qué viste hoy?", "¿Cuánto trotaste hoy?"); time also offers "Medir" and,
  * once done, "+ Tiempo"; cardio offers "+ Salida". Quantity habits show their control (quick add,
  * running total) instead of "Hecho" and have no undo: you remove sums. Done without a log on a
  * habit with a log type: "Añadir registro". Undoing a check-in that has a log asks first.
@@ -136,11 +136,11 @@ function HabitRowView({
     action = (
       <Link
         href={`/habitos/${row.id}/pomodoro`}
-        aria-label={`Pomodoro de ${row.name}`}
+        aria-label={`Medir tiempo de ${row.name}`}
         className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
       >
         <Timer size={16} weight="light" aria-hidden />
-        Pomodoro
+        Medir
       </Link>
     );
   } else if (timeFlow && done) {

@@ -6,9 +6,9 @@ import { read } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
-export const metadata: Metadata = { title: "Pomodoro" };
+export const metadata: Metadata = { title: "Medir tiempo" };
 
-/** The Pomodoro timer of a `time` habit. 404 for someone else's, archived or non-time habits. */
+/** "Medir tiempo" (Pomodoro, timer, stopwatch) of a `time` habit. 404 for someone else's, archived or non-time habits. */
 export default async function PomodoroPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createServerClient();
