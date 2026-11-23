@@ -174,8 +174,16 @@ export async function signUp(
     // Account exists: no retry, no deletion; the person signs in by hand (also when the call threw).
     if (!signedIn) redirect("/login?notice=cuenta-lista");
     redirect("/listo");
+    // redirect() never returns; this line only guarantees that nothing below runs with a service key
+    return { ok: false, error: GENERIC_SIGNUP_ERROR };
   }
 
+  // Non-admin fallback. It runs ONLY when no service key is configured (`supabaseServiceKey()` is
+  // empty): local development against a Supabase stack without SUPABASE_SERVICE_ROLE_KEY. There the
+  // account goes through the public `auth.signUp`, so it depends on the project's e-mail
+  // confirmation setting (a session only comes back when confirmations are off, as in the local
+  // config). Production always has the key, and every path of the branch above ends in a redirect
+  // or a return, so with a key this code is unreachable.
   const { data, error } = await supabase.auth.signUp({
     email: clean.email,
     password: clean.password,
