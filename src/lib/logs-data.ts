@@ -3,6 +3,7 @@ import type { WeightEntry } from "@/domain/body";
 import {
   DAY_TYPES,
   MUSCLE_GROUPS,
+  pagesRead,
   type Book,
   type DayType,
   type ExerciseRef,
@@ -110,7 +111,7 @@ export function toDayLogs(rows: {
       bookTitle: book?.title ?? "Libro",
       fromPage: r.from_page,
       toPage: r.to_page,
-      pages: r.to_page - r.from_page,
+      pages: pagesRead({ fromPage: r.from_page, toPage: r.to_page }),
       finishedBook: book?.status === "finished" && book.finishedOn === r.local_date,
     });
   }

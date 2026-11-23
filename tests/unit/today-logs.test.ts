@@ -19,9 +19,9 @@ describe('todayLogs', () => {
       ],
     )
     expect(r.logs).toEqual({
-      h1: { kind: 'reading', pages: 26, bookTitle: 'Dune' },
-      g1: { kind: 'workout', dayTypes: ['legs'], exerciseCount: 5 },
-      g2: { kind: 'workout', dayTypes: ['cardio'], exerciseCount: 0 },
+      h1: [{ kind: 'reading', pages: 26, bookTitle: 'Dune' }],
+      g1: [{ kind: 'workout', dayTypes: ['legs'], exerciseCount: 5 }],
+      g2: [{ kind: 'workout', dayTypes: ['cardio'], exerciseCount: 0 }],
     })
     expect(r.readings).toEqual({ h1: { checkinId: 'c1', entry: { bookId: 'b1', fromPage: 14, toPage: 40 } } })
   })
@@ -32,7 +32,19 @@ describe('todayLogs', () => {
       [{ id: 's1', habit_id: 'g1', day_types: ['legs', 'yoga'] }],
       [],
     )
-    expect(r.logs.h1).toEqual({ kind: 'reading', pages: 1, bookTitle: 'Libro' })
-    expect(r.logs.g1).toEqual({ kind: 'workout', dayTypes: ['legs'], exerciseCount: 0 })
+    expect(r.logs.h1).toEqual([{ kind: 'reading', pages: 1, bookTitle: 'Libro' }])
+    expect(r.logs.g1).toEqual([{ kind: 'workout', dayTypes: ['legs'], exerciseCount: 0 }])
+  })
+
+  it('keeps both logs when a habit has a reading and a workout (log_type changed in between)', () => {
+    const r = todayLogs(
+      [{ habit_id: 'h', checkin_id: 'c', book_id: 'b', from_page: 10, to_page: 10, books: { title: 'Dune' } }],
+      [{ id: 's', habit_id: 'h', day_types: ['legs'] }],
+      [],
+    )
+    expect(r.logs.h).toEqual([
+      { kind: 'reading', pages: 0, bookTitle: 'Dune' },
+      { kind: 'workout', dayTypes: ['legs'], exerciseCount: 0 },
+    ])
   })
 })

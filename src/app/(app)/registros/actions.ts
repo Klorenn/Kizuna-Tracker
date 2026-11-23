@@ -144,7 +144,11 @@ export async function setBookFinished(id: string, finishedOn: LocalDate | null):
   const supabase = await createServerClient();
   if (finishedOn !== null) {
     if (!isLocalDate(finishedOn)) return { ok: false, error: "Elige una fecha válida." };
-    const { data: profile } = await supabase.from("profiles").select("timezone").single();
+    const { data: auth } = await supabase.auth.getUser();
+    const uid = auth.user?.id;
+    if (!uid) return { ok: false, error: NOT_AUTHENTICATED };
+    // own row only: friends' profiles are readable too, so never rely on .single() alone
+    const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
     if (!profile) return { ok: false, error: NOT_AUTHENTICATED };
     if (finishedOn > localDate(new Date(), profile.timezone)) return { ok: false, error: FUTURE };
   }

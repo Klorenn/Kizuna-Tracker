@@ -2,15 +2,15 @@
 
 import { Warning } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { checkInWithReading, deleteReading, saveReading } from "@/app/(app)/registros/actions";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
-import { pagesRead } from "@/domain/logs";
-import { announceReading } from "@/lib/celebration-bus";
+import { pagesLabel, pagesRead } from "@/domain/logs";
+import { announceReading, clearReading, holdCelebrations } from "@/lib/celebration-bus";
 import type { PickerBook } from "@/lib/reading-books";
 import { BookPicker } from "./BookPicker";
 
@@ -79,6 +79,10 @@ export function ReadingForm({
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
+  // Hoy's check-in sheet: no celebration may open on top of it (one sheet at a time), even if a
+  // refresh lands while it is open; Hoy re-evaluates when it closes.
+  const holdsHoy = mode.kind === "checkin";
+  useEffect(() => (holdsHoy ? holdCelebrations() : undefined), [holdsHoy]);
 
   const fromN = toInt(from);
   const toN = toInt(to);
@@ -106,13 +110,15 @@ export function ReadingForm({
     setError(null);
     start(async () => {
       if (mode.kind === "checkin") {
+        // announced BEFORE the action: its revalidation can re-render Hoy before it resolves
+        announceReading({ pages: pagesRead(entry), finishedTitle });
         const res = await checkInWithReading(mode.habitId, entry);
         if (!res.ok) {
+          clearReading();
           setError(res.error);
           if (res.checkedIn) router.refresh();
           return;
         }
-        announceReading({ pages: entry.toPage - entry.fromPage, finishedTitle });
         onFinished();
         router.refresh();
         return;
@@ -185,7 +191,7 @@ export function ReadingForm({
           />
         </div>
         <p className="font-mono text-body font-medium text-ink" aria-live="polite">
-          {pages === null ? "—" : `${pages} ${pages === 1 ? "página" : "páginas"}`}
+          {pages === null ? "—" : pagesLabel(pages)}
         </p>
         <Checkbox
           label="Terminé este libro"

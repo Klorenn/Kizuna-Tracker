@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TopBar } from "@/components/ui/TopBar";
 import { localDate } from "@/domain/dates";
-import { nextFromPage } from "@/domain/logs";
+import { nextFromPage, pagesRead } from "@/domain/logs";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 import { LibrosView, type BookView } from "./LibrosView";
@@ -49,7 +49,7 @@ export default async function LibrosPage() {
       finishedOn: b.finished_on,
       currentPage: nextFromPage(asEntries, b.id),
       readings: mine.length,
-      pages: mine.reduce((n, e) => n + (e.to_page - e.from_page), 0),
+      pages: mine.reduce((n, e) => n + pagesRead({ fromPage: e.from_page, toPage: e.to_page }), 0),
     };
   });
 

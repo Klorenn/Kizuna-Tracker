@@ -210,6 +210,8 @@ describe('books', () => {
   it('setBookFinished marks finished on a date, or back to reading with null', async () => {
     results['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
     await expect(setBookFinished('b1', '2026-11-02')).resolves.toEqual({ ok: true })
+    // the timezone comes from the caller's own profile row (friends' rows are readable too)
+    expect(calls.find((c) => c.table === 'profiles')?.filters).toEqual([['id', 'u1']])
     expect(calls.find((c) => c.op === 'update')).toMatchObject({
       payload: { status: 'finished', finished_on: '2026-11-02' },
       filters: [['id', 'b1']],

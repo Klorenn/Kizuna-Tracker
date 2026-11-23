@@ -62,7 +62,7 @@ export function LibrosView({ books, today }: { books: BookView[]; today: LocalDa
         <Card>
           <EmptyState
             title="Todavía no tienes libros"
-            body="Agrega el que estás leyendo. Las páginas se anotan al marcar Leer."
+            body="Agrega el que estás leyendo. Las páginas se anotan al completar tu hábito de lectura."
             action={
               <Button className="w-auto!" onClick={() => setPanel({ kind: "new" })}>
                 <Plus size={20} weight="light" aria-hidden />

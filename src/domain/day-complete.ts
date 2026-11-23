@@ -69,14 +69,27 @@ export function pickCelebration(
   next: HoyState,
   opts: { gymSheet?: boolean; reading?: ReadingSaved | null } = {},
 ): Celebration | null {
-  if (opts.gymSheet || !prev) return null;
-  if (opts.reading?.finishedTitle) return "book";
-  if (shouldCelebrateDay(prev, next)) return "day";
-  if (mealsJustCompleted(prev, next)) return "meals";
-  if (justDone(prev, next, isRestHabit)) return "rest";
-  if (justDone(prev, next, isStudyHabit)) return "study";
-  if (opts.reading) return "reading";
-  return null;
+  return celebrationCandidates(prev, next, opts)[0] ?? null;
+}
+
+/**
+ * Every celebration that applies, in priority order. Hoy shows the first one not yet claimed this
+ * session, so an explicit reading save still celebrates when "día completo" was already shown.
+ */
+export function celebrationCandidates(
+  prev: HoyState | null,
+  next: HoyState,
+  opts: { gymSheet?: boolean; reading?: ReadingSaved | null } = {},
+): Celebration[] {
+  if (opts.gymSheet || !prev) return [];
+  const out: Celebration[] = [];
+  if (opts.reading?.finishedTitle) out.push("book");
+  if (shouldCelebrateDay(prev, next)) out.push("day");
+  if (mealsJustCompleted(prev, next)) out.push("meals");
+  if (justDone(prev, next, isRestHabit)) out.push("rest");
+  if (justDone(prev, next, isStudyHabit)) out.push("study");
+  if (opts.reading) out.push("reading");
+  return out;
 }
 
 /** The habit behind a rest or study celebration (scope of its once-per-day claim). */

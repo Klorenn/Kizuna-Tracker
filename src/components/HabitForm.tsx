@@ -1,6 +1,7 @@
 "use client";
 
 import { Minus, Plus, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { radioKeyTarget } from "@/lib/radio-keys";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createHabit, updateHabit } from "@/app/(app)/habitos/actions";
@@ -249,7 +250,19 @@ export function HabitForm({
         <div className="flex flex-col gap-2">
           <p className="text-small text-ink">Registro detallado</p>
           {/* Segmented look, but each option sized to its label: "Entrenamiento" does not fit a third of 360 px */}
-          <div role="radiogroup" aria-label="Registro detallado" className="flex gap-1 rounded-md bg-field p-1">
+          <div
+            role="radiogroup"
+            aria-label="Registro detallado"
+            className="flex gap-1 rounded-md bg-field p-1"
+            onKeyDown={(e) => {
+              const i = LOG_TYPE_OPTIONS.findIndex((o) => o.value === draft.logType);
+              const to = radioKeyTarget(e.key, Math.max(i, 0), LOG_TYPE_OPTIONS.length);
+              if (to === null) return;
+              e.preventDefault();
+              patch({ logType: LOG_TYPE_OPTIONS[to].value });
+              e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[to]?.focus();
+            }}
+          >
             {LOG_TYPE_OPTIONS.map((o) => {
               const selected = o.value === draft.logType;
               return (
@@ -258,6 +271,7 @@ export function HabitForm({
                   type="button"
                   role="radio"
                   aria-checked={selected}
+                  tabIndex={selected ? 0 : -1}
                   onClick={() => patch({ logType: o.value })}
                   className={`h-11 flex-auto rounded-md px-2 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] ${
                     selected ? "bg-raised text-ink shadow-card" : "text-muted"

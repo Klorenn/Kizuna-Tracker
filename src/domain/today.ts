@@ -59,8 +59,8 @@ export function buildToday(input: {
   items: ItemInput[]
   checkins: CheckinInput[]
   itemChecks: ItemCheckInput[]
-  /** today's logs by habit_id */
-  logs?: Record<string, TodayLog>
+  /** today's logs by habit_id (several when the log type changed after logging) */
+  logs?: Record<string, TodayLog | TodayLog[]>
   today: LocalDate
   timeZone: string
 }): { rows: TodayRow[]; doneCount: number; total: number; bestDailyStreak: number } {
@@ -109,7 +109,7 @@ export function buildToday(input: {
       weekCount,
       items,
       logType: toLogType(h.log_type),
-      log: input.logs?.[h.id] ?? null,
+      log: pickLog(input.logs?.[h.id], toLogType(h.log_type)),
     }
   })
 
@@ -120,6 +120,25 @@ export function buildToday(input: {
     total: rows.length,
     bestDailyStreak: dailyStreaks.length ? Math.max(...dailyStreaks) : 0,
   }
+}
+
+/** The log whose kind matches the habit's log type, else whichever exists (first). */
+function pickLog(logs: TodayLog | TodayLog[] | undefined, logType: LogType): TodayLog | null {
+  const list = logs === undefined ? [] : Array.isArray(logs) ? logs : [logs]
+  return list.find((l) => l.kind === logType) ?? list[0] ?? null
+}
+
+const UNDO_LOSES: Record<TodayLog['kind'], string> = {
+  reading: 'Se borrará también la lectura de hoy.',
+  workout: 'Se borrará también el entrenamiento de hoy.',
+}
+
+/**
+ * Undoing a check-in deletes its log (cascade). Ask whenever a log exists, whatever the habit's
+ * current log type, and name the log that is actually there. Null: undo right away.
+ */
+export function undoLosesCopy(row: Pick<TodayRow, 'log'>): string | null {
+  return row.log ? UNDO_LOSES[row.log.kind] : null
 }
 
 const toLogType = (v: string | null | undefined): LogType =>

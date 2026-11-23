@@ -2,9 +2,9 @@
 
 import { Camera, Check, Warning } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
+import { useId, useOptimistic, useState, useTransition } from "react";
 import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
-import { habitSubtitle, type TodayRow } from "@/domain/today";
+import { habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
 import type { PickerBook } from "@/lib/reading-books";
 import { ItemChecklist } from "./ItemChecklist";
 import { ReadingSheet, type ReadingSheetMode } from "./logs/ReadingSheet";
@@ -18,11 +18,6 @@ export type RowReading = {
   books: PickerBook[];
   checkinId: string | null;
   entry: { bookId: string; fromPage: number; toPage: number } | null;
-};
-
-const UNDO_LOSES: Record<"reading" | "workout", string> = {
-  reading: "Se borrará también la lectura de hoy.",
-  workout: "Se borrará también el entrenamiento de hoy.",
 };
 
 function Box({ done }: { done: boolean }) {
@@ -49,6 +44,8 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
   const [done, setDone] = useOptimistic(row.done);
   const [sheet, setSheet] = useState<ReadingSheetMode | null>(null);
   const [confirmUndo, setConfirmUndo] = useState(false);
+  const undoCopy = undoLosesCopy(row);
+  const undoBodyId = useId();
   const [toast, showToast] = useToast();
   const hasItems = row.items.length > 0;
   const checkedCount = row.items.filter((i) => i.checked).length;
@@ -57,7 +54,7 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
   function toggle() {
     setError(null);
     if (!row.done && readingFlow) return setSheet({ kind: "checkin", habitId: row.id });
-    if (row.done && row.log && row.logType !== "none") return setConfirmUndo(true);
+    if (row.done && undoCopy) return setConfirmUndo(true);
     run();
   }
 
@@ -161,9 +158,14 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
       {sheet && reading ? (
         <ReadingSheet open mode={sheet} books={reading.books} onClose={() => setSheet(null)} onSaved={showToast} />
       ) : null}
-      {row.logType !== "none" ? (
-        <Sheet open={confirmUndo} title="¿Deshacer el hábito de hoy?" onClose={() => setConfirmUndo(false)}>
-          <p className="text-body text-muted">{UNDO_LOSES[row.logType]}</p>
+      {undoCopy ? (
+        <Sheet
+          open={confirmUndo}
+          title="¿Deshacer el hábito de hoy?"
+          onClose={() => setConfirmUndo(false)}
+          describedBy={undoBodyId}
+        >
+          <p id={undoBodyId} className="text-body text-muted">{undoCopy}</p>
           <Button onClick={run}>Deshacer</Button>
           <Button variant="secondary" onClick={() => setConfirmUndo(false)}>
             Cancelar

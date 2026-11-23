@@ -7,16 +7,15 @@ import { ReadingDoneSheet } from "@/components/logs/ReadingDoneSheet";
 import {
   celebratedHabit,
   completedMealsHabit,
-  pickCelebration,
   type Celebration,
   type DayProgress,
   type HoyRowState,
   type HoyState,
-  type ReadingSaved,
 } from "@/domain/day-complete";
 import type { LocalDate } from "@/domain/types";
 import { celebrationKey, claimCelebration, sessionStore } from "@/lib/celebrate-once";
-import { takeReading } from "@/lib/celebration-bus";
+import { celebrationsHeld, onCelebrationsReleased, takeReading } from "@/lib/celebration-bus";
+import { watchStep, type Shown } from "@/lib/celebration-watch";
 import type { CatAsset } from "@/lib/motion/cat-animation";
 
 const COPY = {
@@ -45,8 +44,6 @@ export function DayCompleteSheet({
   );
 }
 
-type Shown = { kind: Celebration; reading: ReadingSaved | null };
-
 /** Once per (kind, habit or day, local date) per session: undo then redo does not celebrate again. */
 function claim(kind: Celebration, before: HoyState, next: HoyState, today: LocalDate): boolean {
   // book and reading follow an explicit save in the reading sheet: they always show
@@ -62,9 +59,10 @@ function claim(kind: Celebration, before: HoyState, next: HoyState, today: Local
 
 /**
  * Lives on Hoy. Remembers the previous state across server refreshes, takes what the reading sheet
- * saved (celebration bus) and opens exactly one sheet, chosen by pickCelebration. First render
- * (including coming back from a photo check-in, which remounts Hoy) never celebrates, so a gym
- * check-in that completes the day shows only its own sheet.
+ * saved (celebration bus) and opens exactly one sheet: the first celebration, in priority order,
+ * not yet claimed this session (watchStep). First render (including coming back from a photo
+ * check-in, which remounts Hoy) never celebrates, so a gym check-in that completes the day shows
+ * only its own sheet. While a reading sheet is open it defers and re-evaluates on release.
  */
 export function DayCompleteWatcher({
   done,
@@ -75,18 +73,26 @@ export function DayCompleteWatcher({
   const prev = useRef<HoyState | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
   const last = useRef<Shown>({ kind: "day", reading: null });
+  const latest = useRef<HoyState>({ done, total, rows });
+  latest.current = { done, total, rows };
+
+  const evaluate = useCallback(() => {
+    const step = watchStep(prev.current, latest.current, {
+      held: celebrationsHeld,
+      take: takeReading,
+      claim: (kind, before, next) => claim(kind, before, next, today),
+    });
+    prev.current = step.prev;
+    if (step.show) {
+      last.current = step.show;
+      setShown(step.show);
+    }
+  }, [today]);
 
   useEffect(() => {
-    const next: HoyState = { done, total, rows };
-    const before = prev.current;
-    const reading = takeReading();
-    const pick = pickCelebration(before, next, { reading });
-    if (pick && before && claim(pick, before, next, today)) {
-      last.current = { kind: pick, reading };
-      setShown(last.current);
-    }
-    prev.current = next;
-  }, [done, total, rows, today]);
+    evaluate();
+  }, [done, total, rows, evaluate]);
+  useEffect(() => onCelebrationsReleased(evaluate), [evaluate]);
 
   const close = useCallback(() => setShown(null), []);
   const { kind, reading } = shown ?? last.current;

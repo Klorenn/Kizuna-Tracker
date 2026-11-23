@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { buildToday, habitSubtitle } from '@/domain/today'
+import type { TodayLog } from '@/domain/logs'
+import { buildToday, habitSubtitle, undoLosesCopy } from '@/domain/today'
 
 const habit = (o: Partial<Parameters<typeof buildToday>[0]['habits'][number]> = {}) => ({
   id: 'h1',
@@ -108,5 +109,39 @@ describe('buildToday', () => {
     })
     expect(habitSubtitle(r.rows[0])).toBe('Pierna · 5 ejercicios')
     expect(r.rows.map((x) => x.logType)).toEqual(['workout', 'none', 'none'])
+  })
+
+  it('with a reading and a workout on the same habit, the one matching log_type wins, else the first', () => {
+    const reading: TodayLog = { kind: 'reading', pages: 26, bookTitle: 'Dune' }
+    const workout: TodayLog = { kind: 'workout', dayTypes: ['legs'], exerciseCount: 3 }
+    const r = buildToday({
+      ...base,
+      habits: [habit({ id: 'a', log_type: 'reading' }), habit({ id: 'b', log_type: 'workout' }), habit({ id: 'c', log_type: 'none' })],
+      checkins: [],
+      logs: { a: [workout, reading], b: [reading, workout], c: [reading, workout] },
+    })
+    expect(r.rows.map((x) => x.log?.kind)).toEqual(['reading', 'workout', 'reading'])
+  })
+})
+
+describe('undoLosesCopy', () => {
+  const row = (o: Partial<ReturnType<typeof buildToday>['rows'][number]>) =>
+    ({ ...buildToday({ habits: [habit()], items: [], checkins: [], itemChecks: [], today: '2026-11-22', timeZone: 'UTC' }).rows[0], ...o })
+
+  it('asks whenever a log exists, naming the log that is actually there', () => {
+    expect(undoLosesCopy(row({ logType: 'reading', log: { kind: 'reading', pages: 3, bookTitle: 'Dune' } }))).toBe(
+      'Se borrará también la lectura de hoy.',
+    )
+    // the log type changed since: the old workout still goes with the check-in
+    expect(undoLosesCopy(row({ logType: 'none', log: { kind: 'workout', dayTypes: ['legs'], exerciseCount: 1 } }))).toBe(
+      'Se borrará también el entrenamiento de hoy.',
+    )
+    expect(undoLosesCopy(row({ logType: 'workout', log: { kind: 'reading', pages: 3, bookTitle: 'Dune' } }))).toBe(
+      'Se borrará también la lectura de hoy.',
+    )
+  })
+
+  it('does not ask without a log', () => {
+    expect(undoLosesCopy(row({ logType: 'reading', log: null }))).toBeNull()
   })
 })

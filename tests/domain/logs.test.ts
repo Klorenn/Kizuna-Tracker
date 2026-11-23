@@ -15,6 +15,7 @@ import {
   headlineGroup,
   lastMonths,
   logSubtitle,
+  pagesLabel,
   monthlyReading,
   nextFromPage,
   pagesRead,
@@ -324,6 +325,13 @@ describe('logSubtitle', () => {
   it('describes a reading', () => {
     expect(logSubtitle({ kind: 'reading', pages: 26, bookTitle: 'Dune' })).toBe('26 páginas · Dune')
     expect(logSubtitle({ kind: 'reading', pages: 1, bookTitle: 'Dune' })).toBe('1 página · Dune')
+    expect(logSubtitle({ kind: 'reading', pages: 0, bookTitle: 'Dune' })).toBe('Sin páginas nuevas · Dune')
+  })
+
+  it('pagesLabel: plural, and no "0 páginas"', () => {
+    expect(pagesLabel(0)).toBe('Sin páginas nuevas')
+    expect(pagesLabel(1)).toBe('1 página')
+    expect(pagesLabel(26)).toBe('26 páginas')
   })
 
   it('describes a workout', () => {

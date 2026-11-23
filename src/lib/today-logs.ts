@@ -1,5 +1,5 @@
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { DAY_TYPES, type DayType, type TodayLog } from '@/domain/logs'
+import { DAY_TYPES, pagesRead, type DayType, type TodayLog } from '@/domain/logs'
 import type { LocalDate } from '@/domain/types'
 import type { Database } from '@/lib/supabase/database.types'
 
@@ -16,16 +16,25 @@ type SetRow = { session_id: string; exercise_id: string }
 
 export type TodayReading = { checkinId: string; entry: { bookId: string; fromPage: number; toPage: number } }
 
-/** Hoy's logs by habit ("26 páginas · Dune", "Pierna · 5 ejercicios") and today's readings for editing. */
+/**
+ * Hoy's logs by habit ("26 páginas · Dune", "Pierna · 5 ejercicios") and today's readings for
+ * editing. A habit can hold BOTH kinds when its log type changed after logging, so every log is
+ * kept (reading first) and buildToday picks the one matching the habit's log type.
+ */
 export function todayLogs(
   readings: ReadingRow[],
   sessions: SessionRow[],
   sets: SetRow[],
-): { logs: Record<string, TodayLog>; readings: Record<string, TodayReading> } {
-  const logs: Record<string, TodayLog> = {}
+): { logs: Record<string, TodayLog[]>; readings: Record<string, TodayReading> } {
+  const logs: Record<string, TodayLog[]> = {}
+  const add = (habitId: string, log: TodayLog) => (logs[habitId] ??= []).push(log)
   const byHabit: Record<string, TodayReading> = {}
   for (const r of readings) {
-    logs[r.habit_id] = { kind: 'reading', pages: r.to_page - r.from_page, bookTitle: r.books?.title ?? 'Libro' }
+    add(r.habit_id, {
+      kind: 'reading',
+      pages: pagesRead({ fromPage: r.from_page, toPage: r.to_page }),
+      bookTitle: r.books?.title ?? 'Libro',
+    })
     byHabit[r.habit_id] = {
       checkinId: r.checkin_id,
       entry: { bookId: r.book_id, fromPage: r.from_page, toPage: r.to_page },
@@ -39,7 +48,7 @@ export function todayLogs(
   }
   for (const s of sessions) {
     const dayTypes = s.day_types.filter((t): t is DayType => (DAY_TYPES as readonly string[]).includes(t))
-    logs[s.habit_id] = { kind: 'workout', dayTypes, exerciseCount: exercises.get(s.id)?.size ?? 0 }
+    add(s.habit_id, { kind: 'workout', dayTypes, exerciseCount: exercises.get(s.id)?.size ?? 0 })
   }
   return { logs, readings: byHabit }
 }

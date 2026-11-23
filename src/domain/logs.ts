@@ -82,6 +82,12 @@ export function validateBook(i: BookInput): Result {
 
 export const pagesRead = (e: { fromPage: number; toPage: number }): number => e.toPage - e.fromPage
 
+/** "26 páginas", "1 página"; a reading that stayed on the same page is "Sin páginas nuevas". */
+export function pagesLabel(pages: number): string {
+  if (pages === 0) return 'Sin páginas nuevas'
+  return pages === 1 ? '1 página' : `${pages} páginas`
+}
+
 export function validateReadingInput(i: { fromPage: number; toPage: number; totalPages: number | null }): Result {
   if (!Number.isInteger(i.fromPage) || !Number.isInteger(i.toPage)) return fail('Usa números enteros.')
   if (i.fromPage < 0 || i.toPage < 0) return fail('Las páginas empiezan en 0.')
@@ -388,7 +394,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
 
 /** The subtitle of a habit row in Hoy: "26 páginas · Dune", "Pierna y core · 5 ejercicios". */
 export function logSubtitle(log: TodayLog): string {
-  if (log.kind === 'reading') return `${plural(log.pages, 'página', 'páginas')} · ${log.bookTitle}`
+  if (log.kind === 'reading') return `${pagesLabel(log.pages)} · ${log.bookTitle}`
   const names = log.dayTypes.map((t, i) => (i === 0 ? DAY_TYPE_LABEL[t] : DAY_TYPE_LABEL[t].toLocaleLowerCase('es')))
   const types = names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0]
   return log.exerciseCount > 0 ? `${types} · ${plural(log.exerciseCount, 'ejercicio', 'ejercicios')}` : types

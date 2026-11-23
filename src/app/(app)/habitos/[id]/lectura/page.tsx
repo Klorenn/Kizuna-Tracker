@@ -55,7 +55,10 @@ export default async function LecturaPage({
         .eq("checkin_id", checkin.id)
         .maybeSingle()
     : { data: null };
-  const books = checkin && habit.log_type === "reading" ? await loadPickerBooks(supabase, user.id, entry?.book_id) : [];
+  const isReading = habit.log_type === "reading";
+  // the log type changed after logging: the old reading still shows, so it can be fixed or deleted
+  const leftover = !isReading && entry !== null;
+  const books = checkin && (isReading || leftover) ? await loadPickerBooks(supabase, user.id, entry?.book_id) : [];
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">
@@ -66,7 +69,7 @@ export default async function LecturaPage({
           {habit.name} · {dayHeading(date, today)}
         </p>
       </div>
-      {habit.log_type !== "reading" ? (
+      {!isReading && !leftover ? (
         <Card>
           <EmptyState
             title="Este hábito no lleva lectura"
@@ -86,12 +89,19 @@ export default async function LecturaPage({
           />
         </Card>
       ) : (
-        <LecturaEditor
+        <>
+          {leftover ? (
+            <p className="text-small text-pretty text-muted">
+              Este hábito ya no lleva lectura. Puedes borrar la que quedó de ese día.
+            </p>
+          ) : null}
+          <LecturaEditor
           key={`${checkin.id}:${entry ? `${entry.book_id}:${entry.from_page}:${entry.to_page}` : "none"}`}
           checkinId={checkin.id}
           books={books}
           entry={entry ? { bookId: entry.book_id, fromPage: entry.from_page, toPage: entry.to_page } : null}
-        />
+          />
+        </>
       )}
     </main>
   );

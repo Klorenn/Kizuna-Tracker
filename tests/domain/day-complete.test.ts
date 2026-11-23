@@ -140,3 +140,23 @@ describe('rest and study habits', () => {
     expect(isStudyHabit({ preset: 'read', icon: 'book' })).toBe(false)
   })
 })
+
+import { celebrationCandidates } from '@/domain/day-complete'
+
+describe('celebrationCandidates', () => {
+  const r = (id: string, preset: string | null, done: boolean) => ({ id, preset, hasItems: false, done })
+  const s = (rows: ReturnType<typeof r>[]): HoyState => ({ done: rows.filter((x) => x.done).length, total: rows.length, rows })
+
+  it('lists every applicable celebration in priority order (the first is pickCelebration)', () => {
+    const before = s([r('a', 'sleep', false), r('b', 'read', false)])
+    const after = s([r('a', 'sleep', true), r('b', 'read', true)])
+    const reading = { pages: 12, finishedTitle: 'Dune' }
+    expect(celebrationCandidates(before, after, { reading })).toEqual(['book', 'day', 'rest', 'reading'])
+    expect(pickCelebration(before, after, { reading })).toBe('book')
+  })
+  it('is empty on first render or with the gym sheet', () => {
+    const after = s([r('a', null, true)])
+    expect(celebrationCandidates(null, after)).toEqual([])
+    expect(celebrationCandidates(s([r('a', null, false)]), after, { gymSheet: true })).toEqual([])
+  })
+})
