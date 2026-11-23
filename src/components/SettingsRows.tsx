@@ -150,7 +150,7 @@ export function AccountRows({
       {avatar.input}
       <Toast message={toast} />
 
-      <Sheet open={photoOpen} title="Foto de perfil" onClose={closePhoto}>
+      <Sheet open={photoOpen} title="Foto de perfil" onClose={closePhoto} tall>
         <div className="flex justify-center">
           <Avatar name={name} size="L" src={picked ? null : avatarSrc} preset={picked ?? avatarPreset} />
         </div>
