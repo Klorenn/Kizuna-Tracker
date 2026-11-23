@@ -56,6 +56,16 @@ describe("GET /api/health", () => {
     stubFetch(async () => json(401, { code: "42501", message: "permission denied for table profiles" }));
     expect((await health()).body.schema).toBe(true);
   });
+  it("401 without the 42501 code does not prove the table exists", async () => {
+    setEnv(FULL);
+    stubFetch(async () => json(401, { message: "Invalid API key" }));
+    expect((await health()).body.schema).toBe(false);
+  });
+  it("403 without the 42501 code does not prove the table exists", async () => {
+    setEnv(FULL);
+    stubFetch(async () => json(403, {}));
+    expect((await health()).body.schema).toBe(false);
+  });
   it("404 with PGRST205: table missing", async () => {
     setEnv(FULL);
     stubFetch(async () => json(404, { code: "PGRST205", message: "Could not find the table" }));

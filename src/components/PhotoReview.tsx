@@ -1,7 +1,6 @@
 "use client";
 
-import { ArrowsClockwise, CaretLeft, Check, Clock, Warning } from "@phosphor-icons/react/dist/ssr";
-import imageCompression from "browser-image-compression";
+import { ArrowsClockwise, CaretLeft, Check, Clock, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { PHOTO_TARGET_MB, type PhotoCheckinResult } from "@/lib/checkins";
 
@@ -37,6 +36,7 @@ export function PhotoReview({
     setError(null);
     try {
       const file = blob instanceof File ? blob : new File([blob], "foto.jpg", { type: "image/jpeg" });
+      const { default: imageCompression } = await import("browser-image-compression");
       const small = await imageCompression(file, {
         maxWidthOrHeight: 1600,
         // the server accepts 4 MB (Vercel caps bodies at 4.5 MB): aim well under it

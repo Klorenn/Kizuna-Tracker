@@ -10,27 +10,20 @@ import { SignOutButton } from "@/components/SignOutButton";
 import { ListRow, ListSection } from "@/components/ui/ListRow";
 import { avatarUrl } from "@/lib/avatar";
 import { timezoneLock } from "@/lib/profile-view";
-import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile, viewerMissingDestination } from "@/lib/viewer";
 import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
 export default async function AjustesPage() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,timezone_changed_at,reminder_time")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
+  // one auth read and one profile read, both shared with the rest of the request
+  const profile = await getViewerProfile();
+  if (!profile) redirect(await viewerMissingDestination());
+  const session = await getSessionUser();
 
   const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
-  const reminderTime = String(profile.reminder_time).slice(0, 5);
-  const tzLock = timezoneLock(profile.timezone_changed_at, new Date(), profile.timezone);
+  const reminderTime = profile.reminderTime.slice(0, 5);
+  const tzLock = timezoneLock(profile.timezoneChangedAt, new Date(), profile.timezone);
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 pb-10 pt-1">
@@ -44,20 +37,20 @@ export default async function AjustesPage() {
 
       <ListSection id="ajustes-cuenta" label="Cuenta">
         <AccountRows
-          firstName={profile.first_name}
-          lastName={profile.last_name}
+          firstName={profile.firstName}
+          lastName={profile.lastName}
           reminderTime={reminderTime}
           username={profile.username}
-          email={user.email ?? null}
-          avatarSrc={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
-          avatarPreset={profile.avatar_preset}
+          email={session?.email ?? null}
+          avatarSrc={avatarUrl(profile.avatarPath, profile.avatarUpdatedAt)}
+          avatarPreset={profile.avatarPreset}
         />
       </ListSection>
 
       <ListSection id="ajustes-preferencias" label="Preferencias">
         <PreferenceRows
-          firstName={profile.first_name}
-          lastName={profile.last_name}
+          firstName={profile.firstName}
+          lastName={profile.lastName}
           reminderTime={reminderTime}
           timezone={profile.timezone}
           theme={theme}

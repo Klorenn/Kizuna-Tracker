@@ -13,27 +13,24 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate, weekStart } from "@/domain/dates";
 import { loadGoals } from "@/lib/goals-data";
 import { createServerClient } from "@/lib/supabase/server";
+import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Metas" };
 
 export default async function MetasPage() {
+  const viewer = await getViewer();
+  if (!viewer) redirect(await viewerMissingDestination());
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
 
   const now = new Date();
-  const today = localDate(now, profile.timezone);
+  const today = localDate(now, viewer.timezone);
   const [goals, { data: habits }] = await Promise.all([
-    loadGoals(supabase, user.id, today),
-    supabase.from("habits").select("id,name").eq("user_id", user.id).is("archived_at", null).order("created_at"),
+    loadGoals(supabase, viewer.id, today),
+    supabase.from("habits").select("id,name").eq("user_id", viewer.id).is("archived_at", null).order("created_at"),
   ]);
   const weekly = goals.filter((g) => g.kind === "weekly");
   const total = goals.filter((g) => g.kind === "total");
-  const monday = new TZDate(`${weekStart(today)}T12:00:00`, profile.timezone);
+  const monday = new TZDate(`${weekStart(today)}T12:00:00`, viewer.timezone);
   const weekLabel = `Esta semana · ${format(monday, "EEE d MMM", { locale: es })}`;
 
   return (

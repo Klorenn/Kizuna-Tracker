@@ -1,11 +1,12 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { brandUrl } from "@/lib/brand-assets";
 import { CAT_LIFT, catLiftStyle } from "@/lib/motion/cat-lift";
 
 describe("cat-lift asset", () => {
   it("describes the owner GIF, its still and the single pass", () => {
-    expect(CAT_LIFT.gif).toBe("/brand/cat-lift.gif");
-    expect(CAT_LIFT.still).toBe("/brand/cat-lift-still.png");
+    expect(CAT_LIFT.gif).toBe(brandUrl("cat-lift.gif"));
+    expect(CAT_LIFT.still).toBe(brandUrl("cat-lift-still.png"));
     expect(CAT_LIFT.canvas).toBe(360);
     expect(CAT_LIFT.playMs).toBe(6000);
   });

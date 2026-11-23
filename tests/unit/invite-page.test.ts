@@ -3,9 +3,11 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const rpc = vi.fn()
 vi.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({
-    auth: { getUser: async () => ({ data: { user: { id: 'me' } } }) },
     rpc,
   }),
+}))
+vi.mock('@/lib/viewer', () => ({
+  getSessionUser: async () => ({ id: 'me', email: null }),
 }))
 vi.mock('@/app/(app)/amigos/actions', () => ({ acceptInviteAction: vi.fn() }))
 const { redirect } = vi.hoisted(() => ({ redirect: vi.fn() }))

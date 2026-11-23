@@ -1,15 +1,9 @@
 import { Bell } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
+import { Suspense } from "react";
 import { createServerClient } from "@/lib/supabase/server";
 
-/** Circular bell with an unread dot; links to /notificaciones. */
-export async function NotificationBell() {
-  const supabase = await createServerClient();
-  const { count } = await supabase
-    .from("notifications")
-    .select("id", { count: "exact", head: true })
-    .is("read_at", null);
-  const unread = count ?? 0;
+function BellLink({ unread }: { unread: number }) {
   return (
     <Link
       href="/notificaciones"
@@ -24,5 +18,26 @@ export async function NotificationBell() {
         />
       ) : null}
     </Link>
+  );
+}
+
+async function BellInner() {
+  const supabase = await createServerClient();
+  const { count } = await supabase
+    .from("notifications")
+    .select("id", { count: "exact", head: true })
+    .is("read_at", null);
+  return <BellLink unread={count ?? 0} />;
+}
+
+/**
+ * Circular bell with an unread dot; links to /notificaciones. The count streams in after the
+ * page shell, so the bell never adds a round trip to the page's first byte.
+ */
+export function NotificationBell() {
+  return (
+    <Suspense fallback={<BellLink unread={0} />}>
+      <BellInner />
+    </Suspense>
   );
 }

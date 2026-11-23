@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 /**
  * Does the `profiles` table exist? Raw GET with limit=0 (no postgrest-js: it rewrites an
  * empty-body 404 into "no error" and retries network failures). The anon role has no
- * grant on profiles, so an existing table answers 401/42501 and a missing one 404/PGRST205.
+ * grant on profiles, so an existing table answers 42501 and a missing one 404/PGRST205.
  */
 async function schemaReachable(): Promise<boolean> {
   const config = supabasePublicConfig();
@@ -30,7 +30,8 @@ async function schemaReachable(): Promise<boolean> {
       // empty or non-JSON body
     }
     if (code === "PGRST205" || code === "42P01" || res.status === 404) return false;
-    return code === "42501" || res.status === 401 || res.status === 403;
+    // a bad key also answers 401/403: only the permission code proves the table exists
+    return code === "42501";
   } catch {
     return false;
   }
