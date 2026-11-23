@@ -2,7 +2,7 @@ begin;
 -- v4 logs (0018): time, pomodoro blocks, watch titles and entries, quantity sums and cardio
 -- outings, plus the habit columns and guards behind them.
 create extension if not exists pgtap with schema extensions;
-select plan(165);
+select plan(197);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -15,8 +15,25 @@ end $f$;
 create function tests.today() returns date language sql stable as $f$
   select (now() at time zone 'America/Santiago')::date
 $f$;
+-- true when the statement is refused with 42501 (insufficient privilege)
+create function tests.denied(q text) returns boolean language plpgsql as $f$
+begin
+  execute q;
+  return false;
+exception
+  when insufficient_privilege then return true;
+  when others then return false;
+end $f$;
+-- rows touched by a DML statement
+create function tests.affected(q text) returns int language plpgsql as $f$
+declare c int;
+begin
+  execute q;
+  get diagnostics c = row_count;
+  return c;
+end $f$;
 grant usage on schema tests to authenticated, anon;
-grant execute on function tests.n(text), tests.today() to authenticated, anon;
+grant execute on function tests.n(text), tests.today(), tests.denied(text), tests.affected(text) to authenticated, anon;
 
 -- A and B are accepted friends.
 insert into auth.users (id) values
@@ -51,6 +68,19 @@ insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
   ('c1800000-0000-0000-0000-000000000010', 'a1800000-0000-0000-0000-000000000001', 'a1800000-0000-0000-0000-000000000002',
    'b1800000-0000-0000-0000-000000000003', 'b1800000-0000-0000-0000-000000000006', 'daily', null, false, 4, 1000,
+   'America/Santiago', 'active', tests.today());
+
+-- a custom-unit quantity habit of A in an active challenge too, and a habit with an active step
+insert into public.habits (id, user_id, name, icon, frequency_type, visibility, log_type, quantity_unit, quantity_label, quantity_target, quantity_step) values
+  ('b1800000-0000-0000-0000-000000000009', 'a1800000-0000-0000-0000-000000000001', 'Páginas', 'book', 'daily', 'friends', 'quantity', 'custom', 'páginas', 10, 1);
+insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
+  ('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Con pasos', 'book', 'daily', 'friends');
+insert into public.habit_items (id, habit_id, user_id, label, position) values
+  ('11800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Paso', 0);
+insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
+                               requires_photo, weeks, fine_amount, timezone, status, starts_on) values
+  ('c1800000-0000-0000-0000-000000000011', 'a1800000-0000-0000-0000-000000000001', 'a1800000-0000-0000-0000-000000000002',
+   'b1800000-0000-0000-0000-000000000009', 'b1800000-0000-0000-0000-000000000006', 'daily', null, false, 4, 1000,
    'America/Santiago', 'active', tests.today());
 
 -- titles: A has a series and a movie, B has one
@@ -109,6 +139,15 @@ select is((select log_type from public.habits where id = 'b1800000-0000-0000-000
   'an Estudiar habit with steps stays none');
 select is((select log_type from public.habits where id = 'b1800000-0000-0000-0000-000000000003'), 'quantity',
   'Agua keeps what it was created with');
+
+select ok(exists (select 1 from pg_indexes where schemaname = 'public' and indexname = 'pomodoro_blocks_checkin_idx'),
+  'pomodoro_blocks.checkin_id is indexed (the set-null cascade of every check-in delete)');
+select ok(not (select prosecdef from pg_proc where oid = 'public.habits_log_photo()'::regprocedure),
+  'habits_log_photo does not need SECURITY DEFINER');
+select ok(pg_get_functiondef('public.add_pomodoro_block(uuid,uuid,int,text)'::regprocedure) ~ 't\.user_id = v_uid and t\.habit_id',
+  'the pomodoro retry lookup filters by user (it uses the user/date index)');
+select is((select array_agg(public.habit_preset_color(p) order by p) from unnest(array['watch', 'run', 'water', 'zzz']) p),
+  array['durazno', 'rosa', 'cielo', 'indigo'], 'the new presets have their palette color (run durazno, watch rosa)');
 
 -- ============================================================ habits: shape and guards (as postgres)
 select throws_ok($$ insert into public.habits (user_id, name, icon, frequency_type, log_type)
@@ -292,6 +331,20 @@ select lives_ok($$ select public.delete_watch_entry('e1800000-0000-0000-0000-000
 select is(tests.n($$ select 1 from public.watch_entries $$), 0, 'the entry is gone');
 select is(tests.n($$ select 1 from public.checkins where id = 'e1800000-0000-0000-0000-000000000001' $$), 1, 'the check-in stays');
 
+-- saving a finished title again with another day moves finished_on (documented behaviour)
+reset role;
+insert into public.checkins (id, habit_id, user_id, local_date) values
+  ('e1800000-0000-0000-0000-000000000003', 'b1800000-0000-0000-0000-000000000002', 'a1800000-0000-0000-0000-000000000001', '2026-01-20');
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select ok(public.save_watch_entry('e1800000-0000-0000-0000-000000000003', 'd1800000-0000-0000-0000-000000000002', null, null, null, null, true) is not null,
+  'a finished movie is saved complete again on another day');
+select is((select finished_on from public.media_items where id = 'd1800000-0000-0000-0000-000000000002'), '2026-01-20'::date,
+  'finished_on follows the latest completed entry');
+select lives_ok($$ select public.delete_watch_entry('e1800000-0000-0000-0000-000000000003') $$, 'deleting that entry does not fail');
+select is((select status from public.media_items where id = 'd1800000-0000-0000-0000-000000000002'), 'finished',
+  'and the title stays finished');
+
 -- the titles of A (RLS and grants)
 select lives_ok($$ insert into public.media_items (user_id, title, kind, runtime_min)
   values ('a1800000-0000-0000-0000-000000000001', 'Past Lives', 'movie', 106) $$, 'A adds a movie');
@@ -375,6 +428,19 @@ select throws_ok($$ select * from public.remove_quantity_entry('91800000-0000-00
   'P0001', 'entry_not_found', 'B cannot remove a sum of A');
 select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
+-- an entry id of another habit of mine is not a retry of this one
+select throws_ok($$ select * from public.add_quantity_entry((select id from public.habits where name = 'Km'),
+  '91800000-0000-0000-0000-0000000000a1', 1) $$, 'P0001', 'invalid_entry', 'a retry must be for the same habit');
+-- a habit that stopped being quantity cannot have its sums removed
+reset role;
+insert into public.quantity_entries (id, user_id, habit_id, local_date, amount)
+select '91800000-0000-0000-0000-0000000000a6', h.user_id, h.id, tests.today(), 1 from public.habits h where h.name = 'Km';
+update public.habits set log_type = 'none', quantity_unit = null, quantity_target = null, quantity_step = null where name = 'Km';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select throws_ok($$ select * from public.remove_quantity_entry('91800000-0000-0000-0000-0000000000a6') $$,
+  'P0001', 'log_type_mismatch', 'remove_quantity_entry needs a quantity habit');
+
 -- guards while the challenge is active
 select throws_ok($$ update public.habits set quantity_target = 1500 where id = 'b1800000-0000-0000-0000-000000000003' $$,
   'P0001', 'habit_in_challenge', 'the goal cannot go down in a challenge');
@@ -399,6 +465,62 @@ select lives_ok($$ update public.habits set quantity_target = 1000 where id = 'b
   'the goal goes down without a challenge');
 select is(tests.n($$ select 1 from public.checkins where habit_id = 'b1800000-0000-0000-0000-000000000003' and local_date = tests.today() $$), 1,
   'the new goal is under the total: the check-in appears');
+
+-- steps and a detailed log never go together, in any order (a day by steps would create and
+-- delete the check-in of a quantity habit without its goal)
+select throws_ok($$ update public.habits set log_type = 'quantity', quantity_unit = 'ml', quantity_target = 2000, quantity_step = 250
+  where id = 'b1800000-0000-0000-0000-00000000000a' $$,
+  'P0001', 'items_with_log', 'a habit with active steps cannot become quantity');
+select throws_ok($$ update public.habits set log_type = 'time' where id = 'b1800000-0000-0000-0000-00000000000a' $$,
+  'P0001', 'items_with_log', 'nor time');
+select throws_ok($$ update public.habits set log_type = 'cardio' where id = 'b1800000-0000-0000-0000-00000000000a' $$,
+  'P0001', 'items_with_log', 'nor any other detailed log');
+select lives_ok($$ update public.habits set log_type = 'none' where id = 'b1800000-0000-0000-0000-00000000000a' $$,
+  'a habit with steps can keep none');
+reset role;
+update public.habit_items set archived_at = now() where id = '11800000-0000-0000-0000-000000000001';
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select lives_ok($$ update public.habits set log_type = 'quantity', quantity_unit = 'ml', quantity_target = 2000, quantity_step = 250
+  where id = 'b1800000-0000-0000-0000-00000000000a' $$, 'with the step archived the habit can become quantity');
+select throws_ok($$ update public.habit_items set archived_at = null where id = '11800000-0000-0000-0000-000000000001' $$,
+  'P0001', 'items_with_log', 'the archived step cannot be activated again');
+select throws_ok($$ select * from public.check_item('11800000-0000-0000-0000-000000000001') $$,
+  'P0001', 'item_not_found', 'check_item cannot complete the day of a quantity habit');
+reset role;
+insert into public.checkins (habit_id, user_id, local_date)
+values ('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', tests.today());
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select throws_ok($$ select public.uncheck_item('11800000-0000-0000-0000-000000000001') $$,
+  'P0001', 'quantity_habit', 'uncheck_item cannot delete the check-in of a quantity habit');
+select is(tests.n($$ select 1 from public.checkins where habit_id = 'b1800000-0000-0000-0000-00000000000a' $$), 1, 'the check-in is still there');
+
+-- more guard branches in a challenge (custom label, leaving quantity)
+select throws_ok($$ update public.habits set quantity_label = 'hojas' where id = 'b1800000-0000-0000-0000-000000000009' $$,
+  'P0001', 'habit_in_challenge', 'the label cannot change in a challenge');
+select throws_ok($$ update public.habits set log_type = 'none', quantity_unit = null, quantity_label = null, quantity_target = null, quantity_step = null
+  where id = 'b1800000-0000-0000-0000-000000000009' $$,
+  'P0001', 'habit_in_challenge', 'a challenge habit cannot leave quantity');
+-- column grants of the new columns work for the owner
+select lives_ok($$ insert into public.habits (user_id, name, icon, frequency_type, log_type, quantity_unit, quantity_target, quantity_step, quantity_display, glass_ml)
+  values ('a1800000-0000-0000-0000-000000000001', 'Agua de A', 'drop', 'daily', 'quantity', 'ml', 2000, 250, 'glasses', 300) $$,
+  'the owner creates a quantity habit through the grants');
+select lives_ok($$ update public.habits set quantity_step = 500, quantity_display = 'base', glass_ml = 200 where name = 'Agua de A' $$,
+  'and edits its quantity columns');
+select throws_ok($$ select * from public.create_checkin('b1800000-0000-0000-0000-000000000005') $$,
+  'P0001', 'photo_required', 'a watch habit with photo asks for the photo');
+
+-- the service role (account deletion) can delete the check-in of a quantity habit
+reset role;
+set local role service_role;
+select set_config('request.jwt.claims', '{"role":"service_role"}', true);
+select lives_ok($$ delete from public.checkins where habit_id = 'b1800000-0000-0000-0000-000000000003' $$,
+  'service_role deletes the check-in of a quantity habit');
+select is((select count(*)::int from public.checkins where habit_id = 'b1800000-0000-0000-0000-000000000003'), 0, 'and it is gone');
+reset role;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
 -- ============================================================ cardio (A)
 select lives_ok($$ select * from public.create_checkin('b1800000-0000-0000-0000-000000000004') $$, 'A checks in the run habit');
@@ -448,10 +570,14 @@ from public.checkins c where c.habit_id = 'b1800000-0000-0000-0000-000000000001'
 insert into public.watch_entries (user_id, habit_id, checkin_id, media_id, local_date, episodes)
 values ('a1800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-000000000002', 'e1800000-0000-0000-0000-000000000001',
         'd1800000-0000-0000-0000-000000000001', '2026-01-15', 1);
+insert into public.checkins (id, habit_id, user_id, local_date) values
+  ('e1800000-0000-0000-0000-000000000004', 'b1800000-0000-0000-0000-000000000004', 'a1800000-0000-0000-0000-000000000001', tests.today());
 insert into public.cardio_entries (user_id, habit_id, checkin_id, local_date, kind, distance_m, duration_s)
-values ('a1800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-000000000004',
-        (select id from public.checkins where habit_id = 'b1800000-0000-0000-0000-000000000003' and local_date = tests.today()),
+values ('a1800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-000000000004', 'e1800000-0000-0000-0000-000000000004',
         tests.today(), 'run', 1000, 400);
+insert into public.quantity_entries (id, user_id, habit_id, local_date, amount)
+values ('91800000-0000-0000-0000-0000000000a7', 'a1800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-000000000003', tests.today(), 100)
+on conflict do nothing;
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 select is(tests.n($$ select 1 from public.time_entries where user_id = 'a1800000-0000-0000-0000-000000000001' $$), 0, 'B does not see the time of A');
@@ -466,6 +592,23 @@ select throws_ok($$ insert into public.quantity_entries (user_id, habit_id, loca
   values ('a1800000-0000-0000-0000-000000000002', 'b1800000-0000-0000-0000-000000000006', tests.today(), 10) $$,
   '42501', null, 'a client cannot write quantity_entries');
 select throws_ok($$ select * from public.pomodoro_blocks $$, '42501', null, 'a client cannot read pomodoro_blocks');
+-- no direct write on any new table: the friend B, the owner A and anon (INSERT, UPDATE, DELETE)
+select ok((select bool_and(tests.denied(format(q, t)))
+           from unnest(array['time_entries', 'pomodoro_blocks', 'watch_entries', 'quantity_entries', 'cardio_entries']) t,
+                unnest(array['insert into public.%s default values', 'update public.%s set created_at = now()', 'delete from public.%s']) q),
+  'the friend cannot write the RPC-only tables');
+select ok(tests.denied($$ insert into public.media_items (user_id, title, kind, runtime_min)
+  values ('a1800000-0000-0000-0000-000000000001', 'Ajena', 'movie', 10) $$), 'the friend cannot add a title for A');
+select is(tests.affected($$ delete from public.media_items where user_id = 'a1800000-0000-0000-0000-000000000001' $$), 0,
+  'nor delete a title of A (no row is visible)');
+select is(tests.affected($$ update public.media_items set title = 'x' where user_id = 'a1800000-0000-0000-0000-000000000001' $$), 0,
+  'nor update it');
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select ok((select bool_and(tests.denied(format(q, t)))
+           from unnest(array['time_entries', 'pomodoro_blocks', 'watch_entries', 'quantity_entries', 'cardio_entries']) t,
+                unnest(array['insert into public.%s default values', 'update public.%s set created_at = now()', 'delete from public.%s']) q),
+  'not even the owner writes the RPC-only tables directly');
+select set_config('request.jwt.claims', '{"sub":"a1800000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 select is(jsonb_typeof(public.public_profile('v4_a')), 'object', 'B reads the public profile of A');
 select is((select array_agg(k order by k) from jsonb_object_keys(public.public_profile('v4_a')) k),
   array['avatarPath', 'avatarPreset', 'avatarUpdatedAt', 'displayName', 'habits', 'username'], 'public_profile() keeps its keys');
@@ -477,6 +620,10 @@ select is((select array_agg(column_name::text order by ordinal_position) from in
 reset role;
 set local role anon;
 select throws_ok($$ select * from public.media_items $$, '42501', null, 'anon cannot read titles');
+select ok((select bool_and(tests.denied(format(q, t)))
+           from unnest(array['time_entries', 'pomodoro_blocks', 'media_items', 'watch_entries', 'quantity_entries', 'cardio_entries']) t,
+                unnest(array['insert into public.%s default values', 'update public.%s set created_at = now()', 'delete from public.%s']) q),
+  'anon cannot write any new table');
 reset role;
 
 -- ============================================================ deleted account

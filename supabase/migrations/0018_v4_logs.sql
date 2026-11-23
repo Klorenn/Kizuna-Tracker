@@ -52,7 +52,6 @@ grant update (quantity_unit, quantity_label, quantity_target, quantity_step, qua
 create function public.habits_log_photo()
 returns trigger
 language plpgsql
-security definer
 set search_path = ''
 as $$
 begin
@@ -66,6 +65,50 @@ revoke execute on function public.habits_log_photo() from public, anon, authenti
 create trigger habits_log_photo
   before insert or update of requires_photo, log_type on public.habits
   for each row execute function public.habits_log_photo();
+
+-- Steps and a detailed log never go together: a habit with active steps cannot take a log type
+-- (check_item would complete its day without the goal). The item side is habit_items_activation_guard.
+create function public.habits_log_items_guard()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+begin
+  if new.log_type <> 'none' and new.log_type is distinct from old.log_type and exists (
+    select 1 from public.habit_items i where i.habit_id = new.id and i.archived_at is null
+  ) then
+    raise exception 'items_with_log';
+  end if;
+  return new;
+end;
+$$;
+revoke execute on function public.habits_log_items_guard() from public, anon, authenticated;
+create trigger habits_log_items_guard
+  before update of log_type on public.habits
+  for each row execute function public.habits_log_items_guard();
+
+-- Palette keys of the new presets (same keys as src/domain/habit-colors.ts). Same signature,
+-- volatility and grants as 0013.
+create or replace function public.habit_preset_color(p_preset text)
+returns text
+language sql
+immutable
+set search_path = ''
+as $$
+  select case p_preset
+    when 'gym' then 'durazno'
+    when 'water' then 'cielo'
+    when 'study' then 'lavanda'
+    when 'read' then 'arena'
+    when 'walk' then 'salvia'
+    when 'sleep' then 'indigo'
+    when 'eat_well' then 'oliva'
+    when 'watch' then 'rosa'
+    when 'run' then 'durazno'
+    else 'indigo'
+  end
+$$;
 
 -- Existing Estudiar habits log time (it does not change how their day is completed). Agua and
 -- Caminar are not converted: that would change how their day is completed.
@@ -103,6 +146,97 @@ begin
     end if;
   end if;
   return null;
+end;
+$$;
+
+-- ============================================================ steps never move a quantity habit's check-in
+-- complete_day_from_items is 0014's plus `log_type <> 'quantity'`; uncheck_item is 0005's plus the
+-- same refusal (an archived step of a habit that later became quantity could delete its check-in).
+create or replace function public.complete_day_from_items(p_habit_id uuid, p_user_id uuid, p_date date)
+returns boolean
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_total int;
+  v_checked int;
+begin
+  if not exists (
+    select 1 from public.habits h
+    where h.id = p_habit_id and h.user_id = p_user_id
+      and h.archived_at is null and not h.requires_photo and h.log_type <> 'quantity'
+  ) then
+    return false;
+  end if;
+
+  select count(*)::int into v_total
+  from public.habit_items i
+  where i.habit_id = p_habit_id and i.archived_at is null;
+
+  select count(*)::int into v_checked
+  from public.habit_items i
+  join public.checkin_items ci on ci.item_id = i.id and ci.local_date = p_date
+  where i.habit_id = p_habit_id and i.archived_at is null;
+
+  if v_total = 0 or v_checked < v_total then
+    return false;
+  end if;
+
+  insert into public.checkins (habit_id, user_id, local_date)
+  values (p_habit_id, p_user_id, p_date)
+  on conflict (habit_id, local_date) do nothing;
+  return true;
+end;
+$$;
+
+create or replace function public.uncheck_item(p_item_id uuid)
+returns void
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := auth.uid();
+  v_tz text;
+  v_habit uuid;
+  v_log_type text;
+  v_date date;
+begin
+  if v_uid is null then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+  select p.timezone into v_tz from public.profiles p
+  where p.id = v_uid and p.deleted_at is null;
+  if not found then
+    raise exception 'not_authenticated' using errcode = '28000';
+  end if;
+
+  select i.habit_id, h.log_type into v_habit, v_log_type
+  from public.habit_items i
+  join public.habits h on h.id = i.habit_id
+  where i.id = p_item_id and i.user_id = v_uid;
+  if not found then
+    raise exception 'item_not_found';
+  end if;
+  if v_log_type = 'quantity' then
+    raise exception 'quantity_habit';
+  end if;
+
+  v_date := (now() at time zone v_tz)::date;
+
+  if exists (
+    select 1 from public.checkins c
+    where c.habit_id = v_habit and c.local_date = v_date and c.rejected_at is not null
+  ) then
+    raise exception 'checkin_rejected';
+  end if;
+
+  delete from public.checkin_items ci
+  where ci.item_id = p_item_id and ci.local_date = v_date and ci.user_id = v_uid;
+  delete from public.checkins c
+  where c.habit_id = v_habit and c.local_date = v_date and c.user_id = v_uid
+    and c.rejected_at is null;
 end;
 $$;
 
@@ -197,6 +331,8 @@ create table public.pomodoro_blocks (
 );
 create index pomodoro_blocks_user_date_idx on public.pomodoro_blocks (user_id, local_date);
 create index pomodoro_blocks_user_created_idx on public.pomodoro_blocks (user_id, created_at);
+-- the `on delete set null` of every check-in delete looks receipts up by checkin_id
+create index pomodoro_blocks_checkin_idx on public.pomodoro_blocks (checkin_id) where checkin_id is not null;
 
 create table public.media_items (
   id uuid primary key default gen_random_uuid(),
@@ -595,7 +731,7 @@ begin
     end if;
     select t.checkin_id, t.minutes into v_cid, v_total
     from public.time_entries t
-    where t.habit_id = p_habit_id and t.local_date = v_today;
+    where t.user_id = v_uid and t.habit_id = p_habit_id and t.local_date = v_today;
     return query select v_cid, coalesce(v_total, 0), false, false;
     return;
   end if;
@@ -666,6 +802,8 @@ begin
 end;
 $$;
 
+-- Deletes are permissive on purpose (the brief lists no error for them): an unknown id or an
+-- archived habit deletes nothing and raises nothing; only the caller's own rows can match.
 create function public.delete_time_entry(p_checkin_id uuid)
 returns void
 language plpgsql
@@ -753,6 +891,9 @@ begin
         updated_at = pg_catalog.now()
   returning w.id into v_id;
 
+  -- A completed movie (or a finished series) always stamps finished_on with the date of THIS
+  -- check-in, even if the title was already finished: the latest entry wins. Deleting an entry
+  -- never reverts the title to "watching".
   if (v_kind = 'movie' and v_completed) or (v_kind = 'series' and coalesce(p_finished, false)) then
     update public.media_items m set status = 'finished', finished_on = v_date
     where m.id = p_media_id and m.user_id = v_uid;
@@ -761,6 +902,7 @@ begin
 end;
 $$;
 
+-- Permissive on purpose, like delete_time_entry: nothing to delete is not an error.
 create function public.delete_watch_entry(p_checkin_id uuid)
 returns void
 language plpgsql
@@ -792,6 +934,7 @@ declare
   v_target numeric;
   v_inserted uuid;
   v_owner uuid;
+  v_entry_habit uuid;
   v_total numeric;
 begin
   select a.uid, a.today into v_uid, v_today from public.v4_actor() a;
@@ -820,8 +963,8 @@ begin
   on conflict (id) do nothing
   returning e.id into v_inserted;
   if v_inserted is null then
-    select e.user_id into v_owner from public.quantity_entries e where e.id = p_entry_id;
-    if v_owner is distinct from v_uid then
+    select e.user_id, e.habit_id into v_owner, v_entry_habit from public.quantity_entries e where e.id = p_entry_id;
+    if v_owner is distinct from v_uid or v_entry_habit is distinct from p_habit_id then
       raise exception 'invalid_entry';
     end if;
   end if;
@@ -856,6 +999,7 @@ declare
   v_today date;
   v_habit uuid;
   v_date date;
+  v_type text;
   v_target numeric;
   v_total numeric;
 begin
@@ -871,12 +1015,15 @@ begin
     raise exception 'entry_not_today';
   end if;
 
-  select h.quantity_target into v_target
+  select h.log_type, h.quantity_target into v_type, v_target
   from public.habits h
   where h.id = v_habit and h.user_id = v_uid and h.archived_at is null
   for update;
   if not found then
     raise exception 'habit_not_found';
+  end if;
+  if v_type <> 'quantity' then
+    raise exception 'log_type_mismatch';
   end if;
 
   delete from public.quantity_entries e where e.id = p_entry_id;
@@ -984,6 +1131,7 @@ begin
 end;
 $$;
 
+-- Permissive on purpose, like delete_time_entry: an unknown id deletes nothing and raises nothing.
 create function public.delete_cardio_entry(p_entry_id uuid)
 returns void
 language plpgsql
