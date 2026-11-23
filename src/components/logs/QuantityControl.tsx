@@ -41,6 +41,7 @@ export function QuantityStatus({
   offline,
   onDismiss,
   color,
+  part = "all",
 }: {
   config: QuantityConfig;
   shown: number;
@@ -51,11 +52,20 @@ export function QuantityStatus({
   offline: string | null;
   onDismiss: () => void;
   color?: HabitColor;
+  /**
+   * `head`: ring and number; `notices`: the rejection, offline and pending lines; `all` (default): both.
+   * The control puts the notices under the buttons, so a line that appears after a tap never moves the
+   * button away from a second, fast tap.
+   */
+  part?: "head" | "notices" | "all";
 }) {
   const done = goalMet(confirmed, config.target, serverDone);
   const pct = config.target > 0 ? (shown / config.target) * 100 : 0;
+  const showHead = part !== "notices";
+  const showNotices = part !== "head";
   return (
     <>
+      {showHead ? (
       <div className="flex items-center gap-3">
         <ProgressRing value={pct} label={progressLabel(shown, config)} color={color} />
         <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
@@ -68,7 +78,8 @@ export function QuantityStatus({
           ) : null}
         </div>
       </div>
-      {rejection ? (
+      ) : null}
+      {showNotices && rejection ? (
         <div role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
           <Warning size={16} weight="light" className="mt-[14px] shrink-0 text-alert" aria-hidden />
           <p className="flex-1 py-[14px]">{rejection}</p>
@@ -82,12 +93,12 @@ export function QuantityStatus({
           </button>
         </div>
       ) : null}
-      {offline ? (
+      {showNotices && offline ? (
         <p role="status" className="text-small text-pretty text-muted">
           {offline}
         </p>
       ) : null}
-      {pending > 0 ? (
+      {showNotices && pending > 0 ? (
         <p role="status" className="text-small text-muted">
           {pendingLabel(pending)}
         </p>
@@ -276,6 +287,7 @@ export function QuantityControl({
   return (
     <div className="flex flex-col gap-3">
       <QuantityStatus
+        part="head"
         config={config}
         shown={view.shown}
         confirmed={view.confirmed}
@@ -310,6 +322,18 @@ export function QuantityControl({
           <DotsThree size={24} weight="light" aria-hidden />
         </button>
       </div>
+      <QuantityStatus
+        part="notices"
+        config={config}
+        shown={view.shown}
+        confirmed={view.confirmed}
+        serverDone={serverDone}
+        pending={view.pending}
+        rejection={rejection}
+        offline={offline}
+        onDismiss={() => setRejection(null)}
+        color={color}
+      />
       {sheetOpen ? (
         <QuantitySheet
           open
