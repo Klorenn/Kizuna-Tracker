@@ -58,7 +58,7 @@ function readingArgs(checkinId: string, entry: ReadingInput) {
 }
 
 /**
- * "Guardar" / "Omitir" in the reading sheet on Hoy: checks the habit in (create_checkin) and, with
+ * "Guardar" / "Solo marcar" in the reading sheet on Hoy: checks the habit in (create_checkin) and, with
  * an entry, saves the reading on that check-in. When the reading fails the habit stays checked
  * (`checkedIn: true`) so the sheet can say so and retry with saveReading.
  */

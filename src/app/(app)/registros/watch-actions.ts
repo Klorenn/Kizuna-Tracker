@@ -119,7 +119,7 @@ function watchArgs(checkinId: string, entry: WatchInput): SaveWatchArgs {
 }
 
 /**
- * "Guardar" / "Omitir" in the watch sheet on Hoy: checks the habit in (create_checkin) and, with an
+ * "Guardar" / "Solo marcar" in the watch sheet on Hoy: checks the habit in (create_checkin) and, with an
  * entry, saves what you watched on that check-in. When the entry fails the habit stays checked
  * (`checkedIn: true`) so the sheet can say so and retry with saveWatch.
  */

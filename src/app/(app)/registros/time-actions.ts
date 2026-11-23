@@ -100,7 +100,7 @@ export async function addTime(
   return { ok: true, totalMinutes: row.total_minutes, checkedIn: row.checkin_created };
 }
 
-/** "Omitir" in the time sheet: checks today in without any time. */
+/** "Solo marcar" in the time sheet: checks today in without any time. */
 export async function checkInWithoutTime(habitId: string): Promise<Result> {
   const supabase = await authed();
   if (!supabase) return { ok: false, error: NOT_AUTHENTICATED };
