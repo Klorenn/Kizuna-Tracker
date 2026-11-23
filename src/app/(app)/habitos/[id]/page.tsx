@@ -2,32 +2,36 @@ import { CaretLeft, PencilSimple, Trophy } from "@phosphor-icons/react/dist/ssr"
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { WeeklyBars } from "@/components/charts/WeeklyBars";
 import { GoalCard } from "@/components/GoalCard";
-import { CompletionCalendar } from "@/components/CompletionCalendar";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { earliestMonth, monthNav, monthOf, parseMonthParam, withSearch, type MonthKey } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency } from "@/domain/types";
+import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { loadGoals } from "@/lib/goals-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Hábito" };
 
-const MONTHS = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
-
-export default async function HabitoPage({ params }: { params: Promise<{ id: string }> }) {
+export default async function HabitoPage({
+  params,
+  searchParams,
+}: {
+  params: Promise<{ id: string }>;
+  searchParams: Promise<{ mes?: string | string[] }>;
+}) {
   const { id } = await params;
+  const { mes } = await searchParams;
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -42,7 +46,7 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
 
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at")
+    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at,created_at")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
@@ -76,8 +80,21 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
 
   const target = frequency.type === "weekly" ? frequency.target : 7;
   const goals = await loadGoals(supabase, user.id, today, id);
-  const month = `${today.slice(0, 7)}-01`;
-  const monthLabel = `${MONTHS[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}`;
+
+  // Month in the URL (?mes=YYYY-MM), between the first record of this habit and this month.
+  const thisMonth = monthOf(today);
+  const firstCheckin = await loadFirstCheckinDate(supabase, user.id, [habit.id]);
+  const earliest = earliestMonth([firstCheckin, localDate(new Date(habit.created_at), profile.timezone)], thisMonth);
+  const month = parseMonthParam(mes, { current: thisMonth, earliest });
+  const nav = monthNav(month, { current: thisMonth, earliest });
+  const monthHref = (m: MonthKey) => withSearch(`/habitos/${habit.id}`, { mes: m === thisMonth ? undefined : m });
+  const days = await loadMonthDays(supabase, {
+    userId: user.id,
+    habits: [habit],
+    month,
+    today,
+    timezone: profile.timezone,
+  });
   const meta = [
     frequency.type === "weekly" ? `${frequency.target} por semana` : "Diario",
     habit.requires_photo ? "foto en vivo" : null,
@@ -131,15 +148,19 @@ export default async function HabitoPage({ params }: { params: Promise<{ id: str
       </div>
 
       <SectionHeader
-        label={monthLabel}
+        label="Calendario"
         action={frequency.type === "weekly" ? `${frequency.target} por semana` : undefined}
       />
-      <Card className="p-4">
-        <CompletionCalendar
+      <Card className="px-3 py-4">
+        <MonthCalendar
           month={month}
           today={today}
-          doneDates={dates.filter((d) => d.startsWith(month.slice(0, 7)))}
-          color={color}
+          habits={[{ id: habit.id, name: habit.name, color, icon: habit.icon }]}
+          days={days}
+          mode="single"
+          prevHref={nav.prev ? monthHref(nav.prev) : null}
+          nextHref={nav.next ? monthHref(nav.next) : null}
+          todayHref={nav.isCurrent ? null : monthHref(thisMonth)}
         />
       </Card>
 
