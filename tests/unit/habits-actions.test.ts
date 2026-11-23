@@ -121,6 +121,20 @@ describe('habit actions', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('createHabit writes the log type (Leer brings reading)', async () => {
+    await createHabit(presetDraft('read'))
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ preset: 'read', log_type: 'reading' })
+    calls.length = 0
+    await createHabit(presetDraft('walk'))
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ log_type: 'none' })
+  })
+
+  it('updateHabit writes the chosen log type', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    await updateHabit('h1', { ...presetDraft('walk'), logType: 'workout' })
+    expect(calls.find((c) => c.table === 'habits' && c.op === 'update')!.payload).toMatchObject({ log_type: 'workout' })
+  })
+
   it('createHabit rejects invalid drafts before touching the db', async () => {
     const r = await createHabit({ ...presetDraft('read'), name: ' ' })
     expect(r.ok).toBe(false)

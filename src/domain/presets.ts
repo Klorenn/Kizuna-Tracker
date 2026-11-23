@@ -10,6 +10,8 @@ export const HABIT_ICONS = [
   'drop',
   'book-open',
   'book',
+  'laptop',
+  'desk',
   'sneaker-move',
   'moon',
   'fork-knife',

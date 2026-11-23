@@ -2,6 +2,7 @@ import { TZDate } from '@date-fns/tz'
 import { format } from 'date-fns'
 import { addDays, weekStart } from './dates'
 import { toHabitColor, type HabitColor } from './habit-colors'
+import { LOG_TYPES, logSubtitle, type LogType, type TodayLog } from './logs'
 import type { IconKey, Visibility } from './presets'
 import { dailyStreak, weeklyStreak } from './streaks'
 import type { Frequency, LocalDate } from './types'
@@ -16,6 +17,7 @@ export type HabitInput = {
   target_per_week: number | null
   color?: string | null
   preset?: string | null
+  log_type?: string | null
 }
 export type ItemInput = {
   id: string
@@ -47,6 +49,9 @@ export type TodayRow = {
   streak: number
   weekCount: number
   items: TodayItem[]
+  logType: LogType
+  /** today's log of this habit (reading or workout), if any */
+  log: TodayLog | null
 }
 
 export function buildToday(input: {
@@ -54,6 +59,8 @@ export function buildToday(input: {
   items: ItemInput[]
   checkins: CheckinInput[]
   itemChecks: ItemCheckInput[]
+  /** today's logs by habit_id */
+  logs?: Record<string, TodayLog>
   today: LocalDate
   timeZone: string
 }): { rows: TodayRow[]; doneCount: number; total: number; bestDailyStreak: number } {
@@ -101,6 +108,8 @@ export function buildToday(input: {
       streak,
       weekCount,
       items,
+      logType: toLogType(h.log_type),
+      log: input.logs?.[h.id] ?? null,
     }
   })
 
@@ -113,7 +122,11 @@ export function buildToday(input: {
   }
 }
 
+const toLogType = (v: string | null | undefined): LogType =>
+  (LOG_TYPES as readonly string[]).includes(v ?? '') ? (v as LogType) : 'none'
+
 export function habitSubtitle(row: TodayRow): string {
+  if (row.log) return logSubtitle(row.log)
   if (row.frequency.type === 'weekly') {
     return `${row.weekCount} de ${row.frequency.target} esta semana`
   }

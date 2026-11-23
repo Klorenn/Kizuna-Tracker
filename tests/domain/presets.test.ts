@@ -29,9 +29,11 @@ describe('presets', () => {
     expect(d.preset).toBe('eat_well')
   })
 
-  it('has 24 unique icons', () => {
-    expect(HABIT_ICONS).toHaveLength(24)
-    expect(new Set(HABIT_ICONS).size).toBe(24)
+  it('has 26 unique icons, laptop and desk for study habits', () => {
+    expect(HABIT_ICONS).toHaveLength(26)
+    expect(new Set(HABIT_ICONS).size).toBe(26)
+    expect(HABIT_ICONS).toContain('laptop')
+    expect(HABIT_ICONS).toContain('desk')
   })
 })
 

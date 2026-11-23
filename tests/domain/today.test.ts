@@ -77,4 +77,36 @@ describe('buildToday', () => {
     expect(r.rows[0].items[1]).toMatchObject({ checked: false, time: null })
     expect(habitSubtitle(r.rows[0])).toBe('Diario · 2 pasos')
   })
+
+  const base = { items: [], itemChecks: [], today: '2026-11-22', timeZone: 'America/Santiago' }
+
+  it('carries the log type and today\'s reading log, which becomes the subtitle', () => {
+    const r = buildToday({
+      ...base,
+      habits: [habit({ log_type: 'reading' })],
+      checkins: [{ habit_id: 'h1', local_date: '2026-11-22' }],
+      logs: { h1: { kind: 'reading', pages: 26, bookTitle: 'Dune' } },
+    })
+    expect(r.rows[0].logType).toBe('reading')
+    expect(r.rows[0].log).toEqual({ kind: 'reading', pages: 26, bookTitle: 'Dune' })
+    expect(habitSubtitle(r.rows[0])).toBe('26 páginas · Dune')
+  })
+
+  it('without a log the subtitle stays the frequency', () => {
+    const r = buildToday({ ...base, habits: [habit({ log_type: 'reading' })], checkins: [], logs: {} })
+    expect(r.rows[0].log).toBeNull()
+    expect(r.rows[0].logType).toBe('reading')
+    expect(habitSubtitle(r.rows[0])).toBe('Diario')
+  })
+
+  it('workout logs read "Pierna · 5 ejercicios"; unknown or missing log types are none', () => {
+    const r = buildToday({
+      ...base,
+      habits: [habit({ id: 'g', log_type: 'workout' }), habit({ id: 'x', log_type: 'weird' }), habit({ id: 'y' })],
+      checkins: [],
+      logs: { g: { kind: 'workout', dayTypes: ['legs'], exerciseCount: 5 } },
+    })
+    expect(habitSubtitle(r.rows[0])).toBe('Pierna · 5 ejercicios')
+    expect(r.rows.map((x) => x.logType)).toEqual(['workout', 'none', 'none'])
+  })
 })
