@@ -1,8 +1,19 @@
 import "server-only";
-import type { DeleteAccountDeps } from "@/lib/delete-account";
+import type { DeletableTable, DeleteAccountDeps } from "@/lib/delete-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const CHUNK = 500;
+const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
+  "workout_sets",
+  "workout_sessions",
+  "reading_entries",
+  "books",
+  "exercises",
+  "body_weights",
+  "goals",
+  "checkin_items",
+  "habit_items",
+]);
 /** Every key registro/actions.ts sends as signup metadata. */
 export const SIGNUP_METADATA_KEYS = ["username", "first_name", "last_name", "birth_date", "timezone", "terms_accepted"] as const;
 
@@ -55,7 +66,8 @@ export function supabaseDeleteDeps(
       }
     },
     async deleteRows(table, userId) {
-      if (table === "goals" || table === "checkin_items" || table === "habit_items") {
+      // exercises: only the user's own rows (the shared catalog has user_id null and is never matched)
+      if (OWN_ROWS.has(table)) {
         const { error } = await admin.from(table).delete().eq("user_id", userId);
         return must(error);
       }

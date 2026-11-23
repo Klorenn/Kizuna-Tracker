@@ -1,4 +1,30 @@
-export type DeletableTable = 'goals' | 'checkin_items' | 'checkins' | 'habit_items' | 'habits'
+export type DeletableTable =
+  | 'workout_sets'
+  | 'workout_sessions'
+  | 'reading_entries'
+  | 'books'
+  | 'exercises'
+  | 'body_weights'
+  | 'goals'
+  | 'checkin_items'
+  | 'checkins'
+  | 'habit_items'
+  | 'habits'
+
+/** Children first: sets before sessions, entries before books, sets before exercises; then the older tables. */
+export const DELETE_ORDER: readonly DeletableTable[] = [
+  'workout_sets',
+  'workout_sessions',
+  'reading_entries',
+  'books',
+  'exercises',
+  'body_weights',
+  'goals',
+  'checkin_items',
+  'checkins',
+  'habit_items',
+  'habits',
+]
 
 export interface DeleteAccountDeps {
   /** Object paths (full, bucket-relative) under `prefix` in `bucket`; non-recursive like Storage's list. */
@@ -18,6 +44,8 @@ export interface DeleteAccountDeps {
       last_name: string
       birth_date: null
       avatar_path: null
+      /** Private body height. */
+      height_cm: null
       deleted_at: string
     },
   ): Promise<void>
@@ -41,7 +69,7 @@ export async function deleteAccountWith(deps: DeleteAccountDeps, userId: string,
   await deps.removeObjects('avatars', [`${userId}.jpg`])
 
   await deps.cancelChallenges(userId)
-  for (const table of ['goals', 'checkin_items', 'checkins', 'habit_items', 'habits'] as const) {
+  for (const table of DELETE_ORDER) {
     await deps.deleteRows(table, userId)
   }
   await deps.purgeSocial(userId)
@@ -52,6 +80,7 @@ export async function deleteAccountWith(deps: DeleteAccountDeps, userId: string,
     last_name: 'eliminada',
     birth_date: null,
     avatar_path: null,
+    height_cm: null,
     deleted_at: now.toISOString(),
   })
   await deps.revokeSessions(userId)

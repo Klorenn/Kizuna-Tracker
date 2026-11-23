@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { GoalCard } from "@/components/GoalCard";
+import { BodyCard } from "@/components/profile/BodyCard";
 import { ActivityHeatmap } from "@/components/profile/ActivityHeatmap";
 import { HabitStrip } from "@/components/profile/HabitStrip";
 import { ProfileIdentity } from "@/components/profile/ProfileIdentity";
@@ -23,6 +24,7 @@ import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
+import { loadRecentWeights } from "./body-data";
 
 export const metadata: Metadata = { title: "Perfil" };
 
@@ -55,13 +57,13 @@ export default async function PerfilPage() {
   if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,created_at")
+    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,created_at,height_cm")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
 
   const today = localDate(new Date(), profile.timezone);
-  const [{ data: habits }, goals, record, { data: debtRows }] = await Promise.all([
+  const [{ data: habits }, goals, record, { data: debtRows }, bodyEntries] = await Promise.all([
     supabase
       .from("habits")
       .select("id,name,color,frequency_type,target_per_week")
@@ -71,6 +73,7 @@ export default async function PerfilPage() {
     loadGoals(supabase, user.id, today),
     challengeRecord(user.id),
     supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
+    loadRecentWeights(supabase, user.id, 5),
   ]);
 
   // History per habit, bounded by date and row count (the API caps a query at 1000 rows)
@@ -216,6 +219,8 @@ export default async function PerfilPage() {
           </Card>
         )}
       </section>
+
+      <BodyCard entries={bodyEntries} height={profile.height_cm} today={today} />
 
       <section aria-labelledby="perfil-publico" className="flex flex-col gap-2">
         <h2 id="perfil-publico" className="section-label text-muted">

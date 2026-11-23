@@ -33,6 +33,12 @@ const SECTIONS: LegalSection[] = [
       ],
     },
     {
+      title: "Datos sensibles: peso y altura",
+      body: [
+        "Si registras tu peso o tu altura, se guardan solo para ti. No tienen opción de visibilidad: nadie más puede verlos, ni tus amigos, ni en tu perfil público, ni en el resumen de actividad, ni en las notificaciones. Tu peso y tu altura se eliminan al borrar tu cuenta.",
+      ],
+    },
+    {
       title: "Dónde se guardan las fotos",
       body: [
         "Las fotos se guardan en un almacenamiento privado. Se comprimen y se les quitan los datos de ubicación y de cámara antes de guardarlas. Quien tiene permiso para verlas accede con un enlace temporal de unos cinco minutos.",
