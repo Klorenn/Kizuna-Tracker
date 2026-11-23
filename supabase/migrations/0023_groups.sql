@@ -26,8 +26,9 @@
 --     caller is also a live member.
 --  3. group_invite_preview is callable by anon: name, icon, colour, commitment, member count and "full" only. Never member
 --     names or ids. A code is 128 bits of randomness, so it cannot be guessed; the app should still throttle the route.
---  4. Closed weeks are stored as snapshots (target, photo flag, counts, one result row per counted member). Members can
---     read the per-member result of any closed week of their group (group_week_detail).
+--  4. Closed weeks are stored as snapshots (target, photo flag, counts, one result row per member evaluated; a member
+--     who left during the week keeps a row with counted = false that is not part of the counts). Members can read the
+--     per-member result of the counted members of any closed week of their group (group_week_detail).
 --
 -- TIME. A check-in's local_date is computed in the member's OWN profile zone (existing behaviour). A group's week is a range
 -- of local dates, Monday to Sunday, in the GROUP's zone (the creator's profile zone at creation, never changes): the same
@@ -36,7 +37,17 @@
 -- LIMITS (under row locks). 50 live members per group, 10 live groups per person, 3 admins per group, 5 active invites per
 -- group. Lock order everywhere: caller's profile row (create/join only, FOR NO KEY UPDATE) -> group row -> invite row ->
 -- habit row (FOR SHARE) -> member rows. The closing function takes a try-advisory lock per group first and never waits
--- for it; nothing else takes an advisory lock, so no cycle exists.
+-- for it; nothing else takes an advisory lock. ONE known cycle remains (it is transient, Postgres detects it and aborts one
+-- side, both are retryable): account deletion (the service role changes username, a unique column, together with deleted_at,
+-- so it holds the profile row FOR UPDATE and then waits for the group rows) against join_group or the closing function
+-- (which hold the group row and insert a notification for that same admin, whose foreign key needs a key-share lock on the
+-- profile row).
+--
+-- VISIBILITY RULE (every read and the proofs helper). A check-in is visible to a fellow member only while its habit is
+-- linked to the owner ACTIVE membership of that group, is not private, is dated on or after joined_on and is not rejected.
+-- Someone who left or was removed shows nothing at all (not even what they did before leaving). An archived group is frozen
+-- at the instant it was archived: only check-ins created up to archived_at and dated up to that local day, the week of that
+-- day, the commitment in effect that day; nothing done afterwards ever appears; proofs are not opened.
 --
 -- is_live. group_members.is_live is true while the membership is active AND its group is not archived. It is what the
 -- limits, the "one group per habit" index, the habit guards and the proofs branch look at. Archiving or ending a
@@ -107,7 +118,8 @@ create table public.group_invites (
   expires_at timestamptz not null default now() + interval '7 days',
   max_uses int not null constraint group_invites_max_uses_check check (max_uses >= 1),
   uses int not null default 0 constraint group_invites_uses_check check (uses >= 0),
-  created_at timestamptz not null default now(),
+  -- clock_timestamp: an invite made after a removal in the same transaction still sorts after it
+  created_at timestamptz not null default clock_timestamp(),
   constraint group_invites_uses_le_max check (uses <= max_uses)
 );
 create index group_invites_group_idx on public.group_invites (group_id, expires_at);
@@ -133,6 +145,9 @@ create table public.group_week_results (
   done int not null,
   target int not null,
   complied boolean not null,
+  -- false for a member who left during that week: the row exists (the fine of 0024 needs it) but the member is not part of
+  -- members_counted, members_complied, the streak, the notification or group_week_detail
+  counted boolean not null default true,
   primary key (group_id, week_start, user_id)
 );
 
@@ -414,6 +429,13 @@ declare
 begin
   g := public.groups_lock_admin(v_uid, p_group_id);
   perform public.groups_validate_commitment(p_commitment_name, p_commitment_icon, p_target_per_week, p_requires_photo);
+  -- a pending change whose Monday has arrived goes first, exactly as the closing function would apply it. When it cannot be
+  -- applied yet (the week before is still open) it must not be replaced silently.
+  perform public.groups_apply_pending(g.id, pg_catalog.now());
+  select x.* into g from public.groups x where x.id = g.id;
+  if g.next_effective_from is not null and g.next_effective_from <= (pg_catalog.now() at time zone g.timezone)::date then
+    raise exception 'commitment_change_pending';
+  end if;
   v_from := public.groups_next_monday((pg_catalog.now() at time zone g.timezone)::date);
   update public.groups x
   set next_commitment_name = pg_catalog.btrim(p_commitment_name), next_commitment_icon = p_commitment_icon,
@@ -458,6 +480,18 @@ begin
   if v_free <= 0 then
     raise exception 'group_full';
   end if;
+  -- the newest invite that is still valid and was made after the last removal in the group is returned as it is: sharing
+  -- the link again must not burn the cap of five
+  select i.code into v_code
+  from public.group_invites i
+  where i.group_id = g.id and i.expires_at > pg_catalog.now() and i.uses < i.max_uses
+    and i.created_at > coalesce((select pg_catalog.max(m.left_at) from public.group_members m
+                                 where m.group_id = g.id and m.left_reason = 'removed'), '-infinity'::timestamptz)
+  order by i.created_at desc, i.code
+  limit 1;
+  if v_code is not null then
+    return v_code;
+  end if;
   if (select pg_catalog.count(*) from public.group_invites i
       where i.group_id = g.id and i.expires_at > pg_catalog.now() and i.uses < i.max_uses) >= 5 then
     raise exception 'invite_limit';
@@ -497,6 +531,26 @@ begin
 end;
 $$;
 
+-- Expires every active invite of the group at once; returns how many were active.
+create function public.revoke_group_invites(p_group_id uuid)
+returns integer
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_uid uuid := public.groups_actor();
+  g public.groups;
+  v_n int;
+begin
+  g := public.groups_lock_admin(v_uid, p_group_id);
+  update public.group_invites i set expires_at = pg_catalog.now()
+  where i.group_id = g.id and i.expires_at > pg_catalog.now() and i.uses < i.max_uses;
+  get diagnostics v_n = row_count;
+  return v_n;
+end;
+$$;
+
 create function public.join_group(p_code text, p_habit_id uuid)
 returns uuid
 language plpgsql
@@ -523,6 +577,11 @@ begin
   end if;
   select i.* into v_inv from public.group_invites i where i.code = p_code for update;
   if not found then
+    raise exception 'invite_not_found';
+  end if;
+  -- someone an admin removed cannot come back with a link made before the removal; no hint is given
+  if exists (select 1 from public.group_members m
+             where m.group_id = g.id and m.user_id = v_uid and m.left_reason = 'removed' and m.left_at >= v_inv.created_at) then
     raise exception 'invite_not_found';
   end if;
   if v_inv.expires_at <= pg_catalog.now() or v_inv.uses >= v_inv.max_uses then
@@ -610,7 +669,7 @@ begin
     raise exception 'cannot_remove_self';
   end if;
   update public.group_members m
-  set left_at = pg_catalog.now(), left_reason = 'removed', is_live = false
+  set left_at = pg_catalog.clock_timestamp(), left_reason = 'removed', is_live = false
   where m.group_id = g.id and m.user_id = p_user_id and m.left_at is null;
   if not found then
     raise exception 'not_group_member';
@@ -673,21 +732,35 @@ declare
 begin
   return query
   with g as (
-    select x.*, public.groups_week_start((pg_catalog.now() at time zone x.timezone)::date) as wk
+    -- an archived group is frozen at the instant it was archived; the commitment shown is the one in effect that day
+    select x.id, x.name, x.icon, x.color, x.archived_at, w.ldate, w.wk, w.target, w.photo,
+           case when w.pend then x.next_commitment_name else x.commitment_name end as cname,
+           case when w.pend then x.next_commitment_icon else x.commitment_icon end as cicon
     from public.groups x
+    cross join lateral (
+      select d.ldate, d.pend, public.groups_week_start(d.ldate) as wk,
+             case when d.pend then x.next_target_per_week else x.target_per_week end as target,
+             case when d.pend then x.next_requires_photo else x.requires_photo end as photo
+      from (select (coalesce(x.archived_at, pg_catalog.now()) at time zone x.timezone)::date as ldate,
+                   (x.next_effective_from is not null
+                    and x.next_effective_from <= (coalesce(x.archived_at, pg_catalog.now()) at time zone x.timezone)::date) as pend) d
+    ) w
     where x.id in (select m.group_id from public.group_members m where m.user_id = v_uid and m.left_at is null)
   ),
   mem as (
-    -- one statement for every member of every one of my groups: this week's valid check-ins per member
-    select m.group_id, m.user_id, m.role, m.habit_id, m.counts_from, g.wk, g.target_per_week as target,
+    -- one statement for every member of every one of my groups: this week's valid check-ins per member. A check-in counts
+    -- only through a habit that is not private, and in an archived group only if it existed when it was archived.
+    select m.group_id, m.user_id, m.role, m.habit_id, m.counts_from, g.wk, g.target,
            pg_catalog.count(c.id)::int as done
     from public.group_members m
     join g on g.id = m.group_id
+    left join public.habits h on h.id = m.habit_id and h.visibility <> 'private'
     left join public.checkins c
-      on c.habit_id = m.habit_id and c.local_date between g.wk and g.wk + 6 and c.local_date >= m.joined_on
-     and c.rejected_at is null and (not g.requires_photo or c.photo_path is not null)
+      on c.habit_id = h.id and c.local_date between g.wk and g.wk + 6 and c.local_date >= m.joined_on
+     and c.rejected_at is null and (not g.photo or c.photo_path is not null)
+     and (g.archived_at is null or (c.created_at <= g.archived_at and c.local_date <= g.ldate))
     where m.left_at is null
-    group by m.group_id, m.user_id, m.role, m.habit_id, m.counts_from, g.wk, g.target_per_week
+    group by m.group_id, m.user_id, m.role, m.habit_id, m.counts_from, g.wk, g.target
   ),
   agg as (
     select mem.group_id,
@@ -706,7 +779,7 @@ begin
     ) s group by s.group_id
   )
   select g.id, g.name, g.icon, g.color, me.role, agg.member_count,
-         g.commitment_name, g.commitment_icon, g.target_per_week, g.requires_photo,
+         g.cname, g.cicon, g.target, g.photo,
          me.done, (me.counts_from <= g.wk), agg.complied, agg.counted, coalesce(st.streak, 0), (g.archived_at is not null),
          me.habit_id
   from g
@@ -737,14 +810,27 @@ begin
   if public.groups_member_role(v_uid, p_group_id) is null then
     raise exception 'group_not_found';
   end if;
+  -- a pending change whose Monday has arrived is shown as the commitment in effect, even if the closing function has not
+  -- applied it yet
   return query
   select g.id, g.name, g.icon, g.color, g.description,
-         g.commitment_name, g.commitment_icon, g.target_per_week, g.requires_photo,
-         g.next_commitment_name, g.next_commitment_icon, g.next_target_per_week, g.next_requires_photo,
-         g.next_effective_from, g.timezone, g.archived_at,
+         case when w.pend then g.next_commitment_name else g.commitment_name end,
+         case when w.pend then g.next_commitment_icon else g.commitment_icon end,
+         case when w.pend then g.next_target_per_week else g.target_per_week end,
+         case when w.pend then g.next_requires_photo else g.requires_photo end,
+         case when w.pend then null else g.next_commitment_name end,
+         case when w.pend then null else g.next_commitment_icon end,
+         case when w.pend then null else g.next_target_per_week end,
+         case when w.pend then null else g.next_requires_photo end,
+         case when w.pend then null else g.next_effective_from end,
+         g.timezone, g.archived_at,
          me.role, me.habit_id, public.groups_streak(g.id),
          (select pg_catalog.count(*)::int from public.group_members m where m.group_id = g.id and m.left_at is null)
   from public.groups g
+  cross join lateral (
+    select (g.next_effective_from is not null
+            and g.next_effective_from <= (coalesce(g.archived_at, pg_catalog.now()) at time zone g.timezone)::date) as pend
+  ) w
   join public.group_members me on me.group_id = g.id and me.user_id = v_uid and me.left_at is null
   where g.id = p_group_id;
 end;
@@ -768,18 +854,29 @@ begin
   if public.groups_member_role(v_uid, p_group_id) is null then
     raise exception 'group_not_found';
   end if;
+  -- one statement: this week's valid check-ins of every active member, grouped. A check-in counts only through a habit that
+  -- is not private; in an archived group only if it existed when it was archived (the board is frozen at that day).
   return query
   select m.user_id, p.username::text, p.display_name, p.avatar_path, p.avatar_preset,
-         m.role, m.joined_on, (m.counts_from <= w.wk), pg_catalog.count(c.id)::int, g.target_per_week
+         m.role, m.joined_on, (m.counts_from <= w.wk), pg_catalog.count(c.id)::int, w.target
   from public.groups g
-  cross join lateral (select public.groups_week_start((pg_catalog.now() at time zone g.timezone)::date) as wk) w
+  cross join lateral (
+    select d.ldate, public.groups_week_start(d.ldate) as wk,
+           case when d.pend then g.next_target_per_week else g.target_per_week end as target,
+           case when d.pend then g.next_requires_photo else g.requires_photo end as photo
+    from (select (coalesce(g.archived_at, pg_catalog.now()) at time zone g.timezone)::date as ldate,
+                 (g.next_effective_from is not null
+                  and g.next_effective_from <= (coalesce(g.archived_at, pg_catalog.now()) at time zone g.timezone)::date) as pend) d
+  ) w
   join public.group_members m on m.group_id = g.id and m.left_at is null
   join public.profiles p on p.id = m.user_id
+  left join public.habits h on h.id = m.habit_id and h.visibility <> 'private'
   left join public.checkins c
-    on c.habit_id = m.habit_id and c.local_date between w.wk and w.wk + 6 and c.local_date >= m.joined_on
-   and c.rejected_at is null and (not g.requires_photo or c.photo_path is not null)
+    on c.habit_id = h.id and c.local_date between w.wk and w.wk + 6 and c.local_date >= m.joined_on
+   and c.rejected_at is null and (not w.photo or c.photo_path is not null)
+   and (g.archived_at is null or (c.created_at <= g.archived_at and c.local_date <= w.ldate))
   where g.id = p_group_id
-  group by m.user_id, p.username, p.display_name, p.avatar_path, p.avatar_preset, m.role, m.joined_on, m.counts_from, w.wk, g.target_per_week
+  group by m.user_id, p.username, p.display_name, p.avatar_path, p.avatar_preset, m.role, m.joined_on, m.counts_from, w.wk, w.target
   order by pg_catalog.count(c.id) desc, p.username::text, m.user_id;
 end;
 $$;
@@ -806,20 +903,26 @@ begin
   if public.groups_member_role(v_uid, p_group_id) is null then
     raise exception 'group_not_found';
   end if;
+  -- a check-in is on the wall only while its habit is linked to the owner's ACTIVE membership, is not private, is dated on or
+  -- after joined_on and is not rejected; in an archived group only what existed when it was archived
   return query
   select c.id, m.user_id, p.username::text, p.display_name, p.avatar_path, p.avatar_preset, c.local_date, c.photo_path, c.created_at
-  from public.group_members m
+  from public.groups g
+  join public.group_members m on m.group_id = g.id and m.left_at is null and m.habit_id is not null
+  join public.habits hb on hb.id = m.habit_id and hb.visibility <> 'private'
   join public.profiles p on p.id = m.user_id
   cross join lateral (
     select k.id, k.local_date, k.photo_path, k.created_at
     from public.checkins k
     where k.habit_id = m.habit_id and k.local_date >= m.joined_on and k.rejected_at is null
+      and (g.archived_at is null
+           or (k.created_at <= g.archived_at and k.local_date <= (g.archived_at at time zone g.timezone)::date))
       and (p_before is null or k.created_at < p_before
            or (p_before_id is not null and k.created_at = p_before and k.id < p_before_id))
     order by k.created_at desc, k.id desc
     limit v_limit
   ) c
-  where m.group_id = p_group_id and m.left_at is null and m.habit_id is not null
+  where g.id = p_group_id
   order by c.created_at desc, c.id desc
   limit v_limit;
 end;
@@ -846,7 +949,7 @@ begin
   return query
   select w.week_start, w.target_per_week, w.requires_photo, w.members_counted, w.members_complied, r.complied
   from public.group_weeks w
-  left join public.group_week_results r on r.group_id = w.group_id and r.week_start = w.week_start and r.user_id = v_uid
+  left join public.group_week_results r on r.group_id = w.group_id and r.week_start = w.week_start and r.user_id = v_uid and r.counted
   where w.group_id = p_group_id
   order by w.week_start desc
   limit v_limit;
@@ -874,7 +977,7 @@ begin
   select r.user_id, p.username::text, p.display_name, p.avatar_path, p.avatar_preset, r.done, r.target, r.complied
   from public.group_week_results r
   join public.profiles p on p.id = r.user_id
-  where r.group_id = p_group_id and r.week_start = p_week_start
+  where r.group_id = p_group_id and r.week_start = p_week_start and r.counted
   order by r.done desc, p.username::text, r.user_id;
 end;
 $$;
@@ -919,29 +1022,36 @@ begin
   v_to := (p_week + 7)::timestamp at time zone g.timezone;
 
   with cand as (
-    -- members evaluated that week: counted from that Monday on, active at some moment of it. A member who left is still
-    -- evaluated; one removed by an admin or whose account was deleted is not.
-    select distinct on (m.user_id) m.user_id, m.habit_id, m.joined_on
+    -- members that get a result row: counted from that Monday on, active at some moment of the week. One who left DURING
+    -- the week keeps a row with counted = false (the fine of 0024 needs it); it does not enter the counts or the streak
+    -- and only the check-ins up to the day they left are theirs. One removed by an admin or whose account was deleted gets
+    -- no row.
+    select distinct on (m.user_id) m.user_id, m.habit_id, m.joined_on,
+           (m.left_at is null or m.left_at >= v_to) as counted,
+           case when m.left_at is not null and m.left_at < v_to then (m.left_at at time zone g.timezone)::date end as left_on
     from public.group_members m
     where m.group_id = g.id and m.counts_from <= p_week and m.joined_at < v_to
       and (m.left_at is null or m.left_at > v_from) and (m.left_reason is null or m.left_reason = 'left')
     order by m.user_id, m.joined_at desc
   ),
   res as (
-    select cand.user_id, pg_catalog.count(c.id)::int as done
+    select cand.user_id, cand.counted, pg_catalog.count(c.id)::int as done
     from cand
     left join public.checkins c
       on c.habit_id = cand.habit_id and c.local_date between p_week and p_week + 6 and c.local_date >= cand.joined_on
+     and (cand.left_on is null or c.local_date <= cand.left_on)
      and c.rejected_at is null and (not g.requires_photo or c.photo_path is not null)
-    group by cand.user_id
+    group by cand.user_id, cand.counted
   ),
   ins as (
-    insert into public.group_week_results (group_id, week_start, user_id, done, target, complied)
-    select g.id, p_week, res.user_id, res.done, g.target_per_week, res.done >= g.target_per_week from res
+    insert into public.group_week_results (group_id, week_start, user_id, done, target, complied, counted)
+    select g.id, p_week, res.user_id, res.done, g.target_per_week, res.done >= g.target_per_week, res.counted from res
     on conflict do nothing
-    returning complied
+    returning counted, complied
   )
-  select pg_catalog.count(*)::int, (pg_catalog.count(*) filter (where ins.complied))::int into v_counted, v_complied from ins;
+  select (pg_catalog.count(*) filter (where ins.counted))::int,
+         (pg_catalog.count(*) filter (where ins.counted and ins.complied))::int
+    into v_counted, v_complied from ins;
 
   insert into public.group_weeks (group_id, week_start, closed_at, commitment_name, target_per_week, requires_photo,
                                   members_counted, members_complied)
@@ -956,7 +1066,7 @@ begin
     from public.group_week_results r
     join public.group_members m on m.group_id = r.group_id and m.user_id = r.user_id and m.left_at is null
     join public.profiles p on p.id = r.user_id and p.deleted_at is null
-    where r.group_id = g.id and r.week_start = p_week;
+    where r.group_id = g.id and r.week_start = p_week and r.counted;
   end if;
 end;
 $$;
@@ -996,7 +1106,7 @@ begin
       v_n := v_n + 1;
     exception when others then
       raise warning 'groups_close_group % week %: %', g.id, v_wk, sqlerrm;
-      exit;
+      return -(v_n + 1);
     end;
   end loop;
   return v_n;
@@ -1015,21 +1125,34 @@ as $$
 declare
   r record;
   v_total int := 0;
+  v_n int;
+  v_failed int := 0;
 begin
   for r in
-    select x.id
-    from public.groups x
-    where x.archived_at is null
-      and (p_now at time zone x.timezone)::date >=
-          coalesce((select pg_catalog.max(w.week_start) + 7 from public.group_weeks w where w.group_id = x.id),
-                   public.groups_week_start((x.created_at at time zone x.timezone)::date)) + 7
-    order by x.id
+    select d.id
+    from (
+      select x.id, x.timezone,
+             coalesce((select pg_catalog.max(w.week_start) + 7 from public.group_weeks w where w.group_id = x.id),
+                      public.groups_week_start((x.created_at at time zone x.timezone)::date)) as nxt
+      from public.groups x
+      where x.archived_at is null
+    ) d
+    where (p_now at time zone d.timezone)::date >= d.nxt + 7
+    order by d.nxt, d.id
     limit 500
   loop
     if pg_catalog.pg_try_advisory_xact_lock(pg_catalog.hashtextextended('group_close:' || r.id::text, 0)) then
-      v_total := v_total + public.groups_close_group(r.id, p_now);
+      v_n := public.groups_close_group(r.id, p_now);
+      if v_n < 0 then
+        v_failed := v_failed + 1;
+        v_n := -v_n - 1;
+      end if;
+      v_total := v_total + v_n;
     end if;
   end loop;
+  if v_failed > 0 then
+    raise warning 'close_due_group_weeks: % group(s) had a week that failed and were skipped for this run', v_failed;
+  end if;
   return v_total;
 end;
 $$;
@@ -1199,6 +1322,7 @@ begin
     from public.checkins c
     join public.group_members om on om.habit_id = c.habit_id and om.user_id = c.user_id and om.is_live
     join public.groups g on g.id = om.group_id and g.archived_at is null
+    join public.habits hb on hb.id = c.habit_id and hb.visibility <> 'private'
     join public.group_members me on me.group_id = om.group_id and me.user_id = v_uid and me.is_live
     where c.id = v_id and c.photo_path = p_name and c.rejected_at is null and c.local_date >= om.joined_on
   );
@@ -1247,7 +1371,7 @@ revoke execute on function
 revoke execute on function
   public.create_group(text, text, text, text, text, text, integer, boolean, uuid),
   public.update_group(uuid, text, text, text, text), public.set_group_commitment(uuid, text, text, integer, boolean),
-  public.archive_group(uuid), public.create_group_invite(uuid), public.join_group(text, uuid), public.leave_group(uuid),
+  public.archive_group(uuid), public.create_group_invite(uuid), public.revoke_group_invites(uuid), public.join_group(text, uuid), public.leave_group(uuid),
   public.remove_group_member(uuid, uuid), public.set_group_admin(uuid, uuid, boolean), public.my_groups(),
   public.group_detail(uuid), public.group_board(uuid), public.group_wall(uuid, timestamptz, uuid, integer),
   public.group_history(uuid, integer), public.group_week_detail(uuid, date), public.group_invite_preview(text),
@@ -1257,7 +1381,7 @@ revoke execute on function
 grant execute on function
   public.create_group(text, text, text, text, text, text, integer, boolean, uuid),
   public.update_group(uuid, text, text, text, text), public.set_group_commitment(uuid, text, text, integer, boolean),
-  public.archive_group(uuid), public.create_group_invite(uuid), public.join_group(text, uuid), public.leave_group(uuid),
+  public.archive_group(uuid), public.create_group_invite(uuid), public.revoke_group_invites(uuid), public.join_group(text, uuid), public.leave_group(uuid),
   public.remove_group_member(uuid, uuid), public.set_group_admin(uuid, uuid, boolean), public.my_groups(),
   public.group_detail(uuid), public.group_board(uuid), public.group_wall(uuid, timestamptz, uuid, integer),
   public.group_history(uuid, integer), public.group_week_detail(uuid, date),

@@ -841,6 +841,7 @@ export type Database = {
       group_week_results: {
         Row: {
           complied: boolean
+          counted: boolean
           done: number
           group_id: string
           target: number
@@ -849,6 +850,7 @@ export type Database = {
         }
         Insert: {
           complied: boolean
+          counted?: boolean
           done: number
           group_id: string
           target: number
@@ -857,6 +859,7 @@ export type Database = {
         }
         Update: {
           complied?: boolean
+          counted?: boolean
           done?: number
           group_id?: string
           target?: number
@@ -2099,7 +2102,7 @@ export type Database = {
           icon: string
           id: string
           member_count: number
-          my_habit_id: string
+          my_habit_id: string | null
           my_role: string
           name: string
           next_commitment_icon: string
@@ -2242,7 +2245,7 @@ export type Database = {
           member_count: number
           my_counts: boolean
           my_done: number
-          my_habit_id: string
+          my_habit_id: string | null
           name: string
           requires_photo: boolean
           role: string
@@ -2283,6 +2286,7 @@ export type Database = {
         Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
         Returns: undefined
       }
+      revoke_group_invites: { Args: { p_group_id: string }; Returns: number }
       save_reading_entry: {
         Args: {
           p_book_id: string

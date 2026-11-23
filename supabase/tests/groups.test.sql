@@ -2,7 +2,7 @@ begin;
 -- Groups (0023): tables, RPCs, limits, reads, the proofs branch, habit guards, weekly closing, deletion.
 -- Own fixtures. Everything is rolled back; the file never touches rows it did not create.
 create extension if not exists pgtap with schema extensions;
-select plan(311);
+select plan(348);
 
 create schema tests;
 -- ids: users e3600000-...-0000000000NN, habits b3600000-...-<user 4 digits>-<k>, check-ins c3600000-...
@@ -62,19 +62,19 @@ grant all on t_codes, t_cur, t_close to authenticated, anon, service_role;
 -- users 1..160. 01 ana (admin of G1), 02 bruno, 03 carla, 04 dani, 05 eli, 06 fran (friend of bruno), 07 gus (stranger),
 -- 08 hugo (member of G2 only), 09 ines (admin of G2), 10 deleted account, 11 kai, 12 lola (removed), 13..17 board group,
 -- 18/19 archive-photo group, 20 limit tester, 21..71 seat fillers, 72..75 misc, 101..160 closing and deletion groups.
-insert into auth.users (id) select tests.u(g) from generate_series(1, 160) g;
+insert into auth.users (id) select tests.u(g) from generate_series(1, 200) g;
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at)
 select tests.u(g), 'g36_' || lpad(g::text, 3, '0'), 'U' || g, 'Test', '1990-01-01', now(), 'America/Santiago',
        case when g = 10 then now() end
-from generate_series(1, 160) g;
+from generate_series(1, 200) g;
 -- habits k: 3 private, 4 archived, 5 quantity, 6 asks for a photo, everything else a normal shared habit
 insert into public.habits (id, user_id, name, icon, frequency_type, requires_photo, visibility, archived_at)
 select tests.h(u, k), tests.u(u), 'H' || u || '-' || k, 'barbell', 'daily', k = 6,
        case when k = 3 then 'private' else 'friends' end, case when k = 4 then now() end
-from generate_series(1, 160) u, generate_series(1, 20) k where k <> 5;
+from generate_series(1, 200) u, generate_series(1, 20) k where k <> 5;
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility, log_type, quantity_unit, quantity_target, quantity_step)
 select tests.h(u, 5), tests.u(u), 'Q' || u, 'drop', 'daily', 'friends', 'quantity', 'times', 4, 1
-from generate_series(1, 160) u;
+from generate_series(1, 200) u;
 insert into public.friendships (requester_id, addressee_id, status) values (tests.u(6), tests.u(2), 'accepted');
 -- bruno's habit 7 and gus's habit 7 are in an active 1-on-1 challenge
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
@@ -127,7 +127,7 @@ select is((select bool_and(has_function_privilege('authenticated', p, 'execute')
     'public.create_group(text,text,text,text,text,text,integer,boolean,uuid)', 'public.update_group(uuid,text,text,text,text)',
     'public.set_group_commitment(uuid,text,text,integer,boolean)', 'public.archive_group(uuid)', 'public.create_group_invite(uuid)',
     'public.join_group(text,uuid)', 'public.leave_group(uuid)', 'public.remove_group_member(uuid,uuid)',
-    'public.set_group_admin(uuid,uuid,boolean)', 'public.my_groups()', 'public.group_detail(uuid)', 'public.group_board(uuid)',
+    'public.set_group_admin(uuid,uuid,boolean)', 'public.revoke_group_invites(uuid)', 'public.my_groups()', 'public.group_detail(uuid)', 'public.group_board(uuid)',
     'public.group_wall(uuid,timestamp with time zone,uuid,integer)', 'public.group_history(uuid,integer)',
     'public.group_week_detail(uuid,date)']) p),
   true, 'A8 every client RPC is executable by authenticated only');
@@ -151,15 +151,15 @@ select ok(has_function_privilege('authenticated', 'public.group_proof_readable(t
   'A12 the two helpers a policy or an invoker trigger needs are executable by authenticated only');
 select is((select count(*)::int from pg_proc p
   where p.pronamespace = 'public'::regnamespace and p.prosecdef
-    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|close_due_group|habit_group_link|profiles_end_group)'
+    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|revoke_group|close_due_group|habit_group_link|profiles_end_group)'
     and not coalesce(p.proconfig @> array['search_path=""'], false)), 0,
   'A13 every new SECURITY DEFINER function pins search_path to empty');
 select ok((select count(*) from pg_proc p where p.pronamespace = 'public'::regnamespace and p.prosecdef
-    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|close_due_group|habit_group_link|profiles_end_group)') >= 18,
+    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|revoke_group|close_due_group|habit_group_link|profiles_end_group)') >= 18,
   'A14 the new definer functions exist');
 select is((select count(*)::int from pg_proc p
   where p.pronamespace = 'public'::regnamespace
-    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|close_due_group|habit_group_link|habits_group_guard|profiles_end_group)'
+    and p.proname ~ '^(groups?_|my_groups|create_group|update_group|set_group|archive_group|join_group|leave_group|remove_group|revoke_group|close_due_group|habit_group_link|habits_group_guard|profiles_end_group)'
     and p.prosrc ~* '\mexecute\M'), 0, 'A15 no new function uses dynamic SQL');
 select has_trigger('public', 'habits', 'habits_group_guard', 'A16 habits carry the group guard');
 select is((select count(*)::int from pg_trigger t where t.tgrelid in ('public.groups'::regclass, 'public.group_members'::regclass, 'public.group_invites'::regclass)
@@ -187,6 +187,7 @@ select throws_ok(q, '28000', 'not_authenticated', 'C no session: ' || split_part
   $$ select public.leave_group(tests.u(1)) $$,
   $$ select public.remove_group_member(tests.u(1), tests.u(2)) $$,
   $$ select public.set_group_admin(tests.u(1), tests.u(2), true) $$,
+  $$ select public.revoke_group_invites(tests.u(1)) $$,
   $$ select * from public.my_groups() $$,
   $$ select * from public.group_detail(tests.u(1)) $$,
   $$ select * from public.group_board(tests.u(1)) $$,
@@ -260,7 +261,8 @@ select throws_ok(format($$ select public.%s $$, q), 'P0001', 'group_not_found', 
   $$create_group_invite(tests.g('g1'))$$,
   $$leave_group(tests.g('g1'))$$,
   $$remove_group_member(tests.g('g1'), tests.u(1))$$,
-  $$set_group_admin(tests.g('g1'), tests.u(1), true)$$]) q;
+  $$set_group_admin(tests.g('g1'), tests.u(1), true)$$,
+  $$revoke_group_invites(tests.g('g1'))$$]) q;
 select throws_ok($$ select public.update_group(null::uuid, 'Nuevo', 'barbell', 'salvia', null) $$,
   'P0001', 'group_not_found', 'E2 a null group id is group_not_found');
 select throws_ok($$ select public.update_group('f3600000-0000-0000-0000-000000000001', 'Nuevo', 'barbell', 'salvia', null) $$,
@@ -282,7 +284,8 @@ select throws_ok(format($$ select public.%s $$, q), 'P0001', 'not_group_admin', 
   $$archive_group(tests.g('g1'))$$,
   $$create_group_invite(tests.g('g1'))$$,
   $$remove_group_member(tests.g('g1'), tests.u(3))$$,
-  $$set_group_admin(tests.g('g1'), tests.u(3), true)$$]) q;
+  $$set_group_admin(tests.g('g1'), tests.u(3), true)$$,
+  $$revoke_group_invites(tests.g('g1'))$$]) q;
 select tests.login(1);
 select lives_ok($$ select public.update_group(tests.g('g1'), 'Gym crew 2', 'target', 'cielo', null) $$, 'E5 an admin updates the group');
 select is((select row(name, icon, color, description)::text from public.group_detail(tests.g('g1'))), row('Gym crew 2', 'target', 'cielo', null::text)::text,
@@ -425,21 +428,37 @@ select lives_ok($$ select public.set_group_admin(tests.g('g1'), tests.u(3), true
 select lives_ok($$ select public.set_group_admin(tests.g('g1'), tests.u(2), false) $$, 'G12 an admin can be removed as admin');
 select lives_ok($$ select public.set_group_admin(tests.g('g1'), tests.u(11), true) $$, 'G13 and the freed seat can be used');
 select lives_ok($$ select public.set_group_admin(tests.g('g1'), tests.u(11), false) $$, 'G14 (restored)');
--- invites: 5 active at most
-select public.create_group_invite(tests.g('g1')) from generate_series(1, 4);
-select throws_ok($$ select public.create_group_invite(tests.g('g1')) $$, 'P0001', 'invite_limit', 'G16 the 6th active invite is refused');
+-- invites: asking again returns the newest valid invite made after the last removal instead of minting; 5 active at most
+select tests.login(1);
+insert into t_codes select 'code1b', public.create_group_invite(tests.g('g1'));
+select is((select code from t_codes where k = 'code1b'), (select code from t_codes where k = 'code1'), 'G16 asking again returns the same valid invite (the cap of 5 is not burnt)');
 reset role;
-update public.group_invites set expires_at = now() - interval '1 second' where group_id = tests.g('g1') and code = (select code from t_codes where k = 'code1');
+select is((select count(*)::int from public.group_invites where group_id = tests.g('g1')), 1, 'G16b and no row was made');
+-- four older invites made before lola's removal five days ago are stale: never reused
+insert into public.group_invites (code, group_id, created_by, expires_at, max_uses, created_at)
+select repeat('b', 31) || g::text, tests.g('g1'), tests.u(1), now() + interval '3 days', 10, now() - interval '10 days' from generate_series(1, 4) g;
+update public.group_invites set expires_at = now() - interval '1 second' where code = (select code from t_codes where k = 'code1');
 set local role authenticated;
 select tests.login(1);
-select lives_ok($$ select public.create_group_invite(tests.g('g1')) $$, 'G17 an expired invite does not count');
-select throws_ok($$ select public.create_group_invite(tests.g('g1')) $$, 'P0001', 'invite_limit', 'G18 the limit applies again');
+insert into t_codes select 'code1c', public.create_group_invite(tests.g('g1'));
+select isnt((select code from t_codes where k = 'code1c'), (select code from t_codes where k = 'code1'), 'G17 with only stale and expired invites a new one is minted');
 reset role;
-update public.group_invites set uses = max_uses
-  where code = (select i.code from public.group_invites i where i.group_id = tests.g('g1') and i.expires_at > now() and i.uses < i.max_uses order by i.created_at, i.code limit 1);
+update public.group_invites set created_at = now() - interval '10 days' where code = (select code from t_codes where k = 'code1c');
 set local role authenticated;
 select tests.login(1);
-select lives_ok($$ select public.create_group_invite(tests.g('g1')) $$, 'G19 a used-up invite does not count either');
+select throws_ok($$ select public.create_group_invite(tests.g('g1')) $$, 'P0001', 'invite_limit', 'G18 five active invites, none made after the last removal: the 6th is refused');
+select tests.login(7);
+select throws_ok($$ select public.revoke_group_invites(tests.g('g1')) $$, 'P0001', 'group_not_found', 'G18b revoking as a stranger is group_not_found');
+select tests.login(1);
+select is(public.revoke_group_invites(tests.g('g1')), 5, 'G19 an admin revokes every active invite at once and gets how many');
+select is(public.revoke_group_invites(tests.g('g1')), 0, 'G19b revoking again revokes nothing');
+select is(public.group_invite_preview(repeat('b', 31) || '1'), null, 'G19c a revoked invite previews as null');
+insert into t_codes select 'code1d', public.create_group_invite(tests.g('g1'));
+reset role;
+update public.group_invites set uses = max_uses where code = (select code from t_codes where k = 'code1d');
+set local role authenticated;
+select tests.login(1);
+select isnt(public.create_group_invite(tests.g('g1')), (select code from t_codes where k = 'code1d'), 'G20 a used-up invite is not reused, a new one is minted');
 
 -- ===================================================== H. reads: boards, wall, my_groups
 -- board group GB: wk = Monday of the current week. 13 admin (counts), 14 (counts next week), 15 (joined this week, future shortcut),
@@ -663,7 +682,13 @@ select throws_ok($$ select public.leave_group(tests.g('gr')) $$, 'P0001', 'last_
 select lives_ok($$ select public.remove_group_member(tests.g('gr'), tests.u(75)) $$, 'K10 an admin removes a member');
 select tests.login(75);
 select throws_ok($$ select * from public.group_board(tests.g('gr')) $$, 'P0001', 'group_not_found', 'K11 a removed member sees nothing');
-select lives_ok(format($$ select public.join_group(%L, tests.h(75, 1)) $$, (select code from t_codes where k = 'coder')), 'K12 a removed member can rejoin with a valid link (no ban list in v1)');
+select throws_ok(format($$ select public.join_group(%L, tests.h(75, 1)) $$, (select code from t_codes where k = 'coder')), 'P0001', 'invite_not_found',
+  'K12 a removed member cannot come back with an invite made before the removal (no hint)');
+select tests.login(74);
+insert into t_codes select 'coder2', public.create_group_invite(tests.g('gr'));
+select isnt((select code from t_codes where k = 'coder2'), (select code from t_codes where k = 'coder'), 'K12a the old invite is not reused after a removal: a new one is minted');
+select tests.login(75);
+select lives_ok(format($$ select public.join_group(%L, tests.h(75, 1)) $$, (select code from t_codes where k = 'coder2')), 'K12b an invite made after the removal lets them in again (an admin chose it)');
 reset role;
 select is((select count(*)::int from public.group_members where group_id = tests.g('gr') and user_id = tests.u(75)), 2, 'K13 rejoining adds a row and keeps the old one');
 select is((select count(*)::int from public.group_members where group_id = tests.g('gr') and user_id = tests.u(75) and left_at is null), 1, 'K14 with exactly one active membership');
@@ -684,6 +709,7 @@ select throws_ok(format($$ select public.%s $$, q), 'P0001', 'group_archived', '
   $$set_group_commitment(tests.g('g2'), 'Foto', 'camera', 5, true)$$,
   $$archive_group(tests.g('g2'))$$,
   $$create_group_invite(tests.g('g2'))$$,
+  $$revoke_group_invites(tests.g('g2'))$$,
   $$remove_group_member(tests.g('g2'), tests.u(8))$$,
   $$set_group_admin(tests.g('g2'), tests.u(8), true)$$]) q;
 select is((select archived from public.my_groups() m where m.id = tests.g('g2')), true, 'K20 my_groups flags the archived group');
@@ -752,7 +778,7 @@ select tests.h(u, k), tests.u(u), d::date from (values
   (103, 1, '2026-11-02'), (103, 1, '2026-11-03'),
   (101, 1, '2026-11-09'), (101, 1, '2026-11-10'), (101, 1, '2026-11-11'),
   (102, 1, '2026-11-09'), (102, 1, '2026-11-10'), (102, 1, '2026-11-11'),
-  (103, 1, '2026-11-09'), (104, 1, '2026-11-09'),
+  (103, 1, '2026-11-09'), (104, 1, '2026-11-09'), (104, 1, '2026-11-13'),
   (101, 1, '2026-11-16'), (101, 1, '2026-11-17'), (101, 1, '2026-11-18'),
   (103, 1, '2026-11-16'), (103, 1, '2026-11-17'), (103, 1, '2026-11-18')) v(u, k, d);
 insert into public.checkins (id, habit_id, user_id, local_date, photo_path, rejected_at, rejected_by, reject_reason) values
@@ -856,21 +882,21 @@ select is((select md5(string_agg(row(r.*)::text, '|' order by r.group_id, r.week
 select is((select array_agg(row(week_start, commitment_name, target_per_week, requires_photo, members_counted, members_complied)::text order by week_start)
   from public.group_weeks where group_id = 'd3600000-0000-0000-0000-0000000000c1'),
   array[row(date '2026-10-26', 'Gym', 3, false, 0, 0)::text, row(date '2026-11-02', 'Gym', 3, false, 3, 2)::text,
-        row(date '2026-11-09', 'Gym', 3, false, 4, 2)::text, row(date '2026-11-16', 'Gym', 3, false, 3, 2)::text],
-  'N14 Gc snapshots: the empty first week is closed, joiners count from the next Monday, a leaver is counted, a removed member is not');
-select is((select array_agg(row(week_start, user_id, done, target, complied)::text order by week_start, user_id)
+        row(date '2026-11-09', 'Gym', 3, false, 3, 2)::text, row(date '2026-11-16', 'Gym', 3, false, 3, 2)::text],
+  'N14 Gc snapshots: the empty first week is closed, joiners count from the next Monday, a leaver of that week is not counted in the snapshot, a removed member is not');
+select is((select array_agg(row(week_start, user_id, done, target, complied, counted)::text order by week_start, user_id)
   from public.group_week_results where group_id = 'd3600000-0000-0000-0000-0000000000c1'),
-  array[row(date '2026-11-02', tests.u(101), 3, 3, true)::text, row(date '2026-11-02', tests.u(102), 2, 3, false)::text, row(date '2026-11-02', tests.u(104), 3, 3, true)::text,
-        row(date '2026-11-09', tests.u(101), 3, 3, true)::text, row(date '2026-11-09', tests.u(102), 3, 3, true)::text,
-        row(date '2026-11-09', tests.u(103), 1, 3, false)::text, row(date '2026-11-09', tests.u(104), 1, 3, false)::text,
-        row(date '2026-11-16', tests.u(101), 3, 3, true)::text, row(date '2026-11-16', tests.u(102), 0, 3, false)::text, row(date '2026-11-16', tests.u(103), 3, 3, true)::text],
-  'N15 Gc results are exact: other habits, pre-joined weeks and a rejected check-in are ignored');
+  array[row(date '2026-11-02', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-02', tests.u(102), 2, 3, false, true)::text, row(date '2026-11-02', tests.u(104), 3, 3, true, true)::text,
+        row(date '2026-11-09', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-09', tests.u(102), 3, 3, true, true)::text,
+        row(date '2026-11-09', tests.u(103), 1, 3, false, true)::text, row(date '2026-11-09', tests.u(104), 1, 3, false, false)::text,
+        row(date '2026-11-16', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-16', tests.u(102), 0, 3, false, true)::text, row(date '2026-11-16', tests.u(103), 3, 3, true, true)::text],
+  'N15 Gc results are exact: a leaver keeps a row with counted = false and only the check-ins up to the day they left (the one of the 13th is ignored); other habits, pre-joined weeks and a rejected check-in are ignored');
 select is((select count(*)::int from public.notifications where type = 'group_week_closed' and payload ->> 'group_id' = 'd3600000-0000-0000-0000-0000000000c1'), 5,
   'Q1 group_week_closed: one per counted member who is still active and alive, once per closed week (1 + 2 + 2)');
 select is((select array_agg(user_id order by user_id) from public.notifications where type = 'group_week_closed' and payload ->> 'group_id' = 'd3600000-0000-0000-0000-0000000000c1'),
-  array[tests.u(101), tests.u(101), tests.u(101), tests.u(103), tests.u(103)], 'Q2 not to the member who left (104), not to the deleted account (102), not to the removed one (105)');
+  array[tests.u(101), tests.u(101), tests.u(101), tests.u(103), tests.u(103)], 'Q2 (members_counted 3 in the payload) not to the member who left (104), not to the deleted account (102), not to the removed one (105)');
 select is((select n.payload from public.notifications n where n.type = 'group_week_closed' and n.user_id = tests.u(103) and n.payload ->> 'week_start' = '2026-11-09'),
-  jsonb_build_object('group_id', 'd3600000-0000-0000-0000-0000000000c1', 'group_name', 'Cierre', 'week_start', '2026-11-09', 'complied', false, 'members_complied', 2, 'members_counted', 4),
+  jsonb_build_object('group_id', 'd3600000-0000-0000-0000-0000000000c1', 'group_name', 'Cierre', 'week_start', '2026-11-09', 'complied', false, 'members_complied', 2, 'members_counted', 3),
   'Q3 the payload carries exactly the six keys with that member''s own result');
 select is((select count(*)::int from public.notifications where type = 'group_week_closed' and payload ->> 'group_id' = 'd3600000-0000-0000-0000-0000000000c1'), 5,
   'Q4 the re-run of the closing function inserted no second notification');
@@ -895,7 +921,7 @@ set local role authenticated;
 select tests.login(101);
 select is((select array_agg(row(week_start, target_per_week, requires_photo, members_counted, members_complied, my_complied)::text order by ord)
   from (select h.*, row_number() over () ord from public.group_history('d3600000-0000-0000-0000-0000000000c1') h) h),
-  array[row(date '2026-11-16', 3, false, 3, 2, true)::text, row(date '2026-11-09', 3, false, 4, 2, true)::text,
+  array[row(date '2026-11-16', 3, false, 3, 2, true)::text, row(date '2026-11-09', 3, false, 3, 2, true)::text,
         row(date '2026-11-02', 3, false, 3, 2, true)::text, row(date '2026-10-26', 3, false, 0, 0, null::boolean)::text],
   'O1 group_history lists closed weeks newest first with my own result');
 select is((select count(*)::int from public.group_history('d3600000-0000-0000-0000-0000000000c1', 2)), 2, 'O2 group_history honours the limit');
@@ -906,8 +932,8 @@ select is((select count(*)::int from public.group_history('d3600000-0000-0000-00
 select is((select array_agg(k order by k)::text from jsonb_object_keys((select to_jsonb(h) from public.group_history('d3600000-0000-0000-0000-0000000000c1') h limit 1)) k),
   '{members_complied,members_counted,my_complied,requires_photo,target_per_week,week_start}', 'O7 group_history returns only the listed fields');
 select is((select array_agg(row(username, done, target, complied)::text order by username) from public.group_week_detail('d3600000-0000-0000-0000-0000000000c1', date '2026-11-09')),
-  array[row('g36_101', 3, 3, true)::text, row('g36_102', 3, 3, true)::text, row('g36_103', 1, 3, false)::text, row('g36_104', 1, 3, false)::text],
-  'O8 group_week_detail lists who complied in that week, including someone who left afterwards');
+  array[row('g36_101', 3, 3, true)::text, row('g36_102', 3, 3, true)::text, row('g36_103', 1, 3, false)::text],
+  'O8 group_week_detail lists the counted members only: the member who left during that week is not there');
 select is((select count(*)::int from public.group_week_detail('d3600000-0000-0000-0000-0000000000c1', date '2026-11-10')), 0, 'O9 a date that is not a closed week''s start has no detail');
 select is((select array_agg(k order by k)::text from jsonb_object_keys((select to_jsonb(d) from public.group_week_detail('d3600000-0000-0000-0000-0000000000c1', date '2026-11-09') d limit 1)) k),
   '{avatar_path,avatar_preset,complied,display_name,done,target,user_id,username}', 'O10 group_week_detail returns only the listed fields');
@@ -953,6 +979,114 @@ select is((select count(*)::int from public.group_members where user_id = tests.
 select is((select count(*)::int from public.group_members where user_id = tests.u(158)), 2, 'P10 and the rows stay as history');
 update public.profiles set deleted_at = now() where id = tests.u(104);
 select is((select count(*)::int from public.group_week_results r where r.user_id = tests.u(104)), 2, 'P11 results of earlier weeks stay when the account is deleted');
+
+-- ===================================================== R. frozen archived group and the visibility audit (C1)
+-- 161 admin, 162 and 163 members of 'gf'; 164 admin, 165 and 166 members of the live group 'gl'.
+set local role authenticated;
+select tests.login(161);
+select tests.save('gf', public.create_group('Congelado', 'barbell', 'salvia', null, 'Gym', 'barbell', 3, false, tests.h(161, 1)));
+insert into t_codes select 'codef', public.create_group_invite(tests.g('gf'));
+select tests.login(162);
+select public.join_group((select code from t_codes where k = 'codef'), tests.h(162, 1));
+select tests.login(163);
+select public.join_group((select code from t_codes where k = 'codef'), tests.h(163, 1));
+select tests.login(164);
+select tests.save('gl', public.create_group('Vivo', 'barbell', 'salvia', null, 'Gym', 'barbell', 3, false, tests.h(164, 1)));
+insert into t_codes select 'codel', public.create_group_invite(tests.g('gl'));
+select tests.login(165);
+select public.join_group((select code from t_codes where k = 'codel'), tests.h(165, 1));
+select tests.login(166);
+select public.join_group((select code from t_codes where k = 'codel'), tests.h(166, 1));
+reset role;
+insert into public.checkins (id, habit_id, user_id, local_date, photo_path, created_at) values
+  (tests.c(162, 1), tests.h(162, 1), tests.u(162), tests.today(), tests.p(162, 1), now() - interval '1 minute'),
+  (tests.c(165, 1), tests.h(165, 1), tests.u(165), tests.today(), tests.p(165, 1), now() - interval '1 minute');
+insert into storage.objects (bucket_id, name) values ('proofs', tests.p(162, 1)), ('proofs', tests.p(165, 1));
+set local role authenticated;
+select tests.login(161);
+select is((select count(*)::int from public.group_wall(tests.g('gf'))), 1, 'R1 before archiving the wall shows the check-in');
+select is((select done from public.group_board(tests.g('gf')) where user_id = tests.u(162)), 1, 'R2 and the board counts it');
+select is((select count(*)::int from storage.objects where name = tests.p(162, 1)), 1, 'R3 and the fellow member reads the photo');
+select public.archive_group(tests.g('gf'));
+reset role;
+-- after archiving: 162 checks in for tomorrow (created just before), 163 checks in today but CREATED after the archive
+insert into public.checkins (id, habit_id, user_id, local_date, created_at) values
+  (tests.c(162, 2), tests.h(162, 1), tests.u(162), tests.today() + 1, now() - interval '30 seconds'),
+  (tests.c(163, 1), tests.h(163, 1), tests.u(163), tests.today(), now() + interval '1 minute');
+set local role authenticated;
+select tests.login(161);
+select is((select array_agg(checkin_id) from public.group_wall(tests.g('gf'))), array[tests.c(162, 1)],
+  'R4 an archived group''s wall is frozen: nothing created after archiving (163) and nothing dated after the archive day (162) appears');
+select is((select array_agg(row(user_id, done)::text order by user_id) from public.group_board(tests.g('gf'))),
+  array[row(tests.u(161), 0)::text, row(tests.u(162), 1)::text, row(tests.u(163), 0)::text], 'R5 the board of an archived group is frozen too');
+select tests.login(163);
+select is((select my_done from public.my_groups() where id = tests.g('gf')), 0, 'R6 my_groups is frozen: 163''s later check-in does not count');
+select tests.login(162);
+select is((select my_done from public.my_groups() where id = tests.g('gf')), 1, 'R7 and 162''s earlier one does');
+select tests.login(161);
+select is((select count(*)::int from storage.objects where name = tests.p(162, 1)), 0, 'R8 an archived group no longer opens photos');
+reset role;
+update public.habits set visibility = 'private' where id = tests.h(162, 1);
+set local role authenticated;
+select tests.login(161);
+select is((select count(*)::int from public.group_wall(tests.g('gf'))), 0, 'R9 once the habit turns private the archived wall shows none of it');
+select is((select done from public.group_board(tests.g('gf')) where user_id = tests.u(162)), 0, 'R10 and the board shows 0');
+select is((select count(*)::int from public.group_detail(tests.g('gf')) where archived_at is not null and member_count = 3), 1, 'R11 group_detail of an archived group');
+-- a live group: the habit turns private behind the guard's back (service paths), then is unlinked, then the member leaves
+select tests.login(164);
+select is((select count(*)::int from public.group_wall(tests.g('gl'))), 1, 'R12 live group: the wall shows 165''s check-in');
+select is((select count(*)::int from storage.objects where name = tests.p(165, 1)), 1, 'R12b and the photo opens');
+reset role;
+update public.habits set visibility = 'private' where id = tests.h(165, 1);
+set local role authenticated;
+select tests.login(164);
+select is((select count(*)::int from public.group_wall(tests.g('gl'))), 0, 'R13 a habit that turned private disappears from the wall');
+select is((select done from public.group_board(tests.g('gl')) where user_id = tests.u(165)), 0, 'R14 from the board');
+select is((select count(*)::int from storage.objects where name = tests.p(165, 1)), 0, 'R15 and its photos stop opening');
+reset role;
+update public.habits set visibility = 'friends' where id = tests.h(165, 1);
+update public.group_members set habit_id = null where group_id = tests.g('gl') and user_id = tests.u(165);
+set local role authenticated;
+select tests.login(164);
+select is((select count(*)::int from public.group_wall(tests.g('gl'))), 0, 'R16 an unlinked member shows nothing on the wall');
+select is((select done from public.group_board(tests.g('gl')) where user_id = tests.u(165)), 0, 'R17 nor on the board');
+select tests.login(165);
+select is((select my_habit_id from public.my_groups() where id = tests.g('gl')), null, 'R17b my_groups answers a null my_habit_id');
+select tests.login(166);
+select public.leave_group(tests.g('gl'));
+reset role;
+insert into public.checkins (id, habit_id, user_id, local_date, photo_path) values (tests.c(166, 1), tests.h(166, 1), tests.u(166), tests.today(), tests.p(166, 1));
+insert into storage.objects (bucket_id, name) values ('proofs', tests.p(166, 1));
+set local role authenticated;
+select tests.login(164);
+select is((select count(*)::int from public.group_wall(tests.g('gl')) where user_id = tests.u(166)), 0, 'R18 a check-in made after leaving never appears');
+select is((select count(*)::int from storage.objects where name = tests.p(166, 1)), 0, 'R19 nor does its photo open');
+
+-- ===================================================== S. the commitment in effect today (m5)
+reset role;
+insert into public.groups (id, name, icon, color, commitment_name, commitment_icon, target_per_week, requires_photo, timezone, created_by, created_at,
+                           next_commitment_name, next_commitment_icon, next_target_per_week, next_requires_photo, next_effective_from) values
+  ('d3600000-0000-0000-0000-0000000000f1', 'Pend A', 'barbell', 'salvia', 'Viejo', 'barbell', 2, false, 'America/Santiago', tests.u(167), now() - interval '30 days',
+   'Nuevo', 'target', 5, false, tests.wk()),
+  ('d3600000-0000-0000-0000-0000000000f2', 'Pend B', 'barbell', 'salvia', 'Viejo', 'barbell', 2, false, 'America/Santiago', tests.u(168), now() - interval '30 days',
+   'Nuevo', 'target', 5, false, tests.wk());
+insert into public.group_members (group_id, user_id, role, habit_id, joined_at, joined_on, counts_from) values
+  ('d3600000-0000-0000-0000-0000000000f1', tests.u(167), 'admin', tests.h(167, 1), now() - interval '30 days', tests.today() - 30, public.groups_counts_from(tests.today() - 30)),
+  ('d3600000-0000-0000-0000-0000000000f2', tests.u(168), 'admin', tests.h(168, 1), now() - interval '30 days', tests.today() - 30, public.groups_counts_from(tests.today() - 30));
+insert into public.group_weeks (group_id, week_start, closed_at, commitment_name, target_per_week, requires_photo, members_counted, members_complied)
+values ('d3600000-0000-0000-0000-0000000000f1', tests.wk() - 7, now(), 'Viejo', 2, false, 1, 0);
+set local role authenticated;
+select tests.login(168);
+select is((select row(commitment_name, target_per_week, next_commitment_name, next_effective_from)::text from public.group_detail('d3600000-0000-0000-0000-0000000000f2')),
+  row('Nuevo', 5, null::text, null::date)::text, 'S1 group_detail shows the commitment in effect today even if the close function has not run');
+select is((select target from public.group_board('d3600000-0000-0000-0000-0000000000f2') limit 1), 5, 'S2 so does the board');
+select is((select target_per_week from public.my_groups() where id = 'd3600000-0000-0000-0000-0000000000f2'), 5, 'S3 and my_groups');
+select throws_ok($$ select public.set_group_commitment('d3600000-0000-0000-0000-0000000000f2', 'Otro', 'barbell', 3, false) $$, 'P0001', 'commitment_change_pending',
+  'S4 a due change that cannot be applied yet (the week before is open) is never silently replaced');
+select tests.login(167);
+select public.set_group_commitment('d3600000-0000-0000-0000-0000000000f1', 'Otro', 'barbell', 3, false);
+select is((select row(commitment_name, target_per_week, next_commitment_name, next_target_per_week)::text from public.group_detail('d3600000-0000-0000-0000-0000000000f1')),
+  row('Nuevo', 5, 'Otro', 3)::text, 'S5 a due change is applied first, then the new one is stored as pending');
 
 select * from finish();
 rollback;
