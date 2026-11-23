@@ -1077,6 +1077,7 @@ export type Database = {
           birth_date: string | null
           created_at: string
           deleted_at: string | null
+          discoverable: boolean
           display_name: string | null
           first_name: string
           height_cm: number | null
@@ -1095,6 +1096,7 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           deleted_at?: string | null
+          discoverable?: boolean
           display_name?: string | null
           first_name: string
           height_cm?: number | null
@@ -1113,6 +1115,7 @@ export type Database = {
           birth_date?: string | null
           created_at?: string
           deleted_at?: string | null
+          discoverable?: boolean
           display_name?: string | null
           first_name?: string
           height_cm?: number | null
@@ -1722,6 +1725,19 @@ export type Database = {
       delete_time_entry: { Args: { p_checkin_id: string }; Returns: undefined }
       delete_watch_entry: { Args: { p_checkin_id: string }; Returns: undefined }
       delete_workout: { Args: { p_checkin_id: string }; Returns: undefined }
+      discover_people: {
+        Args: { p_limit?: number; p_offset?: number; p_query?: string }
+        Returns: {
+          avatar_path: string
+          avatar_preset: number
+          display_name: string
+          id: string
+          is_new: boolean
+          mutual_count: number
+          relation: string
+          username: string
+        }[]
+      }
       email_for_username: { Args: { p_username: string }; Returns: string }
       ensure_cron_secret: { Args: never; Returns: undefined }
       friend_feed: {
