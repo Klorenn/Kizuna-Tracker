@@ -33,8 +33,6 @@ export const HABIT_ICONS = [
   'receipt',
   'flag',
   'check',
-  'television',
-  'timer',
 ] as const
 export type IconKey = (typeof HABIT_ICONS)[number]
 
@@ -123,7 +121,7 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
   watch: {
     ...base('watch'),
     name: 'Series y películas',
-    icon: 'television',
+    icon: 'laptop', // TODO: 'television' once the icon set gets it (owner's decision)
     frequency: { type: 'weekly', target: 3 },
     preset: 'watch',
     logType: 'watch',

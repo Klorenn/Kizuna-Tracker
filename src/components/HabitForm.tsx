@@ -40,6 +40,10 @@ const LOG_TYPE_HINT: Record<LogType, string> = {
   none: "Solo marcas si lo hiciste.",
   reading: "Anotas el libro y las páginas de cada día.",
   workout: "Anotas el tipo de día, los ejercicios y los pesos.",
+  time: "Anotas cuánto rato le dedicaste.",
+  watch: "Anotas qué viste.",
+  quantity: "Sumas hasta llegar a la meta diaria.",
+  cardio: "Anotas distancia y tiempo.",
 };
 
 /** Create (with preset chips) or edit a habit. */

@@ -30,8 +30,8 @@ describe('presets', () => {
   })
 
   it('has 26 unique icons, laptop and desk for study habits', () => {
-    expect(HABIT_ICONS).toHaveLength(28)
-    expect(new Set(HABIT_ICONS).size).toBe(28)
+    expect(HABIT_ICONS).toHaveLength(26)
+    expect(new Set(HABIT_ICONS).size).toBe(26)
     expect(HABIT_ICONS).toContain('laptop')
     expect(HABIT_ICONS).toContain('desk')
   })
@@ -103,14 +103,12 @@ describe('presets: detailed log type', () => {
 describe('presets (v4)', () => {
   it('ships the new presets and log types', () => {
     expect(PRESETS.study.logType).toBe('time')
-    expect(PRESETS.watch).toMatchObject({ name: 'Series y películas', icon: 'television', logType: 'watch' })
+    expect(PRESETS.watch).toMatchObject({ name: 'Series y películas', icon: 'laptop', logType: 'watch' })
     expect(PRESETS.run).toMatchObject({ name: 'Trotar', icon: 'sneaker-move', logType: 'cardio', frequency: { type: 'weekly', target: 3 } })
     expect(PRESETS.water.quantity).toEqual({ unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 })
     expect(PRESETS.walk.quantity?.target).toBe(8000)
     expect(PRESETS.walk.logType).toBe('quantity')
     expect(customDraft().quantity).toBeNull()
-    expect(HABIT_ICONS).toContain('television')
-    expect(HABIT_ICONS).toContain('timer')
   })
   it('copies the quantity config into a draft', () => {
     const d = presetDraft('water')
