@@ -116,19 +116,28 @@ test("a block whose first answer is lost is credited once", async ({ page }) => 
   await expect(page.getByText("5 min", { exact: true })).toBeVisible();
 });
 
-test("a block that ended on an earlier day is never added to today", async ({ page }) => {
+test("a block that ended on an earlier day is never added to today (the server decides)", async ({ page }) => {
   test.setTimeout(180_000);
   const id = await studyHabit(page, "pday");
-  await page.clock.install();
   await page.goto(`/habitos/${id}/pomodoro`);
   await page.getByRole("button", { name: "Personalizado" }).click();
   await page.getByLabel("Foco (min)").fill("5");
   await page.getByText("Sin límite", { exact: true }).click();
   await page.getByRole("button", { name: "Empezar foco" }).click();
-  await expect(page.getByRole("timer")).toHaveText("05:00");
+  await expect(page.getByRole("timer")).toBeVisible();
 
-  // the laptop sleeps through the end of the focus and the night: 26 h later, another local day
-  await page.clock.fastForward(26 * 60 * MIN);
+  // a finished block of 30 hours ago sits in the stored state (a laptop that slept through the night):
+  // it is sent once and the SERVER refuses it, because it ended on an earlier local day
+  await page.evaluate(() => {
+    const key = Object.keys(localStorage).find((k) => /kizuna:user:[^:]+:kizuna:pomodoro:[0-9a-f-]{36}$/.test(k))!;
+    const s = JSON.parse(localStorage.getItem(key)!);
+    s.phase = "done";
+    s.pausedAt = null;
+    s.pending = [{ blockId: crypto.randomUUID(), minutes: 5, endedAt: Date.now() - 30 * 3600_000 }];
+    s.rev += 5000;
+    localStorage.setItem(key, JSON.stringify(s));
+  });
+  await page.reload();
   await expect(page.getByText("Un bloque terminó ayer y ya no se puede sumar.")).toBeVisible();
 
   await page.goto(`/habitos/${id}/tiempo`);
