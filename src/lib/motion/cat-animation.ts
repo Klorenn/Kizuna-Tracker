@@ -1,4 +1,5 @@
 import type { CSSProperties } from "react";
+import { isRestHabit, isStudyHabit } from "@/domain/day-complete";
 
 /*
  * Owner's cat GIFs. Each is rendered as a luminance CSS mask cropped to the cat's union bounding
@@ -39,7 +40,38 @@ export const CAT_EAT = {
   playMs: 5840,
 } as const;
 
-export const CAT_ASSETS = { lift: CAT_LIFT, jump: CAT_JUMP, eat: CAT_EAT } as const;
+/*
+ * read, sleep and code: 480 x 480 canvas, 73 frames x 80 ms; the still is the full frame 0. Boxes
+ * are the union of the coalesced frames (`magick X.gif -coalesce -format "%@\n" info:` -> min/max).
+ * - read: downscaled from the owner's 720 px file (gifsicle, 32 grays): box 301 x 286 at (78, 94).
+ * - sleep: the owner's fill is cream, which a luminance mask turns translucent, so the file is
+ *   levelled to pure white (grays 0..88% -> 0..100%): the cat renders solid accent, lines stay cut out.
+ *   Box 341 x 296 at (99, 65) (includes the "z z Z").
+ * - code: quantized to 16 grays (1.3 MB -> 770 kB, same mask); the black laptop screen is a
+ *   cut-out. Box 437 x 262 at (0, 115): the tail swings to the left edge.
+ */
+const cat480 = (name: string, box: { x: number; y: number; w: number; h: number }) =>
+  ({
+    gif: `/brand/cat-${name}.gif`,
+    still: `/brand/cat-${name}-still.png`,
+    canvas: 480,
+    box,
+    stillBox: { x: 0, y: 0, w: 480, h: 480 },
+    playMs: 5840,
+  }) as const;
+
+export const CAT_READ = cat480("read", { x: 78, y: 94, w: 301, h: 286 });
+export const CAT_SLEEP = cat480("sleep", { x: 99, y: 65, w: 341, h: 296 });
+export const CAT_CODE = cat480("code", { x: 0, y: 115, w: 437, h: 262 });
+
+export const CAT_ASSETS = {
+  lift: CAT_LIFT,
+  jump: CAT_JUMP,
+  eat: CAT_EAT,
+  read: CAT_READ,
+  sleep: CAT_SLEEP,
+  code: CAT_CODE,
+} as const;
 export type CatAsset = keyof typeof CAT_ASSETS;
 
 export type CatVariant = 'animated' | 'still'
@@ -97,12 +129,20 @@ export function startWhenReady(load: (ready: () => void) => void, fallbackMs: nu
   }
 }
 
-/** GIFs Hoy may celebrate with: jump (day complete), eat (item meals), lift (gym). */
-export function hoyCatAssets(rows: { preset: string | null; hasItems: boolean }[]): CatAsset[] {
+/**
+ * GIFs Hoy may celebrate with: jump (day complete, book finished), eat (item meals), lift (gym),
+ * read (reading saved), sleep (Dormir 8 h), code (study habits).
+ */
+export function hoyCatAssets(
+  rows: { preset: string | null; hasItems: boolean; logType?: string; icon?: string }[],
+): CatAsset[] {
   if (rows.length === 0) return []
   const out: CatAsset[] = ['jump']
   if (rows.some((r) => r.preset === 'eat_well' && r.hasItems)) out.push('eat')
   if (rows.some((r) => r.preset === 'gym')) out.push('lift')
+  if (rows.some((r) => r.logType === 'reading')) out.push('read')
+  if (rows.some((r) => isRestHabit(r))) out.push('sleep')
+  if (rows.some((r) => isStudyHabit(r))) out.push('code')
   return out
 }
 

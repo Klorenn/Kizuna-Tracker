@@ -93,3 +93,63 @@ describe('Hoy cat preloading', () => {
     expect(shouldPreloadCats({ reducedMotion: false, saveData: true })).toBe(false)
   })
 })
+
+import { existsSync } from 'node:fs'
+
+describe('read, sleep and code cats (480 canvas, 73 frames x 80 ms)', () => {
+  it('read: downscaled to 480 px, union box 301 x 286 at (78, 94)', () => {
+    expect(CAT_ASSETS.read).toEqual({
+      gif: '/brand/cat-read.gif',
+      still: '/brand/cat-read-still.png',
+      canvas: 480,
+      box: { x: 78, y: 94, w: 301, h: 286 },
+      stillBox: { x: 0, y: 0, w: 480, h: 480 },
+      playMs: 5840,
+    })
+    const r = catAnimationStyle('read', 90) as Record<string, unknown>
+    expect(r.width).toBe(90)
+    expect(r.height).toBe(86)
+    expect(r['--cat-mask-size']).toBe('143.52px 143.52px')
+    expect(r['--cat-mask-pos']).toBe('-23.32px -28.11px')
+  })
+  it('sleep: union box 341 x 296 at (99, 65)', () => {
+    expect(CAT_ASSETS.sleep).toEqual({
+      gif: '/brand/cat-sleep.gif',
+      still: '/brand/cat-sleep-still.png',
+      canvas: 480,
+      box: { x: 99, y: 65, w: 341, h: 296 },
+      stillBox: { x: 0, y: 0, w: 480, h: 480 },
+      playMs: 5840,
+    })
+    expect((catAnimationStyle('sleep', 341) as Record<string, unknown>)['--cat-mask-pos']).toBe('-99px -65px')
+  })
+  it('code: union box 437 x 262 at (0, 115) (the tail swings to the left edge)', () => {
+    expect(CAT_ASSETS.code).toEqual({
+      gif: '/brand/cat-code.gif',
+      still: '/brand/cat-code-still.png',
+      canvas: 480,
+      box: { x: 0, y: 115, w: 437, h: 262 },
+      stillBox: { x: 0, y: 0, w: 480, h: 480 },
+      playMs: 5840,
+    })
+    const c = catAnimationStyle('code', 437) as Record<string, unknown>
+    expect(c.height).toBe(262)
+    expect(c['--cat-mask-pos']).toBe('0px -115px')
+  })
+  it('ships the files', () => {
+    for (const a of ['read', 'sleep', 'code']) {
+      expect(existsSync(`public/brand/cat-${a}.gif`)).toBe(true)
+      expect(existsSync(`public/brand/cat-${a}-still.png`)).toBe(true)
+    }
+  })
+  it('Hoy preloads read for reading habits, sleep for Dormir, code for study', () => {
+    expect(
+      hoyCatAssets([
+        { preset: 'read', hasItems: false, logType: 'reading' },
+        { preset: 'sleep', hasItems: false },
+        { preset: 'study', hasItems: false },
+      ]),
+    ).toEqual(['jump', 'read', 'sleep', 'code'])
+    expect(hoyCatAssets([{ preset: null, hasItems: false, icon: 'laptop' }])).toEqual(['jump', 'code'])
+  })
+})
