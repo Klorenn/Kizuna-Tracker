@@ -2,7 +2,7 @@
 
 import { CheckCircle, CircleHalf, Clock, ImageBroken, MinusCircle, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import type { RefObject } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { HabitIcon } from "@/components/habit-icon";
 import { dayHeading } from "@/domain/calendar";
@@ -14,36 +14,6 @@ import { REJECT_LABEL } from "@/lib/challenge-form";
 import { useSignedUrls } from "@/lib/use-signed-urls";
 
 export type CalendarHabitView = { id: string; name: string; color: HabitColor; icon: string };
-
-const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
-
-/** Keeps Tab inside the dialog while it is open. Sheet already moves focus in on open and restores it on close. */
-function useTabTrap(ref: React.RefObject<HTMLElement | null>) {
-  useEffect(() => {
-    const dialog = ref.current?.closest<HTMLElement>('[role="dialog"]');
-    if (!dialog) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== "Tab") return;
-      const items = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
-      if (items.length === 0) return;
-      const first = items[0];
-      const last = items[items.length - 1];
-      const active = document.activeElement;
-      if (!dialog.contains(active)) {
-        e.preventDefault();
-        first.focus();
-      } else if (e.shiftKey && active === first) {
-        e.preventDefault();
-        last.focus();
-      } else if (!e.shiftKey && active === last) {
-        e.preventDefault();
-        first.focus();
-      }
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [ref]);
-}
 
 function Status({ entry }: { entry: HabitDay }) {
   const row = "flex items-center gap-1.5 text-small";
@@ -115,6 +85,7 @@ export function DaySheet({
   habits,
   single,
   onClose,
+  returnFocusRef,
 }: {
   date: LocalDate;
   today: LocalDate;
@@ -123,9 +94,9 @@ export function DaySheet({
   /** Habit detail page: one habit, no need to repeat its name as a list. */
   single: boolean;
   onClose: () => void;
+  /** The tapped day cell: focus goes back there on close. */
+  returnFocusRef?: RefObject<HTMLElement | null>;
 }) {
-  const ref = useRef<HTMLDivElement>(null);
-  useTabTrap(ref);
   const byId = new Map(habits.map((h) => [h.id, h]));
   const records = hasRecords(entries);
   const shown = records ? entries : [];
@@ -133,8 +104,8 @@ export function DaySheet({
   const title = dayHeading(date, today);
 
   return (
-    <Sheet open title={title} onClose={onClose}>
-      <div ref={ref} className="-mx-5 max-h-[min(62dvh,560px)] overflow-y-auto px-5">
+    <Sheet open title={title} onClose={onClose} returnFocusRef={returnFocusRef}>
+      <div className="-mx-5 max-h-[min(62dvh,560px)] overflow-y-auto px-5">
         {records ? (
           <ul className="flex flex-col divide-y divide-line">
             {shown.map((e) => {
