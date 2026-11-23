@@ -13,6 +13,7 @@ import { streakText } from "@/lib/profile-view";
 import { ActivityDays } from "./ActivityItem";
 import { FriendHabitList } from "./FriendHabitList";
 import { FriendOverflow } from "./FriendOverflow";
+import { SectionRetry } from "./SectionRetry";
 
 function BigStat({ label, value, unit }: { label: string; value: number; unit: "days" | "weeks" }) {
   return (
@@ -49,6 +50,9 @@ export function FriendProfileView({
   const balance = balanceCopy(data.record.balance, first);
   const open = data.challenges.filter((c) => c.state === "open");
   const done = data.challenges.filter((c) => c.state === "done").slice(0, 10);
+  const habitsFailed = data.failed.includes("habits");
+  const challengesFailed = data.failed.includes("challenges");
+  const latestFailed = data.failed.includes("latest");
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-6 px-5 pb-8 pt-1">
@@ -80,16 +84,23 @@ export function FriendProfileView({
       </header>
 
       <section aria-label={`Progreso de ${first}`}>
+        {habitsFailed && challengesFailed ? (
+          <SectionRetry what="su progreso" />
+        ) : (
         <Card>
-          <div className="grid grid-cols-2 divide-x divide-line">
-            <BigStat label="Racha actual" value={data.streaks.current.value} unit={data.streaks.current.unit} />
-            <BigStat label="Mejor racha" value={data.streaks.best.value} unit={data.streaks.best.unit} />
-          </div>
-          <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
-            <MiniStat label="Le ganaste" value={data.record.won} />
-            <MiniStat label="Te ganó" value={data.record.lost} />
-          </div>
-          {balance ? (
+          {habitsFailed ? null : (
+            <div className="grid grid-cols-2 divide-x divide-line">
+              <BigStat label="Racha actual" value={data.streaks.current.value} unit={data.streaks.current.unit} />
+              <BigStat label="Mejor racha" value={data.streaks.best.value} unit={data.streaks.best.unit} />
+            </div>
+          )}
+          {challengesFailed ? null : (
+            <div className={`grid grid-cols-2 divide-x divide-line ${habitsFailed ? "" : "border-t border-line"}`}>
+              <MiniStat label="Le ganaste" value={data.record.won} />
+              <MiniStat label="Te ganó" value={data.record.lost} />
+            </div>
+          )}
+          {balance && !challengesFailed ? (
             <Link
               href="/deudas"
               className="flex min-h-[52px] items-center gap-3 border-t border-line px-4 py-2 transition-colors duration-[120ms] hover:bg-field focus-visible:outline-offset-[-2px]"
@@ -100,13 +111,16 @@ export function FriendProfileView({
             </Link>
           ) : null}
         </Card>
+        )}
       </section>
 
       <section aria-labelledby="amigo-habitos" className="flex flex-col gap-2">
         <h2 id="amigo-habitos" className="section-label flex h-6 items-center text-muted">
           Sus hábitos
         </h2>
-        {data.habits.length === 0 ? (
+        {habitsFailed ? (
+          <SectionRetry what="sus hábitos" />
+        ) : data.habits.length === 0 ? (
           <Card className="p-4">
             <p className="text-body text-muted">{first} todavía no comparte hábitos contigo.</p>
           </Card>
@@ -126,7 +140,12 @@ export function FriendProfileView({
           <Card className="p-4">
             <ActivityHeatmap grid={data.activity} today={today} />
           </Card>
-          {data.latest.items.length > 0 ? (
+          {latestFailed ? (
+            <div className="flex flex-col gap-2 pt-2">
+              <h3 className="section-label flex h-6 items-center text-muted">Últimos registros</h3>
+              <SectionRetry what="los últimos registros" />
+            </div>
+          ) : data.latest.items.length > 0 ? (
             <div className="flex flex-col gap-2 pt-2">
               <h3 className="section-label flex h-6 items-center text-muted">Últimos registros</h3>
               <ActivityDays items={data.latest.items} today={today} showPerson={false} />
@@ -137,7 +156,9 @@ export function FriendProfileView({
 
       <section aria-label="Retos entre ustedes" className="flex flex-col gap-2">
         <SectionHeader label="Retos entre ustedes" action="Ver retos" href="/retos" />
-        {data.challenges.length === 0 ? (
+        {challengesFailed ? (
+          <SectionRetry what="los retos" />
+        ) : data.challenges.length === 0 ? (
           <Card className="p-4">
             <p className="text-body text-muted">Aún no tienen retos. Rétalo a cumplir un hábito.</p>
           </Card>

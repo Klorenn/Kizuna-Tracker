@@ -36,18 +36,30 @@ const FeedChunk = memo(function FeedChunk({
 /** Amigos "Actividad": day groups, filter chips and keyset "Ver más" (20 per page). */
 export function ActivityFeed({
   initial,
+  initialError = null,
   today,
   empty,
 }: {
   initial: FeedPage;
+  /** The server could not load the first page: show a retry instead of a false "no activity". */
+  initialError?: string | null;
   today: string;
   /** Shown when there is nothing at all (no friends yet, or friends without activity). */
   empty: { title: string; body: string; action?: ReactNode };
 }) {
-  const [filter, setFilter] = useState<FeedFilter>("all");
-  const [streams, setStreams] = useState<Partial<Record<FeedFilter, Stream>>>({
-    all: { pages: [initial.items], next: initial.next, error: null },
+  const fresh = (): Partial<Record<FeedFilter, Stream>> => ({
+    all: { pages: [initial.items], next: initial.next, error: initialError },
   });
+  const [filter, setFilter] = useState<FeedFilter>("all");
+  const [streams, setStreams] = useState<Partial<Record<FeedFilter, Stream>>>(fresh);
+  // router.refresh() (accept a request, remove a friend…) hands down a new `initial`: start over
+  // from it instead of showing the stale pages (adjust state during render, no effect needed)
+  const [seen, setSeen] = useState({ initial, initialError });
+  if (seen.initial !== initial || seen.initialError !== initialError) {
+    setSeen({ initial, initialError });
+    setFilter("all");
+    setStreams(fresh());
+  }
   const [busy, start] = useTransition();
   const stream = streams[filter];
 

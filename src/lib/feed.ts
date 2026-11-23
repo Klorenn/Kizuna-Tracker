@@ -59,25 +59,40 @@ export function actionCopy(habit: string, k: CheckinKind): string {
 export const MILESTONES = [7, 14, 21, 30, 50, 100] as const
 export const isMilestone = (n: number) => (MILESTONES as readonly number[]).includes(n)
 
-/** Days of history read before the oldest feed item, enough to reach the highest milestone. */
-export const STREAK_LOOKBACK_DAYS = 100
+/**
+ * Days of history read before the oldest feed item. Past the highest milestone (100) so a 100-day
+ * streak is exact; anything that reaches the start of the window is shown capped ("130+ días").
+ */
+export const STREAK_LOOKBACK_DAYS = 130
+
+const daysBetween = (from: LocalDate, to: LocalDate) =>
+  Math.round((Date.parse(`${to}T00:00:00Z`) - Date.parse(`${from}T00:00:00Z`)) / 86_400_000)
 
 /**
  * Streak as of the check-in's day (later check-ins ignored). Daily habits are worth a line from
- * 3 days and a milestone chip at 7, 14, 21, 30, 50 and 100; weekly ones from 2 weeks.
+ * 3 days and a milestone chip at 7, 14, 21, 30, 50 and 100; weekly ones from 2 weeks. `since` is
+ * the first day of loaded history: a streak that reaches it may be longer than we can see, so it
+ * is shown as "N+" and never as a milestone.
  */
 export function streakContext(
   dates: LocalDate[],
   at: LocalDate,
   frequency: Frequency,
+  since?: LocalDate,
 ): { text: string; milestone: boolean } | null {
   const upTo = dates.filter((d) => d <= at)
   if (frequency.type === 'weekly') {
     const n = weeklyStreak(upTo, frequency.target, at)
-    return n >= 2 ? { text: `Racha de ${n} semanas`, milestone: false } : null
+    if (n < 2) return null
+    const capped = since !== undefined && n * 7 >= daysBetween(since, at) - 6
+    return { text: `Racha de ${n}${capped ? '+' : ''} semanas`, milestone: false }
   }
   const n = dailyStreak(upTo, at)
-  return n >= 3 ? { text: `Racha de ${n} días`, milestone: isMilestone(n) } : null
+  if (n < 3) return null
+  const capped = since !== undefined && daysBetween(since, at) + 1 <= n
+  return capped
+    ? { text: `Racha de ${n}+ días`, milestone: false }
+    : { text: `Racha de ${n} días`, milestone: isMilestone(n) }
 }
 
 const REVIEW_WINDOW_MS = 24 * 3_600_000
