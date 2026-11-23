@@ -81,7 +81,7 @@ export async function loadFriendProfile(
   timezone: string,
 ): Promise<FriendProfileData> {
   const pair = `and(creator_id.eq.${me},rival_id.eq.${friendId}),and(creator_id.eq.${friendId},rival_id.eq.${me})`;
-  const { from, limit } = streakWindow(today);
+  const { from } = streakWindow(today);
 
   // each section reads on its own: one transient error degrades that section, not the whole page
   const [habitsRead, pairRead, latestRead] = await Promise.all([
@@ -96,22 +96,12 @@ export async function loadFriendProfile(
           .order("created_at")
           .limit(1000),
       ).filter((h) => h.visibility !== "private");
-      // per-habit history, bounded by date and under the row cap (same window as the own Perfil)
-      return Promise.all(
-        rows.map(async (h) => {
-          const data = must(
-            await supabase
-              .from("checkins")
-              .select("local_date")
-              .eq("habit_id", h.id)
-              .is("rejected_at", null)
-              .gte("local_date", from)
-              .order("local_date", { ascending: false })
-              .limit(limit),
-          );
-          return { ...h, dates: data.map((c) => c.local_date) };
-        }),
-      );
+      // history of every habit in one call (one row per habit; same date window as the own Perfil)
+      if (rows.length === 0) return [];
+      const { data, error } = await supabase.rpc("checkin_dates", { p_habit_ids: rows.map((h) => h.id), p_from: from });
+      if (error) throw new Error(error.message);
+      const byHabit = new Map((data ?? []).map((r) => [r.habit_id, r.dates]));
+      return rows.map((h) => ({ ...h, dates: byHabit.get(h.id) ?? [] }));
     }),
     attempt(async () => {
       const [challenges, debts] = await Promise.all([

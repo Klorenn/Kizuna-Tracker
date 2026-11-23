@@ -40,18 +40,13 @@ export async function friendStreaks(
   );
   const dates = new Map<string, LocalDate[]>();
   if (habits.length > 0) {
-    const checkins = await fetchAll((a, b) =>
-      supabase
-        .from("checkins")
-        .select("id,habit_id,local_date")
-        .in("habit_id", habits.map((h) => h.id))
-        .is("rejected_at", null)
-        .gte("local_date", addDays(today, -LIST_STREAK_DAYS))
-        .order("local_date")
-        .order("id")
-        .range(a, b),
-    );
-    for (const c of checkins) dates.set(c.habit_id, [...(dates.get(c.habit_id) ?? []), c.local_date]);
+    // one row per habit with its dates in the window: no 1000-row cap to page past
+    const { data, error } = await supabase.rpc("checkin_dates", {
+      p_habit_ids: habits.map((h) => h.id),
+      p_from: addDays(today, -LIST_STREAK_DAYS),
+    });
+    if (error) throw new Error(error.message);
+    for (const c of data ?? []) dates.set(c.habit_id, c.dates);
   }
   for (const id of ids) {
     const mine = habits.filter((h) => h.user_id === id).map((h) => ({ ...h, dates: dates.get(h.id) ?? [] }));

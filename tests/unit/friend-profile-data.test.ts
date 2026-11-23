@@ -13,7 +13,7 @@ const PRIVATE = { id: 'h-private', name: 'Secreto', color: 'sage', frequency_typ
 
 const select = (q: Recorded) => String(q.calls.find((c) => c.method === 'select')?.args[0] ?? '')
 
-type Over = Partial<Record<'habits' | 'challenges' | 'debts' | 'feed', { data: unknown; error?: { message: string } }>>
+type Over = Partial<Record<'habits' | 'challenges' | 'debts' | 'feed' | 'dates', { data: unknown; error?: { message: string } }>>
 
 function load(over: Over = {}) {
   const f = fakeSupabase((q) => {
@@ -21,7 +21,12 @@ function load(over: Over = {}) {
     if (q.table === 'habits' && s.includes('visibility')) return over.habits ?? { data: [PUBLIC, PRIVATE] }
     if (q.table === 'challenges') return over.challenges ?? { data: [] }
     if (q.table === 'debts') return over.debts ?? { data: [] }
-    if (q.table === 'checkins' && s.includes('rejected_by')) return over.feed ?? { data: [] }
+    if (q.table === 'rpc:friend_feed') return over.feed ?? { data: [] }
+    if (q.table === 'rpc:checkin_dates') {
+      if (over.dates) return over.dates
+      const ids = (q.calls[0].args[0] as { p_habit_ids: string[] }).p_habit_ids
+      return { data: ids.map((habit_id) => ({ habit_id, dates: ['2026-11-22', '2026-11-21'] })) }
+    }
     return { data: [] }
   })
   return loadFriendProfile(f.client, ME, FRIEND, TODAY, 'UTC').then((data) => ({ data, queries: f.queries }))
@@ -34,9 +39,25 @@ describe('loadFriendProfile: what the friend view may contain', () => {
     expect(args(habitsQuery, 'neq')).toEqual([['visibility', 'private']])
     expect(args(habitsQuery, 'eq')).toEqual([['user_id', FRIEND]])
     expect(data.habits.map((h) => h.id)).toEqual(['h-public'])
-    // and no history is read for the private one
-    const history = queries.filter((q) => q.table === 'checkins' && args(q, 'eq').some((a) => a[0] === 'habit_id'))
-    expect(history.flatMap((q) => args(q, 'eq')).map((a) => a[1])).toEqual(['h-public'])
+    // and no history is asked for the private one
+    const history = queries.filter((q) => q.table === 'rpc:checkin_dates')
+    expect(history.map((q) => (q.calls[0].args[0] as { p_habit_ids: string[] }).p_habit_ids)).toEqual([['h-public']])
+  })
+
+  test('the history of every habit is one checkin_dates call (not one query per habit)', async () => {
+    const two = { ...PUBLIC, id: 'h-two', name: 'Leer' }
+    const { data, queries } = await load({ habits: { data: [PUBLIC, two, PRIVATE] } })
+    const calls = queries.filter((q) => q.table === 'rpc:checkin_dates')
+    expect(calls).toHaveLength(1)
+    expect(calls[0].calls[0].args[0]).toMatchObject({ p_habit_ids: ['h-public', 'h-two'] })
+    expect(queries.filter((q) => q.table === 'checkins')).toEqual([])
+    expect(data.habits.map((h) => h.week.filter((d) => d.done).length)).toEqual([2, 2])
+  })
+
+  test('a habit with no check-ins in the window still appears, with an empty history', async () => {
+    const { data } = await load({ dates: { data: [] } })
+    expect(data.habits).toHaveLength(1)
+    expect(data.habits[0].streak.value).toBe(0)
   })
 
   test('challenges and debts are limited to the pair (me and the friend), both directions', async () => {
@@ -53,9 +74,8 @@ describe('loadFriendProfile: what the friend view may contain', () => {
 
   test("the latest check-ins are the friend's own, with the rejected-visibility rule", async () => {
     const { queries } = await load()
-    const feed = queries.find((q) => q.table === 'checkins' && select(q).includes('rejected_by'))!
-    expect(args(feed, 'eq')).toEqual([['user_id', FRIEND]])
-    expect(args(feed, 'or')).toEqual([[`and(or(rejected_at.is.null,rejected_by.eq.${ME}))`]])
+    const feed = queries.find((q) => q.table === 'rpc:friend_feed')!
+    expect(feed.calls[0].args[0]).toMatchObject({ p_owner: FRIEND, p_limit: 10 })
   })
 
   test('a challenge with someone else never appears (only the pair rows come back)', async () => {
@@ -82,6 +102,11 @@ describe('loadFriendProfile: a transient error degrades one section, not the pag
     const { data } = await load({ habits: { data: null, error: { message: 'boom' } } })
     expect(data.failed).toEqual(['habits'])
     expect(data.habits).toEqual([])
+  })
+
+  test('the history read fails: the habits section is flagged', async () => {
+    const { data } = await load({ dates: { data: null, error: { message: 'boom' } } })
+    expect(data.failed).toEqual(['habits'])
   })
 
   test('the latest check-ins fail: flagged', async () => {

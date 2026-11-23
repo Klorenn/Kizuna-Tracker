@@ -32,8 +32,24 @@ export function fakeSupabase(respond: Respond) {
     )
     return proxy
   }
+  /** `supabase.rpc(name, params)`: recorded as table `rpc:<name>` with one `rpc` call holding the params. */
+  const rpc = (name: string, params: unknown) => {
+    const q: Recorded = { table: `rpc:${name}`, calls: [{ method: 'rpc', args: [params] }] }
+    queries.push(q)
+    return {
+      then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
+        try {
+          const r = respond(q)
+          return Promise.resolve({ data: r.data, error: r.error ?? null }).then(resolve, reject)
+        } catch (e) {
+          return Promise.reject(e).then(resolve, reject)
+        }
+      },
+    }
+  }
   const client = {
     from: builder,
+    rpc,
     storage: { from: () => ({ createSignedUrls: async () => ({ data: [] }) }) },
   }
   return { client: client as never, queries }
