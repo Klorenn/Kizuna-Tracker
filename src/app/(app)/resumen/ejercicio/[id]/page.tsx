@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { dayLabel } from "@/domain/calendar";
 import { DAY_TYPE_LABEL, MUSCLE_GROUPS, exerciseProgress, formatKg, type MuscleGroup } from "@/domain/logs";
+import { lastSessionSets } from "@/lib/exercise-last";
 import { loadWorkoutData, logWindowStart } from "@/lib/logs-data";
 import { DetailHeader, Stat, colorOf, loadLogsContext } from "../../logs-view";
 
@@ -25,7 +26,9 @@ export default async function EjercicioPage({ params }: { params: Promise<{ id: 
     .maybeSingle();
   if (!exercise || (exercise.user_id !== null && exercise.user_id !== ctx.userId)) notFound();
 
-  const { sets } = await loadWorkoutData(ctx.supabase, ctx.userId, logWindowStart(ctx.today));
+  const { sets } = await loadWorkoutData(ctx.supabase, ctx.userId, logWindowStart(ctx.today), {
+    exercises: false,
+  });
   const progress = exerciseProgress(sets, id);
   const color = colorOf(ctx.workoutHabit);
   const group = (MUSCLE_GROUPS as readonly string[]).includes(exercise.muscle_group)
@@ -36,7 +39,7 @@ export default async function EjercicioPage({ params }: { params: Promise<{ id: 
     null,
   );
   const last = progress[progress.length - 1] ?? null;
-  const lastSets = last ? sets.filter((s) => s.exerciseId === id && s.date === last.date) : [];
+  const lastSets = last ? lastSessionSets(sets, id, last.date) : [];
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">

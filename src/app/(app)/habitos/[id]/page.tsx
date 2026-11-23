@@ -7,7 +7,7 @@ import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { WeeklyBars } from "@/components/charts/WeeklyBars";
 import { GoalCard } from "@/components/GoalCard";
-import { ReadingProgress } from "@/components/logs/ReadingProgress";
+import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
 import { WorkoutProgress } from "@/components/logs/WorkoutProgress";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
@@ -151,6 +151,8 @@ export default async function HabitoPage({
       month,
       today,
       timezone: profile.timezone,
+      // own habit detail: the owner sees the reading / workout detail
+      includeLogs: true,
     });
     calendar = (
       <>
@@ -192,6 +194,20 @@ export default async function HabitoPage({
     }
     if (logType === "reading") {
       const { books, entries } = await loadReadingData(supabase, user.id, windowStart);
+      // a book last read before the window: ask for its last entry instead of showing page 0
+      const reading = currentBook(books, entries);
+      let knownPage: number | null = null;
+      if (reading && !entries.some((e) => e.bookId === reading.id)) {
+        const { data: last } = await supabase
+          .from("reading_entries")
+          .select("to_page")
+          .eq("user_id", user.id)
+          .eq("book_id", reading.id)
+          .order("local_date", { ascending: false })
+          .order("id", { ascending: false })
+          .limit(1);
+        knownPage = last?.[0]?.to_page ?? null;
+      }
       progress = (
         <ReadingProgress
           habitId={habit.id}
@@ -200,6 +216,7 @@ export default async function HabitoPage({
           books={books}
           entries={entries}
           todayEntry={todayEntry}
+          knownPage={knownPage}
         />
       );
     } else {

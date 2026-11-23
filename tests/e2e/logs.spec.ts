@@ -1,6 +1,6 @@
 import { expect, test } from "@playwright/test";
 import { monthTitle, shiftMonth } from "../../src/domain/calendar";
-import { logIn, SEED_PASSWORD } from "./helpers";
+import { logIn, randomHandle, SEED_PASSWORD, signUp } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase seeded with supabase/seed.sql (E2E_SUPABASE=1)");
 
@@ -98,4 +98,37 @@ test("a friend sees nothing of Ana's logs or weight on her profile", async ({ pa
   await page.waitForLoadState("networkidle");
   const text = await page.locator("main").innerText();
   for (const leak of ["Dune", "páginas", "71,9", "Peso", "Sentadilla"]) expect(text).not.toContain(leak);
+});
+
+test("a user without habits still sees the Peso card, and a long value is never truncated at 360 px", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 360, height: 800 });
+  await signUp(page, randomHandle("larga"));
+  await page.goto("/perfil");
+  const card = page.getByRole("region", { name: "Cuerpo" });
+  await card.getByRole("button", { name: "Registrar peso" }).click();
+  const sheet = page.getByRole("dialog", { name: "Registrar peso" });
+  await sheet.getByLabel("Peso (kg)").fill("100,5");
+  await sheet.getByRole("button", { name: "Guardar peso" }).click();
+  await expect(sheet).toHaveCount(0);
+
+  // no habits: the empty state and, under it, REGISTROS with the private weight
+  await page.goto("/resumen");
+  await expect(page.getByText("Todavía no tienes hábitos")).toBeVisible();
+  const weight = page.getByRole("link", { name: /^Peso 100,5 kg\./ });
+  await expect(weight).toBeVisible();
+  await expect(weight.getByText("Este mes: sin datos suficientes")).toBeVisible();
+
+  // the value is fully visible: no ellipsis, not clipped, inside the viewport
+  const value = weight.locator("[data-value]");
+  await expect(value).toHaveText("100,5 kg");
+  const box = await value.evaluate((el) => ({
+    ellipsis: getComputedStyle(el).textOverflow === "ellipsis",
+    clipped: el.scrollWidth > el.clientWidth,
+    right: el.getBoundingClientRect().right,
+  }));
+  expect(box.ellipsis).toBe(false);
+  expect(box.clipped).toBe(false);
+  expect(box.right).toBeLessThanOrEqual(360);
 });

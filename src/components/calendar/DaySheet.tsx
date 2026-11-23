@@ -176,26 +176,22 @@ export function DaySheet({
               </li>
             ) : null}
           </ul>
+        ) : weightKg != null ? (
+          // only a weigh-in that day: it is a record, so no "Sin registros" message
+          <WeightRow kg={weightKg} />
         ) : (
-          <>
-            <div className="flex flex-col items-center gap-1 pb-4 pt-2 text-center">
-              <p className="text-body font-medium text-ink">Sin registros este día</p>
-              {date === today ? (
-                <Link href="/" className="inline-flex h-11 items-center text-small font-medium text-accent">
-                  Ir a Hoy para marcar
-                </Link>
-              ) : (
-                <p className="text-small text-muted">
-                  {single && habits[0] ? `No marcaste ${habits[0].name} este día.` : "No marcaste ningún hábito."}
-                </p>
-              )}
-            </div>
-            {weightKg != null ? (
-              <div className="border-t border-line">
-                <WeightRow kg={weightKg} />
-              </div>
-            ) : null}
-          </>
+          <div className="flex flex-col items-center gap-1 pb-4 pt-2 text-center">
+            <p className="text-body font-medium text-ink">Sin registros este día</p>
+            {date === today ? (
+              <Link href="/" className="inline-flex h-11 items-center text-small font-medium text-accent">
+                Ir a Hoy para marcar
+              </Link>
+            ) : (
+              <p className="text-small text-muted">
+                {single && habits[0] ? `No marcaste ${habits[0].name} este día.` : "No marcaste ningún hábito."}
+              </p>
+            )}
+          </div>
         )}
       </div>
     </Sheet>

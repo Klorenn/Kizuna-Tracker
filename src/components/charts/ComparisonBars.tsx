@@ -2,8 +2,23 @@ import type { MonthKey } from "@/domain/calendar";
 import type { HabitColor } from "@/domain/habit-colors";
 
 const SHORT = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
-const LETTER = ["E", "F", "M", "A", "M", "J", "J", "A", "S", "O", "N", "D"];
 const PLOT = 96; // px of bar area
+
+/** "+40" for a positive value (deltas read as gains); zero and negatives as `format` gives them. */
+export const signedLabel = (n: number, format: (n: number) => string): string =>
+  n > 0 ? `+${format(n)}` : format(n);
+
+const shortName = (m: MonthKey) => SHORT[Number(m.slice(5, 7)) - 1];
+
+/**
+ * Axis labels, one per month: all of them up to six months; beyond that every other month
+ * (the last one always), each with its three-letter name so none is ambiguous. The rest stay
+ * blank (the full list is in the accessible label and in each bar's tooltip).
+ */
+export function monthTicks(months: MonthKey[]): string[] {
+  if (months.length <= 6) return months.map(shortName);
+  return months.map((m, i) => ((months.length - 1 - i) % 2 === 0 ? shortName(m) : ""));
+}
 
 /**
  * One value per month, oldest first, the last (or `current`) month highlighted in the habit
@@ -17,6 +32,7 @@ export function ComparisonBars({
   format,
   label,
   current,
+  signed = false,
 }: {
   data: { month: MonthKey; value: number | null }[];
   color: HabitColor;
@@ -24,7 +40,10 @@ export function ComparisonBars({
   label: string;
   /** Highlighted month; defaults to the last one. */
   current?: MonthKey;
+  /** Deltas: positive values get a "+". */
+  signed?: boolean;
 }) {
+  const fmt = signed ? (n: number) => signedLabel(n, format) : format;
   const highlight = current ?? data[data.length - 1]?.month;
   const values = data.map((d) => d.value ?? 0);
   const maxPos = Math.max(0, ...values);
@@ -33,27 +52,32 @@ export function ComparisonBars({
   const posH = maxNeg === 0 ? PLOT : Math.round((PLOT * maxPos) / span);
   const negH = PLOT - posH;
   const compact = data.length > 6;
-  const monthName = (m: MonthKey) => SHORT[Number(m.slice(5, 7)) - 1];
+  const ticks = monthTicks(data.map((d) => d.month));
 
   return (
     <div
       role="img"
       data-habit-color={color}
-      aria-label={`${label}: ${data.map((d) => `${monthName(d.month)} ${d.value === null ? "sin dato" : format(d.value)}`).join(", ")}`}
+      aria-label={`${label}: ${data.map((d) => `${shortName(d.month)} ${d.value === null ? "sin dato" : fmt(d.value)}`).join(", ")}`}
       className="flex w-full items-end gap-1"
     >
-      {data.map((d) => {
+      {data.map((d, i) => {
         const on = d.month === highlight;
         const v = d.value;
         const h = v === null || span === 0 ? 0 : Math.max(v === 0 ? 0 : 2, Math.round((Math.abs(v) / span) * PLOT));
         const bar = `w-full max-w-8 ${on ? "bg-(--habit)" : "bg-(--habit-soft) ring-1 ring-inset ring-(--habit)"}`;
         return (
-          <div key={d.month} aria-hidden className="flex min-w-0 flex-1 flex-col items-center gap-1">
+          <div
+            key={d.month}
+            aria-hidden
+            title={`${shortName(d.month)} ${d.month.slice(0, 4)}: ${v === null ? "sin dato" : fmt(v)}`}
+            className="flex min-w-0 flex-1 flex-col items-center gap-1"
+          >
             {compact ? null : (
               <span
                 className={`h-4 max-w-full truncate font-mono text-[13px] leading-4 ${on ? "font-medium text-ink" : "text-muted"}`}
               >
-                {v !== null ? format(v) : ""}
+                {v !== null ? fmt(v) : ""}
               </span>
             )}
             <div className="flex w-full flex-col items-center">
@@ -67,8 +91,8 @@ export function ComparisonBars({
                 </div>
               ) : null}
             </div>
-            <span className={`font-mono text-[13px] uppercase ${on ? "text-ink" : "text-muted"}`}>
-              {compact ? LETTER[Number(d.month.slice(5, 7)) - 1] : monthName(d.month)}
+            <span className={`h-4 whitespace-nowrap font-mono text-[13px] uppercase leading-4 ${on ? "text-ink" : "text-muted"}`}>
+              {ticks[i]}
             </span>
           </div>
         );

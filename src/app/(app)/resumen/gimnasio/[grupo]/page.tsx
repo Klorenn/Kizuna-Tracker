@@ -110,6 +110,7 @@ export default async function GrupoPage({
           data={groupDeltaSeries(sets, exercises, grupo, months).map((d) => ({ month: d.month, value: d.deltaKg }))}
           color={color}
           format={compactNumber}
+          signed
           label={`Cambio de kg en ${label.toLowerCase()} por mes`}
           current={month}
         />
