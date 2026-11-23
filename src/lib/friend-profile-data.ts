@@ -14,6 +14,7 @@ import {
 } from "@/lib/challenge-view";
 import type { FeedPage } from "@/lib/feed";
 import { pairRecord } from "@/lib/friend-view";
+import { loadCheckinDates } from "@/lib/checkin-dates";
 import { fetchAll } from "@/lib/paginate";
 import { activityGrid, lastDays } from "@/lib/profile-view";
 import { profileStreaks, streakWindow } from "@/lib/stats";
@@ -97,11 +98,9 @@ export async function loadFriendProfile(
           .limit(1000),
       ).filter((h) => h.visibility !== "private");
       // history of every habit in one call (one row per habit; same date window as the own Perfil)
-      if (rows.length === 0) return [];
-      const { data, error } = await supabase.rpc("checkin_dates", { p_habit_ids: rows.map((h) => h.id), p_from: from });
-      if (error) throw new Error(error.message);
-      const byHabit = new Map((data ?? []).map((r) => [r.habit_id, r.dates]));
-      return rows.map((h) => ({ ...h, dates: byHabit.get(h.id) ?? [] }));
+      const history = await loadCheckinDates(supabase, rows.map((h) => h.id), from);
+      if (!history.ok) throw new Error("checkin_dates failed");
+      return rows.map((h) => ({ ...h, dates: history.byHabit.get(h.id) ?? [] }));
     }),
     attempt(async () => {
       const [challenges, debts] = await Promise.all([

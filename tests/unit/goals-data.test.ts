@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { loadGoals } from '@/lib/goals-data'
+import { loadGoals, loadGoalsResult } from '@/lib/goals-data'
 import { fakeSupabase } from './support/fake-supabase'
 
 const TODAY = '2026-11-25' // Wednesday; the week runs Monday 2026-11-23 to Sunday 2026-11-29
@@ -17,13 +17,14 @@ const DATES = [
   { habit_id: 'h2', dates: ['2026-11-24', '2026-11-12', '2026-11-05'] },
 ]
 
-function load(over: { dates?: { data: unknown; error?: { message: string } }; goals?: unknown[] } = {}) {
+function load(over: { dates?: { data: unknown; error?: { message: string } }; goals?: unknown[]; goalsError?: boolean } = {}) {
   const f = fakeSupabase((q) => {
-    if (q.table === 'goals') return { data: over.goals ?? GOALS }
+    if (q.table === 'goals') return over.goalsError ? { data: null, error: { message: 'boom' } } : { data: over.goals ?? GOALS }
     if (q.table === 'rpc:checkin_dates') return over.dates ?? { data: DATES }
     return { data: [] }
   })
-  return loadGoals(f.client, 'me', TODAY).then((views) => ({ views, queries: f.queries }))
+  const result = () => loadGoalsResult(f.client, 'me', TODAY)
+  return loadGoals(f.client, 'me', TODAY).then((views) => ({ views, queries: f.queries, result }))
 }
 
 describe('loadGoals', () => {
@@ -78,5 +79,29 @@ describe('loadGoals', () => {
   test('weekly goals come first', async () => {
     const { views } = await load()
     expect(views[0].kind).toBe('weekly')
+  })
+
+  test('loadGoalsResult: ok with the goals when every read worked', async () => {
+    const { result } = await load()
+    const r = await result()
+    expect(r.ok).toBe(true)
+    expect(r.goals.map((g) => g.current)).toEqual([2, 4, 2])
+  })
+
+  test('loadGoalsResult: a failed history read is { ok: false }, not zero progress', async () => {
+    const { result } = await load({ dates: { data: null, error: { message: 'boom' } } })
+    const r = await result()
+    expect(r.ok).toBe(false)
+  })
+
+  test('loadGoalsResult: a failed goals read is { ok: false } too (not "no goals")', async () => {
+    const { result, views } = await load({ goalsError: true })
+    expect((await result()).ok).toBe(false)
+    expect(views).toEqual([])
+  })
+
+  test('loadGoalsResult: no goals is a real, empty success', async () => {
+    const { result } = await load({ goals: [] })
+    expect(await result()).toEqual({ ok: true, goals: [] })
   })
 })

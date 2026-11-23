@@ -1,6 +1,7 @@
 import type { GoalView } from "@/components/GoalCard";
 import { goalProgressFromCount, goalWindow, type Goal } from "@/domain/goals";
 import { toHabitColor } from "@/domain/habit-colors";
+import { loadCheckinDates } from "@/lib/checkin-dates";
 import type { createServerClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
@@ -8,8 +9,15 @@ type Supabase = Awaited<ReturnType<typeof createServerClient>>;
 const MONTHS = ["ene", "feb", "mar", "abr", "may", "jun", "jul", "ago", "sep", "oct", "nov", "dic"];
 export const shortDate = (d: string) => `${Number(d.slice(8))} ${MONTHS[Number(d.slice(5, 7)) - 1]} ${d.slice(0, 4)}`;
 
-/** The user's active goals as view models (weekly first), optionally limited to one habit. */
-export async function loadGoals(supabase: Supabase, userId: string, today: string, habitId?: string) {
+export type GoalsResult = { ok: boolean; goals: GoalView[] };
+
+/**
+ * Same goals as `loadGoals`, plus whether every read worked. `ok: false` means the goals or their
+ * check-in history could not be read: `goals` then holds whatever could be built (progress 0 when
+ * the history failed, nothing when the goals failed) and the screen must show a retry state
+ * instead of presenting it as real.
+ */
+export async function loadGoalsResult(supabase: Supabase, userId: string, today: string, habitId?: string): Promise<GoalsResult> {
   let q = supabase
     .from("goals")
     // the habit comes in the same read (goals on archived habits are hidden): one level, not two
@@ -19,9 +27,10 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
     .is("habits.archived_at", null)
     .order("created_at");
   if (habitId) q = q.eq("habit_id", habitId);
-  const { data: rows } = await q;
+  const { data: rows, error } = await q;
+  if (error) return { ok: false, goals: [] };
   const goals = rows ?? [];
-  if (goals.length === 0) return [] as GoalView[];
+  if (goals.length === 0) return { ok: true, goals: [] };
 
   // One history read for every goal (one row per habit, no row cap), then each goal counts its own window.
   const visible = goals.map((g) => {
@@ -31,12 +40,13 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
         : { id: g.id, habitId: g.habit_id, kind: "total", target: g.target, startsOn: g.starts_on, deadline: g.deadline };
     return { g, goal, name: g.habits.name, color: toHabitColor(g.habits.color), window: goalWindow(goal, today) };
   });
-  // a failed read counts as no check-ins, as the per-goal counts did (this module never throws)
-  const { data: history } = await supabase.rpc("checkin_dates", {
-    p_habit_ids: [...new Set(visible.map((v) => v.g.habit_id))],
-    p_from: visible.reduce((min, v) => (v.window.from < min ? v.window.from : min), visible[0].window.from),
-  });
-  const datesByHabit = new Map((history ?? []).map((r) => [r.habit_id, r.dates]));
+  const history = await loadCheckinDates(
+    supabase,
+    visible.map((v) => v.g.habit_id),
+    visible.reduce((min, v) => (v.window.from < min ? v.window.from : min), visible[0].window.from),
+  );
+  // a failed history is reported in `ok`; the goals still render with 0 so the retry state has a shape
+  const datesByHabit = history.ok ? history.byHabit : new Map<string, string[]>();
 
   const views: GoalView[] = visible.map(({ g, goal, name, color, window }): GoalView => {
     // One row per habit and day: the count of dates inside the goal window.
@@ -50,5 +60,13 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
     parts.push(g.deadline ? `hasta el ${shortDate(g.deadline)}` : "sin fecha límite");
     return { id: g.id, title: `${g.target} · ${name}`, kind: "total", ...p, color, detail: parts.join(" · ") };
   });
-  return views.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "weekly" ? -1 : 1));
+  return { ok: history.ok, goals: views.sort((a, b) => (a.kind === b.kind ? 0 : a.kind === "weekly" ? -1 : 1)) };
+}
+
+/**
+ * The user's active goals as view models (weekly first), optionally limited to one habit. Kept for
+ * screens that have not adopted `loadGoalsResult`: a failed read shows as zero progress there.
+ */
+export async function loadGoals(supabase: Supabase, userId: string, today: string, habitId?: string) {
+  return (await loadGoalsResult(supabase, userId, today, habitId)).goals;
 }

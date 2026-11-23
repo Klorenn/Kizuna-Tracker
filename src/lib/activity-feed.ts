@@ -2,6 +2,7 @@ import "server-only";
 import { addDays } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import { avatarUrl } from "@/lib/avatar";
+import { loadCheckinDates } from "@/lib/checkin-dates";
 import { challengeFrequency } from "@/lib/challenge-view";
 import {
   actionCopy,
@@ -14,6 +15,7 @@ import {
   type FeedFilter,
   type FeedPage,
 } from "@/lib/feed";
+import type { Database } from "@/lib/supabase/database.types";
 import type { createServerClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
@@ -21,20 +23,20 @@ type Supabase = Awaited<ReturnType<typeof createServerClient>>;
 export const FEED_PAGE = 20;
 const SIGNED_SECONDS = 300;
 
-type FeedRow = {
-  id: string
-  user_id: string
-  habit_id: string
-  local_date: string
-  created_at: string
-  photo_path: string | null
-  rejected_at: string | null
-  rejected_by: string | null
-  habit_name: string | null
-  habit_color: string | null
-  habit_frequency_type: string | null
-  habit_target_per_week: number | null
-}
+// the generated return type marks every column of a RETURNS TABLE as non-null: restore the nullable ones
+type Generated = Database["public"]["Functions"]["friend_feed"]["Returns"][number];
+type FeedRow = Omit<
+  Generated,
+  "photo_path" | "rejected_at" | "rejected_by" | "habit_name" | "habit_color" | "habit_frequency_type" | "habit_target_per_week"
+> & {
+  photo_path: string | null;
+  rejected_at: string | null;
+  rejected_by: string | null;
+  habit_name: string | null;
+  habit_color: string | null;
+  habit_frequency_type: string | null;
+  habit_target_per_week: number | null;
+};
 
 /**
  * A page of friends' check-ins, newest first, through the viewer's own session: the `friend_feed`
@@ -61,7 +63,7 @@ export async function loadFeedPage(
     p_owner: owner,
   });
   if (error) throw new Error(error.message);
-  const fetched = (data ?? []) as unknown as FeedRow[];
+  const fetched: FeedRow[] = data ?? [];
   const rows = fetched.slice(0, limit);
   const more = fetched.length > limit;
   if (rows.length === 0) return { items: [], next: null };
@@ -80,7 +82,7 @@ export async function loadFeedPage(
   const [{ data: people }, history, { data: items }, { data: done }, { data: challenges }, signed] = await Promise.all([
     supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", userIds),
     // streak context: one row per habit with its dates since `from` (no row cap to page past)
-    supabase.rpc("checkin_dates", { p_habit_ids: habitIds, p_from: from }),
+    loadCheckinDates(supabase, habitIds, from),
     supabase.from("habit_items").select("habit_id").in("habit_id", habitIds).is("archived_at", null).limit(1000),
     // item check-ins of the days on the page: only habits made of items use them below
     supabase.from("checkin_items").select("habit_id,local_date").in("habit_id", habitIds).in("local_date", [...new Set(days)]).limit(1000),
@@ -96,7 +98,7 @@ export async function loadFeedPage(
       ? supabase.storage.from("proofs").createSignedUrls(photoPaths, SIGNED_SECONDS)
       : Promise.resolve({ data: [] }),
   ]);
-  if (history.error) throw new Error(history.error.message);
+  if (!history.ok) throw new Error("checkin_dates failed");
 
   // habits made of items: "Comer bien · 4 de 4" from the item check-ins of that day
   const itemTotal = new Map<string, number>();
@@ -111,7 +113,7 @@ export async function loadFeedPage(
   const byId = new Map((people ?? []).map((p) => [p.id, p]));
   // oldest first and up to the newest day on the page, as the streak context expects
   const datesByHabit = new Map<string, string[]>(
-    (history.data ?? []).map((h) => [h.habit_id, h.dates.filter((d) => d <= to).sort()]),
+    [...history.byHabit].map(([habit, dates]) => [habit, dates.filter((d) => d <= to).sort()]),
   );
   const urlByPath = new Map(
     (signed.data ?? []).flatMap((s) => (s.path && s.signedUrl ? [[s.path, s.signedUrl] as const] : [])),
