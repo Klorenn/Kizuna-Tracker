@@ -104,7 +104,8 @@ export default async function Home() {
                 <p className="text-[17px] font-semibold tracking-[-0.02em] text-ink">
                   Tus hábitos de hoy
                 </p>
-                <p className="flex flex-wrap items-center gap-1 text-small text-muted">
+                {/* fixed minimum height: the streak figure (body-size mono) must not make this line taller once a streak starts */}
+                <p className="flex min-h-6 flex-wrap items-center gap-1 text-small text-muted">
                   {view.doneCount} de {view.total} hechos
                   {view.bestDailyStreak > 0 ? (
                     <>

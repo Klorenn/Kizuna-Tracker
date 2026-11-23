@@ -206,7 +206,8 @@ function HabitRowView({
           {row.name}
         </Link>
       </span>
-      <span className="flex items-center gap-1 text-small text-muted">
+      {/* fixed height: the mono streak figure must not change this line when a streak starts */}
+      <span className="flex h-5 items-center gap-1 text-small text-muted">
         <VisibilityIcon value={row.visibility} />
         {quantity ? baseSubtitle(row) : habitSubtitle(row)}
         {row.streak > 0 ? (
