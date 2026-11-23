@@ -22,6 +22,7 @@ import { IconButton } from "@/components/ui/IconButton";
 import { Input } from "@/components/ui/Input";
 import { TopBar } from "@/components/ui/TopBar";
 import { ModeSwitch } from "@/components/logs/ModeSwitch";
+import { StatusLines } from "@/components/logs/StatusLines";
 import {
   formatReadout,
   POMODORO_PRESETS,
@@ -289,7 +290,7 @@ function Timer({
   const pausedNote = state.pausedAt !== null ? "En pausa." : null;
   const waiting = state.pending.length > 0 ? "Pendiente de sumar." : null;
   const status = measuring
-    ? measureStatusLines(state, habitName).join(" ") || null
+    ? null
     : state.phase === "break"
       ? session.lastStatus === "confirmed"
         ? `Sumamos ${session.last} min a ${habitName}.`
@@ -381,7 +382,12 @@ function Timer({
       )}
 
       <div role="status" aria-live="polite" className="flex min-h-5 flex-col items-center gap-1 text-center">
-        {pausedNote || status ? (
+        {measuring ? (
+          <StatusLines
+            lines={[pausedNote, ...measureStatusLines(state, habitName)].filter((l): l is string => l !== null)}
+            reserve={state.endReason === "cap"}
+          />
+        ) : pausedNote || status ? (
           <p className="text-small text-pretty text-ink">{[pausedNote, status].filter(Boolean).join(" ")}</p>
         ) : null}
         {waiting && state.phase !== "break" && !measuring ? <p className="text-small text-muted">{waiting}</p> : null}

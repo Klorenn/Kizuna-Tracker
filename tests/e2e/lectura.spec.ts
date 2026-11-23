@@ -106,7 +106,7 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
 
   // /libros: Dune is finished, with its readings counted for the delete confirmation
   await page.goto("/libros");
-  await expect(page.getByRole("heading", { name: "TERMINADOS" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Terminados" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Dune/ })).toBeVisible();
   await shot(page, "08-libros");
   await page.getByRole("button", { name: /Dune/ }).click();

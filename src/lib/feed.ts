@@ -16,7 +16,8 @@ export function feedDayLabel(date: LocalDate, today: LocalDate): string {
   const [y, m, d] = date.split('-').map(Number)
   const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
   const year = date.slice(0, 4) === today.slice(0, 4) ? '' : ` ${y}`
-  return `${weekday} ${d} ${MONTHS[m - 1]}${year}`
+  // a label starts with a capital (the CSS no longer capitalises it)
+  return `${weekday[0].toUpperCase()}${weekday.slice(1)} ${d} ${MONTHS[m - 1]}${year}`
 }
 
 export type DayGroup<T> = { date: LocalDate; label: string; items: T[]; continued: boolean }

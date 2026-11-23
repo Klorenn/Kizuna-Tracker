@@ -42,7 +42,7 @@ function ErrorLine({ error }: { error: string | null }) {
   ) : null;
 }
 
-/** LEYENDO / TERMINADOS, with add, edit, finish (date never in the future), back to reading and delete. */
+/** Leyendo / Terminados, with add, edit, finish (date never in the future), back to reading and delete. */
 export function LibrosView({ books, today }: { books: BookView[]; today: LocalDate }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [toast, showToast] = useToast();

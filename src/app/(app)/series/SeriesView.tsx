@@ -29,7 +29,7 @@ type Panel = { kind: "new" } | { kind: "edit" | "finish" | "delete"; item: Media
 
 const shortDate = (d: LocalDate) => format(new Date(`${d}T12:00:00`), "d MMM yyyy", { locale: es });
 
-/** VIENDO / TERMINADAS, with add, edit (the kind never changes), finish (date never in the future), back to watching and delete. */
+/** Viendo / Terminadas, with add, edit (the kind never changes), finish (date never in the future), back to watching and delete. */
 export function SeriesView({ media, today }: { media: MediaView[]; today: LocalDate }) {
   const [panel, setPanel] = useState<Panel | null>(null);
   const [toast, showToast] = useToast();

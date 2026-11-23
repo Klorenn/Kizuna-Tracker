@@ -15,11 +15,11 @@ describe('feedDayLabel', () => {
     expect(feedDayLabel('2026-11-21', '2026-11-22')).toBe('Ayer')
   })
   test('otros días: día de la semana, número y mes cortos (la etiqueta mono los pone en mayúsculas)', () => {
-    expect(feedDayLabel('2026-11-20', '2026-11-22')).toBe('vie 20 nov')
-    expect(feedDayLabel('2026-11-16', '2026-11-22')).toBe('lun 16 nov')
+    expect(feedDayLabel('2026-11-20', '2026-11-22')).toBe('Vie 20 nov')
+    expect(feedDayLabel('2026-11-16', '2026-11-22')).toBe('Lun 16 nov')
   })
   test('agrega el año cuando no es el actual', () => {
-    expect(feedDayLabel('2025-12-29', '2026-01-03')).toBe('lun 29 dic 2025')
+    expect(feedDayLabel('2025-12-29', '2026-01-03')).toBe('Lun 29 dic 2025')
   })
 })
 
@@ -35,7 +35,7 @@ describe('groupByDay', () => {
     expect(g.map((x) => [x.label, x.items.map((i) => i.id), x.continued])).toEqual([
       ['Hoy', ['1', '2'], false],
       ['Ayer', ['3'], false],
-      ['mié 18 nov', ['4'], false],
+      ['Mié 18 nov', ['4'], false],
     ])
   })
   test('una página que sigue el mismo día de la anterior no repite la etiqueta', () => {

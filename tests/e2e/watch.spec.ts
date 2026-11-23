@@ -92,7 +92,7 @@ test("series y películas: títulos, registro del día, terminadas, borrar y pá
   await add.getByRole("radio", { name: "Película" }).click();
   await add.getByLabel("Duración en minutos (opcional)").fill("155");
   await add.getByRole("button", { name: "Guardar" }).click();
-  const viendo = page.getByRole("region", { name: "VIENDO" });
+  const viendo = page.getByRole("region", { name: "Viendo" });
   await expect(viendo.getByRole("button", { name: /Dark/ })).toBeVisible();
   await expect(viendo.getByRole("button", { name: /Dune/ })).toBeVisible();
   await expect(viendo.getByText("2 h 35 min")).toBeVisible();
@@ -125,7 +125,7 @@ test("series y películas: títulos, registro del día, terminadas, borrar y pá
   await page.getByRole("button", { name: "Guardar" }).click();
   await expect(page.getByText("Registro guardado")).toBeVisible();
   await page.goto("/series");
-  const terminadas = page.getByRole("region", { name: "TERMINADAS" });
+  const terminadas = page.getByRole("region", { name: "Terminadas" });
   const when = format(new Date(`${today}T12:00:00`), "d MMM yyyy", { locale: es });
   await expect(terminadas.getByRole("button", { name: /Dune/ })).toContainText(`Terminada el ${when}`);
 
