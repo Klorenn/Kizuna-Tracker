@@ -433,3 +433,349 @@ Decisiones tomadas por el arquitecto (con autoridad delegada del dueño):
 11. Repetir último: la sesión más reciente con los mismos tipos de día; si no hay, la más reciente que comparta alguno.
 12. Las vistas de detalle viven bajo `/resumen/*` y la gestión de libros en `/libros`.
 13. Prioridad de hojas de celebración: gimnasio > libro terminado > día completo > comidas > lectura registrada (una sola a la vez).
+
+---
+
+## Tiempo, Pomodoro y series/películas (v4)
+
+Revisión v4: 2026-11-22. Pedidos del dueño:
+
+1. "Que puedas poner cuántas páginas tiene el libro, o serie, o duración de la película. O cuánto rato estudiaste. También añádele un pomodoro."
+2. "También poder poner no sé, por ejemplo tengo que tomar agua todos los días, cuántos ml de agua me voy a tomar o vasos, y así."
+3. "También añadir cuánto trotaste hoy, kilómetros, todo eso. Y eso y pulir todo lo demás."
+
+### Intención
+
+v3 agregó el detalle opcional de un día (lectura, entrenamiento). v4 suma cuatro tipos de registro y un temporizador:
+
+- **Tiempo** (`time`): cuánto rato le dedicaste (estudiar, practicar, idiomas). Se anota a mano o con **Pomodoro**.
+- **Series y películas** (`watch`): qué viste, cuántos episodios o minutos.
+- **Cantidad** (`quantity`): una meta diaria medible (2.000 ml de agua, 8.000 pasos). **Es el único tipo que decide el cumplimiento:** el día cuenta cuando llegas a la meta.
+- **Actividad de distancia** (`cardio`): cuánto trotaste, caminaste, pedaleaste o nadaste, con ritmo.
+- **Libros:** páginas totales fáciles de poner y progreso "página 40 de 412 · 10 %".
+
+Y cierra con un **pulido general** de toda la app (plan, última tarea).
+
+### Objetivos
+
+- `habits.log_type` suma `time`, `watch`, `quantity`, `cardio`. Presets: Estudiar → `time`; nuevo **Series y películas** (`television`) → `watch`; Agua → `quantity` (2.000 ml, se ve como 8 vasos); Caminar → `quantity` (8.000 pasos; se puede cambiar a ninguno o a `cardio`); nuevo **Trotar** (`sneaker-move`, 3 por semana) → `cardio`. Un hábito propio elige cualquier tipo.
+- Tiempo: minutos del día acumulables, tema opcional ("Qué estudiaste", ≤ 60), entrada manual (horas y minutos) y Pomodoro. Registrar tiempo marca el hábito de hoy si no estaba.
+- Pomodoro robusto en PWA: el estado se deriva de instantes guardados; sobrevive recarga, pestaña dormida y app en segundo plano; cada bloque de foco suma sus minutos por el servidor, idempotente por id de bloque.
+- Series y películas: lista propia de títulos (`media_items`) y un registro por check-in.
+- Cantidad: meta y unidad por hábito, sumas rápidas desde Hoy (+1 vaso), cada suma es una fila con hora; el servidor crea el check-in al llegar a la meta y lo quita si bajas de ella.
+- Cardio: varias salidas por día (cada una una fila), distancia, duración, ritmo y velocidad calculados.
+- Estadísticas mensuales con comparación 6/12 meses, como las tarjetas de lectura.
+- Calendario, subtítulos de Hoy, PROGRESO del hábito y REGISTROS de Resumen se extienden con los mismos patrones de v3.
+
+### No objetivos (v4)
+
+- GPS, mapas, ritmo por kilómetro (splits), frecuencia cardíaca, integración con Strava/Apple Salud/Google Fit. La distancia se escribe a mano.
+- Buscar series o películas en internet (TMDB, carátulas). Plataformas de streaming.
+- Pomodoro con avisos garantizados con la app cerrada (no hay notificaciones programadas en la web; ver Brechas). Estadísticas de "pausas" o productividad.
+- Sumas de cantidad en días pasados (la cantidad decide el check-in, y no se crean check-ins pasados).
+- Conversión entre unidades distintas de ml ↔ vasos (pasos ↔ km no se convierte).
+- Que amigos o el perfil público vean minutos, títulos, cantidades o kilómetros.
+
+### Antiobjetivos
+
+- **Tiempo, series y cardio nunca cambian una racha, un reto, un período, una deuda ni una meta** por sí mismos. Igual que en Leer, el flujo de entrada de Hoy puede **crear** el check-in de hoy (Guardar u Omitir, o un bloque de Pomodoro); borrar o editar el registro nunca toca el check-in.
+- **Cantidad es la excepción declarada:** su check-in lo administra el servidor según la meta (como los hábitos con pasos y `complete_day_from_items`). Ningún otro tipo hereda esa regla.
+- Pomodoro que inventa minutos: un temporizador olvidado no debe sumar horas (el descanso termina en "Listo para otra ronda", nunca arranca otro foco solo).
+- Gamificar: sin rankings, sin medallas por kilómetros, sin comparación con amigos. Números sobrios en Geist Mono.
+- Formularios largos: sumar un vaso es un toque; registrar una salida, dos campos.
+
+### Modelo de datos
+
+Migración nueva `00NN_v4_logs.sql` (el siguiente número libre al implementar; hoy la más alta en `feat/mvp` es `0017_integration_hardening`).
+
+**Cambios en `habits`**
+
+| Columna / regla | Contenido |
+|---|---|
+| `log_type` | el check `habits_log_type_check` pasa a `('none','reading','workout','time','watch','quantity','cardio')` |
+| `preset` | el check `habits_preset_check` suma `'watch'` y `'run'` |
+| `quantity_unit` | `text null`, `check in ('ml','steps','km','times','minutes','custom')` |
+| `quantity_label` | `text null`, 1–12 caracteres, solo con `quantity_unit = 'custom'` |
+| `quantity_target` | `numeric(10,2) null`, `> 0` y `≤ 100000`; entero salvo `km` y `custom` |
+| `quantity_step` | `numeric(10,2) null`, `> 0` y `≤ quantity_target`; entero salvo `km` y `custom` |
+| `quantity_display` | `text not null default 'base'`, `check in ('base','glasses')`; `glasses` solo con `ml` |
+| `glass_ml` | `int not null default 250`, 50–1000 |
+
+Checks: `(log_type = 'quantity') = (quantity_unit is not null and quantity_target is not null and quantity_step is not null)`; `not (log_type in ('quantity','time') and requires_photo)` (código `photo_conflict`). La activación de pasos (`habit_items_activation_guard`, 0014) también rechaza un ítem activo en un hábito con `log_type <> 'none'` (hoy solo lo valida el dominio). Grants de columna a `authenticated`: insert/update de las seis columnas nuevas.
+
+Relleno: `update habits set log_type = 'time' where preset = 'study' and log_type = 'none' and not requires_photo and no tiene pasos activos`. **Agua y Caminar existentes no se convierten** (cambiaría cómo se cumple su día); solo los nuevos nacen con cantidad.
+
+Guardas nuevas (trigger `habits_quantity_guard`, `before update`, igual que `habits_photo_guard`): con un reto `proposed`/`active` que use el hábito, bajar `quantity_target`, cambiar `quantity_unit` o `quantity_label`, o cambiar `log_type` desde `quantity` → `habit_in_challenge`. Subir la meta, cambiar `quantity_display`, `glass_ml` o `quantity_step` está permitido (la meta guardada en ml no cambia).
+
+Trigger `habits_quantity_reeval` (`after update of quantity_target`): si la nueva meta es ≤ al total de hoy (zona del perfil) inserta el check-in de hoy (`on conflict do nothing`). **Cambiar la meta nunca borra un check-in.**
+
+**Tablas nuevas** (todas con RLS, `select` solo dueño, `anon` sin grants, trigger `forbid_deleted_actor`, DML de `service_role` por default privileges de 0014 verificado en pgTAP):
+
+| Tabla | Columnas | Reglas |
+|---|---|---|
+| `time_entries` | `id`, `user_id`, `habit_id → habits on delete cascade`, `checkin_id → checkins on delete cascade` **único**, `local_date`, `minutes int` (1–1440), `topic text null` (1–60), `pomodoros smallint` (0–288, default 0), `created_at`, `updated_at` | Solo RPC. Un registro por check-in; los minutos se acumulan. |
+| `pomodoro_blocks` | `block_id uuid` **pk** (lo genera el cliente), `user_id`, `habit_id → habits on delete cascade`, `checkin_id → checkins on delete set null`, `local_date`, `minutes smallint` (1–90), `created_at` | Recibo de idempotencia. Sin grants a clientes (ni select). Sobrevive al deshacer el check-in: un reintento tardío no vuelve a marcar el día. |
+| `media_items` | `id`, `user_id`, `title` (1–120), `kind` (`series`/`movie`), `total_seasons smallint null` (1–100), `total_episodes int null` (1–5000), `runtime_min int null` (1–600), `status` (`watching`/`finished`), `finished_on date null` (≥ 1900-01-01), `created_at` | `check ((status = 'finished') = (finished_on is not null))`; película sin temporadas ni episodios; serie sin `runtime_min`. Grants de columna como `books`: insert `(user_id, title, kind, total_seasons, total_episodes, runtime_min)`, update `(title, total_seasons, total_episodes, runtime_min, status, finished_on)`, select, delete. `kind` no cambia. |
+| `watch_entries` | `id`, `user_id`, `habit_id`, `checkin_id → checkins on delete cascade` **único**, `media_id → media_items on delete cascade`, `local_date`, `episodes smallint null` (1–200), `season smallint null` (1–100), `episode_to smallint null` (1–5000), `minutes int null` (1–1440), `completed boolean not null default false`, `created_at`, `updated_at` | Serie: `episodes` obligatorio, `completed = false`. Película: sin episodios/temporada, y `minutes is not null or completed`. Solo RPC. |
+| `quantity_entries` | `id uuid` **pk** (lo genera el cliente), `user_id`, `habit_id → habits on delete cascade`, `local_date`, `amount numeric(10,2)` (> 0, ≤ 100000, en la **unidad base**: ml para agua), `created_at` | Sin `checkin_id`: las sumas existen antes de cumplir. Índice `(user_id, local_date)` y `(habit_id, local_date)`. Solo RPC. |
+| `cardio_entries` | `id`, `user_id`, `habit_id`, `checkin_id → checkins on delete cascade` (**no** único), `local_date`, `kind` (`run`,`walk`,`bike`,`swim`,`other`), `distance_m int` (1–500000), `duration_s int` (1–86400), `effort smallint null` (1–5), `note text null` (1–60), `created_at`, `updated_at` | Máximo 10 por check-in (`too_many_entries`). Solo RPC. |
+
+**RPC** (`security definer`, `search_path = ''`, `auth.uid()`, perfil no borrado, `execute` solo a `authenticated`; la fecha sale del servidor o del check-in, nunca del cliente):
+
+- `add_time(p_habit_id uuid, p_minutes int, p_topic text default null) returns table (checkin_id uuid, total_minutes int, checkin_created boolean)` — hábito propio, activo, `log_type = 'time'` (si no, `habit_not_found` / `log_type_mismatch`); llama a `public.create_checkin(p_habit_id)` (reutiliza `photo_required`, `habit_has_items`); suma `p_minutes` (1–1440, si no `invalid_minutes`) al registro del check-in; total > 1440 → `minutes_over_day` (nada cambia). `p_topic` vacío o null conserva el tema; > 60 → `invalid_topic`.
+- `add_pomodoro_block(p_habit_id uuid, p_block_id uuid, p_minutes int, p_topic text default null) returns table (checkin_id uuid, total_minutes int, credited boolean, checkin_created boolean)` — **idempotente**: primero `insert into pomodoro_blocks … on conflict (block_id) do nothing returning`; si no insertó, devuelve `credited = false` con el total actual de hoy (o 0) **sin** llamar a `create_checkin`; si el bloque existe y es de otro usuario → `invalid_block`. Si insertó: mismas validaciones que `add_time` (`p_minutes` 1–90), crea el check-in, suma minutos, `pomodoros + 1`, guarda `checkin_id` en el recibo. Cualquier error deshace también el recibo (una transacción).
+- `set_time_entry(p_checkin_id uuid, p_minutes int, p_topic text) returns uuid` — fija el total de un día con check-in propio de un hábito `time` (editar desde calendario o detalle); `p_topic` null o vacío lo borra; conserva `pomodoros`. `delete_time_entry(p_checkin_id uuid) returns void`.
+- `save_watch_entry(p_checkin_id uuid, p_media_id uuid, p_episodes int, p_season int, p_episode_to int, p_minutes int, p_completed boolean, p_finished boolean default false) returns uuid` — upsert por `checkin_id`. Película con `p_completed` → título `finished` con `finished_on` = fecha del check-in; serie con `p_finished` → igual. Errores: `not_authenticated`, `checkin_not_found`, `log_type_mismatch`, `media_not_found`, `invalid_watch` (forma según el tipo, `season > total_seasons`). `delete_watch_entry(p_checkin_id uuid) returns void`.
+- `add_quantity_entry(p_habit_id uuid, p_entry_id uuid, p_amount numeric) returns table (total numeric, target numeric, done boolean, created boolean)` — **idempotente** por `p_entry_id` (`on conflict do nothing`; `created = false` si ya existía; de otro usuario → `invalid_entry`). Hábito propio, activo, `log_type = 'quantity'`; `amount` > 0, ≤ 100000, entero si la unidad es entera (`invalid_amount`); total del día > 100000 → `amount_over_day`. Fecha = hoy en la zona del perfil. Si `total ≥ target` inserta el check-in de hoy (`on conflict do nothing`). `done` = existe check-in hoy.
+- `remove_quantity_entry(p_entry_id uuid) returns table (total numeric, target numeric, done boolean)` — solo filas propias **de hoy** (`entry_not_today` si no). Si el total queda `< target`, borra el check-in de hoy **salvo** que esté rechazado (no aplica: sin foto) o que hoy caiga en un `challenge_periods` con `closed_at is not null` de un reto que use el hábito (entonces el check-in se queda; ver Casos borde).
+- `add_cardio_entry(p_checkin_id uuid, p_kind text, p_distance_m int, p_duration_s int, p_effort int default null, p_note text default null) returns uuid`, `update_cardio_entry(p_entry_id uuid, …mismos campos) returns void`, `delete_cardio_entry(p_entry_id uuid) returns void`. Errores: `checkin_not_found`, `log_type_mismatch`, `invalid_cardio`, `too_many_entries`, `entry_not_found`.
+- `create_checkin` y el flujo de foto rechazan hábitos `quantity` con `quantity_habit` (su check-in solo lo crea la meta). Trigger `checkins_quantity_guard` (`before delete`): un `authenticated` no puede borrar el check-in de un hábito `quantity` (`quantity_checkin_managed`); `service_role` sí (borrado de cuenta).
+
+### Flujos de entrada
+
+**Tiempo desde Hoy (sin foto).** "Hecho" abre la hoja antes de marcar:
+
+```
+┌────────────────────────────────────┐
+│ ¿Cuánto rato?          [gato code] ✕│  gato pequeño y quieto
+│ (15 min) (30 min) (45 min) (1 h)   │  chips: rellenan los campos
+│ HORAS          MINUTOS             │
+│ [ 1 ]          [ 25 ]              │  mono, inputMode numeric
+│ QUÉ ESTUDIASTE (opcional)          │  "Tema (opcional)" si no es Estudiar
+│ [ Álgebra                     ]    │  ≤ 60
+│ [        Guardar        ]          │  add_time → marca + suma
+│ [        Omitir         ]          │  create_checkin sin tiempo
+│ ⏱ Usar pomodoro                    │  → /habitos/<id>/pomodoro
+└────────────────────────────────────┘
+```
+
+Hecho con tiempo: la fila dice "1 h 25 min · Álgebra" y ofrece "+ Tiempo" (la misma hoja en modo "Sumar tiempo", sin Omitir). La fila de un hábito `time` tiene además el botón de 44 px "Pomodoro" (ícono `timer`). Editar el total de cualquier día con check-in: `/habitos/<id>/tiempo?fecha=YYYY-MM-DD` (`set_time_entry`, "Borrar registro" con confirmación).
+
+**Pomodoro** (`/habitos/<id>/pomodoro`, desde la fila de Hoy y el detalle del hábito):
+
+```
+Inicio (idle)                         Foco                                 Descanso
+┌ Pomodoro · Estudiar ──────────┐     ┌ Pomodoro · Estudiar ──────────┐    ┌ Pomodoro · Estudiar ──────────┐
+│ (25/5✓) (50/10) (Personalizado)│     │ FOCO · RONDA 2 DE 4            │    │ DESCANSO                       │
+│ Rondas  [ − 4 + ]  Sin límite ☐│     │      [gato code animado]       │    │     [gato sleep animado]       │
+│ QUÉ ESTUDIASTE (opcional)      │     │          18:42                 │    │          04:10                 │
+│ [ Álgebra                 ]    │     │   (anillo de progreso)         │    │ Sumamos 25 min a Estudiar.     │
+│ Hoy: 1 h 25 min                │     │ [ Pausar ] [ Saltar ]          │    │ [ Pausar ] [ Saltar descanso ] │
+│ [      Empezar foco      ]     │     │ [ Terminar ahora ]             │    │ [ Terminar ]                   │
+│ 🔔 Avisarme al terminar        │     └────────────────────────────────┘    └────────────────────────────────┘
+└────────────────────────────────┘
+Listo para otra ronda (ready)          Terminado (done)
+│ Descanso terminado.            │     │ 2 pomodoros · 50 min           │
+│ [ Siguiente ronda ] [Terminar] │     │ Hoy: 2 h 15 min · Álgebra      │
+                                       │ [ Otra sesión ] [ Volver a Hoy]│
+```
+
+Personalizado: foco 5–90 min, descanso 1–30 min. Rondas 1–12 o "Sin límite". La última ronda no tiene descanso: termina en "Terminado". "Avisarme al terminar" solo aparece si `Notification` existe y el permiso está en `default`, y en iOS Safari solo con la app instalada (`display-mode: standalone`); nunca se pide permiso solo.
+
+**Series y películas desde Hoy (sin foto).** "Hecho" abre:
+
+```
+┌────────────────────────────────────┐
+│ ¿Qué viste hoy?                  ✕ │
+│ TÍTULO                             │
+│ (Dark) (Arcane) (+ Nuevo título)   │  "viendo", el último usado primero
+│ ── serie ──                        │
+│ EPISODIOS VISTOS   [ − 3 + ]       │  default 1
+│ TEMPORADA [ 1 ]  HASTA EL EP. [ 6 ]│  opcionales; prellenados: temporada del último
+│                                    │  registro, "hasta" = último + episodios
+│ MINUTOS (opcional) [     ]         │
+│ ☐ Terminé la serie                 │
+│ ── película ──                     │
+│ ☑ La vi completa · 2 h 35 min      │  duración del título si existe
+│ MINUTOS VISTOS [    ]              │  solo si no está completa
+│ [        Guardar        ]          │
+│ [        Omitir         ]          │
+└────────────────────────────────────┘
+```
+
+Nuevo título inline: Título, `Segmented` Serie / Película, y según el tipo Temporadas y Episodios totales (opcionales) o Duración en minutos (opcional). Tras guardar: aviso "Registro guardado" (sin gato nuevo). Editar un día: `/habitos/<id>/visto?fecha=`.
+
+**Títulos** (`/series`, "Series y películas", desde la hoja y el detalle): VIENDO / TERMINADAS; serie "5 de 26 episodios · T1 E6"; película "2 h 35 min". Agregar, editar (el tipo no cambia), marcar terminada (fecha editable, nunca futura) o volver a viendo, borrar con conteo ("Se borrarán 4 registros (5 episodios, 3 h 10 min). Tus check-ins no cambian.").
+
+**Cantidad en Hoy.** La fila reemplaza "Hecho" por el progreso y la suma rápida:
+
+```
+┌────────────────────────────────────────────┐
+│ 💧 Agua                    (◔) [ +1 vaso ] │  anillo de progreso + botón 44 px
+│ 5 de 8 vasos                               │  subtítulo; en ml: "1.250 de 2.000 ml"
+└────────────────────────────────────────────┘
+… al llegar:
+│ 💧 Agua                    (●) [ +1 vaso ] │
+│ Meta de hoy cumplida · 8 de 8 vasos        │  ícono check + texto (no solo color)
+```
+
+Mantener presionado el botón (o el ícono "⋯") abre la hoja "Agua hoy": cantidad libre (`[ 330 ] ml` o vasos con decimales), lista de las sumas de hoy con su hora ("08:10 · +250 ml", "Quitar"), y "Deshacer la última". Cada suma lleva un id del cliente (`crypto.randomUUID()`): un doble toque o un reintento no suma dos veces. Antes de la meta el hábito está **en progreso** (no hecho).
+
+**Formulario de hábito.** "Registro detallado": Ninguno / Lectura / Entrenamiento / Tiempo / Series y películas / Cantidad / Distancia (lista de opciones en hoja o `Segmented` en dos filas; teclado de radiogroup). Con Cantidad: Unidad (ml, vasos, pasos, km, veces, minutos, Otra… con etiqueta ≤ 12), Meta diaria, Tamaño del vaso (ml, solo con vasos), Suma rápida (paso). Con foto activa: Tiempo y Cantidad deshabilitados con la nota "Un hábito con foto no lleva tiempo ni cantidad." Con pasos: sin registro (regla v3).
+
+**Distancia (cardio) desde Hoy.** "Hecho" en un hábito `cardio` sin foto abre:
+
+```
+┌────────────────────────────────────┐
+│ ¿Cuánto trotaste hoy?            ✕ │  "¿Cuánto caminaste / pedaleaste / nadaste hoy?" según la actividad
+│ (Trote✓)(Caminata)(Bici)(Natación)(Otro)
+│ DISTANCIA                          │
+│ [ 5,2 ] km                         │  natación: [ 1500 ] m
+│ TIEMPO                             │
+│ [ 0 ] h  [ 29 ] min  [ 40 ] s      │
+│ 5:42 /km · 10,5 km/h               │  en vivo, mono
+│ ESFUERZO (opcional)  ① ② ③ ④ ⑤     │
+│ NOTA (opcional) [            ]     │  ≤ 60
+│ [ Repetir el último ]              │  copia actividad, distancia y tiempo
+│ [        Guardar        ]          │  create_checkin + add_cardio_entry
+│ [        Omitir         ]          │
+└────────────────────────────────────┘
+```
+
+Hecho con salidas: subtítulo "5,2 km · 29:40 · 5:42 /km" (una) o "5,5 km · 48:00 · 2 salidas" (varias), y "+ Salida" abre la hoja otra vez (agrega una fila al mismo check-in). Editar o borrar salidas de un día: `/habitos/<id>/distancia?fecha=`. Un hábito `cardio` con foto registra después de la foto (fila: "Añadir registro").
+
+**Libros (brechas de v3).** Ya existe `books.total_pages` y se pide al crear ("Páginas del libro (opcional)"). Falta:
+- Etiqueta "Páginas totales (opcional)" en `BookPicker` y en la hoja de `/libros`.
+- En "¿Qué leíste hoy?", si el libro elegido no tiene total: enlace "Añadir páginas totales" que abre un campo en línea y guarda con `updateBook`.
+- Progreso con un solo formato en todos lados (`/libros`, PROGRESO, hoja del día, Resumen lectura): "página 40 de 412 · 10 %" (sin total: "página 40"; sin lecturas: "412 páginas").
+- Si "hasta" llega al total, "Terminé este libro" aparece marcado (se puede desmarcar).
+
+### Temporizador: máquina de estados y persistencia
+
+Fases: `idle → focus → break → ready → focus … → done`. Eventos: `start`, `pause`, `resume`, `skip`, `finish`, `tick`, `confirm`, `drop`, `reset`.
+
+| Desde | Evento | Hacia | Efecto |
+|---|---|---|---|
+| idle / ready / done | start | focus | ronda + 1, `blockId` nuevo, `phaseStartedAt = at` |
+| focus / break | pause / resume | igual | `pausedAt`; al reanudar suma a `pausedMs` |
+| focus | tick con foco cumplido | break, o done si era la última ronda | bloque pendiente `{blockId, minutes: focusMin, endedAt}`; el descanso empieza en `endedAt` (no en `at`) |
+| break | tick con descanso cumplido | ready | — (nunca arranca otro foco solo) |
+| focus | skip | break (o done) | pendiente con los minutos enteros transcurridos si son ≥ 1 |
+| break | skip | focus | ronda + 1, `blockId` nuevo |
+| focus | finish | done | pendiente con los minutos enteros transcurridos si son ≥ 1 |
+| break / ready | finish | done | — |
+| cualquiera | confirm / drop | igual | saca el bloque de `pending` (`credited + 1` solo con confirm) |
+
+Reglas:
+- **Todo se deriva de instantes** (`Date.now()`): `transcurrido = (pausedAt ?? ahora) − phaseStartedAt − pausedMs`, acotado a `[0, duración]`. El intervalo de pantalla (250 ms) solo redibuja; `tick` se despacha cada segundo y al volver a la pestaña (`visibilitychange`, `pageshow`, `focus`).
+- **Ponerse al día:** al volver, un `tick` cierra el foco vencido (con `endedAt` = su fin real) y el descanso vencido; queda en `ready`. Como el descanso nunca arranca otro foco solo, una pestaña olvidada suma **a lo más un bloque**.
+- **Reloj del dispositivo hacia atrás:** si `ahora < lastTickAt`, `phaseStartedAt` se corre en `(ahora − lastTickAt)` para que lo transcurrido no retroceda. Hacia adelante no se distingue de tiempo real: cuenta, pero un bloque nunca suma más que su `focusMin` (≤ 90).
+- **Persistencia local por hábito:** `localStorage["kizuna:pomodoro:<habitId>"]` con `{ v: 1, …estado, rev }`; se escribe en cada cambio de fase y cada 15 s; `rev` sube en cada escritura. Configuración preferida en `kizuna:pomodoro:config:<habitId>`. JSON inválido o `v` desconocido → se descarta. Estado en `idle`/`ready`/`done` sin uso hace más de 24 h → `idle`.
+- **Envío al servidor:** cada pendiente se envía con `add_pomodoro_block(habitId, blockId, minutes, topic)` al quedar pendiente, al montar la pantalla, al volver `online` y al volver visible. Respuesta ok (acreditado o ya recibido) → `confirm`. Error de red → queda pendiente. `habit_not_found`, `log_type_mismatch`, `photo_required`, `habit_has_items` o `minutes_over_day` → `drop` y aviso ("Este hábito ya no lleva tiempo. No guardamos 25 min.").
+- **Dos pestañas:** el evento `storage` adopta el estado con `rev` mayor; si ambas envían el mismo bloque, el servidor lo acredita una vez.
+- **Fin de bloque:** sonido corto (Web Audio, sin archivo) salvo silencio activado, `navigator.vibrate?.([200, 100, 200])`, y si `Notification.permission === 'granted'` y la página está oculta, `registration.showNotification('Terminó el foco', { body: 'Sumamos 25 min a Estudiar. Toma un descanso.', tag: 'pomodoro-<habitId>' })`. Solo si la página sigue viva (ver Brechas).
+- **Wake lock:** `navigator.wakeLock.request('screen')` mientras la pantalla del temporizador está visible en foco o descanso; se vuelve a pedir al volver visible; se suelta al salir, pausar o terminar. Sin soporte, no pasa nada.
+- **Hoy** muestra una franja "Pomodoro en curso · Estudiar · 18:42" (enlace a la pantalla) cuando hay un estado en foco, descanso o listo en `localStorage`; también envía pendientes.
+
+### Definiciones de estadísticas
+
+Todas por `local_date` (fecha local del dueño calculada en el servidor). Mes = `YYYY-MM`. Serie de comparación: 6 o 12 meses, del más antiguo al actual, con ceros. Semanas de lunes a domingo; las barras semanales de un mes recortan cada semana a los días de ese mes.
+
+**Formato de duración** (`formatDuration`, minutos enteros): `45 → "45 min"`, `60 → "1 h"`, `85 → "1 h 25 min"`, `0 → "0 min"`. Con signo: `"+2 h 10 min"`, `"−45 min"` (signo menos real, como el peso). Reloj: `"25:00"`, `"29:40"`, `"1:01:40"`.
+
+**Tiempo**
+- Minutos del mes = Σ `minutes` de `time_entries` del mes. Días con tiempo = fechas distintas con registro.
+- **Promedio por día cumplido** = minutos del mes ÷ días con tiempo, redondeado al minuto (`Math.round`). Un check-in sin tiempo no entra (no hay dato, no es un cero).
+- Mejor día = fecha con más minutos (sumando hábitos `time`); empate → la más temprana.
+- Pomodoros = Σ `pomodoros` del mes.
+- Resumen suma todos los hábitos `time`; el detalle del hábito usa solo ese hábito.
+
+Ejemplo (noviembre 2026; Estudiar `e1`, Inglés `e2`): 02-nov `e1` 85 min (Álgebra); 03-nov `e1` 100 min (4 pomodoros de 25) y `e2` 30 min; 10-nov `e1` 50 min (1 pomodoro de 50); 17-nov `e1` 45 min. → **5 h 10 min** (310), **4 días**, promedio **1 h 18 min** (77,5 → 78), mejor día **03-nov, 2 h 10 min**, **5 pomodoros**. Octubre: 20-oct 120, 27-oct 60 → 3 h; cambio **+2 h 10 min**. Barras semanales de noviembre (el 1 es domingo): 26 oct–1 nov 0 · 2–8 nov 215 · 9–15 nov 50 · 16–22 nov 45 · 23–29 nov 0 · 30 nov 0.
+
+**Series y películas**
+- Minutos de un registro = `minutes` si existe; si no, película `completed` → `runtime_min` del título (o 0); serie sin minutos → 0 (no se estima).
+- Películas terminadas en el mes = títulos `movie` con `finished_on` en el mes. Episodios = Σ `episodes`. Horas vistas = Σ minutos de los registros.
+- Ejemplo noviembre: Dark 05-nov 3 episodios (sin minutos), 06-nov 2 episodios 110 min; Dune (película, 155 min) 14-nov completa sin minutos; Past Lives 20-nov 50 min y 21-nov completa con 56 min (terminada 21-nov). → **2 películas**, **5 episodios**, **6 h 11 min** (110 + 155 + 50 + 56 = 371). Octubre: Arcane 4 episodios 160 min; Perfect Days (124 min) completa 25-oct → 1 película, 4 episodios, 4 h 44 min (284).
+
+**Cantidad** (por hábito; las unidades no se mezclan)
+- Total del día = Σ `amount` del día. Total del mes = Σ del mes. Promedio por día = total ÷ días con alguna suma, redondeado a la unidad (km y otras con 2 decimales). Días cumplidos = fechas con check-in del hábito. Mejor día = mayor total; empate → la más temprana.
+- Vasos = ml ÷ `glass_ml` actual, 1 decimal, sin ",0"; "1 vaso", "5,5 vasos".
+- Ejemplo (Agua, meta 2.000 ml, vaso 250): 01-nov 6 × 250 = 1.500; 02-nov 2.000; 03-nov 2.250; 04-nov 500 → total **6.250 ml** (25 vasos), promedio **1.563 ml** (1.562,5 → 1.563; "6,3 vasos"), **2 días cumplidos**, mejor día **03-nov, 2.250 ml (9 vasos)**. Octubre: 2 días de 2.000 → promedio 2.000, 2 cumplidos.
+
+**Distancia (cardio)**
+- Ritmo de una salida = `round(duration_s × 1000 ÷ distance_m)` segundos por km, mostrado `m:ss /km`. Velocidad = `distance_m ÷ duration_s × 3,6`, 1 decimal.
+- Ejemplo: **5,2 km en 29:40** → 1.780 s × 1000 ÷ 5.200 = 342,3 → 342 s → **5:42 /km**; 10,5 km/h.
+- Dos salidas el mismo día: trote 3 km en 18:00 (6:00 /km) y caminata 2,5 km en 30:00 (12:00 /km) → Hoy "5,5 km · 48:00 · 2 salidas"; cuentan **2 salidas** y 1 check-in.
+- Mes: km = Σ distancia; tiempo total = Σ duración (minutos redondeados); salidas = número de filas; distancia más larga = máx.; **mejor ritmo** = menor ritmo entre salidas de **≥ 1 km**; promedio por salida = km ÷ salidas (2 decimales). Línea de ritmo: un punto por salida `run` de ≥ 1 km.
+- Ejemplo noviembre: 03-nov trote 5,2 km 29:40; 10-nov trote 3 km 18:00 + caminata 2,5 km 30:00; 17-nov trote 10 km 55:00 (5:30 /km); 20-nov trote 0,8 km 4:00 (5:00 /km, < 1 km). → **21,5 km**, **2 h 17 min** (8.200 s → 136,7 → 137), **5 salidas**, más larga **10 km**, mejor ritmo **5:30 /km** (la de 0,8 km no compite), promedio **4,3 km**. Octubre: 4 km 25:00 y 6 km 36:00 → 10 km; cambio **+11,5 km**. Barras semanales de noviembre: 0 · 5,2 · 5,5 · 10,8 · 0 · 0. Línea de ritmo: 03-nov 342, 10-nov 360, 17-nov 330.
+
+### Dónde se ve
+
+- **Hoy:** subtítulos "1 h 25 min · Álgebra", "45 min", "3 episodios · Dark", "1 episodio · Dark", "Completa · Dune", "1 h 10 min · Past Lives", "1.250 de 2.000 ml", "5 de 8 vasos", "Meta de hoy cumplida · 8 de 8 vasos", "5,2 km · 29:40 · 5:42 /km", "5,5 km · 48:00 · 2 salidas", natación "1.500 m · 30:00" (sin ritmo por km). Franja de Pomodoro en curso.
+- **Hoja del día del calendario:** tiempo "1 h 25 min · Álgebra · 4 pomodoros"; serie "Dark · 3 episodios · T1 E6"; película "Dune · Completa · 2 h 35 min"; cantidad: barra "1.250 de 2.000 ml" y la lista de sumas con hora; cardio: una fila por salida ("Trote · 5,2 km · 29:40 · 5:42 /km"). "Editar" / "Añadir registro" con las URL de arriba (cantidad: solo hoy se edita, en la hoja de Hoy).
+- **Celda del calendario:** un día de cantidad con sumas bajo la meta usa el estado `partial` existente (forma de anillo parcial + `aria-label` "Agua: 1.250 de 2.000 ml"), nunca solo color.
+- **Detalle del hábito, PROGRESO:** tiempo: horas del mes vs. anterior, promedio por día, pomodoros, botón "Iniciar pomodoro"; series: películas y episodios del mes, "Viendo: Dark · 5 de 26 episodios", enlace a `/series`; cantidad: promedio y días cumplidos vs. anterior, mejor día; cardio: km del mes vs. anterior, salidas, mejor ritmo, última salida. Libros: "página 40 de 412 · 10 %".
+- **Resumen, REGISTROS:** tarjetas nuevas **Tiempo** (`/resumen/tiempo`), **Películas** y **Episodios** (`/resumen/series`), una por hábito de **Cantidad** (hasta 3; `/resumen/cantidad/<habitId>`, valor "1.563 ml/día" o "6,3 vasos/día"), **Trote** (`/resumen/distancia`, valor "21,5 km"). Cada una con el mes anterior en pequeño y `?mes=`/`?rango=12` como v3. Las vistas de detalle muestran barras por mes, barras semanales del mes, listas del mes y (distancia) la línea de ritmo.
+
+### Casos borde
+
+- **Pomodoro que cruza la medianoche:** los minutos de un bloque van al **día local en que el servidor recibe el bloque** (la misma regla de todo check-in: nunca se crea un check-in pasado). Foco 23:50–00:15 enviado a las 00:15 → 25 min y el check-in en el **día nuevo**. Si el teléfono durmió y el bloque se envía a las 07:00, también va al día nuevo (Brechas).
+- **Reloj del dispositivo cambiado:** ver la máquina de estados; el servidor nunca confía en instantes del cliente (solo en `minutes` ≤ 90).
+- **Dos pestañas:** `rev` + idempotencia del servidor.
+- **Hábito archivado o cambiado de tipo con el temporizador corriendo:** el envío recibe `habit_not_found`/`log_type_mismatch` → `drop`, aviso y el temporizador vuelve a `idle`. La pantalla de un hábito archivado responde 404.
+- **Deshacer un check-in** con tiempo, series o cardio: confirma ("Se borrará también el tiempo de hoy (1 h 25 min).", "…lo que viste hoy.", "…las 2 salidas de hoy."); el registro se borra en cascada. Los recibos de Pomodoro se quedan (`checkin_id` null): un reintento tardío del mismo bloque no vuelve a marcar el día; un bloque **nuevo** sí lo marca.
+- **Cantidad: meta cambiada a mitad del día.** Bajarla al total o menos crea el check-in (trigger). Subirla sobre el total no borra el check-in de hoy; la fila muestra "Meta de hoy cumplida · 2.000 de 2.500 ml" hasta la próxima suma o resta, que vuelve a evaluar con la meta nueva (`remove` bajo la meta lo quita).
+- **Cantidad: ml ↔ vasos.** Las sumas se guardan siempre en ml; cambiar la vista o el tamaño del vaso no reescribe la historia (los vasos pasados se muestran con el tamaño actual; Brechas).
+- **Cantidad: medianoche.** Una suma pertenece al día local del perfil en el instante en que el servidor la recibe; la de las 23:59 que llega a las 00:00:02 cuenta mañana. Quitar solo funciona sobre sumas de hoy.
+- **Cantidad: deshacer.** Hoy no ofrece "deshacer check-in" en un hábito de cantidad: se quitan sumas. Bajo la meta, el check-in se borra, salvo período de reto ya cerrado que incluya hoy (caso que no debería ocurrir porque los períodos cierran después de terminar; si pasa, el check-in queda y la fila dice "Meta cumplida (período cerrado)").
+- **Cantidad en un reto:** cuenta como cualquier check-in. Con reto propuesto o activo: no se baja la meta ni se cambia la unidad (`habit_in_challenge`, copy "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad."). Subir la meta sí.
+- **Hábito archivado:** sumas, minutos, títulos y salidas siguen en Resumen; las RPC de escritura responden `habit_not_found`.
+- **Foto rechazada:** no aplica a tiempo y cantidad (no llevan foto). Series y cardio con foto: el registro se queda y cuenta en sus estadísticas (como v3).
+- **Cambiar el `log_type`:** los registros guardados se conservan y siguen en las estadísticas; los nuevos exigen el tipo actual. Pasar de `quantity` a otro tipo deja los check-ins ya creados.
+- **Borrar un título con registros:** confirmación con conteo; los registros se borran en cascada; los check-ins no.
+- **Borrar la cuenta:** se agregan, **antes** de los check-ins y de los hábitos: `pomodoro_blocks`, `time_entries`, `watch_entries`, `media_items`, `quantity_entries`, `cardio_entries`. Orden completo: `workout_sets, workout_sessions, reading_entries, books, exercises, pomodoro_blocks, time_entries, watch_entries, media_items, quantity_entries, cardio_entries, body_weights, goals, checkin_items, checkins, habit_items, habits`. El trigger `checkins_quantity_guard` deja pasar a `service_role`.
+- **Cuenta borrada con JWT vigente:** `forbid_deleted_actor` en las seis tablas nuevas.
+- **Más de 1000 filas** (sumas de agua de un año): lecturas con `fetchAll`, ventana de 13 meses.
+
+### Privacidad
+
+Minutos, temas, títulos, episodios, cantidades y salidas son **solo del dueño**: sin políticas de amigos; `public_profile()`, `public_profiles`, el feed, las notificaciones y los payloads de push no cambian. Los amigos siguen viendo solo si el día está cumplido, igual que hoy (para cantidad: el check-in al llegar a la meta). La notificación local del Pomodoro dice el nombre del hábito y los minutos solo en el propio dispositivo.
+
+### Accesibilidad
+
+- Temporizador: los dígitos con `role="timer"` (sin anuncio continuo); una región `aria-live="polite"` anuncia cambios de fase ("Foco terminado. Sumamos 25 minutos. Descanso de 5 minutos."), "Queda 1 minuto" y errores de envío. La fase se dice con texto ("FOCO", "DESCANSO", "LISTO") y con el gato, nunca solo con color; el anillo es `aria-hidden`.
+- Controles de 44 px o más (Pausar, Saltar, Terminar, +1 vaso, chips de minutos, − / + de episodios, esfuerzo 1–5 como radiogroup).
+- Movimiento reducido: gatos quietos (`code`, `sleep`), anillo sin transición.
+- Cantidad: el anillo lleva `aria-label` con el texto del progreso; "Meta de hoy cumplida" con ícono y texto.
+- Campos numéricos con `inputMode` (`numeric` o `decimal`), errores con `aria-invalid` + `aria-describedby`, coma decimal aceptada.
+
+### Brechas conocidas (v4)
+
+- **Avisos con la app cerrada:** la web no permite programar notificaciones locales; si el sistema congela la página, el sonido y el aviso llegan al volver (el tiempo igual se suma al ponerse al día). Opción futura: push del servidor al fin del bloque.
+- Un bloque enviado después de medianoche suma al día nuevo, aunque haya terminado antes.
+- Vasos de días pasados se muestran con el tamaño de vaso actual.
+- Las horas vistas no estiman episodios sin minutos (no hay duración por episodio).
+- Cardio sin GPS, mapas ni splits; natación en metros sin piscinas/estilos.
+- Agua y Caminar ya existentes no se convierten solos a cantidad: el dueño lo cambia en el formulario.
+- iOS Safari sin instalar no recibe notificaciones del Pomodoro (solo sonido/vibración con la página abierta).
+
+### Cambios v4 (2026-11-22)
+
+| Área | v3 | v4 |
+|---|---|---|
+| Hábitos | `log_type` ninguno / lectura / entrenamiento | + tiempo, series y películas, cantidad (con meta y unidad), distancia; presets Series y películas y Trotar; Estudiar → tiempo; Agua y Caminar nuevos → cantidad |
+| Datos nuevos | 5 tablas de registros | + `time_entries`, `pomodoro_blocks`, `media_items`, `watch_entries`, `quantity_entries`, `cardio_entries` |
+| Hoy | Subtítulo del registro | + hojas de tiempo, series y distancia; fila de cantidad con +1 vaso; botón y franja de Pomodoro |
+| Pomodoro | — | `/habitos/<id>/pomodoro` con gatos code/sleep, idempotente por bloque |
+| Libros | Páginas totales opcionales al crear | "Páginas totales" editable desde la hoja; progreso "página 40 de 412 · 10 %" |
+| Cumplimiento | Solo check-in manual, con foto o por pasos | + cantidad: el check-in lo crea la meta |
+| Resumen | 4 vistas de detalle + peso | + tiempo, series, cantidad por hábito y distancia |
+| Calidad | — | Tarea final de pulido general en 360/390/430 px, claro y oscuro |
+
+Decisiones tomadas por el arquitecto (con autoridad delegada del dueño):
+
+1. Tiempo y cantidad no admiten foto (Pomodoro y la meta crean el check-in solos; una foto lo impediría). Series y cardio sí (registro después de la foto).
+2. El descanso del Pomodoro termina en "Listo para otra ronda": nunca empieza un foco sin tocar. Evita minutos fantasma.
+3. Saltar el foco y Terminar ahora suman los minutos enteros transcurridos (≥ 1); en descanso no suman.
+4. Un bloque va al día local en que el servidor lo recibe (misma regla anti-trampa de los check-ins).
+5. `pomodoro_blocks` guarda recibos que sobreviven al deshacer el check-in.
+6. `add_time` suma; `set_time_entry` fija (edición). El tema vacío conserva el tema al sumar y lo borra al editar.
+7. Promedio de tiempo y de cantidad por día **con registro**, no por día del mes.
+8. Horas vistas no estiman: minutos escritos o duración de la película completa.
+9. Cantidad guarda en unidad base (ml); vasos son una vista con `glass_ml`. Cambiar la vista o el vaso no cambia la meta y se permite en un reto.
+10. Cantidad: sumas idempotentes por id del cliente; quitar solo sumas de hoy; el check-in nunca se borra a mano.
+11. Agua y Caminar existentes no se convierten; Estudiar sí pasa a tiempo (no cambia su cumplimiento).
+12. Caminar nuevo nace como cantidad (8.000 pasos, suma 1.000); se puede cambiar a distancia o a ninguno.
+13. Cardio: varias salidas por check-in (máx. 10); mejor ritmo solo con ≥ 1 km; natación se escribe y se muestra en metros.
+14. Sin gato nuevo: Pomodoro usa `code` y `sleep`; series, cantidad y cardio confirman con aviso; llegar a la meta usa las reglas de "día completo" existentes. Prioridad de hojas sin cambios: gimnasio > libro terminado > día completo > comidas > descanso > estudio > lectura registrada.
+15. Rutas: `/habitos/<id>/{pomodoro,tiempo,visto,distancia}`, `/series`, `/resumen/{tiempo,series,distancia}`, `/resumen/cantidad/<habitId>`.
