@@ -135,11 +135,16 @@ export function buildToday(input: {
   }
 }
 
-/** The goal of a quantity habit and today's sums. The total counts sums only: `done` follows the check-in. */
-function quantityOf(h: HabitInput, entries: { id: string; amount: number; at: string }[]): TodayRow['quantity'] {
+/** The goal stored on a quantity habit's columns; null for any other log type. */
+export function quantityConfigOf(
+  h: Pick<
+    HabitInput,
+    'log_type' | 'quantity_unit' | 'quantity_label' | 'quantity_target' | 'quantity_step' | 'quantity_display' | 'glass_ml'
+  >,
+): QuantityConfig | null {
   if (h.log_type !== 'quantity' || !QUANTITY_UNITS.includes(h.quantity_unit as QuantityUnit)) return null
-  if (typeof h.quantity_target !== 'number' || typeof h.quantity_step !== 'number') return null
-  const config: QuantityConfig = {
+  if (h.quantity_target == null || h.quantity_step == null) return null
+  return {
     unit: h.quantity_unit as QuantityUnit,
     label: h.quantity_label ?? null,
     target: Number(h.quantity_target),
@@ -147,6 +152,12 @@ function quantityOf(h: HabitInput, entries: { id: string; amount: number; at: st
     display: h.quantity_display === 'glasses' ? 'glasses' : 'base',
     glassMl: h.glass_ml ?? 250,
   }
+}
+
+/** The goal of a quantity habit and today's sums. The total counts sums only: `done` follows the check-in. */
+function quantityOf(h: HabitInput, entries: { id: string; amount: number; at: string }[]): TodayRow['quantity'] {
+  const config = quantityConfigOf(h)
+  if (!config) return null
   const total = Math.round(entries.reduce((sum, e) => sum + e.amount, 0) * 100) / 100
   return { config, total, entries }
 }

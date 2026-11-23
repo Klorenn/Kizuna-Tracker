@@ -3,8 +3,12 @@ import { notFound, redirect } from "next/navigation";
 import { HabitForm } from "@/components/HabitForm";
 import { TopBar } from "@/components/ui/TopBar";
 import { toHabitColor } from "@/domain/habit-colors";
+import { quantityConfigOf } from "@/domain/today";
 import type { HabitDraft, IconKey, PresetKey, Visibility } from "@/domain/presets";
 import { createServerClient } from "@/lib/supabase/server";
+
+const QUANTITY_LOCKED =
+  "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
 
 export const metadata: Metadata = { title: "Editar hábito" };
 
@@ -17,18 +21,30 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
   if (!user) redirect("/bienvenida");
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color,log_type")
+    .select(
+      "id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+    )
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
     .maybeSingle();
   if (!habit) notFound();
-  const { data: items } = await supabase
-    .from("habit_items")
-    .select("label,requires_photo,position")
-    .eq("habit_id", id)
-    .is("archived_at", null)
-    .order("position");
+  const [{ data: items }, inChallenge] = await Promise.all([
+    supabase
+      .from("habit_items")
+      .select("label,requires_photo,position")
+      .eq("habit_id", id)
+      .is("archived_at", null)
+      .order("position"),
+    // a quantity habit in a proposed or active challenge keeps its unit and cannot lower its goal
+    habit.log_type === "quantity"
+      ? supabase
+          .from("challenges")
+          .select("id", { count: "exact", head: true })
+          .in("status", ["proposed", "active"])
+          .or(`creator_habit_id.eq.${id},rival_habit_id.eq.${id}`)
+      : Promise.resolve({ count: 0 }),
+  ]);
 
   const draft: HabitDraft = {
     name: habit.name,
@@ -43,14 +59,18 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
     logType: habit.log_type as HabitDraft["logType"],
     preset: habit.preset as PresetKey | null,
     color: toHabitColor(habit.color),
-    quantity: null, // TODO(T28): read quantity_* columns once the migration and types exist
+    quantity: quantityConfigOf(habit),
   };
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">
       <TopBar backHref={`/habitos/${id}`} />
       <h1 className="text-display font-semibold text-ink">Editar hábito</h1>
-      <HabitForm initial={draft} habitId={id} />
+      <HabitForm
+        initial={draft}
+        habitId={id}
+        quantityLockedReason={(inChallenge.count ?? 0) > 0 ? QUANTITY_LOCKED : null}
+      />
     </main>
   );
 }
