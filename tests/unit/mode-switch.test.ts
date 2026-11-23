@@ -27,7 +27,7 @@ describe('ModeSwitch', () => {
     const locked = html({ value: 'pomodoro', locked: true })
     expect(locked.match(/aria-disabled="true"/g)).toHaveLength(3)
     expect(locked).toContain('Termina la sesión para cambiar de modo.')
-    expect(html({ value: 'pomodoro', locked: false })).toContain('min-h-5')
+    expect(html({ value: 'pomodoro', locked: false })).toContain('min-h-11')
   })
 
   it('moves with the arrow keys, wrapping, and Home / End', () => {

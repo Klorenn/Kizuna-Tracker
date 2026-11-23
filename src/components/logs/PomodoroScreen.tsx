@@ -321,16 +321,20 @@ function Timer({
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex items-start gap-2">
-        <ModeSwitch value={mode} locked={locked} onChange={chooseMode} />
-        <IconButton
-          label="Silenciar avisos"
-          aria-pressed={prefs.muted}
-          onClick={() => update({ ...prefs, muted: !prefs.muted })}
-        >
-          {prefs.muted ? <SpeakerSlash size={20} weight="light" aria-hidden /> : <SpeakerHigh size={20} weight="light" aria-hidden />}
-        </IconButton>
-      </div>
+      <ModeSwitch
+        value={mode}
+        locked={locked}
+        onChange={chooseMode}
+        trailing={
+          <IconButton
+            label="Silenciar avisos"
+            aria-pressed={prefs.muted}
+            onClick={() => update({ ...prefs, muted: !prefs.muted })}
+          >
+            {prefs.muted ? <SpeakerSlash size={20} weight="light" aria-hidden /> : <SpeakerHigh size={20} weight="light" aria-hidden />}
+          </IconButton>
+        }
+      />
 
       {measuring ? (
         <section className="flex flex-col items-center gap-4" aria-label={mode === "timer" ? "Temporizador" : "Cronómetro"}>

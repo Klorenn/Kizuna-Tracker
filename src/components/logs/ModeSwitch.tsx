@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef } from "react";
+import { useRef, type ReactNode } from "react";
 import type { TimerMode } from "@/domain/pomodoro";
 
 /*
@@ -46,14 +46,17 @@ export function ModeSwitch({
   value,
   locked,
   onChange,
+  trailing,
 }: {
   value: TimerMode;
   locked: boolean;
   onChange: (mode: TimerMode) => void;
+  /** Sits at the end of the hint row (the mute button). */
+  trailing?: ReactNode;
 }) {
   const refs = useRef<Partial<Record<TimerMode, HTMLButtonElement | null>>>({});
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex flex-col">
       <div role="radiogroup" aria-label="Modo" aria-describedby="mode-hint" className="flex gap-1 rounded-md bg-field p-1">
         {MODE_OPTIONS.map((o) => {
           const selected = o.value === value;
@@ -79,7 +82,7 @@ export function ModeSwitch({
                 onChange(next);
                 refs.current[next]?.focus();
               }}
-              className={`h-11 min-w-0 flex-1 truncate rounded-md px-2 text-small font-medium transition-colors duration-[120ms] ${
+              className={`h-11 min-w-0 flex-1 truncate rounded-md px-1 text-small font-medium transition-colors duration-[120ms] ${
                 selected ? "bg-raised text-ink shadow-card" : "text-muted"
               } ${locked ? "cursor-not-allowed" : ""}`}
             >
@@ -88,9 +91,13 @@ export function ModeSwitch({
           );
         })}
       </div>
-      <p id="mode-hint" className="min-h-5 pt-1 text-small text-muted">
-        {locked ? LOCKED_HINT : null}
-      </p>
+      {/* the hint line is always there (a no-break space keeps its height), so nothing below moves */}
+      <div className="flex min-h-11 items-center gap-2">
+        <p id="mode-hint" className="min-w-0 flex-1 text-small text-pretty text-muted">
+          {locked ? LOCKED_HINT : "\u00a0"}
+        </p>
+        {trailing}
+      </div>
     </div>
   );
 }

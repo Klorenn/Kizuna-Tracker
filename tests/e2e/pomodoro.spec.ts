@@ -227,7 +227,7 @@ test("a timer of 15 minutes counts down, survives a reload and credits 15 minute
 
   // the mode cannot change while it runs
   await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-disabled", "true");
-  await mode(page, "Cronómetro").click();
+  await mode(page, "Cronómetro").click({ force: true });
   await expect(mode(page, "Temporizador")).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("Termina la sesión para cambiar de modo.")).toBeVisible();
 
@@ -242,7 +242,7 @@ test("a timer of 15 minutes counts down, survives a reload and credits 15 minute
   await expect(page.getByText("Hoy: 15 min · Álgebra")).toBeVisible();
   await shot(page, "12-timer-done");
   await page.goto(`/habitos/${id}/tiempo`);
-  await expect(page.getByText("15 min", { exact: true })).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: /^15 min$/ })).toBeVisible();
 });
 
 test("a stopwatch stopped at 3 min 20 s credits 3 minutes; under a minute credits nothing", async ({ page }) => {
@@ -309,6 +309,7 @@ test("the mode switch moves with the arrow keys and Hoy opens the last mode used
   await page.goto("/");
   const open = page.getByRole("link", { name: "Medir tiempo de Estudiar" });
   await expect(open).toHaveText("Medir");
+  await shot(page, "17-hoy-medir");
   await open.click();
   await expect(mode(page, "Cronómetro")).toHaveAttribute("aria-checked", "true");
   await page.reload();
@@ -343,7 +344,8 @@ test("the readout never moves between modes and 375 px fits in every mode", asyn
   };
   await fits();
   await mode(page, "Temporizador").click();
-  const top = async () => (await page.getByRole("timer").boundingBox())!.y;
+  // page coordinates: a click may have scrolled the page, which must not count as the readout moving
+  const top = async () => page.getByRole("timer").evaluate((el) => el.getBoundingClientRect().top + window.scrollY);
   const timerIdle = await top();
   await fits();
   await page.getByRole("button", { name: "Otro" }).click();
