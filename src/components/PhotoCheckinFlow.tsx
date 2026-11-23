@@ -6,6 +6,7 @@ import { habitStreak } from "@/app/(app)/habitos/[id]/foto/actions";
 import { localDate } from "@/domain/dates";
 import { celebrateKeyAndClaim } from "@/lib/celebrate-once";
 import { celebrationFor } from "@/lib/checkins";
+import type { LogType } from "@/domain/logs";
 import type { PresetKey } from "@/domain/presets";
 import { CameraCapture } from "./CameraCapture";
 import { PhotoReview } from "./PhotoReview";
@@ -17,12 +18,14 @@ export function PhotoCheckinFlow({
   itemId,
   title,
   preset,
+  logType,
   timeZone,
 }: {
   habitId: string;
   itemId: string | null;
   title: string;
   preset: PresetKey | null;
+  logType: LogType;
   timeZone: string;
 }) {
   const router = useRouter();
@@ -64,6 +67,8 @@ export function PhotoCheckinFlow({
       )}
       <WorkoutDoneSheet open={celebrate !== null} streakLabel={celebrate?.streakLabel ?? null}
         note={celebrate?.note ?? ""}
+        habitId={habitId}
+        logType={logType}
         onClose={leave} />
     </>
   );
