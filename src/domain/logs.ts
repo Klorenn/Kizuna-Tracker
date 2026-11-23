@@ -1,11 +1,25 @@
 import { monthOf, shiftMonth, type MonthKey } from './calendar'
+import { cardioSummary, type CardioKind } from './cardio'
+import { progressLabel, type QuantityConfig } from './quantity'
+import { formatDuration } from './time'
 import type { LocalDate } from './types'
+import type { MediaKind } from './watch'
 
-// Detailed logs: what you read and what you trained. Pure functions, no I/O. They never
-// touch streaks, challenges, debts or goals: a log is the detail of a check-in, nothing more.
+// Detailed logs: what you read, trained, spent time on, watched, measured or covered. Pure
+// functions, no I/O. They never touch streaks, challenges, debts or goals: a log is the detail
+// of a check-in, nothing more (quantity is the declared exception, handled by the server).
 
-export type LogType = 'none' | 'reading' | 'workout'
-export const LOG_TYPES: readonly LogType[] = ['none', 'reading', 'workout']
+export type LogType = 'none' | 'reading' | 'workout' | 'time' | 'watch' | 'quantity' | 'cardio'
+export const LOG_TYPES: readonly LogType[] = ['none', 'reading', 'workout', 'time', 'watch', 'quantity', 'cardio']
+export const LOG_TYPE_LABEL: Readonly<Record<LogType, string>> = {
+  none: 'Ninguno',
+  reading: 'Lectura',
+  workout: 'Entrenamiento',
+  time: 'Tiempo',
+  watch: 'Series y películas',
+  quantity: 'Cantidad',
+  cardio: 'Distancia',
+}
 
 export type DayType = 'legs' | 'chest' | 'back' | 'shoulders' | 'arms' | 'core' | 'cardio' | 'full_body'
 export const DAY_TYPES: readonly DayType[] = [
@@ -389,12 +403,57 @@ export function groupDeltaCopy(group: MuscleGroup, deltaKg: number | null, previ
 export type TodayLog =
   | { kind: 'reading'; pages: number; bookTitle: string }
   | { kind: 'workout'; dayTypes: DayType[]; exerciseCount: number }
+  | { kind: 'time'; minutes: number; topic: string | null }
+  | {
+      kind: 'watch'
+      title: string
+      mediaKind: MediaKind
+      episodes: number | null
+      minutes: number | null
+      completed: boolean
+    }
+  | { kind: 'quantity'; total: number; config: QuantityConfig; done: boolean }
+  | { kind: 'cardio'; entries: { distanceM: number; durationS: number; kind: CardioKind }[] }
 
 const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`
 
+/**
+ * One book progress format everywhere: "página 40 de 412 · 10 %", "página 40" (no total),
+ * "412 páginas" (nothing read yet). Never rounds up to 100 % before the last page.
+ */
+export function bookProgress(page: number | null, total: number | null): string | null {
+  if (page !== null && page > 0) {
+    if (total === null) return `página ${page}`
+    const pct = page >= total ? 100 : Math.min(99, Math.round((page / total) * 100))
+    return `página ${page} de ${total} · ${pct} %`
+  }
+  return total === null ? null : `${total} páginas`
+}
+
 /** The subtitle of a habit row in Hoy: "26 páginas · Dune", "Pierna y core · 5 ejercicios". */
 export function logSubtitle(log: TodayLog): string {
-  if (log.kind === 'reading') return `${pagesLabel(log.pages)} · ${log.bookTitle}`
+  switch (log.kind) {
+    case 'reading':
+      return `${pagesLabel(log.pages)} · ${log.bookTitle}`
+    case 'time':
+      return log.topic ? `${formatDuration(log.minutes)} · ${log.topic}` : formatDuration(log.minutes)
+    case 'watch': {
+      if (log.mediaKind === 'series' && log.episodes !== null) {
+        return `${plural(log.episodes, 'episodio', 'episodios')} · ${log.title}`
+      }
+      if (log.completed) return `Completa · ${log.title}`
+      if (log.minutes !== null) return `${formatDuration(log.minutes)} · ${log.title}`
+      return log.title
+    }
+    case 'quantity': {
+      const progress = progressLabel(log.total, log.config)
+      return log.done ? `Meta de hoy cumplida · ${progress}` : progress
+    }
+    case 'cardio':
+      return cardioSummary(log.entries)
+    case 'workout':
+      break
+  }
   const names = log.dayTypes.map((t, i) => (i === 0 ? DAY_TYPE_LABEL[t] : DAY_TYPE_LABEL[t].toLocaleLowerCase('es')))
   const types = names.length > 1 ? `${names.slice(0, -1).join(', ')} y ${names[names.length - 1]}` : names[0]
   return log.exerciseCount > 0 ? `${types} · ${plural(log.exerciseCount, 'ejercicio', 'ejercicios')}` : types
