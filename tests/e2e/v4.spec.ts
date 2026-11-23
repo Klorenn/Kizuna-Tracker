@@ -289,8 +289,8 @@ test("watch: a series with episodes, a movie, and undo asks first", async ({ pag
   await row(page, "Series y películas").click();
   const sheet = page.getByRole("dialog", { name: "¿Qué viste hoy?" });
   // with no titles yet the new-title form starts open
-  await expect(sheet.getByLabel("Título", { exact: true })).toBeVisible();
-  await sheet.getByLabel("Título", { exact: true }).fill("Dark");
+  await expect(sheet.getByRole("textbox", { name: "Título", exact: true })).toBeVisible();
+  await sheet.getByRole("textbox", { name: "Título", exact: true }).fill("Dark");
   await sheet.getByRole("button", { name: "Agregar título" }).click();
   await sheet.getByRole("button", { name: "Un episodio más" }).click();
   await sheet.getByRole("button", { name: "Un episodio más" }).click();
@@ -311,7 +311,7 @@ test("watch: a series with episodes, a movie, and undo asks first", async ({ pag
   await row(page, "Series y películas").click();
   const again = page.getByRole("dialog", { name: "¿Qué viste hoy?" });
   await again.getByRole("button", { name: "Nuevo título" }).click();
-  await again.getByLabel("Título", { exact: true }).fill("Alien");
+  await again.getByRole("textbox", { name: "Título", exact: true }).fill("Alien");
   await again.getByRole("radio", { name: "Película" }).click();
   await again.getByRole("button", { name: "Agregar título" }).click();
   await again.getByText("La vi completa").click();

@@ -82,13 +82,13 @@ test("series y películas: títulos, registro del día, terminadas, borrar y pá
   await expect(page.getByText("Todavía no tienes títulos")).toBeVisible();
   await page.getByRole("button", { name: "Nuevo título" }).click();
   const add = dialog(page, "Nuevo título");
-  await add.getByLabel("Título", { exact: true }).fill("Dark");
+  await add.getByRole("textbox", { name: "Título", exact: true }).fill("Dark");
   await add.getByLabel("Temporadas (opcional)").fill("3");
   await add.getByLabel("Episodios totales (opcional)").fill("26");
   await add.getByRole("button", { name: "Guardar" }).click();
   await expect(page.getByText("Título agregado")).toBeVisible();
   await page.getByRole("button", { name: "Nuevo título" }).click();
-  await add.getByLabel("Título", { exact: true }).fill("Dune");
+  await add.getByRole("textbox", { name: "Título", exact: true }).fill("Dune");
   await add.getByRole("radio", { name: "Película" }).click();
   await add.getByLabel("Duración en minutos (opcional)").fill("155");
   await add.getByRole("button", { name: "Guardar" }).click();
