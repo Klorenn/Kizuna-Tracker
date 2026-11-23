@@ -4,6 +4,7 @@ import { TopBar } from "@/components/ui/TopBar";
 import { localDate } from "@/domain/dates";
 import { nextFromPage, pagesRead } from "@/domain/logs";
 import { fetchAll } from "@/lib/paginate";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { LibrosView, type BookView } from "./LibrosView";
@@ -37,7 +38,7 @@ export default async function LibrosPage() {
   ]);
 
   const asEntries = entries.map((e) => ({ date: e.local_date, bookId: e.book_id, fromPage: e.from_page, toPage: e.to_page }));
-  const view: BookView[] = (books.data ?? []).map((b) => {
+  const view: BookView[] = readRows(books).map((b) => {
     const mine = entries.filter((e) => e.book_id === b.id);
     return {
       id: b.id,

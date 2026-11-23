@@ -49,6 +49,7 @@ import {
   quantityConfigOf,
 } from "@/lib/logs-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
+import { read, readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
@@ -71,7 +72,7 @@ export default async function HabitoPage({
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [profile, { data: habit }] = await Promise.all([
+  const [profile, habitRes] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -84,6 +85,7 @@ export default async function HabitoPage({
       .maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const color = toHabitColor(habit.color);
@@ -102,12 +104,12 @@ export default async function HabitoPage({
     const windowStart = logWindowStart(today);
     // today's check-in, and whether it already has its log (not for quantity: no check-in needed)
     const todayEntry = async (): Promise<{ logged: boolean } | null> => {
-      const { data: todayCheckin } = await supabase
+      const todayCheckin = read(await supabase
         .from("checkins")
         .select("id")
         .eq("habit_id", habit.id)
         .eq("local_date", today)
-        .maybeSingle();
+        .maybeSingle());
       if (!todayCheckin) return null;
       const cid = todayCheckin.id;
       let count: number | null = null;
@@ -211,7 +213,7 @@ export default async function HabitoPage({
   };
 
   // independent reads in one go (the month of the calendar depends on the first check-in, below)
-  const [{ data: checkins }, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
+  const [checkinsRes, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
     supabase
       .from("checkins")
       .select("local_date")
@@ -232,7 +234,7 @@ export default async function HabitoPage({
           .gte("local_date", addDays(today, -HISTORY_DAYS))
       : Promise.resolve(null),
   ]);
-  const dates = (checkins ?? []).map((c) => c.local_date);
+  const dates = readRows(checkinsRes).map((c) => c.local_date);
   const frequency: Frequency =
     habit.frequency_type === "weekly"
       ? { type: "weekly", target: habit.target_per_week ?? 1 }
@@ -258,7 +260,7 @@ export default async function HabitoPage({
   let calendar: ReactNode;
   if (monthsView) {
     const doneByDay: Record<LocalDate, number> = {};
-    for (const c of yearCheckins?.data ?? []) doneByDay[c.local_date] = 1;
+    for (const c of yearCheckins ? readRows(yearCheckins) : []) doneByDay[c.local_date] = 1;
     const since = localDate(new Date(habit.created_at), profile.timezone);
     const months = recentMonths(thisMonth, earliest, OVERVIEW_MONTHS);
     calendar = (

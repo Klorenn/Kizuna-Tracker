@@ -8,7 +8,7 @@ import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
 import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
 import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
-import { habitRowPropsEqual } from "./habit-row-equal";
+import { addLogOffered, habitRowPropsEqual } from "./habit-row-equal";
 import { ItemChecklist } from "./ItemChecklist";
 import type { CardioSheetMode } from "./logs/CardioSheet";
 import { QuantityControl } from "./logs/QuantityControl";
@@ -70,6 +70,7 @@ function HabitRowView({
   timeZone,
   checkinId,
   reading,
+  logsKnown = true,
 }: {
   row: TodayRow;
   /** local date of Hoy (`YYYY-MM-DD`), for the "Añadir registro" link */
@@ -78,6 +79,8 @@ function HabitRowView({
   /** today's check-in of this habit, when it exists */
   checkinId: string | null;
   reading?: RowReading;
+  /** false when today's logs could not be read: no "Añadir registro" then (Hoy itself shows a retry instead of rows) */
+  logsKnown?: boolean;
 }) {
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -162,7 +165,7 @@ function HabitRowView({
         + Salida
       </button>
     );
-  } else if (done && row.log === null && row.logType !== "none" && row.logType !== "quantity") {
+  } else if (done && addLogOffered(row, logsKnown) && row.logType !== "none" && row.logType !== "quantity") {
     action =
       row.logType === "reading" && readingFlow && reading.checkinId ? (
         <button

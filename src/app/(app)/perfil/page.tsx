@@ -25,6 +25,7 @@ import { activityGrid, debtSummary, lastDays, memberSince, streakText } from "@/
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { loadRecentWeights } from "./body-data";
@@ -57,7 +58,7 @@ export default async function PerfilPage() {
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
   // Reads that need only the user id start with the profile; the ones that need its timezone follow.
-  const [profile, { data: habits }, record, { data: debtRows }, bodyEntries] = await Promise.all([
+  const [profile, habitsRes, record, debtsRes, bodyEntries] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -70,11 +71,13 @@ export default async function PerfilPage() {
     loadRecentWeights(supabase, user.id, 5),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  // a failed read is the error page, never an empty list or a zero balance
+  const habitRows = readRows(habitsRes);
+  const debtRows = readRows(debtsRes);
 
   const today = localDate(new Date(), profile.timezone);
   // History of every habit in one call (one row per habit), alongside the goals
   const { from } = streakWindow(today);
-  const habitRows = habits ?? [];
   const [goalsRead, dated] = await Promise.all([
     loadGoalsResult(supabase, user.id, today),
     loadCheckinDates(supabase, habitRows.map((h) => h.id), from),
@@ -100,7 +103,7 @@ export default async function PerfilPage() {
   const activity = activityGrid(history, today);
 
   const balances = netBalances(
-    (debtRows ?? []).map((d) => ({
+    debtRows.map((d) => ({
       id: d.id,
       debtorId: d.debtor_id,
       creditorId: d.creditor_id,

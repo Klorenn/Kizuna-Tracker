@@ -33,13 +33,9 @@ export default async function Home() {
   const now = new Date();
   const today = localDate(now, profile.timezone);
 
-  const { habits, items, itemChecks, todayCheckins, todayLogs, history, books } = await loadTodayData(
-    supabase,
-    user.id,
-    today,
-  );
-  if (!history.ok) {
-    // streaks and today's "done" come from the history: never show zeros that pass for real
+  const data = await loadTodayData(supabase, user.id, today);
+  if (!data.ok) {
+    // any failed read: a retry line, never rows built from partial data (zeros, an empty list, "add" on an existing log)
     return (
       <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
         <div className="flex items-start justify-between gap-4">
@@ -51,17 +47,18 @@ export default async function Home() {
     );
   }
 
+  const { habits, items, itemChecks, todayCheckins, todayLogs, checkins, books } = data;
   const view = buildToday({
-    habits: habits.data ?? [],
-    items: items.data ?? [],
-    checkins: history.checkins,
-    itemChecks: itemChecks.data ?? [],
+    habits,
+    items,
+    checkins,
+    itemChecks,
     logs: todayLogs.logs,
     quantity: todayLogs.quantity,
     today,
     timeZone: profile.timezone,
   });
-  const checkinByHabit = new Map((todayCheckins.data ?? []).map((c) => [c.habit_id, c.id]));
+  const checkinByHabit = new Map(todayCheckins.map((c) => [c.habit_id, c.id]));
   const readingFor = (habitId: string): RowReading => ({
     books,
     checkinId: checkinByHabit.get(habitId) ?? null,

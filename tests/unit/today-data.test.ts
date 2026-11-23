@@ -26,18 +26,15 @@ describe('loadTodayData', () => {
     expect(checkinReads).toHaveLength(1)
     expect(args(checkinReads[0], 'eq')).toContainEqual(['local_date', TODAY])
     expect(checkinReads[0].calls.some((c) => c.method === 'range')).toBe(false)
-    expect(data.history).toEqual({
-      ok: true,
-      checkins: [
-        { habit_id: 'h1', local_date: '2026-11-25' },
-        { habit_id: 'h1', local_date: '2026-11-24' },
-      ],
-    })
+    expect(data.ok && data.checkins).toEqual([
+      { habit_id: 'h1', local_date: '2026-11-25' },
+      { habit_id: 'h1', local_date: '2026-11-24' },
+    ])
   })
 
   test('a failed history read is reported, never turned into an empty history', async () => {
     const { data } = await load({ dates: { data: null, error: { message: 'boom' } } })
-    expect(data.history).toEqual({ ok: false })
+    expect(data).toEqual({ ok: false })
   })
 
   test('more than 500 habits go out in chunks, in the same round', async () => {
@@ -49,7 +46,7 @@ describe('loadTodayData', () => {
   test('no habits: no history call at all', async () => {
     const { data, queries } = await load({ habits: [] })
     expect(queries.some((q) => q.table === 'rpc:checkin_dates')).toBe(false)
-    expect(data.history).toEqual({ ok: true, checkins: [] })
+    expect(data.ok && data.checkins).toEqual([])
   })
 
   test('the series and movie titles are not read (the watch sheet loads them when it opens)', async () => {
@@ -62,6 +59,35 @@ describe('loadTodayData', () => {
     expect(without.queries.some((q) => q.table === 'books')).toBe(false)
     const withReading = await load({ habits: [habit('r1', 'reading'), habit('h2')] })
     expect(withReading.queries.some((q) => q.table === 'books')).toBe(true)
-    expect(withReading.data.books).toEqual([])
+    expect(withReading.data.ok && withReading.data.books).toEqual([])
+  })
+})
+
+describe('loadTodayData: a failed read is an error state, never a partial Hoy', () => {
+  const fail = (table: string) => {
+    const f = fakeSupabase((q: Recorded) => {
+      if (q.table === table) return { data: null, error: { message: 'boom' } }
+      if (q.table === 'habits') return { data: [habit('r1', 'reading')] }
+      return { data: [] }
+    })
+    return loadTodayData(f.client, 'me', TODAY)
+  }
+
+  test.each([
+    'habits',
+    'habit_items',
+    'checkin_items',
+    'checkins',
+    'reading_entries',
+    'workout_sessions',
+    'workout_sets',
+    'time_entries',
+    'watch_entries',
+    'cardio_entries',
+    'quantity_entries',
+    'books',
+    'rpc:checkin_dates',
+  ])('%s failing alone gives not-ok (a failed habits read is not an empty Hoy)', async (table) => {
+    expect(await fail(table)).toEqual({ ok: false })
   })
 })

@@ -16,6 +16,7 @@ import { avatarUrl } from "@/lib/avatar";
 import type { FeedPage } from "@/lib/feed";
 import { friendStatusText } from "@/lib/friend-view";
 import { friendStreaks } from "@/lib/friends-data";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { searchUsers } from "./actions";
@@ -78,7 +79,7 @@ export default async function AmigosPage({
   const meRead = getViewerProfile();
   // never rejects: nobody may be awaiting it (an empty feed returns before formatting times)
   const timezone = meRead.then((p) => p?.timezone ?? "UTC").catch(() => "UTC");
-  const [me, { data: friendships }, hits, feed] = await Promise.all([
+  const [me, friendshipsRes, hits, feed] = await Promise.all([
     meRead,
     supabase
       .from("friendships")
@@ -91,7 +92,7 @@ export default async function AmigosPage({
   if (!me) redirect("/login?error=perfil");
   const today = localDate(new Date(), me.timezone);
 
-  const rows = friendships ?? [];
+  const rows = readRows(friendshipsRes);
   const other = (f: { requester_id: string; addressee_id: string }) =>
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
   const incoming = rows.filter((f) => f.status === "pending" && f.addressee_id === user.id);
@@ -99,7 +100,7 @@ export default async function AmigosPage({
   const related = new Map(rows.map((f) => [other(f), f]));
   const friendIds = friends.map(other);
 
-  const [streakRead, { data: people }] = await Promise.all([
+  const [streakRead, peopleRes] = await Promise.all([
     // on failure: a retry line instead of status lines (never a false "Sin racha activa")
     friendStreaks(supabase, friendIds, today).catch((): { ok: false } => ({ ok: false })),
     rows.length
@@ -107,7 +108,7 @@ export default async function AmigosPage({
       : Promise.resolve({ data: [] }),
   ]);
   const streaks = streakRead.ok ? streakRead.streaks : null;
-  const byId = new Map((people ?? []).map((p) => [p.id, p]));
+  const byId = new Map(readRows(peopleRes).map((p) => [p.id, p]));
 
   const friendRows = friends
     .map((f) => {

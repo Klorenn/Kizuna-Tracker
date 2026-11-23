@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { PhotoCheckinFlow } from "@/components/PhotoCheckinFlow";
 import type { LogType } from "@/domain/logs";
 import type { PresetKey } from "@/domain/presets";
+import { read } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
@@ -23,24 +24,24 @@ export default async function FotoPage({
   const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
-  const { data: habit } = await supabase
+  const habit = read(await supabase
     .from("habits")
     .select("id,name,preset,requires_photo,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
-    .maybeSingle();
+    .maybeSingle());
   if (!habit) notFound();
 
   let itemId: string | null = null;
   if (paso) {
-    const { data: item } = await supabase
+    const item = read(await supabase
       .from("habit_items")
       .select("id")
       .eq("id", paso)
       .eq("habit_id", id)
       .is("archived_at", null)
-      .maybeSingle();
+      .maybeSingle());
     if (!item) notFound();
     itemId = item.id;
   } else if (!habit.requires_photo) {

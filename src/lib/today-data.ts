@@ -1,14 +1,27 @@
 import { addDays } from "@/domain/dates";
-import type { CheckinInput } from "@/domain/today";
+import type { CheckinInput, HabitInput, ItemCheckInput, ItemInput } from "@/domain/today";
 import { loadCheckinDates } from "@/lib/checkin-dates";
-import { loadPickerBooks, type PickerBook } from "@/lib/reading-books";
+import { loadPickerBooksOrNull, type PickerBook } from "@/lib/reading-books";
 import type { createServerClient } from "@/lib/supabase/server";
-import { loadTodayLogs } from "@/lib/today-logs";
+import { loadTodayLogs, type TodayLogsResult } from "@/lib/today-logs";
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
 
 /** How far back Hoy looks for streaks. */
 export const HISTORY_DAYS = 400;
+
+export type TodayData =
+  | {
+      ok: true;
+      habits: HabitInput[];
+      items: ItemInput[];
+      itemChecks: ItemCheckInput[];
+      todayCheckins: { id: string; habit_id: string }[];
+      todayLogs: Extract<TodayLogsResult, { ok: true }>;
+      checkins: CheckinInput[];
+      books: PickerBook[];
+    }
+  | { ok: false };
 
 export type TodayHistory = { ok: true; checkins: CheckinInput[] } | { ok: false };
 
@@ -19,7 +32,7 @@ export type TodayHistory = { ok: true; checkins: CheckinInput[] } | { ok: false 
  * streak math stays in `domain/streaks`. A failed history is `{ ok: false }`, never an empty list.
  * The series and movie titles are not here: the watch sheet loads them when it opens.
  */
-export async function loadTodayData(supabase: Supabase, userId: string, today: string) {
+export async function loadTodayData(supabase: Supabase, userId: string, today: string): Promise<TodayData> {
   const habitsRead = Promise.resolve(
     supabase
       .from("habits")
@@ -30,7 +43,8 @@ export async function loadTodayData(supabase: Supabase, userId: string, today: s
       .is("archived_at", null)
       .order("created_at"),
   );
-  const historyRead: Promise<TodayHistory> = habitsRead.then(async ({ data }) => {
+  const historyRead: Promise<TodayHistory> = habitsRead.then(async ({ data, error }) => {
+    if (error) return { ok: false };
     const dated = await loadCheckinDates(
       supabase,
       (data ?? []).map((h) => h.id),
@@ -42,8 +56,8 @@ export async function loadTodayData(supabase: Supabase, userId: string, today: s
     return { ok: true, checkins };
   });
   // the reading sheet's books, only when a reading habit is on Hoy
-  const booksRead: Promise<PickerBook[]> = habitsRead.then(({ data }) =>
-    (data ?? []).some((h) => h.log_type === "reading") ? loadPickerBooks(supabase, userId) : [],
+  const booksRead: Promise<PickerBook[] | null> = habitsRead.then(({ data, error }) =>
+    error ? null : (data ?? []).some((h) => h.log_type === "reading") ? loadPickerBooksOrNull(supabase, userId) : [],
   );
 
   const [habits, items, itemChecks, todayCheckins, todayLogs, history, books] = await Promise.all([
@@ -59,5 +73,18 @@ export async function loadTodayData(supabase: Supabase, userId: string, today: s
     historyRead,
     booksRead,
   ]);
-  return { habits, items, itemChecks, todayCheckins, todayLogs, history, books };
+  // any read that failed makes the whole screen a retry state: rows built from partial data would lie
+  if (habits.error || items.error || itemChecks.error || todayCheckins.error || !todayLogs.ok || !history.ok || books === null) {
+    return { ok: false };
+  }
+  return {
+    ok: true,
+    habits: habits.data ?? [],
+    items: items.data ?? [],
+    itemChecks: itemChecks.data ?? [],
+    todayCheckins: todayCheckins.data ?? [],
+    todayLogs,
+    checkins: history.checkins,
+    books,
+  };
 }

@@ -51,6 +51,7 @@ import {
   stackRows,
   weeklyCounts,
 } from "@/lib/stats";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
@@ -172,7 +173,7 @@ export default async function ResumenPage({
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [profile, { data: habitRows }] = await Promise.all([
+  const [profile, habitsRes] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -185,7 +186,7 @@ export default async function ResumenPage({
       .order("id"),
   ]);
   if (!profile) redirect("/login?error=perfil");
-  const habits = (habitRows ?? []).map((x) => ({
+  const habits = readRows(habitsRes).map((x) => ({
     ...x,
     color: toHabitColor(x.color),
     logType: ((LOG_TYPES as readonly string[]).includes(x.log_type) ? x.log_type : "none") as LogType,

@@ -40,7 +40,7 @@ export async function loadLogsContext(): Promise<LogsContext> {
   if (!user) redirect("/bienvenida");
   // two independent reads in one round trip (the habits list also gives the drill-downs their
   // colors and the ownership check of /resumen/cantidad/[habitId])
-  const [profile, { data: habits }] = await Promise.all([
+  const [profile, { data: habits, error: habitsError }] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -52,6 +52,8 @@ export async function loadLogsContext(): Promise<LogsContext> {
       .order("created_at")
       .order("id"),
   ]);
+  // a failed read is an error page: an empty list would hide the log sections and 404 a real habit
+  if (habitsError) throw new Error(`habits read failed: ${habitsError.message}`);
   if (!profile) redirect("/login?error=perfil");
   const logHabits: LogHabitRow[] = habits ?? [];
   // the first active habit of a type paints the charts

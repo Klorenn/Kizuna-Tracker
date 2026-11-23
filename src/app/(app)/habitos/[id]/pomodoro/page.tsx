@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { PomodoroScreen } from "@/components/logs/PomodoroScreen";
 import { localDate } from "@/domain/dates";
+import { read } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
@@ -13,7 +14,7 @@ export default async function PomodoroPage({ params }: { params: Promise<{ id: s
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [profile, { data: habit }] = await Promise.all([
+  const [profile, habitRes] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -25,16 +26,17 @@ export default async function PomodoroPage({ params }: { params: Promise<{ id: s
       .maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const today = localDate(new Date(), profile.timezone);
-  const { data: entry } = await supabase
+  const entry = read(await supabase
     .from("time_entries")
     .select("minutes")
     .eq("habit_id", id)
     .eq("user_id", user.id)
     .eq("local_date", today)
-    .maybeSingle();
+    .maybeSingle());
 
   return (
     <PomodoroScreen

@@ -6,6 +6,7 @@ import { TopBar } from "@/components/ui/TopBar";
 import { dayHeading } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { logDateParam } from "@/lib/log-date";
+import { read } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { TiempoEditor } from "./TiempoEditor";
@@ -28,7 +29,7 @@ export default async function TiempoPage({
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [profile, { data: habit }] = await Promise.all([
+  const [profile, habitRes] = await Promise.all([
     getViewerProfile(),
     supabase
       .from("habits")
@@ -40,17 +41,18 @@ export default async function TiempoPage({
       .maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const today = localDate(new Date(), profile.timezone);
   const date = logDateParam(fecha, today);
-  const { data: checkin } = await supabase
+  const checkin = read(await supabase
     .from("checkins")
     .select("id")
     .eq("habit_id", id)
     .eq("user_id", user.id)
     .eq("local_date", date)
-    .maybeSingle();
+    .maybeSingle());
   const { data: entry } = checkin
     ? await supabase.from("time_entries").select("minutes,topic").eq("checkin_id", checkin.id).maybeSingle()
     : { data: null };

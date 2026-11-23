@@ -11,6 +11,7 @@ import { TopBar } from "@/components/ui/TopBar";
 import { localDate } from "@/domain/dates";
 import { type DayType, type MuscleGroup, type WorkoutDraft } from "@/domain/logs";
 import { logDateParam } from "@/lib/log-date";
+import { read, readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { exercisesFromRows } from "@/lib/workout-form";
@@ -45,13 +46,13 @@ export default async function EntrenamientoPage({
   const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
-  const { data: habit } = await supabase
+  const habit = read(await supabase
     .from("habits")
     .select("id,name,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
-    .maybeSingle();
+    .maybeSingle());
   if (!habit || habit.log_type !== "workout") notFound();
 
   const today = localDate(new Date(), profile.timezone);
@@ -60,14 +61,14 @@ export default async function EntrenamientoPage({
   const title = `Entrenamiento · ${format(new TZDate(y, m - 1, d, "UTC"), "EEE d MMM", { locale: es })}`;
   const backHref = `/habitos/${id}`;
 
-  const { data: checkin } = await supabase
+  const checkin = read(await supabase
     .from("checkins")
     .select("id")
     .eq("habit_id", id)
     .eq("user_id", user.id)
     .eq("local_date", date)
     .is("rejected_at", null)
-    .maybeSingle();
+    .maybeSingle());
 
   if (!checkin) {
     return (
@@ -99,7 +100,7 @@ export default async function EntrenamientoPage({
       .limit(HISTORY_SESSIONS),
   ]);
 
-  const exercises: ExerciseOption[] = (exercisesRes.data ?? []).map((e) => ({
+  const exercises: ExerciseOption[] = readRows(exercisesRes).map((e) => ({
     id: e.id,
     name: e.name,
     group: e.muscle_group as MuscleGroup,
@@ -107,7 +108,7 @@ export default async function EntrenamientoPage({
     archived: e.archived_at !== null,
   }));
   const current = currentRes.data as SessionRow | null;
-  const history = ((historyRes.data ?? []) as SessionRow[]).map((s) => ({
+  const history = (readRows(historyRes) as SessionRow[]).map((s) => ({
     date: s.local_date,
     ...toDraft(s),
   }));
