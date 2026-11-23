@@ -2,7 +2,10 @@ import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
 import { THEME_COOKIE, appleStatusBarStyle, parseTheme, themeColorFor } from "@/lib/theme";
+import { resolveSiteUrl } from "@/lib/site-metadata-url";
 import "./globals.css";
+
+const SITE_DESCRIPTION = "Marca tus hábitos, sube una foto cuando toca y lleva la cuenta entre amigos.";
 
 const inter = Inter({ variable: "--font-inter", subsets: ["latin"] });
 const geistMono = Geist_Mono({
@@ -18,8 +21,21 @@ async function currentTheme() {
 export async function generateMetadata(): Promise<Metadata> {
   const theme = await currentTheme();
   return {
+    metadataBase: resolveSiteUrl(),
     title: { default: "Kizuna Tracker", template: "%s · Kizuna" },
-    description: "Rachas de hábitos con desafíos entre amigos.",
+    description: SITE_DESCRIPTION,
+    openGraph: {
+      type: "website",
+      siteName: "Kizuna Tracker",
+      locale: "es_CL",
+      title: "Kizuna Tracker",
+      description: SITE_DESCRIPTION,
+    },
+    twitter: {
+      card: "summary_large_image",
+      title: "Kizuna Tracker",
+      description: SITE_DESCRIPTION,
+    },
     applicationName: "Kizuna Tracker",
     appleWebApp: { capable: true, title: "Kizuna", statusBarStyle: appleStatusBarStyle(theme) },
   };
