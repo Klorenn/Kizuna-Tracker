@@ -23,6 +23,7 @@ const COPY: Record<string, string> = {
   not_group_member: NOT_FOUND,
   group_archived: 'Este grupo está archivado.',
   invalid_group: 'Revisa los datos del grupo.',
+  cannot_remove_self: 'Para salir, usa «Salir del grupo».',
   not_authenticated: GROUP_SIGN_IN_COPY,
 }
 

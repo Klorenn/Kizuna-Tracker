@@ -40,7 +40,7 @@ export type GroupSummary = {
   memberCount: number;
   commitment: GroupCommitment;
   /** The caller's habit linked to this group. */
-  myHabitId: string;
+  myHabitId: string | null;
   myDone: number;
   /** False until the caller's first counted week starts. */
   myCounts: boolean;
@@ -59,7 +59,7 @@ export type GroupDetail = {
   commitment: GroupCommitment;
   pendingCommitment: (GroupCommitment & { effectiveFrom: GroupDate }) | null;
   role: GroupRole;
-  myHabitId: string;
+  myHabitId: string | null;
   streak: number;
   memberCount: number;
   archived: boolean;

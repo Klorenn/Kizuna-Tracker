@@ -30,6 +30,15 @@ describe('notificationView: group_week_closed', () => {
     })
   })
 
+  it('without a boolean `complied` it gives no verdict', () => {
+    for (const complied of [undefined, null, 'yes', 1]) {
+      const v = notificationView('group_week_closed', { ...base, complied })
+      expect(v.body).toBe('Se cerró la semana en Gym. Cumplieron 6 de 10.')
+      expect(v.body).not.toMatch(/no llegaste|Cumpliste/)
+    }
+    expect(notificationView('group_week_closed', { group_id: G }).body).toBe('Se cerró la semana en tu grupo.')
+  })
+
   it('a missing or odd group id goes to the list, never into a path', () => {
     expect(notificationView('group_week_closed', {}).url).toBe('/grupos')
     expect(notificationView('group_week_closed', { group_id: '../../x' }).url).toBe('/grupos')

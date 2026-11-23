@@ -75,7 +75,10 @@ export function notificationView(type: string, payload: Record<string, unknown>)
           : ''
       return {
         title: group ? `${group}: cerró la semana` : 'Cerró la semana de tu grupo',
-        body: `${payload.complied === true ? 'Cumpliste.' : 'Esta vez no llegaste.'}${counts}`,
+        body:
+          typeof payload.complied === 'boolean'
+            ? `${payload.complied ? 'Cumpliste.' : 'Esta vez no llegaste.'}${counts}`
+            : `Se cerró la semana en ${group ?? 'tu grupo'}.${counts}`,
         url: groupUrl(payload.group_id),
       }
     }

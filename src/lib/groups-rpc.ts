@@ -187,7 +187,7 @@ export const myGroups = (c: GroupsClient) => call<MyGroupRow[]>(c, 'my_groups')
 
 /** The contract does not say whether `group_detail` returns one row or a one-element set: the loader accepts both. */
 export const groupDetail = (c: GroupsClient, groupId: string) =>
-  call<GroupDetailRow | GroupDetailRow[]>(c, 'group_detail', { p_group_id: groupId })
+  call<GroupDetailRow[]>(c, 'group_detail', { p_group_id: groupId })
 
 export const groupBoard = (c: GroupsClient, groupId: string) =>
   call<GroupBoardDbRow[]>(c, 'group_board', { p_group_id: groupId })

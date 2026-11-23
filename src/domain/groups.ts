@@ -26,7 +26,7 @@ export function isLocalDate(v: unknown): v is string {
 
 /** The shape of an invitation code: URL-safe, long enough to carry at least 100 bits. Checked before any database call. */
 export function isInviteCodeShape(v: unknown): v is string {
-  return typeof v === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(v)
+  return typeof v === 'string' && /^[0-9a-f]{32}$/.test(v)
 }
 
 /** Length in characters as a person counts them (an emoji is one). */

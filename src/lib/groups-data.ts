@@ -155,7 +155,7 @@ export function loadMyGroups(client?: GroupsClient): Promise<GroupLoaded<GroupSu
         role: role(o, 'role'),
         memberCount: num(o, 'member_count'),
         commitment: commitmentOf(o),
-        myHabitId: str(o, 'my_habit_id'),
+        myHabitId: strOrNull(o, 'my_habit_id'),
         myDone: num(o, 'my_done'),
         myCounts: bool(o, 'my_counts'),
         compliedCount: num(o, 'complied_count'),
@@ -171,7 +171,7 @@ export function loadMyGroups(client?: GroupsClient): Promise<GroupLoaded<GroupSu
 export function loadGroupDetail(groupId: string, client?: GroupsClient): Promise<GroupLoaded<GroupDetail>> {
   if (!isUuid(groupId)) return Promise.resolve(notFound())
   return run(client, COPY.group, (c) => rpc.groupDetail(c, groupId), (data) => {
-    const rows = Array.isArray(data) ? data : data == null ? [] : [data]
+    const rows = list(data)
     if (rows.length === 0) throw new Missing()
     const o = row(rows[0])
     const nextName = strOrNull(o, 'next_commitment_name')
@@ -193,11 +193,11 @@ export function loadGroupDetail(groupId: string, client?: GroupsClient): Promise
       description: strOrNull(o, 'description'),
       commitment: commitmentOf(o),
       pendingCommitment: pending,
-      role: role(o, o.my_role !== undefined ? 'my_role' : 'role'),
-      myHabitId: str(o, 'my_habit_id'),
+      role: role(o, 'my_role'),
+      myHabitId: strOrNull(o, 'my_habit_id'),
       streak: num(o, 'streak'),
       memberCount: num(o, 'member_count'),
-      archived: o.archived === undefined ? false : bool(o, 'archived'),
+      archived: strOrNull(o, 'archived_at') !== null,
     }
   })
 }

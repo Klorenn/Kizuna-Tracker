@@ -116,10 +116,9 @@ describe('isLocalDate and isInviteCodeShape', () => {
     expect(isLocalDate('2028-02-29')).toBe(true)
     for (const v of ['2026-02-30', '2026-13-01', '2026-1-1', '', 'hoy', 5, null]) expect(isLocalDate(v)).toBe(false)
   })
-  it('invitation codes: URL-safe and 16 to 128 characters', () => {
-    expect(isInviteCodeShape('AbCdEfGhIjKlMnOp')).toBe(true)
-    expect(isInviteCodeShape('a_b-c'.repeat(5))).toBe(true)
-    for (const v of ['short', 'has space has space', 'x'.repeat(129), 'ñ'.repeat(20), '', null, 7]) expect(isInviteCodeShape(v)).toBe(false)
+  it('invitation codes: exactly 32 lowercase hex characters', () => {
+    expect(isInviteCodeShape('0123456789abcdef0123456789abcdef')).toBe(true)
+    for (const v of ['0123456789ABCDEF0123456789ABCDEF', '0123456789abcdef0123456789abcde', '0123456789abcdef0123456789abcdef0', 'AbCdEfGhIjKlMnOpQrStUv_-', 'g123456789abcdef0123456789abcdef','short', 'has space has space', 'x'.repeat(129), 'ñ'.repeat(20), '', null, 7]) expect(isInviteCodeShape(v)).toBe(false)
   })
 })
 

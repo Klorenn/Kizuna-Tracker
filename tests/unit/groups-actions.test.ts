@@ -7,7 +7,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222'
 const G = '33333333-3333-4333-8333-333333333333'
 const NEW_HABIT = '55555555-5555-4555-8555-555555555555'
 const OWN_HABIT = '66666666-6666-4666-8666-666666666666'
-const CODE = 'AbCdEfGhIjKlMnOpQrStUv_-'
+const CODE = '0123456789abcdef0123456789abcdef'
 
 const rpc = vi.fn()
 const createHabit = vi.fn()
@@ -367,6 +367,46 @@ describe('create', () => {
   })
 })
 
+describe('an exception inside create/join is the generic retry copy, after the same re-read and clean-up decision', () => {
+  it('createHabit throwing: generic copy, no group call', async () => {
+    createHabit.mockRejectedValue(new Error('cookies'))
+    await expect(actions.create(draft())).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('the group call throwing after the habit exists: re-reads, and a membership with that habit is a success', async () => {
+    answers({ create_group: () => { throw new Error('socket') }, my_groups: { data: [summary()] } })
+    await expect(actions.create(draft())).resolves.toEqual({ ok: true, data: { id: G } })
+    expect(log).not.toContain('habits.delete')
+  })
+
+  it('the group call throwing with no membership: deletes the habit created here (scoped) and returns the generic copy', async () => {
+    answers({ join_group: () => { throw new Error('socket') }, my_groups: { data: [] } })
+    await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(deleteEqs).toEqual([['id', NEW_HABIT], ['user_id', ME]])
+  })
+
+  it('the re-read throwing deletes nothing and says which habit exists', async () => {
+    answers({ create_group: () => { throw new Error('socket') }, my_groups: () => { throw new Error('socket') } })
+    const r = await actions.create(draft())
+    expect(!r.ok && r.error).toContain('Creamos «Ir al gym» en tus hábitos')
+    expect(log).not.toContain('habits.delete')
+  })
+
+  it('the delete throwing says the habit stays', async () => {
+    answers({ create_group: { data: null, error: { message: 'group_limit' } }, my_groups: { data: [] } })
+    deleteResult = new Proxy({}, { get: () => { throw new Error('boom') } }) as Result
+    const r = await actions.create(draft())
+    expect(!r.ok && r.error).toBe('Ya estás en 10 grupos. Sal de uno para entrar a otro. Creamos «Ir al gym» en tus hábitos; puedes archivarlo.')
+  })
+
+  it('a chosen habit and a throwing call: generic copy, nothing deleted', async () => {
+    answers({ create_group: () => { throw new Error('socket') } })
+    await expect(actions.create(draft({ habit: { kind: 'habit', habitId: OWN_HABIT } }))).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(log).not.toContain('habits.delete')
+  })
+})
+
 // join -----------------------------------------------------------------------------------------------------------------
 
 describe('join', () => {
@@ -500,7 +540,7 @@ describe('update', () => {
   it('sends the trimmed fields and revalidates the group and the list', async () => {
     await expect(actions.update(G, fields)).resolves.toEqual({ ok: true, data: undefined })
     expect(rpc).toHaveBeenCalledWith('update_group', { p_group_id: G, p_name: 'Gym', p_icon: 'barbell', p_color: 'rosa', p_description: null })
-    expect(revalidated()).toEqual(['/grupos', `/grupos/${G}`])
+    expect(revalidated()).toEqual(['/', '/grupos', `/grupos/${G}`])
   })
 
   it('validates id and fields first', async () => {
@@ -564,7 +604,7 @@ describe('archive', () => {
   it('archives and revalidates the group and the list', async () => {
     await expect(actions.archive(G)).resolves.toEqual({ ok: true, data: undefined })
     expect(rpc).toHaveBeenCalledWith('archive_group', { p_group_id: G })
-    expect(revalidated()).toEqual(['/grupos', `/grupos/${G}`])
+    expect(revalidated()).toEqual(['/', '/grupos', `/grupos/${G}`])
   })
   it('validates and maps', async () => {
     await expect(actions.archive('nope')).resolves.toEqual({ ok: false, error: 'No encontramos ese grupo.' })
@@ -639,7 +679,7 @@ describe('removeMember', () => {
     expect(revalidated()).toEqual(['/grupos', `/grupos/${G}`])
   })
   it('refuses to remove oneself without asking the database', async () => {
-    await expect(actions.removeMember(G, ME)).resolves.toEqual({ ok: false, error: 'Para salir usa «Salir del grupo».' })
+    await expect(actions.removeMember(G, ME)).resolves.toEqual({ ok: false, error: 'Para salir, usa «Salir del grupo».' })
     expect(rpc).not.toHaveBeenCalled()
   })
   it('validates ids and maps errors', async () => {

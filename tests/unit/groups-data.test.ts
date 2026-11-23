@@ -9,7 +9,7 @@ const data = await import('@/lib/groups-data')
 const G = '11111111-1111-4111-8111-111111111111'
 const H = '33333333-3333-4333-8333-333333333333'
 const U = '22222222-2222-4222-8222-222222222222'
-const CODE = 'AbCdEfGhIjKlMnOpQrStUv_-'
+const CODE = '0123456789abcdef0123456789abcdef'
 
 beforeEach(() => {
   rpc.mockReset()
@@ -78,6 +78,20 @@ describe('loadMyGroups', () => {
     expect(await data.loadMyGroups()).toEqual({ ok: true, data: [] })
   })
 
+  it('a group whose habit was deleted (archived group, my_habit_id null) loads with myHabitId null and does not break the list', async () => {
+    rpc.mockResolvedValue({ data: [myRow(), myRow({ id: H, my_habit_id: null, archived: true })], error: null })
+    const r = await data.loadMyGroups()
+    if (!r.ok) throw new Error('expected ok')
+    expect(r.data).toHaveLength(2)
+    expect(r.data[1]).toMatchObject({ id: H, myHabitId: null, archived: true })
+    expect(r.data[0].myHabitId).toBe(H)
+  })
+
+  it('a my_habit_id of the wrong type is still malformed', async () => {
+    rpc.mockResolvedValue({ data: [myRow({ my_habit_id: 7 })], error: null })
+    expect((await data.loadMyGroups()).ok).toBe(false)
+  })
+
   it('a failed call is an error state, never an empty list', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'boom: secret detail' } })
     const r = await data.loadMyGroups()
@@ -136,13 +150,16 @@ const detailRow = (over: Record<string, unknown> = {}) => ({
   my_habit_id: H,
   streak: 0,
   member_count: 7,
-  archived: false,
+  timezone: 'America/Santiago',
+  archived_at: null,
   ...over,
 })
+/** group_detail is `returns table`: always a set. */
+const detailRows = (over: Record<string, unknown> = {}) => [detailRow(over)]
 
 describe('loadGroupDetail', () => {
   it('maps a row without pending change', async () => {
-    rpc.mockResolvedValue({ data: detailRow(), error: null })
+    rpc.mockResolvedValue({ data: detailRows(), error: null })
     const r = await data.loadGroupDetail(G)
     expect(rpc).toHaveBeenCalledWith('group_detail', { p_group_id: G })
     expect(r).toEqual({
@@ -164,15 +181,32 @@ describe('loadGroupDetail', () => {
     })
   })
 
-  it('accepts a one-element set and a `role` column', async () => {
-    rpc.mockResolvedValue({ data: [detailRow({ my_role: undefined, role: 'admin' })], error: null })
+  it('reads my_role exactly; a row without it is malformed', async () => {
+    rpc.mockResolvedValue({ data: detailRows({ my_role: 'admin' }), error: null })
     const r = await data.loadGroupDetail(G)
     expect(r.ok && r.data.role).toBe('admin')
+    rpc.mockResolvedValue({ data: detailRows({ my_role: undefined, role: 'admin' }), error: null })
+    expect((await data.loadGroupDetail(G)).ok).toBe(false)
+  })
+
+  it('archived_at set means archived, null means live (the real column of group_detail)', async () => {
+    rpc.mockResolvedValue({ data: detailRows({ archived_at: '2026-11-20T10:00:00+00:00' }), error: null })
+    const archived = await data.loadGroupDetail(G)
+    expect(archived.ok && archived.data.archived).toBe(true)
+    rpc.mockResolvedValue({ data: detailRows({ archived_at: null }), error: null })
+    const live = await data.loadGroupDetail(G)
+    expect(live.ok && live.data.archived).toBe(false)
+  })
+
+  it('a group whose habit was deleted (my_habit_id null) still loads, with myHabitId null', async () => {
+    rpc.mockResolvedValue({ data: detailRows({ my_habit_id: null, archived_at: '2026-11-20T10:00:00+00:00' }), error: null })
+    const r = await data.loadGroupDetail(G)
+    expect(r.ok && r.data.myHabitId).toBeNull()
   })
 
   it('maps the pending change', async () => {
     rpc.mockResolvedValue({
-      data: detailRow({
+      data: detailRows({
         next_commitment_name: 'Correr',
         next_commitment_icon: 'sneaker-move',
         next_target_per_week: 4,
@@ -191,11 +225,12 @@ describe('loadGroupDetail', () => {
     })
   })
 
-  it('a null description stays null, a missing `archived` is false', async () => {
-    rpc.mockResolvedValue({ data: detailRow({ description: null, archived: undefined }), error: null })
+  it('a null description stays null; an unreadable archived_at is malformed', async () => {
+    rpc.mockResolvedValue({ data: detailRows({ description: null }), error: null })
     const r = await data.loadGroupDetail(G)
     expect(r.ok && r.data.description).toBeNull()
-    expect(r.ok && r.data.archived).toBe(false)
+    rpc.mockResolvedValue({ data: detailRows({ archived_at: 5 }), error: null })
+    expect((await data.loadGroupDetail(G)).ok).toBe(false)
   })
 
   it('group_not_found and not_group_member are the not-found state', async () => {
@@ -224,7 +259,7 @@ describe('loadGroupDetail', () => {
   })
 
   it('a half-pending change (some next_ columns missing) is malformed', async () => {
-    rpc.mockResolvedValue({ data: detailRow({ next_effective_from: '2026-11-30', next_commitment_name: null }), error: null })
+    rpc.mockResolvedValue({ data: detailRows({ next_effective_from: '2026-11-30', next_commitment_name: null }), error: null })
     expect((await data.loadGroupDetail(G)).ok).toBe(false)
   })
 })

@@ -39,7 +39,6 @@ import { siteOrigin } from "@/lib/site-url";
 
 const NOT_FOUND = "No encontramos ese grupo.";
 const LINK_GONE = "Este enlace ya no sirve. Pide uno nuevo.";
-const LEAVE_INSTEAD = "Para salir usa «Salir del grupo».";
 
 const fail = (error: string) => ({ ok: false as const, error });
 
@@ -80,39 +79,63 @@ async function enter(
   const { supabase, userId } = auth;
 
   if (choice.kind === "habit") {
-    const r = await link(choice.habitId);
-    if (r.error) return fail(groupErrorCopy(r.error.message));
-    return isUuid(r.data) ? { ok: true, data: { id: r.data } } : fail(GROUP_GENERIC_COPY);
+    try {
+      const r = await link(choice.habitId);
+      if (r.error) return fail(groupErrorCopy(r.error.message));
+      return isUuid(r.data) ? { ok: true, data: { id: r.data } } : fail(GROUP_GENERIC_COPY);
+    } catch {
+      return fail(GROUP_GENERIC_COPY);
+    }
   }
 
   const draft = habitDraftFromCommitment(commitment, color);
-  const created = await createHabit(draft);
+  let created: Awaited<ReturnType<typeof createHabit>>;
+  try {
+    created = await createHabit(draft);
+  } catch {
+    return fail(GROUP_GENERIC_COPY);
+  }
   if (!created.ok) return fail(created.error);
 
-  const r = await link(created.id);
-  if (!r.error && isUuid(r.data)) return { ok: true, data: { id: r.data } };
-  const reason = r.error ? groupErrorCopy(r.error.message) : GROUP_GENERIC_COPY;
+  // an exception is an unknown outcome: it takes the same re-read and clean-up decision as an error answer
+  let reason = GROUP_GENERIC_COPY;
+  try {
+    const r = await link(created.id);
+    if (!r.error && isUuid(r.data)) return { ok: true, data: { id: r.data } };
+    if (r.error) reason = groupErrorCopy(r.error.message);
+  } catch {
+    // keep the generic reason
+  }
   const name = draft.name.trim();
 
   // the response may be lost while the write committed: ask the caller's own groups before judging
-  const again = await rpc.myGroups(supabase);
-  if (again.error || !Array.isArray(again.data)) {
+  let again: Awaited<ReturnType<typeof rpc.myGroups>> | null = null;
+  try {
+    again = await rpc.myGroups(supabase);
+  } catch {
+    again = null;
+  }
+  if (!again || again.error || !Array.isArray(again.data)) {
     return fail(`No pudimos confirmar el grupo. Creamos «${name}» en tus hábitos; revisa Grupos antes de reintentar.`);
   }
   const linked = again.data.find((g) => g && g.my_habit_id === created.id && isUuid(g.id));
   if (linked) return { ok: true, data: { id: linked.id } };
 
   // only the habit created above, only while it is still the caller's: never anything else
-  const { data: removed, error: removeError } = await supabase
-    .from("habits")
-    .delete()
-    .eq("id", created.id)
-    .eq("user_id", userId)
-    .select("id");
-  revalidatePath("/");
-  if (removeError || !removed || removed.length === 0) {
-    return fail(`${reason} Creamos «${name}» en tus hábitos; puedes archivarlo.`);
+  let removedOk = false;
+  try {
+    const { data: removed, error: removeError } = await supabase
+      .from("habits")
+      .delete()
+      .eq("id", created.id)
+      .eq("user_id", userId)
+      .select("id");
+    removedOk = !removeError && !!removed && removed.length > 0;
+  } catch {
+    removedOk = false;
   }
+  revalidatePath("/");
+  if (!removedOk) return fail(`${reason} Creamos «${name}» en tus hábitos; puedes archivarlo.`);
   return fail(reason);
 }
 
@@ -165,6 +188,7 @@ export async function update(
   if (error) return fail(groupErrorCopy(error.message));
   revalidatePath("/grupos");
   revalidatePath(`/grupos/${groupId}`);
+  revalidatePath("/"); // the Hoy chip shows the group's name
   return { ok: true, data: undefined };
 }
 
@@ -192,6 +216,7 @@ export async function archive(groupId: string): ReturnType<GroupActions["archive
   if (error) return fail(groupErrorCopy(error.message));
   revalidatePath("/grupos");
   revalidatePath(`/grupos/${groupId}`);
+  revalidatePath("/"); // an archived group's chip leaves Hoy
   return { ok: true, data: undefined };
 }
 
@@ -253,7 +278,7 @@ export async function removeMember(groupId: string, userId: string): ReturnType<
   if (!auth.ok) return fail(auth.error);
   if (!isUuid(groupId)) return fail(NOT_FOUND);
   if (!isUuid(userId)) return fail(GROUP_GENERIC_COPY);
-  if (userId === auth.userId) return fail(LEAVE_INSTEAD);
+  if (userId === auth.userId) return fail(groupErrorCopy("cannot_remove_self"));
   const { error } = await rpc.removeGroupMember(auth.supabase, groupId, userId);
   if (error) return fail(groupErrorCopy(error.message));
   revalidatePath("/grupos"); // the member count on the card
