@@ -58,6 +58,8 @@ describe('habit colors', () => {
       walk: 'salvia',
       sleep: 'indigo',
       eat_well: 'oliva',
+      watch: 'rosa',
+      run: 'durazno',
     })
     for (const key of PRESET_KEYS) expect(presetDraft(key).color).toBe(PRESET_COLOR[key])
   })

@@ -30,8 +30,8 @@ describe('presets', () => {
   })
 
   it('has 26 unique icons, laptop and desk for study habits', () => {
-    expect(HABIT_ICONS).toHaveLength(26)
-    expect(new Set(HABIT_ICONS).size).toBe(26)
+    expect(HABIT_ICONS).toHaveLength(28)
+    expect(new Set(HABIT_ICONS).size).toBe(28)
     expect(HABIT_ICONS).toContain('laptop')
     expect(HABIT_ICONS).toContain('desk')
   })
@@ -88,7 +88,7 @@ describe('presets: detailed log type', () => {
   it('maps log types to the presets', () => {
     expect(PRESETS.read.logType).toBe('reading')
     expect(PRESETS.gym.logType).toBe('workout')
-    expect(PRESETS.water.logType).toBe('none')
+    expect(PRESETS.water.logType).toBe('quantity')
     expect(customDraft().logType).toBe('none')
   })
 
@@ -97,5 +97,46 @@ describe('presets: detailed log type', () => {
       ok: false,
       error: 'Un hábito con pasos no lleva registro detallado.',
     })
+  })
+})
+
+describe('presets (v4)', () => {
+  it('ships the new presets and log types', () => {
+    expect(PRESETS.study.logType).toBe('time')
+    expect(PRESETS.watch).toMatchObject({ name: 'Series y películas', icon: 'television', logType: 'watch' })
+    expect(PRESETS.run).toMatchObject({ name: 'Trotar', icon: 'sneaker-move', logType: 'cardio', frequency: { type: 'weekly', target: 3 } })
+    expect(PRESETS.water.quantity).toEqual({ unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 })
+    expect(PRESETS.walk.quantity?.target).toBe(8000)
+    expect(PRESETS.walk.logType).toBe('quantity')
+    expect(customDraft().quantity).toBeNull()
+    expect(HABIT_ICONS).toContain('television')
+    expect(HABIT_ICONS).toContain('timer')
+  })
+  it('copies the quantity config into a draft', () => {
+    const d = presetDraft('water')
+    expect(d.quantity).toEqual(PRESETS.water.quantity)
+    expect(d.quantity).not.toBe(PRESETS.water.quantity)
+  })
+  it('refuses photo with quantity or time, and quantity without a goal', () => {
+    expect(validateHabitDraft({ ...presetDraft('water'), requiresPhoto: true })).toEqual({
+      ok: false,
+      error: 'Un hábito con foto no lleva tiempo ni cantidad.',
+    })
+    expect(validateHabitDraft({ ...presetDraft('study'), requiresPhoto: true })).toEqual({
+      ok: false,
+      error: 'Un hábito con foto no lleva tiempo ni cantidad.',
+    })
+    expect(validateHabitDraft({ ...presetDraft('water'), quantity: null })).toEqual({
+      ok: false,
+      error: 'Configura la meta diaria.',
+    })
+    const bad = { ...(PRESETS.water.quantity as NonNullable<typeof PRESETS.water.quantity>), target: 0 }
+    expect(validateHabitDraft({ ...presetDraft('water'), quantity: bad })).toEqual({
+      ok: false,
+      error: 'La meta debe ser mayor que 0.',
+    })
+    for (const key of ['water', 'walk', 'study', 'watch', 'run'] as const) {
+      expect(validateHabitDraft(presetDraft(key))).toEqual({ ok: true })
+    }
   })
 })
