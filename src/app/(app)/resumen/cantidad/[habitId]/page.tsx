@@ -43,21 +43,13 @@ export default async function CantidadPage({
   const ctx = await loadLogsContext();
   const month = resolveMonth(mes, ctx.current);
   const range = parseRange(rango);
-  // archived habits keep their sums in Resumen: no `archived_at` filter
-  const [{ data: habit }, { entries, doneDates }] = await Promise.all([
-    ctx.supabase
-      .from("habits")
-      .select(
-        "id,name,color,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
-      )
-      .eq("id", habitId)
-      .eq("user_id", ctx.userId)
-      .maybeSingle(),
-    loadQuantityData(ctx.supabase, ctx.userId, habitId, dataFrom(month, range)),
-  ]);
+  // ownership first (from the context: the user's own habits, archived ones included because
+  // their sums stay in Resumen); only then are the sums read
+  const habit = ctx.logHabits.find((h) => h.id === habitId);
   const config = habit ? quantityConfigOf(habit) : null;
   if (!habit || habit.log_type !== "quantity" || !config) notFound();
   const color = toHabitColor(habit.color);
+  const { entries, doneDates } = await loadQuantityData(ctx.supabase, ctx.userId, habitId, dataFrom(month, range));
 
   const now = monthlyQuantity(entries, doneDates, month, config);
   const prev = monthlyQuantity(entries, doneDates, shiftMonth(month, -1), config);

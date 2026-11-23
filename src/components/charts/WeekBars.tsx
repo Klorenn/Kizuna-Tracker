@@ -27,6 +27,7 @@ export function WeekBars({
     value: Number.isFinite(d.value) ? d.value : 0,
   }));
   const max = Math.max(0, ...rows.map((r) => r.value));
+  if (max === 0) return <p className="text-small text-muted">Sin datos en las semanas de este mes.</p>;
   return (
     <div
       role="img"

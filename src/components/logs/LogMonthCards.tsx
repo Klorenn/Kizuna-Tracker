@@ -8,7 +8,7 @@ export function LogMonthCards({ cards }: { cards: LogCard[] }) {
   return (
     <ul className="grid grid-cols-2 gap-3">
       {cards.map((c) => (
-        <li key={c.key} className="min-w-0">
+        <li key={`${c.key}:${c.href}`} className="min-w-0">
           <Link
             href={c.href}
             aria-label={`${c.label} ${c.value}. ${c.caption}${c.private ? ". Solo tú" : ""}`}

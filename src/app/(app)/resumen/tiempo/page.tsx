@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { dayLabel, monthOf, shiftMonth } from "@/domain/calendar";
-import { toHabitColor } from "@/domain/habit-colors";
+
 import { lastMonths } from "@/domain/logs";
 import { formatDuration, monthlyTime, timeSeries, weeklyTotals } from "@/domain/time";
 import { loadTimeData } from "@/lib/logs-data";
@@ -39,17 +39,8 @@ export default async function TiempoPage({
   const ctx = await loadLogsContext();
   const month = resolveMonth(mes, ctx.current);
   const range = parseRange(rango);
-  const [entries, { data: habitRows }] = await Promise.all([
-    loadTimeData(ctx.supabase, ctx.userId, dataFrom(month, range)),
-    ctx.supabase
-      .from("habits")
-      .select("id,color")
-      .eq("user_id", ctx.userId)
-      .eq("log_type", "time")
-      .order("created_at")
-      .order("id"),
-  ]);
-  const habit = habitRows?.[0] ? { id: habitRows[0].id, color: toHabitColor(habitRows[0].color) } : null;
+  const entries = await loadTimeData(ctx.supabase, ctx.userId, dataFrom(month, range));
+  const habit = ctx.timeHabit;
   const color = colorOf(habit);
 
   const now = monthlyTime(entries, month);

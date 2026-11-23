@@ -16,9 +16,9 @@ import {
   type WorkoutSet,
 } from "@/domain/logs";
 import { QUANTITY_UNITS, type QuantityConfig, type QuantityEntry, type QuantityUnit } from "@/domain/quantity";
-import { formatDuration, type TimeEntry } from "@/domain/time";
+import type { TimeEntry } from "@/domain/time";
 import type { LocalDate } from "@/domain/types";
-import { entryMinutes, episodeLabel, type MediaItem, type MediaKind, type WatchEntry } from "@/domain/watch";
+import { entryMinutes, type MediaItem, type MediaKind, type WatchEntry } from "@/domain/watch";
 import { fetchAll } from "@/lib/paginate";
 import type { createServerClient } from "@/lib/supabase/server";
 
@@ -168,29 +168,9 @@ const toCardioKind = (raw: string): CardioKind =>
   (CARDIO_KINDS as readonly string[]).includes(raw) ? (raw as CardioKind) : "other";
 const localTimeOfDay = (iso: string, tz: string) => format(new TZDate(new Date(iso), tz), "H:mm");
 
-const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
-
-/** "1 h 25 min · Álgebra · 2 pomodoros": the time log of a day in one line. */
-export function timeLine(log: Extract<DayLog, { kind: "time" }>): string {
-  const parts = [formatDuration(log.minutes)];
-  if (log.topic) parts.push(log.topic);
-  if (log.pomodoros > 0) parts.push(plural(log.pomodoros, "pomodoro", "pomodoros"));
-  return parts.join(" · ");
-}
-
-/** "Dark · 3 episodios · T1 E6", "Dune · Completa · 2 h 35 min", "Past Lives · 1 h 10 min". */
-export function watchLine(log: Extract<DayLog, { kind: "watch" }>): string {
-  const parts = [log.title];
-  if (log.mediaKind === "series") {
-    if (log.episodes !== null) parts.push(plural(log.episodes, "episodio", "episodios"));
-    const at = episodeLabel(log.season, log.episodeTo);
-    if (at) parts.push(at);
-    return parts.join(" · ");
-  }
-  if (log.completed) parts.push("Completa");
-  if (log.minutes > 0) parts.push(formatDuration(log.minutes));
-  return parts.join(" · ");
-}
+// The one-line texts live in the pure `log-text` module (client components use them); kept
+// reachable from here for the server code that already imports them.
+export { timeLine, watchLine } from "@/lib/log-text";
 
 const round2 = (x: number) => Math.round(x * 100) / 100;
 const toDayTypes = (raw: string[]): DayType[] => raw.filter((t): t is DayType => (DAY_TYPES as readonly string[]).includes(t));
@@ -476,11 +456,15 @@ export async function loadTimeData(supabase: Supabase, userId: string, from: Loc
   }));
 }
 
-/** Titles (all of them: an entry may point at an old one) and the entries from `from`. */
+/**
+ * Titles (all of them: an entry may point at an old one) and the entries from `from`. With
+ * `habitId` only that habit's entries (the habit detail); without it all of the user's.
+ */
 export async function loadWatchData(
   supabase: Supabase,
   userId: string,
   from: LocalDate,
+  habitId?: string,
 ): Promise<{ media: MediaItem[]; entries: WatchEntry[] }> {
   const [media, rows] = await Promise.all([
     fetchAll<MediaRow>((a, b) =>
@@ -493,9 +477,15 @@ export async function loadWatchData(
         .range(a, b),
     ),
     fetchAll<Omit<WatchRow, "checkin_id">>((a, b) =>
-      supabase
-        .from("watch_entries")
-        .select("media_id,local_date,episodes,season,episode_to,minutes,completed")
+      (habitId
+        ? supabase
+            .from("watch_entries")
+            .select("media_id,local_date,episodes,season,episode_to,minutes,completed")
+            .eq("habit_id", habitId)
+        : supabase
+            .from("watch_entries")
+            .select("media_id,local_date,episodes,season,episode_to,minutes,completed")
+      )
         .eq("user_id", userId)
         .gte("local_date", from)
         .order("local_date")
@@ -515,6 +505,21 @@ export async function loadWatchData(
       completed: r.completed,
     })),
   };
+}
+
+/** Episodes of one series seen since ever (no window): "5 de 26" must not forget old ones. */
+export async function loadSeenEpisodes(supabase: Supabase, userId: string, mediaId: string): Promise<number> {
+  const rows = await fetchAll<{ episodes: number | null }>((a, b) =>
+    supabase
+      .from("watch_entries")
+      .select("episodes")
+      .eq("user_id", userId)
+      .eq("media_id", mediaId)
+      .order("local_date")
+      .order("id")
+      .range(a, b),
+  );
+  return rows.reduce((sum, r) => sum + (r.episodes ?? 0), 0);
 }
 
 /**
@@ -574,8 +579,16 @@ export async function loadQuantityData(
   return all.get(habitId) ?? { entries: [], doneDates: [] };
 }
 
-/** Distance outings from `from`, oldest first. */
-export async function loadCardioData(supabase: Supabase, userId: string, from: LocalDate): Promise<CardioEntry[]> {
+/**
+ * Distance outings from `from`, oldest first. With `habitId` only that habit's outings (the
+ * habit detail); without it every distance habit of the user (the Resumen totals).
+ */
+export async function loadCardioData(
+  supabase: Supabase,
+  userId: string,
+  from: LocalDate,
+  habitId?: string,
+): Promise<CardioEntry[]> {
   const rows = await fetchAll<{
     id: string;
     local_date: LocalDate;
@@ -583,9 +596,10 @@ export async function loadCardioData(supabase: Supabase, userId: string, from: L
     distance_m: number;
     duration_s: number;
   }>((a, b) =>
-    supabase
-      .from("cardio_entries")
-      .select("id,local_date,kind,distance_m,duration_s")
+    (habitId
+      ? supabase.from("cardio_entries").select("id,local_date,kind,distance_m,duration_s").eq("habit_id", habitId)
+      : supabase.from("cardio_entries").select("id,local_date,kind,distance_m,duration_s")
+    )
       .eq("user_id", userId)
       .gte("local_date", from)
       .order("local_date")
@@ -668,7 +682,7 @@ export async function loadLatestWeight(supabase: Supabase, userId: string): Prom
 }
 
 /**
- * The logs of a calendar month, by check-in id. Bounded to the month's dates. `kinds` says
+ * The logs of a calendar month (`byCheckin`: by check-in id). Bounded to the month's dates. `kinds` says
  * which habit types exist: a kind that is absent is never queried, and the books and
  * exercises are only read when there are entries or sets to name (and then only those ids).
  */
@@ -829,8 +843,8 @@ export async function loadMonthLogs(
         ).map(toExerciseRef)
       : [];
   const logs = toDayLogs({ reading, sessions, sets, books, exercises, time, watch, media, cardio });
-  return Object.assign(logs, { quantityByHabitDay });
+  return { byCheckin: logs, quantityByHabitDay };
 }
 
-/** The logs of a month by check-in id, plus the quantity logs by `habitId:date` (no check-in). */
-export type MonthLogs = Map<string, DayLog> & { quantityByHabitDay: Map<string, DayLog> };
+/** The logs of a month by check-in id, and the quantity logs by `habitId:date` (no check-in), as plain fields. */
+export type MonthLogs = { byCheckin: Map<string, DayLog>; quantityByHabitDay: Map<string, DayLog> };

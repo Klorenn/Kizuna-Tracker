@@ -27,6 +27,7 @@ export function WatchProgress({
   media,
   entries,
   todayEntry,
+  seenEpisodes,
 }: {
   habitId: string;
   month: MonthKey;
@@ -35,6 +36,8 @@ export function WatchProgress({
   entries: WatchEntry[];
   /** Today's check-in and whether it already has a title; null without a check-in today. */
   todayEntry: { logged: boolean } | null;
+  /** Episodes of the series in progress seen since ever (the window of `entries` may miss old ones). */
+  seenEpisodes?: number | null;
 }) {
   const prevMonth = shiftMonth(month, -1);
   const prevName = monthTitle(prevMonth).name;
@@ -54,7 +57,12 @@ export function WatchProgress({
           <div className="min-w-0 flex-1">
             <p className="text-small text-muted">Viendo</p>
             <p className="break-words text-body text-ink">
-              {series.title} · <span className="font-mono text-small">{seriesProgress(entries, series)}</span>
+              {series.title} · <span className="font-mono text-small">{seriesProgress(
+                  seenEpisodes == null
+                    ? entries
+                    : [{ date: "", mediaId: series.id, episodes: seenEpisodes, season: null, episodeTo: null, minutes: null, completed: false }],
+                  series,
+                )}</span>
             </p>
           </div>
         </div>

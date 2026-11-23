@@ -7,7 +7,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { dayLabel, monthOf, shiftMonth } from "@/domain/calendar";
-import { toHabitColor } from "@/domain/habit-colors";
+
 import { lastMonths } from "@/domain/logs";
 import { weeklyTotals } from "@/domain/time";
 import { entryMinutes, monthlyWatch, watchSeries } from "@/domain/watch";
@@ -37,17 +37,8 @@ export default async function SeriesPage({
   const ctx = await loadLogsContext();
   const month = resolveMonth(mes, ctx.current);
   const range = parseRange(rango);
-  const [{ media, entries }, { data: habitRows }] = await Promise.all([
-    loadWatchData(ctx.supabase, ctx.userId, dataFrom(month, range)),
-    ctx.supabase
-      .from("habits")
-      .select("id,color")
-      .eq("user_id", ctx.userId)
-      .eq("log_type", "watch")
-      .order("created_at")
-      .order("id"),
-  ]);
-  const habit = habitRows?.[0] ? { id: habitRows[0].id, color: toHabitColor(habitRows[0].color) } : null;
+  const { media, entries } = await loadWatchData(ctx.supabase, ctx.userId, dataFrom(month, range));
+  const habit = ctx.watchHabit;
   const color = colorOf(habit);
 
   const now = monthlyWatch(entries, media, month);

@@ -11,7 +11,7 @@ import { CardioProgress } from "@/components/logs/CardioProgress";
 import { QuantityProgress } from "@/components/logs/QuantityProgress";
 import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
 import { TimeProgress } from "@/components/logs/TimeProgress";
-import { WatchProgress } from "@/components/logs/WatchProgress";
+import { WatchProgress, currentSeries } from "@/components/logs/WatchProgress";
 import { WorkoutProgress } from "@/components/logs/WorkoutProgress";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
@@ -40,6 +40,7 @@ import {
   loadCardioData,
   loadQuantityData,
   loadReadingData,
+  loadSeenEpisodes,
   loadTimeData,
   loadVisitDates,
   loadWatchData,
@@ -181,13 +182,24 @@ export default async function HabitoPage({
         return <TimeProgress habitId={habit.id} month={thisMonth} today={today} entries={entries} todayEntry={entry} />;
       }
       case "watch": {
-        const [{ media, entries }, entry] = await Promise.all([loadWatchData(supabase, user.id, windowStart), todayEntry()]);
+        const [{ media, entries }, entry] = await Promise.all([loadWatchData(supabase, user.id, windowStart, habit.id), todayEntry()]);
+        // episodes seen before the window: ask for the whole history of the series in progress
+        const series = currentSeries(media, entries);
+        const seenEpisodes = series ? await loadSeenEpisodes(supabase, user.id, series.id) : null;
         return (
-          <WatchProgress habitId={habit.id} month={thisMonth} today={today} media={media} entries={entries} todayEntry={entry} />
+          <WatchProgress
+            habitId={habit.id}
+            month={thisMonth}
+            today={today}
+            media={media}
+            entries={entries}
+            todayEntry={entry}
+            seenEpisodes={seenEpisodes}
+          />
         );
       }
       case "cardio": {
-        const [entries, entry] = await Promise.all([loadCardioData(supabase, user.id, windowStart), todayEntry()]);
+        const [entries, entry] = await Promise.all([loadCardioData(supabase, user.id, windowStart, habit.id), todayEntry()]);
         return <CardioProgress habitId={habit.id} month={thisMonth} today={today} entries={entries} todayEntry={entry} />;
       }
       case "quantity": {

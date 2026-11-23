@@ -130,7 +130,7 @@ export async function loadMonthDays(
     dates,
     today,
     timezone,
-    logs,
+    logs: logs?.byCheckin,
     quantityByHabitDay: logs?.quantityByHabitDay,
   });
 }

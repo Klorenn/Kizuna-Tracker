@@ -163,6 +163,7 @@ export function DaySheet({
                         logType={habit.logType}
                         date={date}
                         isToday={date === today}
+                        hasCheckin={e.status === "done" || e.status === "rejected"}
                       />
                     ) : null}
                     {e.photos.length > 0 ? (

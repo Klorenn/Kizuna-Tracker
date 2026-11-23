@@ -14,23 +14,13 @@ import { CARDIO_KIND_LABEL, cardioSummary } from "@/domain/cardio";
 import { bookProgress, formatKg, logSubtitle, type LogType } from "@/domain/logs";
 import { formatAmount, progressLabel } from "@/domain/quantity";
 import type { LocalDate } from "@/domain/types";
-import { timeLine, watchLine, type DayLog } from "@/lib/logs-data";
+import type { DayLog } from "@/lib/logs-data";
+import { logEntryHref, timeLine, watchLine } from "@/lib/log-text";
 
-/** The entry screens of each kind (quantity has none: its sums are added from Hoy). */
-const ENTRY_PATH = {
-  reading: "lectura",
-  workout: "entrenamiento",
-  time: "tiempo",
-  watch: "visto",
-  cardio: "distancia",
-} as const;
-
-export type EntryLogType = keyof typeof ENTRY_PATH;
-
-/** Where to add or edit the log of a habit on a day (pages owned by the entry screens). */
-export function logEntryHref(habitId: string, logType: EntryLogType, date: LocalDate): string {
-  return `/habitos/${habitId}/${ENTRY_PATH[logType]}?fecha=${date}`;
-}
+// Re-exported so the other screens keep importing it from here. The text helpers live in the
+// pure `log-text` module: this client chunk must not pull the loaders of `logs-data`.
+export { logEntryHref };
+export type { EntryLogType } from "@/lib/log-text";
 
 const setText = (s: { reps: number; kg: number }) => `${s.reps} × ${formatKg(s.kg)}`;
 
@@ -47,6 +37,7 @@ export function DayLogDetail({
   logType,
   date,
   isToday = false,
+  hasCheckin = false,
 }: {
   log: DayLog | null;
   habitId: string;
@@ -54,6 +45,8 @@ export function DayLogDetail({
   date: LocalDate;
   /** Quantity sums are only edited from Hoy: on today the sheet points there. */
   isToday?: boolean;
+  /** The day already has its check-in (the goal of that day was met). */
+  hasCheckin?: boolean;
 }) {
   const action =
     logType === "quantity" ? (
@@ -125,15 +118,21 @@ export function DayLogDetail({
 
   if (log.kind === "quantity") {
     const pct = log.target > 0 ? Math.min(100, Math.round((log.total / log.target) * 100)) : 0;
+    // The goal is today's: a past day that already has its check-in shows only what was drunk.
+    const againstGoal = isToday || !hasCheckin;
     return (
       <div className="flex flex-col gap-1.5">
         <p className={lineClass}>
           <Drop size={16} weight="light" aria-hidden className="shrink-0" />
-          <span className="font-mono">{progressLabel(log.total, log.config)}</span>
+          <span className="font-mono">
+            {againstGoal ? progressLabel(log.total, log.config) : formatAmount(log.total, log.config)}
+          </span>
         </p>
-        <div aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-field">
-          <div className="h-full rounded-full bg-(--habit)" style={{ width: `${pct}%` }} />
-        </div>
+        {againstGoal ? (
+          <div aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-field">
+            <div className="h-full rounded-full bg-(--habit)" style={{ width: `${pct}%` }} />
+          </div>
+        ) : null}
         <ul aria-label="Sumas del día" className="flex flex-col gap-0.5">
           {log.entries.map((e, i) => (
             <li key={`${e.time}-${i}`} className="flex items-baseline gap-2 text-small">

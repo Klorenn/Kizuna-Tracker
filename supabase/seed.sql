@@ -278,19 +278,22 @@ select v.habit_id, 'a0000000-0000-0000-0000-00000000000a', v.local_date,
             else now() end
 from seed_v4_dates d,
 lateral (values
-  -- Estudiar: four days last month, five this month (today included)
-  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 4), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 11),
-  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 18), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 24),
+  -- Dates are valid and never collide on any day of the year: last-month days are m1 + 2..13 (a
+  -- month has at least 28 days, so they are always before today - 13), this-month days are
+  -- today - 0..13, and each habit uses every date once.
+  -- Estudiar: four days last month, five recent days (today included)
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 2), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 6),
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 10), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 13),
   ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 13), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 9),
   ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 5), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 2),
   ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today),
-  -- Series y películas: Dark in pieces, Past Lives last month, Dune this month
-  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 6), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 9),
-  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 20), ('b0000000-0000-0000-0000-0000000000c2'::uuid, least(d.m0 + 2, d.today)),
-  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today - 4), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today),
-  -- Trotar: four outings last month, today, and two more this month
-  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 2), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 8),
-  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 14), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 22),
+  -- Series y películas: Dark in pieces, Past Lives last month, Dune finished today
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 4), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 9),
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 13), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today - 5),
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today - 1), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today),
+  -- Trotar: four outings last month, today, and two more recent ones
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 2), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 6),
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 10), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 13),
   ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today - 8), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today - 3),
   ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today)
 ) as v (habit_id, local_date)
@@ -302,7 +305,7 @@ insert into public.time_entries (user_id, habit_id, checkin_id, local_date, minu
 select c.user_id, c.habit_id, c.id, c.local_date, v.minutes, v.topic, v.pomodoros
 from seed_v4_dates d,
 lateral (values
-  (d.m1 + 4, 90, 'Cálculo', 0), (d.m1 + 11, 120, 'Álgebra', 4), (d.m1 + 18, 45, null::text, 0), (d.m1 + 24, 75, 'Física', 3),
+  (d.m1 + 2, 90, 'Cálculo', 0), (d.m1 + 6, 120, 'Álgebra', 4), (d.m1 + 10, 45, null::text, 0), (d.m1 + 13, 75, 'Física', 3),
   (d.today - 13, 60, 'Álgebra', 2), (d.today - 9, 100, 'Cálculo', 4), (d.today - 5, 50, null, 0),
   (d.today - 2, 135, 'Física', 5), (d.today, 85, 'Álgebra', 2)
 ) as v (local_date, minutes, topic, pomodoros)
@@ -312,7 +315,7 @@ on conflict (checkin_id) do nothing;
 
 -- Two focus blocks of 25 min (the Pomodoro receipts behind today's 2 pomodoros).
 insert into public.pomodoro_blocks (block_id, user_id, habit_id, checkin_id, local_date, minutes)
-select md5('seed-pomodoro-' || n)::uuid, c.user_id, c.habit_id, c.id, c.local_date, 25
+select md5('seed-pomodoro-' || c.local_date || '-' || n)::uuid, c.user_id, c.habit_id, c.id, c.local_date, 25
 from seed_v4_dates d
 join public.checkins c on c.habit_id = 'b0000000-0000-0000-0000-0000000000c1' and c.local_date = d.today,
 generate_series(1, 2) as n
@@ -324,7 +327,7 @@ select v.id, 'a0000000-0000-0000-0000-00000000000a', v.title, v.kind, v.seasons,
 from seed_v4_dates d,
 lateral (values
   ('e0000000-0000-0000-0000-0000000000d1'::uuid, 'Dark', 'series', 3, 26, null::int, 'watching', null::date),
-  ('e0000000-0000-0000-0000-0000000000d2'::uuid, 'Dune', 'movie', null, null, 155, 'finished', least(d.m0 + 2, d.today)),
+  ('e0000000-0000-0000-0000-0000000000d2'::uuid, 'Dune', 'movie', null, null, 155, 'finished', d.today),
   ('e0000000-0000-0000-0000-0000000000d3'::uuid, 'Past Lives', 'movie', null, null, 106, 'finished', d.m1 + 9)
 ) as v (id, title, kind, seasons, episodes, runtime, status, finished_on)
 where exists (select 1 from public.profiles p where p.id = 'a0000000-0000-0000-0000-00000000000a')
@@ -335,12 +338,12 @@ insert into public.watch_entries (user_id, habit_id, checkin_id, media_id, local
 select c.user_id, c.habit_id, c.id, v.media_id, c.local_date, v.episodes, v.season, v.episode_to, null, v.completed
 from seed_v4_dates d,
 lateral (values
-  (d.m1 + 6, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 2, 1, 2, false),
+  (d.m1 + 4, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 2, 1, 2, false),
   (d.m1 + 9, 'e0000000-0000-0000-0000-0000000000d3'::uuid, null::int, null::int, null::int, true),
-  (d.m1 + 20, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 3, false),
-  (least(d.m0 + 2, d.today), 'e0000000-0000-0000-0000-0000000000d2'::uuid, null, null, null, true),
-  (d.today - 4, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 4, false),
-  (d.today, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 5, false)
+  (d.m1 + 13, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 3, false),
+  (d.today - 5, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 4, false),
+  (d.today - 1, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 5, false),
+  (d.today, 'e0000000-0000-0000-0000-0000000000d2'::uuid, null, null, null, true)
 ) as v (local_date, media_id, episodes, season, episode_to, completed)
 join public.checkins c
   on c.habit_id = 'b0000000-0000-0000-0000-0000000000c2' and c.local_date = v.local_date
@@ -356,7 +359,7 @@ select c.user_id, c.habit_id, c.id, c.local_date, 'run', v.distance_m, v.duratio
             else now() end
 from seed_v4_dates d,
 lateral (values
-  (d.m1 + 2, 5000, 1710), (d.m1 + 8, 8000, 2960), (d.m1 + 14, 3000, 1080), (d.m1 + 22, 10000, 3480),
+  (d.m1 + 2, 5000, 1710), (d.m1 + 6, 8000, 2960), (d.m1 + 10, 3000, 1080), (d.m1 + 13, 10000, 3480),
   (d.today - 8, 10000, 3300), (d.today - 3, 7000, 2300), (d.today, 5200, 1780)
 ) as v (local_date, distance_m, duration_s)
 join public.checkins c
@@ -373,8 +376,8 @@ from seed_v4_dates d,
 lateral (values
   (d.today, 5),
   (d.today - 1, 8), (d.today - 2, 8), (d.today - 3, 8), (d.today - 4, 8),
-  (d.today - 6, 5), (d.today - 9, 6), (d.today - 12, 9), (d.today - 15, 7), (d.today - 19, 8),
-  (d.m1 + 3, 8), (d.m1 + 4, 7), (d.m1 + 10, 8), (d.m1 + 17, 6), (d.m1 + 24, 8)
+  (d.today - 6, 5), (d.today - 9, 6), (d.today - 12, 9),
+  (d.m1 + 3, 8), (d.m1 + 4, 7), (d.m1 + 10, 8), (d.m1 + 12, 6)
 ) as v (local_date, sums),
 generate_series(0, 8) as n
 where n < v.sums
@@ -384,9 +387,8 @@ on conflict (id) do nothing;
 -- The check-in of a quantity habit exists only on days that reached 2.000 ml (8 sums or more).
 insert into public.checkins (habit_id, user_id, local_date, created_at)
 select e.habit_id, e.user_id, e.local_date,
-       case when e.local_date < d.today
-            then (e.local_date + time '18:00') at time zone 'America/Santiago'
-            else now() end
+       -- the moment the goal was reached: the last sum of the day (today's would be now)
+       case when e.local_date < d.today then max(e.created_at) else now() end
 from seed_v4_dates d, public.quantity_entries e
 where e.habit_id = 'b0000000-0000-0000-0000-0000000000c3'
 group by e.habit_id, e.user_id, e.local_date, d.today

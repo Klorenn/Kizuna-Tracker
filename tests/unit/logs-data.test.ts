@@ -9,6 +9,7 @@ import {
   loadLatestWeight,
   loadMonthLogs,
   loadQuantityData,
+  loadSeenEpisodes,
   loadTimeData,
   loadWatchData,
   quantityConfigOf,
@@ -205,7 +206,7 @@ describe('loaders sin consultas de más', () => {
   test('loadMonthLogs sin hábitos de lectura ni entrenamiento no consulta nada', async () => {
     const { client, ranges } = fakeClient(tables)
     const logs = await loadMonthLogs(client as never, 'u1', range, { reading: false, workout: false })
-    expect(logs.size).toBe(0)
+    expect(logs.byCheckin.size).toBe(0)
     expect(Object.keys(ranges)).toEqual([])
   })
 
@@ -233,7 +234,7 @@ describe('loaders sin consultas de más', () => {
       ],
     })
     const logs = await loadMonthLogs(client as never, 'u1', range, { reading: true, workout: false })
-    expect(logs.get('c1')).toMatchObject({ kind: 'reading', bookTitle: 'Dune', pages: 8 })
+    expect(logs.byCheckin.get('c1')).toMatchObject({ kind: 'reading', bookTitle: 'Dune', pages: 8 })
     expect(ranges.books).toHaveLength(1)
   })
 
@@ -413,6 +414,45 @@ describe('loaders v4', () => {
     await expect(loadCardioData(client as never, 'u1', '2025-11-01')).resolves.toEqual([
       { id: 'k1', date: '2026-11-22', kind: 'run', distanceM: 5200, durationS: 1780 },
     ])
+  })
+})
+
+describe('fix round 1: filtros por hábito, historial y forma del resultado', () => {
+  test('loadCardioData y loadWatchData con habitId solo traen las filas de ese hábito', async () => {
+    const { client } = fakeClient({
+      cardio_entries: [
+        { id: 'k1', user_id: 'u1', habit_id: 'ha', local_date: '2026-11-02', kind: 'run', distance_m: 5000, duration_s: 1800 },
+        { id: 'k2', user_id: 'u1', habit_id: 'hb', local_date: '2026-11-03', kind: 'bike', distance_m: 20000, duration_s: 3600 },
+      ],
+      media_items: [],
+      watch_entries: [
+        { id: 'w1', user_id: 'u1', habit_id: 'ha', media_id: 'm1', local_date: '2026-11-02', episodes: 2, season: null, episode_to: null, minutes: null, completed: false },
+        { id: 'w2', user_id: 'u1', habit_id: 'hb', media_id: 'm1', local_date: '2026-11-03', episodes: 1, season: null, episode_to: null, minutes: null, completed: false },
+      ],
+    })
+    expect((await loadCardioData(client as never, 'u1', '2025-11-01', 'ha')).map((e) => e.id)).toEqual(['k1'])
+    expect((await loadCardioData(client as never, 'u1', '2025-11-01')).map((e) => e.id)).toEqual(['k1', 'k2'])
+    expect((await loadWatchData(client as never, 'u1', '2025-11-01', 'hb')).entries.map((e) => e.episodes)).toEqual([1])
+    expect((await loadWatchData(client as never, 'u1', '2025-11-01')).entries).toHaveLength(2)
+  })
+
+  test('loadSeenEpisodes suma todos los episodios de la serie, sin ventana', async () => {
+    const { client } = fakeClient({
+      watch_entries: [
+        { id: 'w0', user_id: 'u1', media_id: 'm1', local_date: '2024-01-05', episodes: 3, habit_id: 'h' },
+        { id: 'w1', user_id: 'u1', media_id: 'm1', local_date: '2026-11-02', episodes: 2, habit_id: 'h' },
+        { id: 'w2', user_id: 'u1', media_id: 'm2', local_date: '2026-11-02', episodes: 9, habit_id: 'h' },
+      ],
+    })
+    await expect(loadSeenEpisodes(client as never, 'u1', 'm1')).resolves.toBe(5)
+  })
+
+  test('loadMonthLogs devuelve campos planos: byCheckin y quantityByHabitDay', async () => {
+    const { client } = fakeClient({ time_entries: [{ id: 't', user_id: 'u1', checkin_id: 'c1', local_date: '2026-11-03', minutes: 30, topic: null, pomodoros: 0 }] })
+    const logs = await loadMonthLogs(client as never, 'u1', { first: '2026-11-01', until: '2026-11-22' }, { reading: false, workout: false, time: true })
+    expect(logs.byCheckin.get('c1')).toMatchObject({ kind: 'time', minutes: 30 })
+    expect(logs.quantityByHabitDay).toBeInstanceOf(Map)
+    expect({ ...logs }).toHaveProperty('quantityByHabitDay')
   })
 })
 

@@ -17,7 +17,7 @@ import {
   monthlyCardio,
   paceTrend,
 } from "@/domain/cardio";
-import { toHabitColor } from "@/domain/habit-colors";
+
 import { lastMonths } from "@/domain/logs";
 import { weeklyTotals } from "@/domain/time";
 import { cardioKind } from "@/lib/log-cards";
@@ -47,17 +47,8 @@ export default async function DistanciaPage({
   const ctx = await loadLogsContext();
   const month = resolveMonth(mes, ctx.current);
   const range = parseRange(rango);
-  const [entries, { data: habitRows }] = await Promise.all([
-    loadCardioData(ctx.supabase, ctx.userId, dataFrom(month, range)),
-    ctx.supabase
-      .from("habits")
-      .select("id,color")
-      .eq("user_id", ctx.userId)
-      .eq("log_type", "cardio")
-      .order("created_at")
-      .order("id"),
-  ]);
-  const habit = habitRows?.[0] ? { id: habitRows[0].id, color: toHabitColor(habitRows[0].color) } : null;
+  const entries = await loadCardioData(ctx.supabase, ctx.userId, dataFrom(month, range));
+  const habit = ctx.cardioHabit;
   const color = colorOf(habit);
   const { kind, label } = cardioKind(entries);
 
