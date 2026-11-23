@@ -83,7 +83,7 @@ export function ModeSwitch({
                 refs.current[next]?.focus();
               }}
               className={`h-11 min-w-0 flex-1 truncate rounded-md px-1 text-small font-medium transition-colors duration-[120ms] ${
-                selected ? "bg-raised text-ink shadow-card" : "text-muted"
+                selected ? "bg-raised text-ink shadow-card" : "text-ink"
               } ${locked ? "cursor-not-allowed" : ""}`}
             >
               {o.label}

@@ -26,6 +26,7 @@ import {
   formatReadout,
   POMODORO_PRESETS,
   pomodoroView,
+  sessionSummary,
   STOPWATCH_BLOCK_MIN,
   STOPWATCH_CAP_MIN,
   TIMER_CHIPS,
@@ -289,19 +290,19 @@ function Timer({
   const locked = running || state.phase === "ready";
   const pausedNote = state.pausedAt !== null ? "En pausa." : null;
   const waiting = state.pending.length > 0 ? "Pendiente de sumar." : null;
-  const pendingMin = state.pending.reduce((sum, p) => sum + p.minutes, 0);
+  const summary = sessionSummary(state);
   // timer and stopwatch: what the server has said about this session's blocks so far
   const measureStatus =
     state.endReason === "cap"
       ? CAP_MESSAGE
       : state.tooShort && state.phase === "idle"
         ? SHORT_MESSAGE
-        : session.blocks === 0 || state.phase === "idle"
+        : state.phase === "idle"
           ? null
-          : state.pending.length > 0
-            ? `Pendiente de sumar: ${pendingMin} min.`
-            : state.credited >= session.blocks
-              ? `Sumamos ${session.minutes} min a ${habitName}.`
+          : summary.status === "pending"
+            ? `Pendiente de sumar: ${summary.pendingMin} min.`
+            : summary.status === "confirmed"
+              ? `Sumamos ${summary.confirmedMin} min a ${habitName}.`
               : null;
   const status = measuring
     ? measureStatus

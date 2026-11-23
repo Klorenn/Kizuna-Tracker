@@ -10,7 +10,7 @@ import type { LocalDate } from "@/domain/types";
 
 /**
  * Habit detail > PROGRESO for a time habit: hours of the month against the last, the average
- * per day with time, pomodoros, "Iniciar pomodoro" and the links. `entries` may hold every
+ * per day with time, pomodoros, "Medir tiempo" and the links. `entries` may hold every
  * time habit of the user: only this habit's are counted.
  */
 export function TimeProgress({
@@ -53,7 +53,7 @@ export function TimeProgress({
       <div className="border-t border-line p-4">
         <ButtonLink href={`/habitos/${habitId}/pomodoro`}>
           <Timer size={20} weight="light" aria-hidden />
-          Iniciar pomodoro
+          Medir tiempo
         </ButtonLink>
       </div>
       {todayEntry ? <TodayEntryLink href={logEntryHref(habitId, "time", today)} logged={todayEntry.logged} /> : null}

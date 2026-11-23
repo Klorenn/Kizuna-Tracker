@@ -168,7 +168,7 @@ test("habit detail PROGRESO for each kind, and the book in one format", async ({
 
   await page.goto(`/habitos/${ids.estudiar}`);
   await expect(page.getByText("Progreso", { exact: true })).toBeVisible();
-  await expect(page.getByRole("link", { name: "Iniciar pomodoro" })).toHaveAttribute("href", `/habitos/${ids.estudiar}/pomodoro`);
+  await expect(page.getByRole("link", { name: "Medir tiempo" })).toHaveAttribute("href", `/habitos/${ids.estudiar}/pomodoro`);
   await expect(page.getByText("Pomodoros este mes")).toBeVisible();
 
   await page.goto(`/habitos/${ids.series}`);

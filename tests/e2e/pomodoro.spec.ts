@@ -261,20 +261,25 @@ test("a stopwatch stopped at 3 min 20 s credits 3 minutes; under a minute credit
   await expect(page.getByText("Menos de un minuto no se suma.")).toBeVisible();
   await expect(page.getByRole("button", { name: "Empezar", exact: true })).toBeVisible();
 
+  // pin the page clock so the elapsed time is exactly 3 min 20 s
+  const now = await page.evaluate(() => Date.now());
+  await page.clock.pauseAt(now + 1000);
   await page.getByRole("button", { name: "Empezar", exact: true }).click();
-  await page.clock.runFor(65_000);
-  await page.reload();
-  await expect.poll(() => seconds(page)).toBeGreaterThanOrEqual(65);
-  await expect.poll(() => seconds(page)).toBeLessThan(90);
   await page.clock.runFor(2 * MIN + 15_000);
   await shot(page, "14-stopwatch-running");
   await page.getByRole("button", { name: "Pausar" }).click();
   await expect(page.getByText("En pausa.")).toBeVisible();
+  await page.clock.runFor(10 * MIN); // paused time never counts
   await page.getByRole("button", { name: "Reanudar" }).click();
+  await page.clock.runFor(5_000);
+  await expect(page.getByRole("timer")).toHaveText("02:20");
+  await page.clock.runFor(60_000);
+  await expect(page.getByRole("timer")).toHaveText("03:20");
   await page.getByRole("button", { name: "Terminar", exact: true }).click();
-  await expect(page.getByText(/^Sumamos [34] min a Estudiar\.$/)).toBeVisible();
+  await expect(page.getByText("Sumamos 3 min a Estudiar.", { exact: true })).toBeVisible();
+  await page.clock.resume(); // a frozen page clock would also freeze the next page's hydration
   await page.goto(`/habitos/${id}/tiempo`);
-  await expect(page.getByText(/^[34] min$/)).toBeVisible();
+  await expect(page.locator("p").filter({ hasText: /^3 min$/ })).toBeVisible();
 });
 
 test("a stopwatch closes a 90-minute block by itself and keeps counting past an hour", async ({ page }) => {
@@ -286,6 +291,9 @@ test("a stopwatch closes a 90-minute block by itself and keeps counting past an 
   await page.getByRole("button", { name: "Empezar", exact: true }).click();
   await page.clock.runFor(65 * MIN + 9_000);
   await expect.poll(() => page.getByRole("timer").innerText()).toMatch(/^1:05:\d\d$/);
+  await page.reload(); // the count survives a reload
+  await expect.poll(() => seconds(page)).toBeGreaterThanOrEqual(65 * 60 + 9);
+  await expect.poll(() => seconds(page)).toBeLessThan(67 * 60);
   await page.clock.runFor(26 * MIN);
   await expect(page.getByText("Sumamos 90 min a Estudiar.")).toBeVisible();
   await shot(page, "15-stopwatch-chunk");

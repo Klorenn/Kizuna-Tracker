@@ -6,6 +6,7 @@ import {
   pomodoroReducer,
   pomodoroView,
   formatReadout,
+  sessionSummary,
   STOPWATCH_BLOCK_MIN,
   STOPWATCH_CAP_MIN,
   TIMER_CHIPS,
@@ -292,6 +293,76 @@ describe('stopwatch mode', () => {
   it('under a minute never queues and returns to idle', () => {
     const s = pomodoroReducer(watchAt(), { type: 'finish', at: T + 59_000 })
     expect([s.phase, s.pending, s.tooShort]).toEqual(['idle', [], true])
+  })
+})
+
+describe('fix round 1: session blocks by id, pause vs cap, legacy behaviour', () => {
+  it('a stopwatch paused for 20 minutes reaches the cap at T+260 and its first chunk at T+110', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 30 * M })
+    s = pomodoroReducer(s, { type: 'resume', at: T + 50 * M })
+    const early = pomodoroReducer(s, { type: 'tick', at: T + 259 * M })
+    expect(early.phase).toBe('focus')
+    expect(early.pending).toEqual([
+      { blockId: 'a', minutes: 90, endedAt: T + 110 * M },
+      { blockId: 'b', minutes: 90, endedAt: T + 200 * M },
+    ])
+    const capped = pomodoroReducer(s, { type: 'tick', at: T + 261 * M })
+    expect(capped.phase).toBe('done')
+    expect(capped.pending).toEqual([
+      { blockId: 'a', minutes: 90, endedAt: T + 110 * M },
+      { blockId: 'b', minutes: 90, endedAt: T + 200 * M },
+      { blockId: 'c', minutes: 60, endedAt: T + 260 * M },
+    ])
+    expect(capped.pending.reduce((n, p) => n + p.minutes, 0)).toBe(240)
+  })
+
+  it('a stored state without mode behaves exactly like a pomodoro made before the change', () => {
+    const added = ['mode', 'blockIds', 'chunks', 'endReason', 'tooShort', 'sessionBlocks']
+    const legacy = parsePomodoroState(
+      JSON.stringify(Object.fromEntries(Object.entries(open).filter(([k]) => !added.includes(k)))),
+    )!
+    const ticked = pomodoroReducer(legacy, { type: 'tick', at: T + 25 * M })
+    expect([ticked.phase, ticked.pending]).toEqual(['break', [{ blockId: 'b1', minutes: 25, endedAt: T + 25 * M }]])
+    const fin = pomodoroReducer(legacy, { type: 'finish', at: T + 7 * M + 59_000 })
+    expect([fin.phase, fin.pending]).toEqual(['done', [{ blockId: 'b1', minutes: 7, endedAt: T + 7 * M + 59_000 }]])
+    expect(pomodoroReducer(legacy, { type: 'skip', at: T + 12 * M, blockId: 'x' }).phase).toBe('break')
+  })
+
+  it('sessionSummary is decided by this session\'s block ids', () => {
+    // a pending block of an earlier session confirms while the new session's block is dropped
+    const old = { ...initialPomodoro('h1', cfg, 'timer'), pending: [{ blockId: 'old', minutes: 30, endedAt: T - M }] }
+    let s = pomodoroReducer(old, { type: 'start', at: T, blockId: 'n1' })
+    s = pomodoroReducer(s, { type: 'finish', at: T + 10 * M })
+    expect(sessionSummary(s)).toEqual({ status: 'pending', pendingMin: 10, confirmedMin: 0 })
+    s = pomodoroReducer(s, { type: 'confirm', blockId: 'old' })
+    expect(sessionSummary(s).status).toBe('pending')
+    s = pomodoroReducer(s, { type: 'drop', blockId: 'n1' })
+    expect(sessionSummary(s)).toEqual({ status: 'none', pendingMin: 0, confirmedMin: 0 })
+  })
+
+  it('two stopwatch blocks: one confirmed and one pending is not "confirmed" yet', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M })
+    s = pomodoroReducer(s, { type: 'finish', at: T + 100 * M })
+    s = pomodoroReducer(s, { type: 'confirm', blockId: 'a' })
+    expect(sessionSummary(s)).toEqual({ status: 'pending', pendingMin: 10, confirmedMin: 90 })
+    s = pomodoroReducer(s, { type: 'confirm', blockId: 'b' })
+    expect(sessionSummary(s)).toEqual({ status: 'confirmed', pendingMin: 0, confirmedMin: 100 })
+  })
+
+  it('a session with a confirmed and a dropped block never reads as confirmed', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M })
+    s = pomodoroReducer(s, { type: 'finish', at: T + 100 * M })
+    s = pomodoroReducer(s, { type: 'confirm', blockId: 'a' })
+    s = pomodoroReducer(s, { type: 'drop', blockId: 'b' })
+    expect(sessionSummary(s).status).toBe('partial')
+  })
+
+  it('a new session starts the tally from zero and the tally survives a parse', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'finish', at: T + 5 * M })
+    expect(s.sessionBlocks).toHaveLength(1)
+    expect(parsePomodoroState(JSON.stringify(s))).toEqual(s)
+    s = pomodoroReducer(s, { type: 'start', at: T + 10 * M, blockIds: ids })
+    expect(s.sessionBlocks).toEqual([])
   })
 })
 

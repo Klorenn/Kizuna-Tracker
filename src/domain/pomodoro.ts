@@ -55,6 +55,9 @@ export type PendingBlock = { blockId: string; minutes: number; endedAt: number }
 /** Why a session ended by itself: the stopwatch reached its cap. */
 export type EndReason = 'cap'
 
+/** A block this session closed and what the server said about it (so "Sumamos" is decided by block id). */
+export type SessionBlock = { blockId: string; minutes: number; status: 'pending' | 'confirmed' | 'dropped' }
+
 export type PomodoroState = {
   v: 1
   habitId: string
@@ -78,6 +81,8 @@ export type PomodoroState = {
   endReason: EndReason | null
   /** The last finish had less than one whole minute: nothing was queued and the screen says so. */
   tooShort: boolean
+  /** The blocks of the current session only; blocks left over from an earlier one are not in it. */
+  sessionBlocks: SessionBlock[]
 }
 
 export type PomodoroEvent =
@@ -113,6 +118,7 @@ export function initialPomodoro(habitId: string, config: PomodoroConfig, mode: T
     chunks: 0,
     endReason: null,
     tooShort: false,
+    sessionBlocks: [],
   }
 }
 
@@ -246,7 +252,47 @@ function finishStopwatch(s: PomodoroState, at: number): PomodoroState {
   return bump(closed, { phase: 'done', blockIds: [], phaseStartedAt: at, pausedAt: null, pausedMs: 0, lastTickAt: at })
 }
 
+/** Keeps `sessionBlocks` in step with `pending`: new blocks join it, an answer settles its block. */
 export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroState {
+  const next = reduce(s, e)
+  if (next === s) return s
+  let blocks = next.sessionBlocks
+  if (e.type === 'start' && (s.phase === 'idle' || s.phase === 'done') && next.phase === 'focus') blocks = []
+  const known = new Set(s.pending.map((p) => p.blockId))
+  const fresh = next.pending.filter((p) => !known.has(p.blockId))
+  if (fresh.length > 0) {
+    blocks = [...blocks, ...fresh.map((p) => ({ blockId: p.blockId, minutes: p.minutes, status: 'pending' as const }))]
+  }
+  if ((e.type === 'confirm' || e.type === 'drop') && blocks.some((b) => b.blockId === e.blockId)) {
+    const status = e.type === 'confirm' ? ('confirmed' as const) : ('dropped' as const)
+    blocks = blocks.map((b) => (b.blockId === e.blockId ? { ...b, status } : b))
+  }
+  return blocks === next.sessionBlocks ? next : { ...next, sessionBlocks: blocks }
+}
+
+/**
+ * What the server has said about the blocks of this session only (matched by block id): `pending`
+ * while any waits, `confirmed` when every one was accepted, `partial` when some were refused.
+ */
+export function sessionSummary(s: PomodoroState): {
+  status: 'none' | 'pending' | 'confirmed' | 'partial'
+  pendingMin: number
+  confirmedMin: number
+} {
+  const sum = (st: SessionBlock['status']) =>
+    s.sessionBlocks.filter((b) => b.status === st).reduce((n, b) => n + b.minutes, 0)
+  const has = (st: SessionBlock['status']) => s.sessionBlocks.some((b) => b.status === st)
+  const status = has('pending')
+    ? 'pending'
+    : has('confirmed')
+      ? has('dropped')
+        ? 'partial'
+        : 'confirmed'
+      : 'none'
+  return { status, pendingMin: sum('pending'), confirmedMin: sum('confirmed') }
+}
+
+function reduce(s: PomodoroState, e: PomodoroEvent): PomodoroState {
   switch (e.type) {
     case 'start': {
       if (s.phase !== 'idle' && s.phase !== 'done' && s.phase !== 'ready') return s
@@ -395,6 +441,15 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
   if (endReason !== null && endReason !== 'cap') return null
   const tooShort = d.tooShort === undefined ? false : d.tooShort
   if (typeof tooShort !== 'boolean') return null
+  const rawBlocks = d.sessionBlocks === undefined ? [] : d.sessionBlocks
+  if (!Array.isArray(rawBlocks)) return null
+  const sessionBlocks: SessionBlock[] = []
+  for (const b of rawBlocks as unknown[]) {
+    const x = b as Record<string, unknown> | null
+    if (typeof x !== 'object' || x === null || typeof x.blockId !== 'string' || !isNum(x.minutes)) return null
+    if (x.status !== 'pending' && x.status !== 'confirmed' && x.status !== 'dropped') return null
+    sessionBlocks.push({ blockId: x.blockId, minutes: x.minutes, status: x.status })
+  }
   if (typeof d.phase !== 'string' || !(PHASES as readonly string[]).includes(d.phase)) return null
   if (!isNum(d.cycle) || !isNum(d.pausedMs) || !isNum(d.credited) || !isNum(d.rev)) return null
   if (!Number.isInteger(d.cycle) || d.cycle < 0 || d.cycle > 1000) return null
@@ -437,5 +492,6 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
     chunks,
     endReason: endReason as EndReason | null,
     tooShort,
+    sessionBlocks,
   }
 }
