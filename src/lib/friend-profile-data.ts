@@ -46,9 +46,27 @@ export type FriendProfileData = {
   activity: ReturnType<typeof activityGrid>;
   latest: FeedPage;
   challenges: SharedChallenge[];
+  /** Sections whose reads failed: the view shows a small retry there instead of failing the page. */
+  failed: FriendSection[];
 };
 
+export type FriendSection = "habits" | "challenges" | "latest";
+
 const LATEST = 10;
+
+/** One section's reads: its value, or null when any of them failed (never throws). */
+async function attempt<T>(read: () => Promise<T>): Promise<T | null> {
+  try {
+    return await read();
+  } catch {
+    return null;
+  }
+}
+
+function must<T>(r: { data: T | null; error: { message: string } | null }): T {
+  if (r.error) throw new Error(r.error.message);
+  return r.data as T;
+}
 
 /**
  * Everything the friend view shows, read with the viewer's own session. RLS is the gate: an
@@ -63,61 +81,80 @@ export async function loadFriendProfile(
   timezone: string,
 ): Promise<FriendProfileData> {
   const pair = `and(creator_id.eq.${me},rival_id.eq.${friendId}),and(creator_id.eq.${friendId},rival_id.eq.${me})`;
-  const [{ data: habitRows }, challenges, debts, latest] = await Promise.all([
-    supabase
-      .from("habits")
-      .select("id,name,color,frequency_type,target_per_week,visibility")
-      .eq("user_id", friendId)
-      .neq("visibility", "private")
-      .is("archived_at", null)
-      .order("created_at")
-      .limit(1000),
-    fetchAll((a, b) =>
-      supabase
-        .from("challenges")
-        .select(
-          "id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,frequency_type,target_per_week,weeks,starts_on,cancel_requested_by,created_at",
-        )
-        .or(pair)
-        .order("created_at", { ascending: false })
-        .order("id")
-        .range(a, b),
-    ),
-    fetchAll((a, b) =>
-      supabase
-        .from("debts")
-        .select("id,challenge_id,debtor_id,creditor_id,amount,paid_at")
-        .or(
-          `and(debtor_id.eq.${me},creditor_id.eq.${friendId}),and(debtor_id.eq.${friendId},creditor_id.eq.${me})`,
-        )
-        .order("id")
-        .range(a, b),
-    ),
-    loadFeedPage(supabase, me, { timezone, owner: friendId, limit: LATEST }),
-  ]);
-  const habits = (habitRows ?? []).filter((h) => h.visibility !== "private");
-
-  // per-habit history, bounded by date and under the row cap (same window as the own Perfil)
   const { from, limit } = streakWindow(today);
-  const history = await Promise.all(
-    habits.map(async (h) => {
-      const { data } = await supabase
-        .from("checkins")
-        .select("local_date")
-        .eq("habit_id", h.id)
-        .is("rejected_at", null)
-        .gte("local_date", from)
-        .order("local_date", { ascending: false })
-        .limit(limit);
-      return { ...h, dates: (data ?? []).map((c) => c.local_date) };
-    }),
-  );
 
-  const habitIds = [...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id]).filter((x): x is string => !!x))];
-  const { data: named } = habitIds.length
-    ? await supabase.from("habits").select("id,name").in("id", habitIds)
-    : { data: [] };
-  const nameOf = new Map((named ?? []).map((h) => [h.id, h.name]));
+  // each section reads on its own: one transient error degrades that section, not the whole page
+  const [habitsRead, pairRead, latestRead] = await Promise.all([
+    attempt(async () => {
+      const rows = must(
+        await supabase
+          .from("habits")
+          .select("id,name,color,frequency_type,target_per_week,visibility")
+          .eq("user_id", friendId)
+          .neq("visibility", "private")
+          .is("archived_at", null)
+          .order("created_at")
+          .limit(1000),
+      ).filter((h) => h.visibility !== "private");
+      // per-habit history, bounded by date and under the row cap (same window as the own Perfil)
+      return Promise.all(
+        rows.map(async (h) => {
+          const data = must(
+            await supabase
+              .from("checkins")
+              .select("local_date")
+              .eq("habit_id", h.id)
+              .is("rejected_at", null)
+              .gte("local_date", from)
+              .order("local_date", { ascending: false })
+              .limit(limit),
+          );
+          return { ...h, dates: data.map((c) => c.local_date) };
+        }),
+      );
+    }),
+    attempt(async () => {
+      const [challenges, debts] = await Promise.all([
+        fetchAll((a, b) =>
+          supabase
+            .from("challenges")
+            .select(
+              "id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,frequency_type,target_per_week,weeks,starts_on,cancel_requested_by,created_at",
+            )
+            .or(pair)
+            .order("created_at", { ascending: false })
+            .order("id")
+            .range(a, b),
+        ),
+        fetchAll((a, b) =>
+          supabase
+            .from("debts")
+            .select("id,challenge_id,debtor_id,creditor_id,amount,paid_at")
+            .or(
+              `and(debtor_id.eq.${me},creditor_id.eq.${friendId}),and(debtor_id.eq.${friendId},creditor_id.eq.${me})`,
+            )
+            .order("id")
+            .range(a, b),
+        ),
+      ]);
+      const habitIds = [
+        ...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id]).filter((x): x is string => !!x)),
+      ];
+      const named = habitIds.length ? must(await supabase.from("habits").select("id,name").in("id", habitIds)) : [];
+      return { challenges, debts, named };
+    }),
+    attempt(() => loadFeedPage(supabase, me, { timezone, owner: friendId, limit: LATEST })),
+  ]);
+  const failed: FriendSection[] = [
+    ...(habitsRead ? [] : (["habits"] as const)),
+    ...(pairRead ? [] : (["challenges"] as const)),
+    ...(latestRead ? [] : (["latest"] as const)),
+  ];
+  const history = habitsRead ?? [];
+  const challenges = pairRead?.challenges ?? [];
+  const debts = pairRead?.debts ?? [];
+  const latest: FeedPage = latestRead ?? { items: [], next: null };
+  const nameOf = new Map((pairRead?.named ?? []).map((h) => [h.id, h.name]));
 
   const shared = challenges
     .filter((c) => c.status === "proposed" || c.status === "active" || c.status === "finished")
@@ -184,5 +221,6 @@ export async function loadFriendProfile(
     activity: activityGrid(history, today),
     latest,
     challenges: shared,
+    failed,
   };
 }

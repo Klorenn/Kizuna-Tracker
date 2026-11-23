@@ -73,6 +73,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   let timezone = "UTC";
   let state: ViewerState = "anon";
   let friendshipId: string | null = null;
+  // name, @handle and avatar from public_profiles: enough to show who is asking even when the
+  // public_profile RPC has nothing (no public habits)
+  let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null } | null = null;
   if (user) {
     const { data: viewer } = await supabase
       .from("profiles")
@@ -81,11 +84,12 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       .maybeSingle();
     if (viewer) timezone = viewer.timezone;
     if (viewer?.username === username) redirect("/perfil");
-    const { data: target } = await supabase
+    const { data: found } = await supabase
       .from("public_profiles")
       .select("id,username,display_name,avatar_path")
       .eq("username", username)
       .maybeSingle();
+    target = found;
     if (target?.id) {
       const { data: f } = await supabase
         .from("friendships")
@@ -121,8 +125,18 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   }
 
   const { data } = await supabase.rpc("public_profile", { p_username: username });
-  if (!data) return <Unavailable />;
-  const view = toPublicProfileView(data as unknown as PublicProfileRow, localDate(new Date(), timezone));
+  // someone with a pending request still sees who it is (and Aceptar/Rechazar) even with no public habits
+  const asking = (state === "incoming" || state === "outgoing") && target?.username ? target : null;
+  if (!data && !asking) return <Unavailable />;
+  const row: PublicProfileRow = data
+    ? (data as unknown as PublicProfileRow)
+    : {
+        username: asking!.username!,
+        displayName: asking!.display_name ?? asking!.username!,
+        avatarPath: asking!.avatar_path,
+        habits: [],
+      };
+  const view = toPublicProfileView(row, localDate(new Date(), timezone));
   const shareUrl = profileShareUrl(siteOrigin(await headers()), view.username);
 
   const page = (
