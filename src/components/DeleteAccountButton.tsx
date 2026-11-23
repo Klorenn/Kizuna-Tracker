@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { ListRow } from "@/components/ui/ListRow";
 import { Sheet } from "@/components/ui/Sheet";
+import { clearPomodoroStorage } from "@/lib/pomodoro-store";
 
 /** "Borrar cuenta": the user confirms by typing their @username. */
 export function DeleteAccountButton({ username, variant = "button" }: { username: string; variant?: "button" | "row" }) {
@@ -23,6 +24,8 @@ export function DeleteAccountButton({ username, variant = "button" }: { username
     start(async () => {
       const r = await deleteAccount(typed);
       if (!r.ok) return setError(r.error);
+      // the deleted account's timers, topics and pending blocks must not stay on this device
+      clearPomodoroStorage(r.userId);
       router.replace("/bienvenida");
       router.refresh();
     });
