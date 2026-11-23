@@ -31,6 +31,14 @@ const SECTIONS: LegalSection[] = [
       ],
     },
     {
+      title: "Grupos",
+      body: [
+        "Un grupo reúne hasta 50 personas con un compromiso semanal en común. No hace falta que sean tus amigos, y solo se entra con un enlace de invitación.",
+        "Al unirte eliges el hábito que vinculas al grupo: los demás miembros verán tus registros y fotos de ese hábito desde el día en que te unes, además de tu nombre, tu @usuario y tu avatar. Súbelas solo si estás de acuerdo con eso y respeta a las demás personas del grupo.",
+        "Puedes salir cuando quieras; tu hábito sigue siendo tuyo. Quienes administran el grupo pueden sacar a un miembro.",
+      ],
+    },
+    {
       title: "Tu cuenta",
       body: [
         "Eres responsable de tu contraseña y de lo que ocurra con tu cuenta. En esta versión no hay recuperación de contraseña: si la pierdes, no podremos restablecerla.",
@@ -54,5 +62,5 @@ const SECTIONS: LegalSection[] = [
 
 /** Legal text without page chrome: shared by /legal/terminos and the in-app sheet. */
 export function TermsContent() {
-  return <LegalBody updated="22 de noviembre de 2026" sections={SECTIONS} />;
+  return <LegalBody updated="23 de noviembre de 2026" sections={SECTIONS} />;
 }
