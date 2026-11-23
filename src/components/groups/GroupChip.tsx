@@ -10,6 +10,7 @@ export function GroupChip({ name, color }: { name: string; color: string }) {
   return (
     <span
       data-habit-color={toHabitColor(color)}
+      role="img"
       aria-label={`Grupo ${name}`}
       className="inline-flex h-5 min-w-0 max-w-40 shrink items-center gap-1 rounded-full bg-(--habit-soft) px-2 text-small font-medium text-ink"
     >

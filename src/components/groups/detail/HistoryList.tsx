@@ -143,10 +143,15 @@ function WeekSheet({
   const [state, setState] = useState<WeekState>({ status: "loading" });
   const [attempt, setAttempt] = useState(0);
   const weekStart = week.weekStart;
+  // the latest action without re-loading the week whenever the parent re-renders
+  const loadRef = useRef(loadWeek);
+  useEffect(() => {
+    loadRef.current = loadWeek;
+  });
   useEffect(() => {
     let live = true;
     setState({ status: "loading" });
-    loadWeekState(loadWeek, groupId, weekStart).then((s) => {
+    loadWeekState((g, w) => loadRef.current(g, w), groupId, weekStart).then((s) => {
       if (live) setState(s);
     });
     return () => {

@@ -9,6 +9,8 @@ import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
 import {
   GROUP_LIMITS,
   type GroupBoardRow,
+  type GroupDetail,
+  type GroupRole,
   type GroupCommitment,
   type GroupDate,
   type GroupResult,
@@ -142,3 +144,39 @@ export function isIconKey(value: string): value is IconKey {
 
 /** The contract carries icons as strings: anything unknown renders as the people icon. */
 export const iconKeyOf = (value: string): IconKey => (isIconKey(value) ? value : "users");
+
+/* ---------------------- what the server accepted, shown at once ---------------------- */
+
+/**
+ * The view keeps what an admin just changed (edit, commitment, archive, removal, role) on top of
+ * the props, so the screen is right before the page is refreshed. A new `detail` or `board` from
+ * the page replaces it.
+ */
+export type Overlay = {
+  fields?: GroupEditFields;
+  pending?: GroupDetail["pendingCommitment"];
+  archived: boolean;
+  removed: string[];
+  roles: Record<string, GroupRole>;
+};
+
+export const EMPTY_OVERLAY: Overlay = { archived: false, removed: [], roles: {} };
+
+export function applyDetail(detail: GroupDetail, o: Overlay): GroupDetail {
+  if (o === EMPTY_OVERLAY) return detail;
+  return {
+    ...detail,
+    ...(o.fields ? { ...o.fields, description: o.fields.description.trim() || null } : {}),
+    ...(o.pending !== undefined ? { pendingCommitment: o.pending } : {}),
+    archived: detail.archived || o.archived,
+    memberCount: Math.max(0, detail.memberCount - o.removed.length),
+  };
+}
+
+export function applyMembers(rows: GroupBoardRow[] | null, o: Overlay): GroupBoardRow[] | null {
+  if (!rows || o === EMPTY_OVERLAY) return rows;
+  if (o.removed.length === 0 && Object.keys(o.roles).length === 0) return rows;
+  return rows
+    .filter((r) => !o.removed.includes(r.userId))
+    .map((r) => (o.roles[r.userId] && o.roles[r.userId] !== r.role ? { ...r, role: o.roles[r.userId] } : r));
+}

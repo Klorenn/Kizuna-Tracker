@@ -46,7 +46,7 @@ import { PersonLink } from "./parts";
 
 type Runner = ReturnType<typeof createRunner>;
 /** `null`: another action was already running and this call was ignored. */
-type Done<T = undefined> = GroupResult<T> | null;
+type Done = GroupResult<unknown> | null;
 
 /* ------------------------- handlers (the part tests can call) ------------------------- */
 
