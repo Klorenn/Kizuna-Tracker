@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server'
-import { authorizeCron } from '@/lib/cron-auth'
+import { authorizeCronRequest } from '@/lib/cron-auth'
 import { notify, pushPendingNotifications } from '@/lib/notify'
 import { dueReminderEntries } from '@/lib/reminders'
 import { claimReminders, loadReminderCandidates } from '@/lib/reminders-repo'
@@ -9,7 +9,7 @@ export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
 
 export async function POST(request: Request) {
-  if (!authorizeCron(request)) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
+  if (!(await authorizeCronRequest(request))) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })
   try {
     const db = createAdminClient()
     const now = new Date()

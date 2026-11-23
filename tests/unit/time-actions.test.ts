@@ -117,6 +117,23 @@ describe('sendPomodoroBlock', () => {
       p_block_id: 'b1',
       p_minutes: 25,
       p_topic: null,
+      p_ended_at: undefined,
+    })
+  })
+
+  it('sends the end instant of the block as an ISO string', async () => {
+    rpc.mockResolvedValue({
+      data: [{ checkin_id: 'c1', total_minutes: 25, credited: true, checkin_created: true }],
+      error: null,
+    })
+    const endedAt = Date.UTC(2026, 10, 23, 15, 30, 0)
+    await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt }, null)
+    expect(rpc).toHaveBeenCalledWith('add_pomodoro_block', {
+      p_habit_id: 'h1',
+      p_block_id: 'b1',
+      p_minutes: 25,
+      p_topic: null,
+      p_ended_at: '2026-11-23T15:30:00.000Z',
     })
   })
 

@@ -4,7 +4,7 @@ begin;
 -- on un-archive, create_invite takes the lighter lock, the cron secret lives in the database and
 -- the unread-notification index exists.
 create extension if not exists pgtap with schema extensions;
-select plan(112);
+select plan(122);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -21,8 +21,13 @@ $f$;
 create function tests.sod(tz text) returns timestamptz language sql stable as $f$
   select date_trunc('day', now() at time zone tz) at time zone tz
 $f$;
+-- a zone where it is about noon right now, so +-3 minutes never crosses local midnight
+create function tests.noon_tz() returns text language sql stable as $f$
+  select 'Etc/GMT' || case when h >= 0 then '+' else '-' end || abs(h)
+  from (select extract(hour from now() at time zone 'UTC')::int - 12 as h) x
+$f$;
 grant usage on schema tests to authenticated, anon;
-grant execute on function tests.n(text), tests.today(), tests.sod(text) to authenticated, anon;
+grant execute on function tests.n(text), tests.today(), tests.sod(text), tests.noon_tz() to authenticated, anon;
 
 -- ids: users a2000000-...-0000000000NN, habits b2000000-..., blocks 92000000-...
 -- 01 Santiago, 02 Honolulu (west of UTC), 03 Auckland (east), 04 exercises, 05 invites, 06 deleted, 07 rival
@@ -33,7 +38,8 @@ insert into auth.users (id) values
   ('a2000000-0000-0000-0000-000000000004'),
   ('a2000000-0000-0000-0000-000000000005'),
   ('a2000000-0000-0000-0000-000000000006'),
-  ('a2000000-0000-0000-0000-000000000007');
+  ('a2000000-0000-0000-0000-000000000007'),
+  ('a2000000-0000-0000-0000-000000000008');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at) values
   ('a2000000-0000-0000-0000-000000000001', 'fh_u1', 'U1', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a2000000-0000-0000-0000-000000000002', 'fh_u2', 'U2', 'Test', '1990-01-01', now(), 'Pacific/Honolulu', null),
@@ -41,13 +47,15 @@ insert into public.profiles (id, username, first_name, last_name, birth_date, te
   ('a2000000-0000-0000-0000-000000000004', 'fh_u4', 'U4', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a2000000-0000-0000-0000-000000000005', 'fh_u5', 'U5', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a2000000-0000-0000-0000-000000000006', 'deleted_a20000000006', 'Cuenta', 'eliminada', null, now(), 'America/Santiago', now()),
-  ('a2000000-0000-0000-0000-000000000007', 'fh_u7', 'U7', 'Test', '1990-01-01', now(), 'America/Santiago', null);
+  ('a2000000-0000-0000-0000-000000000007', 'fh_u7', 'U7', 'Test', '1990-01-01', now(), 'America/Santiago', null),
+  ('a2000000-0000-0000-0000-000000000008', 'fh_u8', 'U8', 'Test', '1990-01-01', now(), tests.noon_tz(), null);
 
 -- time habits for the pomodoro cases
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility, preset, log_type) values
   ('b2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000001', 'Estudiar', 'book', 'daily', 'friends', 'study', 'time'),
   ('b2000000-0000-0000-0000-000000000002', 'a2000000-0000-0000-0000-000000000002', 'Estudiar W', 'book', 'daily', 'friends', 'study', 'time'),
-  ('b2000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000003', 'Estudiar E', 'book', 'daily', 'friends', 'study', 'time');
+  ('b2000000-0000-0000-0000-000000000003', 'a2000000-0000-0000-0000-000000000003', 'Estudiar E', 'book', 'daily', 'friends', 'study', 'time'),
+  ('b2000000-0000-0000-0000-000000000004', 'a2000000-0000-0000-0000-000000000008', 'Estudiar N', 'book', 'daily', 'friends', 'study', 'time');
 
 -- ============================================================ H1 pomodoro credit is never backdated
 select has_function('public', 'add_pomodoro_block', array['uuid', 'uuid', 'integer', 'text', 'timestamp with time zone'],
@@ -71,21 +79,36 @@ select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-
   tests.sod('America/Santiago') - interval '1 minute') $$, 'P0001', 'block_expired', 'a block that ended yesterday is refused');
 select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000003', 25, null,
   now() - interval '3 days') $$, 'P0001', 'block_expired', 'and one from days ago');
-select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000004', 25, null,
-  now() + interval '3 minutes') $$, 'P0001', 'block_expired', 'a block ending more than two minutes in the future is refused');
-select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000005', 25, null,
-  now() + interval '1 minute')), true, 'clock skew of one minute is tolerated');
 reset role;
 select is((select count(*)::int from public.pomodoro_blocks where block_id in
-  ('92000000-0000-0000-0000-000000000003', '92000000-0000-0000-0000-000000000004')), 0, 'the refused blocks left no receipt');
-select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000001'), 75,
-  'only the three credited blocks count');
+  ('92000000-0000-0000-0000-000000000003')), 0, 'the refused block left no receipt');
+select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000001'), 50,
+  'only the two credited blocks count');
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000002', 25, null, tests.sod('America/Santiago'))), false,
   'a retry of a credited block answers credited = false');
 reset role;
-select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000001'), 75, 'and credits nothing twice');
+select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000001'), 50, 'and credits nothing twice');
+
+-- a zone where it is about noon: the two-minute rule is tested without crossing local midnight
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000008","role":"authenticated"}', true);
+select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 25, null,
+  now() + interval '3 minutes') $$, 'P0001', 'block_expired', 'a block ending more than two minutes in the future is refused');
+select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000005', 25, null,
+  now() + interval '1 minute')), true, 'clock skew of one minute is tolerated');
+-- a credited block retried with an end instant that has since expired (after midnight) still answers
+-- the idempotent way, and the refused one left nothing
+select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000005', 25, null,
+  tests.sod(tests.noon_tz()) - interval '1 minute')), false, 'retry of a credited block with an expired instant: credited = false, no error');
+-- someone else's block id with an expired instant is just expired (no receipt of the caller's)
+select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000005', 25, null,
+  tests.sod('America/Santiago') - interval '1 minute') $$, 'P0001', 'block_expired', 'another user''s receipt does not exempt an expired instant');
+reset role;
+select is((select count(*)::int from public.pomodoro_blocks where block_id = '92000000-0000-0000-0000-000000000004'), 0, 'the refused future block left no receipt');
+select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000004'), 25, 'and the retry credited nothing twice');
 
 -- west of UTC (Honolulu): refused first, so nothing at all may have been written for the user
 set local role authenticated;
@@ -159,6 +182,8 @@ reset role;
 
 -- ============================================================ H3 check-ins inside closed periods cannot be deleted by a client
 -- U1 has habit D in an active challenge with U7: a closed period (today-10 .. today-4) and an open one.
+-- NB production only ever has period rows once a period is closed (close-periods-repo insertPeriod); the
+-- open row below models "not closed", which is the same to the guard as "no row yet" (tested further down).
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   ('b2000000-0000-0000-0000-000000000021', 'a2000000-0000-0000-0000-000000000001', 'D', 'book', 'daily', 'friends'),
   ('b2000000-0000-0000-0000-000000000022', 'a2000000-0000-0000-0000-000000000007', 'D rival', 'book', 'daily', 'friends'),
@@ -193,6 +218,24 @@ select is(tests.n($$ select 1 from public.checkins where habit_id = 'b2000000-00
   'both closed-period check-ins are still there');
 select is(tests.n($$ delete from public.checkins where habit_id = 'b2000000-0000-0000-0000-000000000023' returning 1 $$), 1,
   'a habit outside any challenge is not affected, whatever the date');
+reset role;
+-- a period that ENDED but that the cron has not closed yet has no row: the guard does not cover it
+-- (documented gap, see the comment on checkins_period_guard). It cannot help the deleting player: each
+-- player is judged on their own check-ins, so deleting one can only make that player fail.
+insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
+  ('b2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', 'Termino sin cerrar', 'book', 'daily', 'friends'),
+  ('b2000000-0000-0000-0000-000000000025', 'a2000000-0000-0000-0000-000000000007', 'Termino sin cerrar rival', 'book', 'daily', 'friends');
+insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
+                               requires_photo, weeks, fine_amount, timezone, status, starts_on) values
+  ('c2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000007',
+   'b2000000-0000-0000-0000-000000000024', 'b2000000-0000-0000-0000-000000000025', 'daily', null, false, 1, 1000,
+   'America/Santiago', 'active', tests.today() - 9);
+insert into public.checkins (habit_id, user_id, local_date)
+values ('b2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', tests.today() - 5);
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select is(tests.n($$ delete from public.checkins where habit_id = 'b2000000-0000-0000-0000-000000000024' returning 1 $$), 1,
+  'period ended, cron not run yet (no period row): the delete still goes through (documented window)');
 reset role;
 -- the rival's own check-in in the same closed period: the rule follows the habit, also for the other player
 insert into public.checkins (habit_id, user_id, local_date)
@@ -300,11 +343,19 @@ select lives_ok($$ update public.exercises set name = 'Propio renombrado' where 
 select lives_ok($$ update public.exercises set archived_at = null where name = 'Propio 1' $$, 'un-archiving an already active one is a no-op');
 select throws_ok($$ update public.exercises set archived_at = null where name = 'Propio 2' $$,
   'P0001', 'exercise_limit', 'and the cap is back at 100');
+select ok(exists (select 1 from pg_locks where locktype = 'advisory' and pid = pg_backend_pid()),
+  'the cap check holds a transaction-scoped advisory lock for the user');
 select throws_ok($$ update public.exercises set name = 'Sentadilla' where name = 'Propio 4' $$,
   'P0001', 'exercise_name_catalog', 'the catalog-name check still runs on rename');
 reset role;
 
 -- ============================================================ H5 create_invite takes the lighter profile lock
+select ok(pg_get_functiondef('public.exercises_own_guard()'::regprocedure) ~ 'pg_advisory_xact_lock',
+  'the exercise cap serializes per user with an advisory lock');
+select ok(pg_get_functiondef('public.checkins_period_guard()'::regprocedure) !~* 'current_user in \(.*\) and',
+  'the period guard does not rely on AND evaluation order');
+select has_index('public', 'challenges', 'challenges_creator_habit_idx', 'challenges(creator_habit_id) is indexed');
+select has_index('public', 'challenges', 'challenges_rival_habit_idx', 'challenges(rival_habit_id) is indexed');
 select ok(pg_get_functiondef('public.create_invite()'::regprocedure) ~* 'for no key update',
   'create_invite locks the inviter with FOR NO KEY UPDATE');
 select ok(pg_get_functiondef('public.create_invite()'::regprocedure) !~* 'for update',

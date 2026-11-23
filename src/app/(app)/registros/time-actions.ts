@@ -140,12 +140,12 @@ export type PomodoroSendResult =
  * Sends one finished Pomodoro block. Idempotent by `blockId`: a retry answers ok with
  * `credited: false`, which the caller treats as success. Only the codes the RPC can never accept
  * (`FINAL_CODES`) are final (`retry: false`, with their `code`); everything else is retried, and a
- * lost session says so (`not_authenticated`). The RPC credits the day of the call: the client
- * never sends blocks that ended on an earlier day (see pomodoro-sync.ts).
+ * lost session says so (`not_authenticated`). The RPC credits the day of the call and, given
+ * `endedAt`, refuses a block that ended on an earlier day (`block_expired`).
  */
 export async function sendPomodoroBlock(
   habitId: string,
-  block: { blockId: string; minutes: number },
+  block: { blockId: string; minutes: number; endedAt?: number },
   topic: string | null,
 ): Promise<PomodoroSendResult> {
   const t = cleanTopic(topic);
@@ -161,6 +161,8 @@ export async function sendPomodoroBlock(
       p_block_id: block.blockId,
       p_minutes: block.minutes,
       p_topic: t as string | undefined,
+      // the server refuses a block that ended before today (block_expired)
+      p_ended_at: block.endedAt === undefined ? undefined : new Date(block.endedAt).toISOString(),
     });
     const row = data?.[0];
     if (error || !row) {

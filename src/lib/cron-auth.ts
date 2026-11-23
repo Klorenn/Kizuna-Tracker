@@ -1,7 +1,7 @@
 import { timingSafeEqual } from 'node:crypto'
 
 // The vault secret that 0020 generates is 64 hex characters (32 random bytes).
-const DB_SECRET_SHAPE = /^[0-9a-f]{64}$/i
+const DB_SECRET_SHAPE = /^[0-9a-f]{64}$/
 
 function bearerToken(request: Request): string | null {
   const header = request.headers.get('authorization') ?? ''
@@ -17,15 +17,6 @@ function matchesEnvSecret(token: string): boolean {
   return a.length === b.length && timingSafeEqual(a, b)
 }
 
-/**
- * Environment-secret-only check, kept so the existing routes keep working until they call
- * `authorizeCronRequest`. Prefer the async one: it also accepts the database-held secret.
- */
-export function authorizeCron(request: Request): boolean {
-  const token = bearerToken(request)
-  return token !== null && matchesEnvSecret(token)
-}
-
 /** The database compares digests of the presented token and the vault secret. Any failure is "no". */
 async function matchesDatabaseSecret(token: string): Promise<boolean> {
   if (!DB_SECRET_SHAPE.test(token)) return false
@@ -33,8 +24,13 @@ async function matchesDatabaseSecret(token: string): Promise<boolean> {
     // loaded on demand: the admin client is server-only and the env-secret path never needs it
     const { createAdminClient } = await import('@/lib/supabase/admin')
     const { data, error } = await createAdminClient().rpc('cron_secret_valid', { p_secret: token })
-    return !error && data === true
-  } catch {
+    if (error) {
+      console.error('cron auth: cron_secret_valid failed:', error.message)
+      return false
+    }
+    return data === true
+  } catch (e) {
+    console.error('cron auth: database check threw:', e instanceof Error ? e.message : 'unknown error')
     return false
   }
 }

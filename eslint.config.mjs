@@ -12,6 +12,15 @@ const compat = new FlatCompat({
 const eslintConfig = [
   ...compat.extends("next/core-web-vitals", "next/typescript"),
   {
+    // A Promise in a condition is always truthy: `if (!authorizeCronRequest(req))` without await
+    // would accept every request. Only the conditionals check is on (type-aware, so ts/tsx only).
+    files: ["**/*.{ts,tsx}"],
+    languageOptions: { parserOptions: { projectService: true, tsconfigRootDir: __dirname } },
+    rules: {
+      "@typescript-eslint/no-misused-promises": ["error", { checksConditionals: true, checksVoidReturn: false, checksSpreads: false }],
+    },
+  },
+  {
     ignores: [
       "node_modules/**",
       ".next/**",

@@ -26,6 +26,7 @@ describe('authorizeCronRequest', () => {
     delete process.env.CRON_SECRET
   })
   afterEach(() => {
+    vi.restoreAllMocks()
     if (original === undefined) delete process.env.CRON_SECRET
     else process.env.CRON_SECRET = original
   })
@@ -57,9 +58,11 @@ describe('authorizeCronRequest', () => {
       expect(rpc).toHaveBeenCalledWith('cron_secret_valid', { p_secret: HEX })
     })
 
-    it('accepts an upper-case hex token (shape check is case-insensitive)', async () => {
+    it('rejects an upper-case hex token without a database call (the vault secret is lower-case)', async () => {
       rpc.mockResolvedValue({ data: true, error: null })
-      expect(await authorizeCronRequest(req(HEX.toUpperCase()))).toBe(true)
+      expect(await authorizeCronRequest(req(HEX.toUpperCase()))).toBe(false)
+      expect(createAdminClient).not.toHaveBeenCalled()
+      expect(rpc).not.toHaveBeenCalled()
     })
 
     it('rejects when the database says no', async () => {
@@ -124,17 +127,25 @@ describe('authorizeCronRequest', () => {
   })
 
   describe('database failures answer 401, never throw', () => {
-    it('an RPC error is a rejection', async () => {
+    it('an RPC error is a rejection and is logged without the token', async () => {
+      const log = vi.spyOn(console, 'error').mockImplementation(() => {})
       rpc.mockResolvedValue({ data: null, error: { message: 'boom' } })
       expect(await authorizeCronRequest(req(HEX))).toBe(false)
+      expect(log).toHaveBeenCalledTimes(1)
+      const logged = JSON.stringify(log.mock.calls)
+      expect(logged).toContain('boom')
+      expect(logged).not.toContain(HEX)
+      log.mockRestore()
     })
 
     it('a rejected RPC promise is a rejection', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
       rpc.mockRejectedValue(new Error('network'))
       expect(await authorizeCronRequest(req(HEX))).toBe(false)
     })
 
     it('a client that cannot be built (missing service key) is a rejection', async () => {
+      vi.spyOn(console, 'error').mockImplementation(() => {})
       createAdminClient.mockImplementationOnce(() => {
         throw new Error('supabaseKey is required')
       })
