@@ -7,7 +7,7 @@ const OTHER = '22222222-2222-4222-8222-222222222222'
 const G = '33333333-3333-4333-8333-333333333333'
 const NEW_HABIT = '55555555-5555-4555-8555-555555555555'
 const OWN_HABIT = '66666666-6666-4666-8666-666666666666'
-const CODE = '0123456789abcdef0123456789abcdef'
+const CODE = 'K7QM4PXD'
 
 const rpc = vi.fn()
 const createHabit = vi.fn()
@@ -441,6 +441,12 @@ describe('join', () => {
     )
   })
 
+  it.each(['k7qm4pxd', 'K7QM-4PXD', ' k7qm 4pxd '])('a code typed as %j is normalised before the database sees it', async (typed) => {
+    answers({ join_group: { data: G } })
+    await actions.join(typed, { kind: 'habit', habitId: OWN_HABIT })
+    expect(rpc).toHaveBeenCalledWith('join_group', { p_code: CODE, p_habit_id: OWN_HABIT })
+  })
+
   it('a link that no longer works stops before creating a habit', async () => {
     answers({ group_invite_preview: { data: null, error: null } })
     await expect(actions.join(CODE, { kind: 'create' })).resolves.toEqual({ ok: false, error: 'Este enlace ya no sirve. Pide uno nuevo.' })
@@ -620,17 +626,23 @@ describe('createInvite', () => {
     answers({ create_group_invite: { data: CODE } })
     await expect(actions.createInvite(G)).resolves.toEqual({
       ok: true,
-      data: { code: CODE, url: `https://kizuna.example/grupos/unirse/${CODE}` },
+      data: { code: CODE, url: `https://kizuna.example/g/${CODE}` },
     })
     expect(rpc).toHaveBeenCalledWith('create_group_invite', { p_group_id: G })
     expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('a code the database returns in any case is put in the URL in canonical form', async () => {
+    answers({ create_group_invite: { data: 'k7qm-4pxd' } })
+    const r = await actions.createInvite(G)
+    expect(r).toEqual({ ok: true, data: { code: CODE, url: `https://kizuna.example/g/${CODE}` } })
   })
 
   it('falls back to the request host when no site URL is configured', async () => {
     vi.stubEnv('NEXT_PUBLIC_SITE_URL', '')
     answers({ create_group_invite: { data: CODE } })
     const r = await actions.createInvite(G)
-    expect(r).toEqual({ ok: true, data: { code: CODE, url: `https://kizuna.test/grupos/unirse/${CODE}` } })
+    expect(r).toEqual({ ok: true, data: { code: CODE, url: `https://kizuna.test/g/${CODE}` } })
   })
 
   it('a code of the wrong shape or no code is a failure (nothing is put in a URL)', async () => {

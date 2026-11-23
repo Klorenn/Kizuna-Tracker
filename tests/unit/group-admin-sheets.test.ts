@@ -39,22 +39,37 @@ describe('InviteView', () => {
   })
 
   it('ready: the link in a selectable read-only field and "Copiar enlace"', () => {
-    const h = view({ state: { status: 'ready', url: 'https://kizuna.test/grupos/unirse/ABC123' } })
-    expect(h).toContain('value="https://kizuna.test/grupos/unirse/ABC123"')
+    const h = view({ state: { status: 'ready', url: 'https://kizuna.test/g/K7QM4PXD', code: 'K7QM4PXD' } })
+    expect(h).toContain('value="https://kizuna.test/g/K7QM4PXD"')
     expect(h).toContain('readOnly')
     expect(text(h)).toContain('Copiar enlace')
     expect(text(h)).toContain('7 días')
   })
 
+  it('ready: the code in display form (two groups of four), selectable, with "Copiar código" next to "Copiar enlace"', () => {
+    const h = view({ state: { status: 'ready', url: 'https://kizuna.test/g/K7QM4PXD', code: 'K7QM4PXD' } })
+    expect(h).toContain('value="K7QM-4PXD"')
+    expect(text(h)).toContain('Código de invitación')
+    expect(text(h)).toContain('Copiar código')
+    expect(text(h)).toContain('Copiar enlace')
+  })
+
+  it('code copied: that button reads "Código copiado", the link button stays as it was', () => {
+    const h = view({ state: { status: 'ready', url: 'https://k.test/x', code: 'K7QM4PXD' }, copy: 'copied', copied: 'code' })
+    expect(text(h)).toContain('Código copiado')
+    expect(text(h)).toContain('Copiar enlace')
+    expect(text(h)).not.toContain('Enlace copiado')
+  })
+
   it('copied: the button reads "Enlace copiado" and announces it politely', () => {
-    const h = view({ state: { status: 'ready', url: 'https://k.test/x' }, copy: 'copied' })
+    const h = view({ state: { status: 'ready', url: 'https://k.test/x', code: 'K7QM4PXD' }, copy: 'copied' })
     expect(text(h)).toContain('Enlace copiado')
     expect(text(h)).not.toContain('Copiar enlace')
     expect(h).toContain('aria-live="polite"')
   })
 
   it('clipboard unavailable: the link stays selectable and the sheet says how to copy it', () => {
-    const h = view({ state: { status: 'ready', url: 'https://k.test/x' }, copy: 'unavailable' })
+    const h = view({ state: { status: 'ready', url: 'https://k.test/x', code: 'K7QM4PXD' }, copy: 'unavailable' })
     expect(h).toContain('value="https://k.test/x"')
     expect(h).toContain('role="alert"')
     expect(text(h)).toContain('No pudimos copiar el enlace')

@@ -1,4 +1,4 @@
-import { isInviteCodeShape, isLocalDate, isUuid } from '@/domain/groups'
+import { isLocalDate, isUuid, normalizeInviteCode } from '@/domain/groups'
 import type {
   GroupBoardRow,
   GroupCommitment,
@@ -288,8 +288,9 @@ export function loadGroupWeek(
  * link no longer works (unknown, expired, used up, archived group, or a code with an impossible shape: no call is made then).
  * `ok: false` only when the read itself failed.
  */
-export function loadInvitePreview(code: string, client?: GroupsClient): Promise<GroupLoaded<GroupInvitePreview | null>> {
-  if (!isInviteCodeShape(code)) return Promise.resolve({ ok: true, data: null })
+export function loadInvitePreview(typedCode: string, client?: GroupsClient): Promise<GroupLoaded<GroupInvitePreview | null>> {
+  const code = normalizeInviteCode(typedCode)
+  if (code === null) return Promise.resolve({ ok: true, data: null })
   return run(client, COPY.invite, (c) => rpc.groupInvitePreview(c, code), (data) => {
     if (data === null || data === undefined) return null
     const o = row(data)

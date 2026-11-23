@@ -93,7 +93,7 @@ export async function doInvite(
 ): Promise<InviteState | null> {
   const r = await runner.run(() => createInvite(groupId));
   if (!r) return null;
-  return r.ok ? { status: "ready", url: r.data.url } : { status: "error", error: r.error };
+  return r.ok ? { status: "ready", url: r.data.url, code: r.data.code } : { status: "error", error: r.error };
 }
 
 /** A link is minted on the first open and on retry after an error; a ready (or running) one is reused. */
@@ -189,6 +189,7 @@ export function MembersList({
   const [error, setError] = useState<string | null>(null);
   const [invite, setInvite] = useState<InviteState | null>(null);
   const [copy, setCopy] = useState<CopyOutcome | "idle">("idle");
+  const [copied, setCopied] = useState<"link" | "code">("link");
 
   const editable = !detail.archived;
   const admin = editable && detail.role === "admin";
@@ -230,8 +231,9 @@ export function MembersList({
     void createLink();
   }
 
-  async function copyUrl(url: string) {
-    setCopy(await copyLink(url, typeof navigator === "undefined" ? undefined : navigator.clipboard));
+  async function copyUrl(text: string, what: "link" | "code") {
+    setCopied(what);
+    setCopy(await copyLink(text, typeof navigator === "undefined" ? undefined : navigator.clipboard));
   }
 
   const target = open?.kind === "member" ? (members?.find((m) => m.userId === open.userId) ?? null) : null;
@@ -240,7 +242,7 @@ export function MembersList({
   let body: React.ReactNode = null;
   if (open?.kind === "invite") {
     title = "Invitar al grupo";
-    body = <InviteView state={invite ?? { status: "pending" }} copy={copy} onRetry={() => void createLink()} onCopy={(u) => void copyUrl(u)} />;
+    body = <InviteView state={invite ?? { status: "pending" }} copy={copy} copied={copied} onRetry={() => void createLink()} onCopy={(t, what) => void copyUrl(t, what)} />;
   } else if (open?.kind === "edit") {
     title = "Editar grupo";
     body = (

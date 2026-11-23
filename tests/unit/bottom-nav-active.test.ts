@@ -18,7 +18,6 @@ describe('isTabActive', () => {
     expect(isTabActive('/retos', '/grupos')).toBe(true)
     expect(isTabActive('/retos', '/grupos/nuevo')).toBe(true)
     expect(isTabActive('/retos', '/grupos/01234567-89ab-cdef-0123-456789abcdef')).toBe(true)
-    expect(isTabActive('/retos', '/grupos/unirse/0123456789abcdef0123456789abcdef')).toBe(true)
   })
   it('no other tab lights up under /grupos', () => {
     for (const tab of ['/', '/amigos', '/resumen', '/perfil']) expect(isTabActive(tab, '/grupos/nuevo')).toBe(false)

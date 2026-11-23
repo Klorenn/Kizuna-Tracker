@@ -6,7 +6,8 @@ import { createHabit } from "@/app/(app)/habitos/actions";
 import { toHabitColor } from "@/domain/habit-colors";
 import {
   INVALID_GROUP_COPY,
-  isInviteCodeShape,
+  inviteUrlPath,
+  normalizeInviteCode,
   isLocalDate,
   isUuid,
   validateCommitment,
@@ -227,17 +228,20 @@ export async function createInvite(groupId: string): ReturnType<GroupActions["cr
   const { data, error } = await rpc.createGroupInvite(auth.supabase, groupId);
   if (error) return fail(groupErrorCopy(error.message));
   // the code goes into a URL: only a code of the expected shape is ever used
-  if (!isInviteCodeShape(data)) return fail(GROUP_GENERIC_COPY);
-  return { ok: true, data: { code: data, url: `${siteOrigin(await headers())}/grupos/unirse/${data}` } };
+  const canonical = normalizeInviteCode(data);
+  if (canonical === null) return fail(GROUP_GENERIC_COPY);
+  return { ok: true, data: { code: canonical, url: `${siteOrigin(await headers())}${inviteUrlPath(canonical)}` } };
 }
 
 export async function join(
-  code: string,
+  typedCode: string,
   habit: GroupHabitChoice,
 ): ReturnType<GroupActions["join"]> {
   const auth = await requireUser();
   if (!auth.ok) return fail(auth.error);
-  if (!isInviteCodeShape(code)) return fail(LINK_GONE);
+  // people type codes in any case, with or without the hyphen: the database only ever sees the canonical one
+  const code = normalizeInviteCode(typedCode);
+  if (code === null) return fail(LINK_GONE);
   const choice = validateHabitChoice(habit);
   if (!choice.ok) return choice;
 

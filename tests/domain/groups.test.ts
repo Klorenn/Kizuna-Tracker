@@ -3,7 +3,10 @@ import {
   commitmentLine,
   compliedLabel,
   dateLabel,
+  formatInviteCode,
+  inviteUrlPath,
   isInviteCodeShape,
+  normalizeInviteCode,
   isLocalDate,
   isUuid,
   myProgressLabel,
@@ -116,9 +119,22 @@ describe('isLocalDate and isInviteCodeShape', () => {
     expect(isLocalDate('2028-02-29')).toBe(true)
     for (const v of ['2026-02-30', '2026-13-01', '2026-1-1', '', 'hoy', 5, null]) expect(isLocalDate(v)).toBe(false)
   })
-  it('invitation codes: exactly 32 lowercase hex characters', () => {
-    expect(isInviteCodeShape('0123456789abcdef0123456789abcdef')).toBe(true)
-    for (const v of ['0123456789ABCDEF0123456789ABCDEF', '0123456789abcdef0123456789abcde', '0123456789abcdef0123456789abcdef0', 'AbCdEfGhIjKlMnOpQrStUv_-', 'g123456789abcdef0123456789abcdef','short', 'has space has space', 'x'.repeat(129), 'ñ'.repeat(20), '', null, 7]) expect(isInviteCodeShape(v)).toBe(false)
+  it('invitation codes: exactly 8 characters of the alphabet, canonical upper case', () => {
+    expect(isInviteCodeShape('K7QM4PXD')).toBe(true)
+    for (const v of ['k7qm4pxd', 'K7QM-4PXD', 'K7QM4PX', 'K7QM4PXDD', 'K7QM4PX0', 'K7QM4PX1', 'K7QM4PXI', 'K7QM4PXO', ' K7QM4PXD', '', null, 7]) expect(isInviteCodeShape(v)).toBe(false)
+  })
+})
+
+describe('invitation code helpers', () => {
+  it('normalise: any case, optional hyphen after the fourth, spaces ignored', () => {
+    for (const v of ['K7QM4PXD', 'k7qm4pxd', 'K7QM-4PXD', 'k7qm-4pxd', ' K7QM 4PXD ', 'k7qm 4pxd']) expect(normalizeInviteCode(v)).toBe('K7QM4PXD')
+  })
+  it('normalise: refuses everything else', () => {
+    for (const v of ['K7Q-M4PXD', 'K7QM--4PXD', 'K7QM-4PX-D', 'K7QM4PX', 'K7QM4PXDD', 'K7QM-4PXDD', 'K7QM4PX0', 'K7QM4PX1', 'K7QMIPXD', 'K7QMOPXD', 'K7QM_4PXD', '../K7QM4PXD', 'K7QM%2D4PXD', '', null, undefined, 7]) expect(normalizeInviteCode(v)).toBeNull()
+  })
+  it('display form and url', () => {
+    expect(formatInviteCode('K7QM4PXD')).toBe('K7QM-4PXD')
+    expect(inviteUrlPath('K7QM4PXD')).toBe('/g/K7QM4PXD')
   })
 })
 

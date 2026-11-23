@@ -66,7 +66,7 @@ describe('RetosGruposSwitch', () => {
   })
 })
 
-const hrefs = { create: '/grupos/nuevo', group: (id: string) => `/grupos/${id}`, join: (c: string) => `/grupos/unirse/${c}` }
+const hrefs = { create: '/grupos/nuevo', group: (id: string) => `/grupos/${id}`, join: (c: string) => `/g/${c}` }
 const list = (props: { groups: GroupSummary[] | null; canCreate?: boolean }) =>
   renderToStaticMarkup(createElement(GroupsListView, { canCreate: true, hrefs, ...props }))
 
@@ -174,8 +174,8 @@ describe('JoinLinkForm and resolveJoinLink', () => {
     expect(text(h)).toContain('Abriendo…')
   })
   it('turns a pasted link into the join route, or an error', () => {
-    const code = 'Ab3_dE-fGh1JkLmNoPqRs'
-    expect(resolveJoinLink(`https://x.app/grupos/unirse/${code}`, hrefs.join)).toEqual({ ok: true, href: `/grupos/unirse/${code}` })
+    const code = 'K7QM4PXD'
+    expect(resolveJoinLink(`https://x.app/g/${code}`, hrefs.join)).toEqual({ ok: true, href: `/g/${code}` })
     expect(resolveJoinLink('hola', hrefs.join)).toEqual({ ok: false, error: JOIN_LINK_ERROR })
   })
 })
@@ -300,7 +300,7 @@ const invite = (over: Partial<Parameters<typeof InvitePreviewView>[0]> = {}) =>
     createElement(InvitePreviewView, {
       preview: preview(),
       signedIn: true,
-      loginHref: '/login?next=%2Fgrupos%2Funirse%2Fabc',
+      loginHref: '/login?next=%2Fg%2FK7QM4PXD',
       habits: [],
       code: 'abc',
       actions: { join: async () => ({ ok: true as const, data: { id: 'g1' } }) },
@@ -345,7 +345,7 @@ describe('InvitePreviewView', () => {
     expect(t).toContain(CONSENT)
     expect(t).toContain('Inicia sesión para unirte')
     expect(t).not.toContain('Unirme')
-    expect(h).toContain('href="/login?next=%2Fgrupos%2Funirse%2Fabc"')
+    expect(h).toContain('href="/login?next=%2Fg%2FK7QM4PXD"')
     expect(t.indexOf(CONSENT)).toBeLessThan(t.indexOf('Inicia sesión para unirte'))
     expect(t).not.toContain('Tu hábito para este grupo')
   })

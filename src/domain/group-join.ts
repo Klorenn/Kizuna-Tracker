@@ -1,3 +1,4 @@
+import { inviteUrlPath } from '@/domain/groups'
 import type { GroupActions } from '@/lib/groups-contract'
 import { groupErrorCopy } from '@/lib/groups-copy'
 
@@ -6,7 +7,7 @@ export const ALREADY_MEMBER_COPY = groupErrorCopy('already_member')
 
 /** Login for a signed-out visitor, coming back to the same invitation. */
 export function groupInviteLoginHref(code: string): string {
-  return `/login?next=${encodeURIComponent(`/grupos/unirse/${code}`)}`
+  return `/login?next=${encodeURIComponent(inviteUrlPath(code))}`
 }
 
 /**

@@ -5,32 +5,46 @@ import { openJoinLink } from '@/components/groups/list/open-link'
 import { runCreate } from '@/components/groups/create/logic'
 import { runJoin } from '@/components/groups/join/logic'
 
-const code = 'Ab3_dE-fGh1JkLmNoPqRs'
-const join = (c: string) => `/grupos/unirse/${c}`
+const code = 'K7QM4PXD'
+const join = (c: string) => `/g/${c}`
 
 describe('parseInviteInput: safety', () => {
   it.each([
     ['another host', `https://evil.example/otro/${code}`],
-    ['a path with ..', `https://k.app/grupos/unirse/../../${code}`],
+    ['a path with ..', `https://k.app/g/../../${code}`],
     ['..', '..'.repeat(10)],
-    ['percent-encoded', `https://k.app/grupos/unirse/%2e%2e%2f${code}`],
+    ['percent-encoded', `https://k.app/g/%2e%2e%2f${code}`],
     ['percent in a bare code', `${code}%2f`],
     ['javascript: URL', 'javascript:alert(1)//aaaaaaaaaaaaaaaa'],
-    ['too short', 'abc_def-ghi'],
-    ['too long', 'a'.repeat(129)],
+    ['too short', 'K7QM4PX'],
+    ['too long', 'K7QM4PXDD'],
+    ['a character outside the alphabet', 'K7QM4PX0'],
+    ['the old path', `https://k.app/grupos/unirse/${code}`],
     ['two codes', `${code} ${code}`],
   ])('rejects %s', (_n, input) => {
     expect(parseInviteInput(input)).toBeNull()
   })
 })
 
+describe('parseInviteInput: any case, hyphen, spaces', () => {
+  it.each(['k7qm4pxd', 'K7QM-4PXD', 'k7qm-4pxd', ' k7qm 4pxd ', 'https://k.app/g/k7qm-4pxd', 'http://localhost:3000/g/K7QM4PXD/'])('%j gives the canonical code', (input) => {
+    expect(parseInviteInput(input)).toBe(code)
+  })
+  it('opening it only ever produces /g/<canonical>', () => {
+    const navigate = vi.fn()
+    openJoinLink({ guard: { current: false }, value: 'k7qm-4pxd', joinHref: join, navigate })
+    expect(navigate).toHaveBeenCalledWith('/g/K7QM4PXD')
+  })
+})
+
 describe('parseInviteInput: trailing punctuation', () => {
   it.each(['.', ',', ';', ':', '!', '?', ')', ']', '"', ' ', '\n', '.)', ' .'])('accepts a code followed by %j', (tail) => {
     expect(parseInviteInput(`${code}${tail}`)).toBe(code)
-    expect(parseInviteInput(`https://k.app/grupos/unirse/${code}${tail}`)).toBe(code)
+    expect(parseInviteInput(`https://k.app/g/${code}${tail}`)).toBe(code)
   })
   it('does not strip anything else', () => {
     expect(parseInviteInput(`${code}#`)).toBeNull()
+    expect(parseInviteInput(`${code}-`)).toBeNull()
     expect(parseInviteInput(`${code}*`)).toBeNull()
   })
 })
@@ -139,7 +153,7 @@ describe('openJoinLink', () => {
   it('navigates only for a valid code, once', () => {
     const guard = { current: false }
     const navigate = vi.fn()
-    expect(openJoinLink({ guard, value: `https://k.app/grupos/unirse/${code}`, joinHref: join, navigate })).toEqual({ ok: true, href: join(code) })
+    expect(openJoinLink({ guard, value: `https://k.app/g/${code}`, joinHref: join, navigate })).toEqual({ ok: true, href: join(code) })
     expect(navigate).toHaveBeenCalledTimes(1)
     expect(navigate).toHaveBeenCalledWith(join(code))
     expect(openJoinLink({ guard, value: code, joinHref: join, navigate })).toBeNull()

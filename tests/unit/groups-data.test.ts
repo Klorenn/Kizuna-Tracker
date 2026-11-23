@@ -9,7 +9,7 @@ const data = await import('@/lib/groups-data')
 const G = '11111111-1111-4111-8111-111111111111'
 const H = '33333333-3333-4333-8333-333333333333'
 const U = '22222222-2222-4222-8222-222222222222'
-const CODE = '0123456789abcdef0123456789abcdef'
+const CODE = 'K7QM4PXD'
 
 beforeEach(() => {
   rpc.mockReset()
@@ -445,6 +445,12 @@ describe('loadInvitePreview', () => {
       expect(await data.loadInvitePreview(code)).toEqual({ ok: true, data: null })
     }
     expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('a code typed in lower case with a hyphen is looked up in canonical form', async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+    await data.loadInvitePreview('k7qm-4pxd')
+    expect(rpc).toHaveBeenCalledWith('group_invite_preview', { p_code: CODE })
   })
 
   it('a failed call is an error state, not "the link is gone"', async () => {

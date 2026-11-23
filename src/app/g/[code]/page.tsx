@@ -1,9 +1,10 @@
 import type { Metadata } from "next";
+import { redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { Card } from "@/components/ui/Card";
 import { eligibleGroupHabits, linkedHabitIds } from "@/domain/group-habits";
 import { groupInviteLoginHref } from "@/domain/group-join";
-import { isInviteCodeShape } from "@/domain/groups";
+import { inviteUrlPath, normalizeInviteCode } from "@/domain/groups";
 import { loadHabitCandidates } from "@/lib/group-habits-data";
 import { loadInvitePreview, loadMyGroups } from "@/lib/groups-data";
 import { createServerClient } from "@/lib/supabase/server";
@@ -19,12 +20,15 @@ export const metadata: Metadata = { title: "Invitación a un grupo", robots: { i
  * GET shows; joining is a server action (requireUser first), so a link elsewhere can join nobody.
  */
 export default async function UnirsePage({ params }: { params: Promise<{ code: string }> }) {
-  const { code } = await params;
+  const { code: typed } = await params;
+  const code = normalizeInviteCode(typed);
+  // /g/k7qm-4pxd and /g/K7QM4PXD are the same invitation: one canonical URL
+  if (code !== null && code !== typed) redirect(inviteUrlPath(code));
   const user = await getSessionUser();
   const supabase = await createServerClient();
 
   const [preview, groups, candidates] = await Promise.all([
-    loadInvitePreview(code, supabase),
+    loadInvitePreview(code ?? '', supabase),
     user ? loadMyGroups(supabase) : null,
     user ? loadHabitCandidates(user.id, supabase) : null,
   ]);
@@ -35,13 +39,13 @@ export default async function UnirsePage({ params }: { params: Promise<{ code: s
     <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-5 py-8">
       {failed || !preview.ok ? (
         <Card className="px-6 py-8">
-          <LoadFailed href={`/grupos/unirse/${encodeURIComponent(code)}`} />
+          <LoadFailed href={code ? inviteUrlPath(code) : "/"} />
         </Card>
       ) : (
         <JoinGroup
           preview={preview.data}
           signedIn={user !== null}
-          loginHref={isInviteCodeShape(code) ? groupInviteLoginHref(code) : "/login"}
+          loginHref={code ? groupInviteLoginHref(code) : "/login"}
           habits={
             groups?.ok && candidates?.ok
               ? eligibleGroupHabits(candidates.data, linkedHabitIds(groups.data), {
@@ -49,7 +53,7 @@ export default async function UnirsePage({ params }: { params: Promise<{ code: s
                 })
               : []
           }
-          code={code}
+          code={code ?? ""}
         />
       )}
     </main>

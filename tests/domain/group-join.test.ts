@@ -5,15 +5,15 @@ import type { GroupSummary } from '@/lib/groups-contract'
 import { groupErrorCopy } from '@/lib/groups-copy'
 import { safeNextPath } from '@/lib/supabase/public-paths'
 
-const CODE = '0123456789abcdef0123456789abcdef'
+const CODE = 'K7QM4PXD'
 
 describe('groupInviteLoginHref', () => {
   it('sends the visitor to login and back to the invitation', () => {
-    expect(groupInviteLoginHref(CODE)).toBe(`/login?next=${encodeURIComponent(`/grupos/unirse/${CODE}`)}`)
+    expect(groupInviteLoginHref(CODE)).toBe(`/login?next=${encodeURIComponent(`/g/${CODE}`)}`)
   })
   it('what comes back through the login form is accepted by safeNextPath', () => {
     const next = new URL(groupInviteLoginHref(CODE), 'https://x.test').searchParams.get('next')
-    expect(safeNextPath(next)).toBe(`/grupos/unirse/${CODE}`)
+    expect(safeNextPath(next)).toBe(`/g/${CODE}`)
   })
 })
 

@@ -71,15 +71,15 @@ describe('cardLines', () => {
 })
 
 describe('parseInviteInput', () => {
-  const code = 'Ab3_dE-fGh1JkLmNoPqRs'
+  const code = 'K7QM4PXD'
   it('takes a bare code', () => expect(parseInviteInput(`  ${code} `)).toBe(code))
   it('takes the code out of a full link, with query or slash', () => {
-    expect(parseInviteInput(`https://kizuna.app/grupos/unirse/${code}`)).toBe(code)
-    expect(parseInviteInput(`https://kizuna.app/grupos/unirse/${code}/?x=1#y`)).toBe(code)
-    expect(parseInviteInput(`/grupos/unirse/${code}`)).toBe(code)
+    expect(parseInviteInput(`https://kizuna.app/g/${code}`)).toBe(code)
+    expect(parseInviteInput(`https://kizuna.app/g/${code}/?x=1#y`)).toBe(code)
+    expect(parseInviteInput(`/g/${code}`)).toBe(code)
   })
   it('rejects anything that is not the shape of a code', () => {
-    const bad = ['', '   ', 'hola', 'corto', 'https://kizuna.app/amigos', `${code}#`, 'a b c d e f g h i j k l m n o p q', 'x'.repeat(200)]
+    const bad = ['', '   ', 'hola', 'corto', 'https://kizuna.app/amigos', `${code}#`, 'a b c d e f g h i j k l m n o p q', 'x'.repeat(200), 'K7QM4PX1']
     for (const b of bad) expect(parseInviteInput(b)).toBeNull()
   })
 })
