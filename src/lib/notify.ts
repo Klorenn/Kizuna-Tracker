@@ -1,3 +1,4 @@
+import 'server-only'
 import type { Json } from '@/lib/supabase/database.types'
 import { notificationView, type NotificationType } from '@/lib/notification-copy'
 import { MAX_CONCURRENCY, sendPush } from '@/lib/push'

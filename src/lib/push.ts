@@ -1,3 +1,6 @@
+import 'server-only'
+import { isAllowedPushEndpoint } from '@/lib/push-endpoint'
+
 export type PushPayload = { title: string; body: string; url: string }
 export type PushSubscriptionRow = { endpoint: string; p256dh: string; auth: string }
 
@@ -48,6 +51,8 @@ async function defaultDeps(): Promise<PushDeps> {
 /**
  * Push to every device of a user. Subscriptions answering 404/410 are gone for good and are
  * deleted; any other failure is logged and swallowed (a push must never break the caller).
+ * An endpoint outside the push-service allow-list is never contacted (SSRF) and is deleted;
+ * the DB constraint and the subscribe route already refuse them, this is the last line.
  * Without VAPID keys (local dev, tests) it does nothing.
  */
 export async function sendPush(userId: string, payload: PushPayload, deps?: PushDeps): Promise<void> {
@@ -60,6 +65,10 @@ export async function sendPush(userId: string, payload: PushPayload, deps?: Push
       await Promise.all(
         subs.slice(i, i + MAX_CONCURRENCY).map(async (sub) => {
           try {
+            if (!isAllowedPushEndpoint(sub.endpoint)) {
+              await d.deleteSubscription(sub.endpoint)
+              return
+            }
             await d.send(sub, body)
           } catch (e) {
             const status = (e as { statusCode?: number }).statusCode
