@@ -6,7 +6,7 @@ import { notFound, redirect } from "next/navigation";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { WeeklyBarsLazy } from "@/components/charts/LazyCharts";
-import { GoalCard } from "@/components/GoalCard";
+import { HabitGoals } from "@/components/HabitGoals";
 import { CardioProgress } from "@/components/logs/CardioProgress";
 import { QuantityProgress } from "@/components/logs/QuantityProgress";
 import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
@@ -35,7 +35,7 @@ import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
-import { loadGoals } from "@/lib/goals-data";
+import { loadGoalsResult } from "@/lib/goals-data";
 import {
   loadCardioData,
   loadQuantityData,
@@ -220,7 +220,7 @@ export default async function HabitoPage({
       .gte("local_date", from)
       .order("local_date", { ascending: false })
       .limit(limit),
-    loadGoals(supabase, user.id, today, id),
+    loadGoalsResult(supabase, user.id, today, id),
     loadFirstCheckinDate(supabase, user.id, [habit.id]),
     loadProgress(),
     monthsView
@@ -378,16 +378,7 @@ export default async function HabitoPage({
         <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
       </Card>
 
-      {goals.length > 0 ? (
-        <>
-          <SectionHeader label="Meta" action="Ver metas" href="/metas" />
-          <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">
-            {goals.map((g) => (
-              <GoalCard key={g.id} goal={g} archivable={false} />
-            ))}
-          </Card>
-        </>
-      ) : null}
+      <HabitGoals result={goals} retryHref={`/habitos/${habit.id}`} />
 
       <SectionHeader label="Ajustes" />
       <HabitSettings habitId={habit.id} visibility={habit.visibility as Visibility} />
