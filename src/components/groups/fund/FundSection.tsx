@@ -12,14 +12,16 @@
  *  - `retryHref: string` (where the "Reintentar" of a failed read points: the group's page)
  *  - `now: number` (the page's clock, epoch ms: a proposal past its expiry shows no buttons)
  *  - `actions: Pick<GroupFineActions, "propose" | "vote" | "acceptActive" | "stepOut" | "end" | "setDebtPaid">`
- *  - `onChanged: () => void` (REQUIRED: the page refreshes; called after every accepted action)
+ *  - `onChanged: () => void | Promise<void>` (REQUIRED: the page refreshes; called after every accepted
+ *    action; return the refresh promise when there is one)
  * After an accepted fine action (propose, vote, accept, step out, end) the fine area shows a neutral
- * "Actualizando…" with no controls until new `state` props arrive; a paid mark updates the debt row
+ * "Actualizando…" with no controls until the FIRST of: new `state` props, the `onChanged` promise
+ * settling, or 8 seconds; it then renders from the props it has (controls back); a paid mark updates the debt row
  * and the totals exactly. Of each member: name, @usuario, avatar and amounts, nothing else. Every
  * action has a pending state and a single-flight guard; server errors show where the action was
  * taken. "La app solo registra. El pago se hace fuera de la app." is shown with every amount owed.
  */
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { LoadFailed } from "@/components/LoadFailed";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -30,7 +32,7 @@ import type { GroupFineActions, GroupFineState, GroupFund, GroupFundDebt } from 
 import { ConfirmBody } from "../detail/AdminSheets";
 import { createRunner } from "../detail/group-logic";
 import { ActiveFineCard } from "./ActiveFineCard";
-import { applyDebtPaid, canMarkPaid, createFineHandlers, RULE_LINE } from "./fund-logic";
+import { applyDebtPaid, canMarkPaid, createFineHandlers, fineUpdating, RULE_LINE, UPDATE_TIMEOUT_MS } from "./fund-logic";
 import { FundDebtRow } from "./FundDebtRow";
 import { FundPeople } from "./FundPeople";
 import { FundTotals } from "./FundTotals";
@@ -89,14 +91,15 @@ export function FundSection({
   retryHref: string;
   now: number;
   actions: FundActions;
-  onChanged: () => void;
+  onChanged: () => void | Promise<void>;
 }) {
   const [runner] = useState(createRunner);
   const [pending, setPending] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [proposing, setProposing] = useState(false);
-  const [updating, setUpdating] = useState(false);
+  const [upd, setUpd] = useState<{ since: number; settled: boolean } | null>(null);
+  const [clock, setClock] = useState(0);
 
   // what the server accepted for a debt, kept on top of the props until the page hands down fresh ones
   const [fundOv, setFundOv] = useState<GroupFund | null>(null);
@@ -104,7 +107,7 @@ export function FundSection({
   const [seenFund, setSeenFund] = useState(fund);
   if (seenState !== state) {
     setSeenState(state);
-    setUpdating(false);
+    setUpd(null);
   }
   if (seenFund !== fund) {
     setSeenFund(fund);
@@ -115,6 +118,14 @@ export function FundSection({
   const admin = live && role === "admin";
   const fundView = fundOv ?? fund;
   const busy = pending !== null;
+  const updating = fineUpdating({ since: upd?.since ?? null, propsChanged: false, settled: upd?.settled ?? false, now: clock });
+
+  // the neutral state never outlives the timeout, even if no props and no settle ever arrive
+  useEffect(() => {
+    if (!upd || upd.settled) return;
+    const t = setTimeout(() => setClock(Date.now()), UPDATE_TIMEOUT_MS);
+    return () => clearTimeout(t);
+  }, [upd]);
 
   const run = useMemo(
     () =>
@@ -125,8 +136,23 @@ export function FundSection({
         },
         fail: (slot, error) => setErrors((e) => ({ ...e, [slot]: error })),
         end: () => setPending(null),
-        updating: () => setUpdating(true),
-        changed: onChanged,
+        updating: () => {
+          const t = Date.now();
+          setClock(t);
+          setUpd({ since: t, settled: false });
+        },
+        changed: () => {
+          // a returned promise ends the neutral state when it settles, resolved or rejected (a
+          // rejected refresh must not freeze the card); a plain void waits for props or the timeout
+          let r: void | Promise<void>;
+          try {
+            r = onChanged();
+          } catch {
+            r = Promise.resolve();
+          }
+          if (r && typeof r.then === "function")
+            void r.catch(() => undefined).then(() => setUpd((u) => (u ? { ...u, settled: true } : u)));
+        },
       }),
     [runner, actions, groupId, onChanged],
   );

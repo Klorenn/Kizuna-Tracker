@@ -92,17 +92,19 @@ describe('FundTotals', () => {
     expect(t).toContain('Pagado $2.500')
     expect(t).toContain('Pendiente $5.000')
     expect(h).toContain('font-mono')
-    expect(h).toContain('grid-cols-3')
+    expect(h).toContain('flex-wrap')
   })
 
-  it('short amounts share a row; long ones restack, label left and amount right, never truncated', () => {
+  it('the layout itself is safe: items wrap, keep their content width and never break an amount', () => {
     const wide = renderToStaticMarkup(createElement(FundTotals, { totals: { registered: 10000000, paid: 10000000, pending: 10000000 } }))
     expect(text(wide)).toContain('Registrado $10.000.000')
-    expect(wide).not.toContain('grid-cols-3')
-    expect(wide).toContain('justify-between')
+    expect(text(wide)).toContain('Pagado $10.000.000')
+    expect(text(wide)).toContain('Pendiente $10.000.000')
+    expect(wide).toContain('flex-wrap')
+    expect(wide.match(/min-w-fit/g)).toHaveLength(3)
+    expect(wide.match(/whitespace-nowrap/g)!.length).toBeGreaterThanOrEqual(3)
     expect(wide).not.toContain('truncate')
-    const narrow = renderToStaticMarkup(createElement(FundTotals, { totals: fund.totals }))
-    expect(narrow).not.toContain('truncate')
+    expect(wide).not.toContain('grid-cols')
   })
 })
 

@@ -7,7 +7,8 @@ import {
   applyDebtPaid,
   createFineHandlers,
   proposalExpired,
-  totalsFit,
+  fineUpdating,
+  UPDATE_TIMEOUT_MS,
   canMarkPaid,
   debtStatusText,
   debtWeekLine,
@@ -211,17 +212,12 @@ describe('applyDebtPaid: only what is known exactly', () => {
   })
 })
 
-describe('proposalExpired and totalsFit', () => {
+describe('proposalExpired', () => {
   it('a proposal is closed from its expiry instant on', () => {
     const at = Date.parse('2026-11-30T12:00:00Z')
     expect(proposalExpired(proposal, at - 1)).toBe(false)
     expect(proposalExpired(proposal, at)).toBe(true)
     expect(proposalExpired({ ...proposal, expiresAt: 'nope' }, at)).toBe(false)
-  })
-  it('three amounts share a row only while the longest has at most 8 characters', () => {
-    expect(totalsFit({ registered: 100000, paid: 5, pending: 99999 })).toBe(true)
-    expect(totalsFit({ registered: 1200000, paid: 0, pending: 0 })).toBe(false)
-    expect(totalsFit({ registered: 10000000, paid: 10000000, pending: 10000000 })).toBe(false)
   })
 })
 
@@ -283,5 +279,26 @@ describe('createFineHandlers: every accepted action asks for fresh data', () => 
     expect(actions.end).not.toHaveBeenCalled()
     release()
     await first
+  })
+})
+
+describe('fineUpdating: the neutral state always has an exit', () => {
+  const at = { since: 1000, propsChanged: false, settled: false, now: 1000 }
+  it('still updating while nothing has happened and the time is not up', () => {
+    expect(fineUpdating(at)).toBe(true)
+    expect(fineUpdating({ ...at, now: 1000 + UPDATE_TIMEOUT_MS - 1 })).toBe(true)
+  })
+  it('ends when new props arrive', () => {
+    expect(fineUpdating({ ...at, propsChanged: true })).toBe(false)
+  })
+  it('ends when the refresh settles (resolved or rejected)', () => {
+    expect(fineUpdating({ ...at, settled: true })).toBe(false)
+  })
+  it('ends after 8 seconds', () => {
+    expect(UPDATE_TIMEOUT_MS).toBe(8000)
+    expect(fineUpdating({ ...at, now: 1000 + UPDATE_TIMEOUT_MS })).toBe(false)
+  })
+  it('is not updating when no action was accepted', () => {
+    expect(fineUpdating({ ...at, since: null })).toBe(false)
   })
 })

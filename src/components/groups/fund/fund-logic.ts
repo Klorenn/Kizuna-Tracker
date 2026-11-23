@@ -126,9 +126,15 @@ export function applyDebtPaid(fund: GroupFund, debtId: string, paid: boolean, at
   };
 }
 
-/** Three totals share a row only while the longest amount is short enough (else they restack, never truncate). */
-export function totalsFit(t: { registered: number; paid: number; pending: number }): boolean {
-  return Math.max(...[t.registered, t.paid, t.pending].map((n) => formatCLP(n).length)) <= 8;
+export const UPDATE_TIMEOUT_MS = 8000;
+
+/**
+ * Is the fine area still in its neutral "Actualizando…" state? It ends at the first of: new props
+ * arrived, the refresh promise settled (resolved or rejected), or 8 seconds elapsed. `since` is the
+ * instant an action was accepted (null: none). Times are epoch ms.
+ */
+export function fineUpdating(a: { since: number | null; propsChanged: boolean; settled: boolean; now: number }): boolean {
+  return a.since !== null && !a.propsChanged && !a.settled && a.now - a.since < UPDATE_TIMEOUT_MS;
 }
 
 /**
