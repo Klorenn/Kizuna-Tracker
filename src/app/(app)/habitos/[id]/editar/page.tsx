@@ -43,6 +43,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
     logType: habit.log_type as HabitDraft["logType"],
     preset: habit.preset as PresetKey | null,
     color: toHabitColor(habit.color),
+    quantity: null, // TODO(T28): read quantity_* columns once the migration and types exist
   };
 
   return (

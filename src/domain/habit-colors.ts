@@ -30,6 +30,8 @@ export const PRESET_COLOR: Readonly<Record<PresetKey, HabitColor>> = {
   walk: 'salvia',
   sleep: 'indigo',
   eat_well: 'oliva',
+  watch: 'rosa',
+  run: 'durazno',
 }
 
 export function isHabitColor(value: unknown): value is HabitColor {

@@ -3,13 +3,13 @@
 import { Warning } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { checkInWithReading, deleteReading, saveReading } from "@/app/(app)/registros/actions";
+import { checkInWithReading, deleteReading, saveReading, setBookTotalPages } from "@/app/(app)/registros/actions";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
 import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
-import { pagesLabel, pagesRead } from "@/domain/logs";
+import { MAX_PAGES, pagesLabel, pagesRead } from "@/domain/logs";
 import { announceReading, clearReading, holdCelebrations } from "@/lib/celebration-bus";
 import type { PickerBook } from "@/lib/reading-books";
 import { BookPicker } from "./BookPicker";
@@ -75,7 +75,10 @@ export function ReadingForm({
   const book = books.find((b) => b.id === bookId) ?? null;
   const [from, setFrom] = useState(String(existing?.fromPage ?? book?.nextFrom ?? 0));
   const [to, setTo] = useState(existing ? String(existing.toPage) : "");
-  const [finished, setFinished] = useState(false);
+  // null = untouched: "Terminé este libro" follows "Hasta" reaching the book's total
+  const [finishedChoice, setFinishedChoice] = useState<boolean | null>(null);
+  const [addingTotal, setAddingTotal] = useState(false);
+  const [totalDraft, setTotalDraft] = useState("");
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -87,9 +90,30 @@ export function ReadingForm({
   const fromN = toInt(from);
   const toN = toInt(to);
   const pages = fromN !== null && toN !== null && toN >= fromN ? pagesRead({ fromPage: fromN, toPage: toN }) : null;
+  // Auto-check only for a reading being added (Hoy, or a day without one). An old entry that ends
+  // at the total is not known to be the one that finished the book: re-saving it must not re-stamp
+  // the finished date, so it starts unchecked.
+  const finished =
+    finishedChoice ?? (!existing && toN !== null && book?.totalPages != null && toN === book.totalPages);
+
+  function addTotal() {
+    const n = toInt(totalDraft);
+    if (!book || n === null) return setError(`Las páginas del libro van de 1 a ${MAX_PAGES}.`);
+    const id = book.id;
+    setError(null);
+    start(async () => {
+      const res = await setBookTotalPages(id, n);
+      if (!res.ok) return setError(res.error);
+      setBooks((list) => list.map((b) => (b.id === id ? { ...b, totalPages: n } : b)));
+      setAddingTotal(false);
+      setTotalDraft("");
+    });
+  }
 
   function pick(id: string) {
     setBookId(id);
+    setFinishedChoice(null);
+    setAddingTotal(false);
     const b = books.find((x) => x.id === id);
     if (b && !(existing && existing.bookId === id)) setFrom(String(b.nextFrom));
     setError(null);
@@ -193,10 +217,35 @@ export function ReadingForm({
         <p className="font-mono text-body font-medium text-ink" aria-live="polite">
           {pages === null ? "—" : pagesLabel(pages)}
         </p>
+        {book && book.totalPages === null ? (
+          addingTotal ? (
+            <div className="flex flex-col gap-3 rounded-md bg-field p-3">
+              <Input
+                label="Páginas totales"
+                name="total-pages"
+                inputMode="numeric"
+                value={totalDraft}
+                className="font-mono"
+                onChange={(e) => setTotalDraft(e.target.value)}
+              />
+              <Button variant="secondary" onClick={addTotal} disabled={pending}>
+                Añadir total
+              </Button>
+            </div>
+          ) : (
+            <button
+              type="button"
+              onClick={() => setAddingTotal(true)}
+              className="inline-flex min-h-11 items-center self-start text-small font-medium text-accent"
+            >
+              Añadir páginas totales
+            </button>
+          )
+        ) : null}
         <Checkbox
           label="Terminé este libro"
           checked={finished}
-          onChange={(e) => setFinished(e.target.checked)}
+          onChange={(e) => setFinishedChoice(e.target.checked)}
         />
         {error ? (
           <p role="alert" className="flex items-start gap-1 text-small text-pretty text-ink">

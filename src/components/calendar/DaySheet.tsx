@@ -151,8 +151,20 @@ export function DaySheet({
                         : {e.items.labels.join(", ")}
                       </p>
                     ) : null}
-                    {habit.logType && habit.logType !== "none" && (e.status === "done" || e.status === "rejected") ? (
-                      <DayLogDetail log={e.log} habitId={habit.id} logType={habit.logType} date={date} />
+                    {habit.logType &&
+                    habit.logType !== "none" &&
+                    (e.status === "done" ||
+                      e.status === "rejected" ||
+                      // sums under the goal: no check-in yet, but the day has its list of sums
+                      (habit.logType === "quantity" && e.log?.kind === "quantity")) ? (
+                      <DayLogDetail
+                        log={e.log}
+                        habitId={habit.id}
+                        logType={habit.logType}
+                        date={date}
+                        isToday={date === today}
+                        hasCheckin={e.status === "done" || e.status === "rejected"}
+                      />
                     ) : null}
                     {e.photos.length > 0 ? (
                       <div className="flex flex-wrap gap-2 pt-1">

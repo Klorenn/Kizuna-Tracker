@@ -10,6 +10,7 @@ const state = {
   profileError: null as unknown,
   profileEq: [] as unknown[][],
   profileIs: [] as unknown[][],
+  profileRetry: [] as unknown[][],
   claimsThrows: null as unknown,
   getUser: vi.fn(),
   getClaims: vi.fn(),
@@ -31,6 +32,10 @@ vi.mock('@supabase/ssr', () => ({
           },
           is: (...a: unknown[]) => {
             state.profileIs.push(a)
+            return q
+          },
+          retry: (...a: unknown[]) => {
+            state.profileRetry.push(a)
             return q
           },
           maybeSingle: async () => ({ data: state.profile, error: state.profileError }),
@@ -55,6 +60,7 @@ beforeEach(() => {
   state.profileError = null
   state.profileEq = []
   state.profileIs = []
+  state.profileRetry = []
   state.claimsThrows = null
   state.getUser.mockReset().mockRejectedValue(new Error('getUser must not be called'))
   state.getClaims.mockReset().mockImplementation(async () => {
@@ -148,6 +154,7 @@ describe('the deleted-account gate', () => {
   it('only counts profiles that are not soft-deleted (is deleted_at null) and match the claims subject', async () => {
     await updateSession(req('/amigos'))
     expect(state.profileIs).toEqual([['deleted_at', null]])
+    expect(state.profileRetry).toEqual([[false]])
     expect(state.profileEq).toEqual([['id', 'u1']])
   })
 })

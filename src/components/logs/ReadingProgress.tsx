@@ -3,8 +3,9 @@ import Link from "next/link";
 import { logEntryHref } from "@/components/logs/DayLogDetail";
 import { Card } from "@/components/ui/Card";
 import { monthTitle, shiftMonth, type MonthKey } from "@/domain/calendar";
-import { monthlyReading, nextFromPage, type Book, type ReadingEntry } from "@/domain/logs";
+import { bookProgress, monthlyReading, nextFromPage, type Book, type ReadingEntry } from "@/domain/logs";
 import type { LocalDate } from "@/domain/types";
+import { VALUE_BASE, valueSizeClass } from "@/lib/value-size";
 
 /** The book being read: the "leyendo" one with the latest entry, else the newest "leyendo". */
 export function currentBook(books: Book[], entries: ReadingEntry[]): Book | null {
@@ -23,15 +24,17 @@ export function currentBook(books: Book[], entries: ReadingEntry[]): Book | null
 export function bookPageHint(book: Book, entries: ReadingEntry[], knownPage: number | null): string | null {
   const inWindow = entries.some((e) => e.bookId === book.id);
   const page = inWindow ? nextFromPage(entries, book.id) : knownPage;
-  if (page === null || page <= 0) return book.totalPages ? `${book.totalPages} páginas` : null;
-  return book.totalPages ? `${page} de ${book.totalPages}` : `Página ${page}`;
+  // one format everywhere: "página 40 de 412 · 10 %", "página 40", "412 páginas"
+  return bookProgress(page, book.totalPages);
 }
 
 export function ProgressStat({ label, value, caption }: { label: string; value: number | string; caption: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <p className="truncate text-small text-muted">{label}</p>
-      <p className="font-mono text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">{value}</p>
+      <p data-value className={`${VALUE_BASE} ${typeof value === "string" ? valueSizeClass(value) : "text-[28px]"}`}>
+        {value}
+      </p>
       <p className="truncate text-small text-muted">{caption}</p>
     </div>
   );
@@ -88,8 +91,8 @@ export function ReadingProgress({
           <div className="min-w-0 flex-1">
             <p className="truncate text-body text-ink">{book.title}</p>
             <p className="text-small text-muted">Leyendo</p>
+            {hint ? <p className="font-mono text-small text-ink">{hint}</p> : null}
           </div>
-          {hint ? <p className="shrink-0 font-mono text-small text-ink">{hint}</p> : null}
         </div>
       ) : null}
       {todayEntry ? <TodayEntryLink href={logEntryHref(habitId, "reading", today)} logged={todayEntry.logged} /> : null}

@@ -132,11 +132,29 @@ export async function createBook(input: BookInput): Promise<{ ok: true; id: stri
 export async function updateBook(id: string, input: BookInput): Promise<Result> {
   const valid = validateBook(input);
   if (!valid.ok) return valid;
+  return updateOwnBook(id, bookRow(input));
+}
+
+/** Updates the caller's own book; a foreign or deleted id matches no row and is an error. */
+async function updateOwnBook(id: string, fields: { total_pages: number | null; title?: string; author?: string | null }): Promise<Result> {
   const supabase = await createServerClient();
-  const { error } = await supabase.from("books").update(bookRow(input)).eq("id", id);
+  const { data: auth } = await supabase.auth.getUser();
+  if (!auth.user?.id) return { ok: false, error: NOT_AUTHENTICATED };
+  const { data, error } = await supabase.from("books").update(fields).eq("id", id).select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.book_not_found };
   refresh();
   return { ok: true };
+}
+
+/**
+ * "Añadir páginas totales" in the reading sheet: sets only `total_pages` (the sheet does not know
+ * the author, and updateBook would overwrite it).
+ */
+export async function setBookTotalPages(id: string, totalPages: number): Promise<Result> {
+  const valid = validateBook({ title: "x", author: null, totalPages });
+  if (!valid.ok) return valid;
+  return updateOwnBook(id, { total_pages: totalPages });
 }
 
 /** Finished on a local date (never after today in the profile's zone), or back to "reading" with null. */

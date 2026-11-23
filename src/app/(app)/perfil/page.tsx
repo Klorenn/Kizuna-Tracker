@@ -4,6 +4,7 @@ import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { GoalCard } from "@/components/GoalCard";
+import { LoadFailed } from "@/components/LoadFailed";
 import { BodyCard } from "@/components/profile/BodyCard";
 import { ActivityHeatmap } from "@/components/profile/ActivityHeatmap";
 import { HabitStrip } from "@/components/profile/HabitStrip";
@@ -18,7 +19,8 @@ import { toHabitColor } from "@/domain/habit-colors";
 import { netBalances } from "@/domain/ledger";
 import { dailyStreak, weeklyStreak } from "@/domain/streaks";
 import { avatarUrl } from "@/lib/avatar";
-import { loadGoals } from "@/lib/goals-data";
+import { loadCheckinDates } from "@/lib/checkin-dates";
+import { loadGoalsResult } from "@/lib/goals-data";
 import { activityGrid, debtSummary, lastDays, memberSince, streakText } from "@/lib/profile-view";
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
@@ -55,42 +57,37 @@ export default async function PerfilPage() {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at,height_cm")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
-
-  const today = localDate(new Date(), profile.timezone);
-  const [{ data: habits }, goals, record, { data: debtRows }, bodyEntries] = await Promise.all([
+  // Reads that need only the user id start with the profile; the ones that need its timezone follow.
+  const [{ data: profile }, { data: habits }, record, { data: debtRows }, bodyEntries] = await Promise.all([
+    supabase
+      .from("profiles")
+      .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at,height_cm")
+      .eq("id", user.id)
+      .maybeSingle(),
     supabase
       .from("habits")
       .select("id,name,color,frequency_type,target_per_week")
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
-    loadGoals(supabase, user.id, today),
     challengeRecord(user.id),
     supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
     loadRecentWeights(supabase, user.id, 5),
   ]);
+  if (!profile) redirect("/login?error=perfil");
 
-  // History per habit, bounded by date and row count (the API caps a query at 1000 rows)
-  const { from, limit } = streakWindow(today);
-  const history = await Promise.all(
-    (habits ?? []).map(async (h) => {
-      const { data } = await supabase
-        .from("checkins")
-        .select("local_date")
-        .eq("habit_id", h.id)
-        .is("rejected_at", null)
-        .gte("local_date", from)
-        .order("local_date", { ascending: false })
-        .limit(limit);
-      return { ...h, color: toHabitColor(h.color), dates: (data ?? []).map((c) => c.local_date) };
-    }),
-  );
+  const today = localDate(new Date(), profile.timezone);
+  // History of every habit in one call (one row per habit), alongside the goals
+  const { from } = streakWindow(today);
+  const habitRows = habits ?? [];
+  const [goalsRead, dated] = await Promise.all([
+    loadGoalsResult(supabase, user.id, today),
+    loadCheckinDates(supabase, habitRows.map((h) => h.id), from),
+  ]);
+  // a failed read is a retry line, never a zero streak or an empty strip
+  const goals = goalsRead.goals;
+  const datesByHabit = dated.ok ? dated.byHabit : new Map<string, string[]>();
+  const history = habitRows.map((h) => ({ ...h, color: toHabitColor(h.color), dates: datesByHabit.get(h.id) ?? [] }));
   const { current, best } = profileStreaks(history, today);
   const strip = history.map((h) => {
     const weekly = h.frequency_type === "weekly";
@@ -146,10 +143,16 @@ export default async function PerfilPage() {
 
       <section aria-label="Tu progreso">
         <Card>
-          <div className="grid grid-cols-2 divide-x divide-line">
-            <BigStat label="Racha actual" value={current.value} unit={current.unit} />
-            <BigStat label="Mejor racha" value={best.value} unit={best.unit} />
-          </div>
+          {dated.ok ? (
+            <div className="grid grid-cols-2 divide-x divide-line">
+              <BigStat label="Racha actual" value={current.value} unit={current.unit} />
+              <BigStat label="Mejor racha" value={best.value} unit={best.unit} />
+            </div>
+          ) : (
+            <div className="px-4 py-2">
+              <LoadFailed href="/perfil" />
+            </div>
+          )}
           <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
             <MiniStat label="Retos ganados" value={record.won} />
             <MiniStat label="Retos perdidos" value={record.lost} />
@@ -173,7 +176,11 @@ export default async function PerfilPage() {
 
       <section aria-label="Tus hábitos" className="flex flex-col gap-2">
         <SectionHeader label="Tus hábitos" action="Resumen" href="/resumen" />
-        {strip.length === 0 ? (
+        {!dated.ok ? (
+          <Card className="px-4 py-2">
+            <LoadFailed href="/perfil" />
+          </Card>
+        ) : strip.length === 0 ? (
           <Card className="flex items-center gap-3 p-4">
             <p className="min-w-0 flex-1 text-body text-muted">Aún no tienes hábitos activos.</p>
             <ButtonLink href="/habitos/nuevo" variant="secondary" className="h-11! w-auto! px-4! text-small!">
@@ -188,7 +195,7 @@ export default async function PerfilPage() {
         )}
       </section>
 
-      {strip.length > 0 ? (
+      {dated.ok && strip.length > 0 ? (
         <section aria-labelledby="perfil-actividad" className="flex flex-col gap-2">
           <h2 id="perfil-actividad" className="section-label flex h-6 items-center gap-2 text-muted">
             <span className="flex-1">Actividad</span>
@@ -202,7 +209,11 @@ export default async function PerfilPage() {
 
       <section aria-label="Metas" className="flex flex-col gap-2">
         <SectionHeader label="Metas" action={goals.length > 0 ? "Ver todas" : undefined} href="/metas" />
-        {goals.length === 0 ? (
+        {!goalsRead.ok ? (
+          <Card className="px-4 py-2">
+            <LoadFailed href="/perfil" />
+          </Card>
+        ) : goals.length === 0 ? (
           <Card className="flex items-center gap-3 p-4">
             <span className="flex min-w-0 flex-1 flex-col gap-0.5">
               <span className="text-body text-ink">Aún no tienes metas</span>

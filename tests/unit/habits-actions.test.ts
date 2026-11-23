@@ -125,7 +125,7 @@ describe('habit actions', () => {
     await createHabit(presetDraft('read'))
     expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ preset: 'read', log_type: 'reading' })
     calls.length = 0
-    await createHabit(presetDraft('walk'))
+    await createHabit({ ...presetDraft('walk'), logType: 'none' })
     expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ log_type: 'none' })
   })
 

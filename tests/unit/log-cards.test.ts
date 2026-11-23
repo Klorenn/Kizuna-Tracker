@@ -1,5 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import type { Book, ExerciseRef, ReadingEntry, WorkoutSet } from '@/domain/logs'
+import type { QuantityConfig } from '@/domain/quantity'
+import type { MediaItem } from '@/domain/watch'
 import { buildLogCards } from '@/lib/log-cards'
 
 const books: Book[] = [
@@ -90,5 +92,101 @@ describe('buildLogCards', () => {
       value: '—',
       href: '/resumen/gimnasio',
     })
+  })
+})
+
+describe('buildLogCards v4: tiempo, series, cantidad y distancia', () => {
+  const empty = { month: '2026-11', reading: null, workout: null, visits: null, weights: [] }
+  const time = (date: string, minutes: number) => ({ date, habitId: 'est', minutes, topic: null, pomodoros: 0 })
+  const media: MediaItem[] = [
+    { id: 'd', title: 'Dune', kind: 'movie', totalSeasons: null, totalEpisodes: null, runtimeMin: 155, status: 'finished', finishedOn: '2026-11-04' },
+    { id: 'p', title: 'Past Lives', kind: 'movie', totalSeasons: null, totalEpisodes: null, runtimeMin: 106, status: 'finished', finishedOn: '2026-11-15' },
+    { id: 'o', title: 'Coco', kind: 'movie', totalSeasons: null, totalEpisodes: null, runtimeMin: 105, status: 'finished', finishedOn: '2026-10-09' },
+    { id: 'k', title: 'Dark', kind: 'series', totalSeasons: 3, totalEpisodes: 26, runtimeMin: null, status: 'watching', finishedOn: null },
+  ]
+  const ep = (date: string, episodes: number) => ({ date, mediaId: 'k', episodes, season: 1, episodeTo: null, minutes: null, completed: false })
+  const agua: QuantityConfig = { unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 }
+  const run = (id: string, date: string, distanceM: number) => ({ id, date, kind: 'run' as const, distanceM, durationS: 1800 })
+
+  test('tiempo: horas del mes con el mes anterior en pequeño', () => {
+    const cards = buildLogCards({
+      ...empty,
+      time: [time('2026-10-03', 180), time('2026-11-02', 85), time('2026-11-09', 120), time('2026-11-16', 105)],
+    })
+    expect(cards.find((c) => c.key === 'time')).toEqual({
+      key: 'time',
+      label: 'Tiempo',
+      value: '5 h 10 min',
+      caption: 'Octubre: 3 h',
+      href: '/resumen/tiempo?mes=2026-11',
+    })
+  })
+
+  test('series: películas terminadas y episodios del mes', () => {
+    const cards = buildLogCards({
+      ...empty,
+      watch: {
+        media,
+        entries: [ep('2026-10-01', 4), ep('2026-11-02', 2), ep('2026-11-03', 3)],
+      },
+    })
+    expect(cards.find((c) => c.key === 'movies')).toMatchObject({
+      label: 'Películas', value: '2', caption: 'Octubre: 1', href: '/resumen/series?mes=2026-11',
+    })
+    expect(cards.find((c) => c.key === 'episodes')).toMatchObject({
+      label: 'Episodios', value: '5', caption: 'Octubre: 4', href: '/resumen/series?mes=2026-11',
+    })
+  })
+
+  test('cantidad: promedio por día en vasos', () => {
+    const cards = buildLogCards({
+      ...empty,
+      quantity: [
+        {
+          habitId: 'agua1',
+          name: 'Agua',
+          config: agua,
+          entries: [
+            { date: '2026-10-05', amount: 2000 },
+            { date: '2026-11-02', amount: 1500 },
+            { date: '2026-11-03', amount: 1650 },
+          ],
+          doneDates: [],
+        },
+      ],
+    })
+    expect(cards.find((c) => c.key === 'quantity')).toEqual({
+      key: 'quantity',
+      label: 'Agua',
+      value: '6,3 vasos/día',
+      caption: 'Octubre: 8 vasos/día',
+      href: '/resumen/cantidad/agua1?mes=2026-11',
+    })
+  })
+
+  test('cantidad: solo los 3 primeros hábitos, en orden de creación', () => {
+    const q = (n: number) => ({ habitId: `h${n}`, name: `Hábito ${n}`, config: agua, entries: [], doneDates: [] })
+    const cards = buildLogCards({ ...empty, quantity: [q(1), q(2), q(3), q(4)] })
+    expect(cards.filter((c) => c.key === 'quantity').map((c) => c.label)).toEqual(['Hábito 1', 'Hábito 2', 'Hábito 3'])
+  })
+
+  test('distancia: km del mes y del anterior', () => {
+    const cards = buildLogCards({
+      ...empty,
+      cardio: [run('a', '2026-10-04', 10000), run('b', '2026-11-02', 5200), run('c', '2026-11-09', 10000), run('d', '2026-11-16', 6300)],
+    })
+    expect(cards.find((c) => c.key === 'cardio')).toEqual({
+      key: 'cardio',
+      label: 'Trote',
+      value: '21,5 km',
+      caption: 'Octubre: 10 km',
+      href: '/resumen/distancia?mes=2026-11',
+    })
+  })
+
+  test('sin datos del mes las tarjetas no dicen NaN', () => {
+    const cards = buildLogCards({ ...empty, time: [], cardio: [], watch: { media: [], entries: [] } })
+    expect(cards.map((c) => c.value)).toEqual(['0 min', '0', '0', '0 km'])
+    expect(JSON.stringify(cards)).not.toContain('NaN')
   })
 })

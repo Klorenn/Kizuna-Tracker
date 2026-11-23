@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<title>Kizuna Tracker, social card</title>
+<style>
+  /* Assets are injected by render.mjs as data URIs (placeholders below), so the render is hermetic. */
+  @font-face { font-family: "Inter"; font-weight: 100 900; src: url("__FONT_INTER__") format("woff2"); }
+  @font-face { font-family: "Geist Mono"; font-weight: 100 900; src: url("__FONT_GEIST_MONO__") format("woff2"); }
+
+  :root {
+    --bg: #fafafa;
+    --ink: #111111;
+    --muted: #6f6f6f;
+    --line: #e6e6e6;
+    --accent: #5a5ac2;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 1200px; height: 630px; background: var(--bg); overflow: hidden; }
+  body {
+    position: relative;
+    font-family: "Inter", sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+  .frame {
+    position: absolute; inset: 24px;
+    border: 1px solid var(--line);
+    border-radius: 10px;
+  }
+  /* safe area 1080 x 510 -> 60px / 60px; the text column starts a touch inside it */
+  .brand {
+    position: absolute; left: 84px; top: 72px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  .brand img { width: 52px; height: 52px; display: block; }
+  .brand span { font-size: 26px; font-weight: 600; letter-spacing: -0.01em; }
+
+  .copy { position: absolute; left: 84px; top: 190px; width: 640px; }
+  h1 {
+    font-size: 76px; line-height: 1.04; font-weight: 600; letter-spacing: -0.03em;
+  }
+  p {
+    margin-top: 28px; max-width: 560px;
+    font-size: 27px; line-height: 1.42; font-weight: 400; color: var(--muted);
+  }
+
+  .label {
+    position: absolute; left: 84px; bottom: 72px;
+    font-family: "Geist Mono", monospace; font-size: 16px; font-weight: 500;
+    letter-spacing: 0.06em; color: var(--muted); white-space: nowrap;
+    line-height: 1;
+  }
+  .label .kanji { font-family: "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans CJK JP", "Yu Gothic", sans-serif; font-weight: 600; font-size: 17px; letter-spacing: 0; }
+
+  /* same luminance-mask technique as .cat-mask in globals.css: PNG is the mask, token is the paint */
+  .cat {
+    position: absolute; right: 84px; bottom: 72px;
+    width: 410px; height: 450px;
+    background: var(--accent);
+    -webkit-mask: url("__CAT_MASK__") center bottom / contain no-repeat;
+    mask: url("__CAT_MASK__") center bottom / contain no-repeat;
+    mask-mode: luminance;
+  }
+</style>
+</head>
+<body>
+  <div class="frame"></div>
+  <div class="brand">
+    <img src="__SEAL__" alt="" />
+    <span>Kizuna Tracker</span>
+  </div>
+  <div class="copy">
+    <h1>Rachas y retos con tus amigos.</h1>
+    <p>Marca tus hábitos, sube una foto cuando toca y lleva la cuenta entre amigos.</p>
+  </div>
+  <div class="label"><span class="kanji">絆</span> KIZUNA · EL LAZO ENTRE AMIGOS</div>
+  <div class="cat"></div>
+</body>
+</html>

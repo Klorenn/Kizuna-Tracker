@@ -74,7 +74,7 @@ export function BookPicker({
             onChange={(e) => setTitle(e.target.value)}
           />
           <Input
-            label="Páginas del libro (opcional)"
+            label="Páginas totales (opcional)"
             name="book-total"
             inputMode="numeric"
             value={total}
