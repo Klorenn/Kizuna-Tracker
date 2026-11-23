@@ -26,6 +26,18 @@ describe('validateFineProposal', () => {
   it.each(['', '   ', 'x'.repeat(81), 5, null, undefined])('refuses the purpose %s', (purpose) => {
     expect(validateFineProposal(1000, purpose as string)).toEqual({ ok: false, error: INVALID_FINE_COPY })
   })
+  it('collapses inner whitespace (line break, tab, runs, no-break space) into one space', () => {
+    expect(validateFineProposal(1000, 'Asado\nde\tfin   de  mes')).toEqual({ ok: true, amount: 1000, purpose: 'Asado de fin de mes' })
+    expect(validateFineProposal(1000, 'a b')).toEqual({ ok: true, amount: 1000, purpose: 'a b' })
+  })
+  it.each(['a\u0000b', 'a\u0007b', 'a\u007fb', 'a\u0085b'])('refuses a control character in %j', (p) => {
+    expect(validateFineProposal(1000, p)).toEqual({ ok: false, error: INVALID_FINE_COPY })
+  })
+  it('measures the length after normalising (80 pass, 81 do not)', () => {
+    expect(validateFineProposal(1000, `${'x'.repeat(40)}   \n  ${'y'.repeat(39)}`).ok).toBe(true) // 40 + 1 + 39 = 80
+    expect(validateFineProposal(1000, `${'x'.repeat(40)}\n${'y'.repeat(40)}`).ok).toBe(false) // 81
+    expect(validateFineProposal(1000, `${'x'.repeat(80)}      `).ok).toBe(true)
+  })
   it('counts characters as a person does (80 emoji pass, 81 do not)', () => {
     expect(validateFineProposal(1000, '🍖'.repeat(80)).ok).toBe(true)
     expect(validateFineProposal(1000, '🍖'.repeat(81)).ok).toBe(false)
@@ -42,6 +54,14 @@ describe('validateRejectReason', () => {
   })
   it.each(['', '   ', 'x'.repeat(141), 7, null, undefined])('refuses %s', (r) => {
     expect(validateRejectReason(r as string)).toEqual({ ok: false, error: INVALID_REASON_COPY })
+  })
+  it('collapses whitespace and refuses control characters', () => {
+    expect(validateRejectReason('foto\n\nborrosa\tmuy   mala')).toEqual({ ok: true, reason: 'foto borrosa muy mala' })
+    expect(validateRejectReason('a\u0000b').ok).toBe(false)
+    expect(validateRejectReason('a\u001fb').ok).toBe(false)
+    expect(validateRejectReason(`${'x'.repeat(70)}\n${'y'.repeat(70)}`).ok).toBe(false) // 141
+    expect(validateRejectReason(`${'x'.repeat(70)}\n${'y'.repeat(69)}`).ok).toBe(true) // 140
+    expect(validateRejectReason(' \n\t ').ok).toBe(false)
   })
   it('the copy is the binding one', () => {
     expect(INVALID_REASON_COPY).toBe('Escribe un motivo de hasta 140 letras.')
