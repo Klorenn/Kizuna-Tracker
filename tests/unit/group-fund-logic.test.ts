@@ -5,7 +5,9 @@ import {
   acceptedLine,
   activeTitle,
   applyDebtPaid,
-  applyVote,
+  createFineHandlers,
+  proposalExpired,
+  totalsFit,
   canMarkPaid,
   debtStatusText,
   debtWeekLine,
@@ -131,14 +133,6 @@ describe('copy and derived state', () => {
     expect(voteStatus(false)).toBe('No participas')
   })
 
-  it('applyVote moves the count by the change only (first vote, flip, same vote)', () => {
-    expect(applyVote(proposal, true)).toMatchObject({ myVote: true, acceptedCount: 3 })
-    expect(applyVote(proposal, false)).toMatchObject({ myVote: false, acceptedCount: 2 })
-    expect(applyVote({ ...proposal, myVote: true }, false)).toMatchObject({ myVote: false, acceptedCount: 1 })
-    expect(applyVote({ ...proposal, myVote: false }, true)).toMatchObject({ myVote: true, acceptedCount: 3 })
-    expect(applyVote({ ...proposal, myVote: true }, true)).toMatchObject({ myVote: true, acceptedCount: 2 })
-  })
-
   it('participation line', () => {
     expect(participationLine(active)).toBe('Participas desde el lunes 23 nov')
     expect(participationLine({ ...active, iAmBound: false, myBoundFrom: null })).toBe('No participas')
@@ -167,36 +161,127 @@ describe('canMarkPaid', () => {
   })
 })
 
-describe('applyDebtPaid', () => {
+describe('applyDebtPaid: only what is known exactly', () => {
   const p = (n: string) => ({ userId: `u-${n}`, username: n, displayName: n, avatarPath: null, avatarPreset: null })
+  const debt = (n: string, id: string, amount = 2500) => ({ ...p(n), debtId: id, weekStart: '2026-11-09', amount, paidAt: null, paidByName: null, mine: false })
   const fund: GroupFund = {
-    totals: { registered: 5000, paid: 0, pending: 5000 },
+    totals: { registered: 7500, paid: 0, pending: 7500 },
     people: [{ ...p('beto'), pending: 5000 }],
-    debts: [
-      { ...p('beto'), debtId: 'd1', weekStart: '2026-11-09', amount: 2500, paidAt: null, paidByName: null, mine: false },
-      { ...p('beto'), debtId: 'd2', weekStart: '2026-11-16', amount: 2500, paidAt: null, paidByName: null, mine: false },
-    ],
+    debts: [debt('beto', 'd1'), debt('beto', 'd2'), debt('gone', 'd3')],
   }
 
-  it('marking moves the amount from pending to paid and lowers the person', () => {
+  it('mark paid for a listed person: row, totals and the person move by that debt', () => {
     const r = applyDebtPaid(fund, 'd1', true)
-    expect(r.totals).toEqual({ registered: 5000, paid: 2500, pending: 2500 })
+    expect(r.totals).toEqual({ registered: 7500, paid: 2500, pending: 5000 })
     expect(r.debts[0].paidAt).not.toBeNull()
     expect(r.debts[1].paidAt).toBeNull()
     expect(r.people[0].pending).toBe(2500)
   })
 
-  it('a person with nothing left leaves the list; unmarking brings the amount back', () => {
-    const both = applyDebtPaid(applyDebtPaid(fund, 'd1', true), 'd2', true)
-    expect(both.people).toEqual([])
-    const back = applyDebtPaid(both, 'd2', false)
-    expect(back.totals).toEqual({ registered: 5000, paid: 2500, pending: 2500 })
-    expect(back.debts[1].paidAt).toBeNull()
-    expect(back.people[0].pending).toBe(2500)
+  it('mark paid for a person who is not listed (left): totals move, nobody is added', () => {
+    const r = applyDebtPaid(fund, 'd3', true)
+    expect(r.totals).toEqual({ registered: 7500, paid: 2500, pending: 5000 })
+    expect(r.people.map((x) => x.userId)).toEqual(['u-beto'])
+    expect(r.people[0].pending).toBe(5000)
+  })
+
+  it('the last pending debt of a person removes them from the list', () => {
+    const r = applyDebtPaid(applyDebtPaid(fund, 'd1', true), 'd2', true)
+    expect(r.people).toEqual([])
+    expect(r.totals.pending).toBe(2500)
+  })
+
+  it('unmark: totals and a listed person go back; an unlisted person is still never added', () => {
+    const marked = applyDebtPaid(fund, 'd1', true)
+    const back = applyDebtPaid(marked, 'd1', false)
+    expect(back.totals).toEqual(fund.totals)
+    expect(back.people[0].pending).toBe(5000)
+    const gone = applyDebtPaid(applyDebtPaid(fund, 'd3', true), 'd3', false)
+    expect(gone.people.map((x) => x.userId)).toEqual(['u-beto'])
+  })
+
+  it('the person never goes below zero', () => {
+    const odd: GroupFund = { ...fund, people: [{ ...p('beto'), pending: 1000 }] }
+    expect(applyDebtPaid(odd, 'd1', true).people).toEqual([])
   })
 
   it('an unknown debt or a mark that changes nothing leaves the fund as it was', () => {
     expect(applyDebtPaid(fund, 'nope', true)).toBe(fund)
     expect(applyDebtPaid(fund, 'd1', false)).toBe(fund)
+  })
+})
+
+describe('proposalExpired and totalsFit', () => {
+  it('a proposal is closed from its expiry instant on', () => {
+    const at = Date.parse('2026-11-30T12:00:00Z')
+    expect(proposalExpired(proposal, at - 1)).toBe(false)
+    expect(proposalExpired(proposal, at)).toBe(true)
+    expect(proposalExpired({ ...proposal, expiresAt: 'nope' }, at)).toBe(false)
+  })
+  it('three amounts share a row only while the longest has at most 8 characters', () => {
+    expect(totalsFit({ registered: 100000, paid: 5, pending: 99999 })).toBe(true)
+    expect(totalsFit({ registered: 1200000, paid: 0, pending: 0 })).toBe(false)
+    expect(totalsFit({ registered: 10000000, paid: 10000000, pending: 10000000 })).toBe(false)
+  })
+})
+
+describe('createFineHandlers: every accepted action asks for fresh data', () => {
+  const setup = () => {
+    const log: string[] = []
+    const hooks = {
+      begin: (s: string) => log.push(`begin:${s}`),
+      fail: (s: string, e: string) => log.push(`fail:${s}:${e}`),
+      end: () => log.push('end'),
+      updating: () => log.push('updating'),
+      changed: () => log.push('changed'),
+    }
+    const ok = () => vi.fn(async () => ({ ok: true as const, data: undefined }))
+    const actions = {
+      propose: vi.fn(async () => ({ ok: true as const, data: { id: 'n' } })),
+      vote: ok(),
+      acceptActive: ok(),
+      stepOut: ok(),
+      end: ok(),
+      setDebtPaid: ok(),
+    }
+    return { log, handlers: createFineHandlers(createRunner(), actions, 'g1', hooks), actions }
+  }
+
+  for (const [name, call] of [
+    ['propose', (h: ReturnType<typeof setup>['handlers']) => h.propose(2500, 'Asado')],
+    ['vote at the threshold', (h: ReturnType<typeof setup>['handlers']) => h.vote('f1', true)],
+    ['accept', (h: ReturnType<typeof setup>['handlers']) => h.accept()],
+    ['step out', (h: ReturnType<typeof setup>['handlers']) => h.stepOut()],
+    ['end', (h: ReturnType<typeof setup>['handlers']) => h.end()],
+  ] as const)
+    it(`${name}: success marks the fine area as updating, then calls onChanged`, async () => {
+      const { log, handlers } = setup()
+      await call(handlers)
+      expect(log).toEqual([expect.stringMatching(/^begin:/), 'updating', 'changed', 'end'])
+    })
+
+  it('a debt mark asks for fresh data but does not blank the fine area', async () => {
+    const { log, handlers } = setup()
+    await handlers.debt('d1', true)
+    expect(log).toEqual(['begin:debt:d1', 'changed', 'end'])
+  })
+
+  it('an error is reported in its slot and nothing is refreshed', async () => {
+    const log: string[] = []
+    const hooks = { begin: () => {}, fail: (s: string, e: string) => log.push(`${s}:${e}`), end: () => {}, updating: () => log.push('updating'), changed: () => log.push('changed') }
+    const actions = { propose: vi.fn(), vote: vi.fn(async () => ({ ok: false as const, error: 'Esa votación ya terminó.' })), acceptActive: vi.fn(), stepOut: vi.fn(), end: vi.fn(), setDebtPaid: vi.fn() }
+    await createFineHandlers(createRunner(), actions, 'g1', hooks).vote('f1', true)
+    expect(log).toEqual(['vote:Esa votación ya terminó.'])
+  })
+
+  it('a second call while one is running does nothing', async () => {
+    const { handlers, actions } = setup()
+    let release!: () => void
+    actions.stepOut.mockImplementationOnce(() => new Promise((res) => (release = () => res({ ok: true as const, data: undefined }))))
+    const first = handlers.stepOut()
+    await handlers.end()
+    expect(actions.end).not.toHaveBeenCalled()
+    release()
+    await first
   })
 })

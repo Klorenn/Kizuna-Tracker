@@ -6,7 +6,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { ActiveFineCard } from '@/components/groups/fund/ActiveFineCard'
 import { FundDebtRow } from '@/components/groups/fund/FundDebtRow'
 import { FundPeople } from '@/components/groups/fund/FundPeople'
-import { FundSection } from '@/components/groups/fund/FundSection'
+import { FineUpdating, FundSection } from '@/components/groups/fund/FundSection'
 import { FundTotals } from '@/components/groups/fund/FundTotals'
 import { ProposalForm } from '@/components/groups/fund/ProposalSheet'
 import { VoteCard } from '@/components/groups/fund/VoteCard'
@@ -19,6 +19,7 @@ import type {
 } from '@/lib/groups-fines-contract'
 
 const text = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+const NOW = Date.parse('2026-11-25T12:00:00Z')
 const RULE = 'La app solo registra. El pago se hace fuera de la app.'
 
 const person = (n: string) => ({ userId: `u-${n}`, username: n, displayName: n.toUpperCase(), avatarPath: null, avatarPreset: null })
@@ -77,6 +78,8 @@ const section = (o: { state?: GroupFineState | null; fund?: GroupFund | null; ro
       archived: o.archived ?? false,
       myUserId: o.me ?? 'u-zed',
       retryHref: '/grupos/g1',
+      now: NOW,
+      onChanged: () => {},
       actions,
     }),
   )
@@ -90,6 +93,16 @@ describe('FundTotals', () => {
     expect(t).toContain('Pendiente $5.000')
     expect(h).toContain('font-mono')
     expect(h).toContain('grid-cols-3')
+  })
+
+  it('short amounts share a row; long ones restack, label left and amount right, never truncated', () => {
+    const wide = renderToStaticMarkup(createElement(FundTotals, { totals: { registered: 10000000, paid: 10000000, pending: 10000000 } }))
+    expect(text(wide)).toContain('Registrado $10.000.000')
+    expect(wide).not.toContain('grid-cols-3')
+    expect(wide).toContain('justify-between')
+    expect(wide).not.toContain('truncate')
+    const narrow = renderToStaticMarkup(createElement(FundTotals, { totals: fund.totals }))
+    expect(narrow).not.toContain('truncate')
   })
 })
 
@@ -134,6 +147,13 @@ describe('FundDebtRow', () => {
     expect(row(debt('beto'), { canMark: true, error: 'Otro administrador debe marcar tu deuda.' })).toContain('role="alert"')
   })
 
+  it('the week and amount line wraps instead of cutting the amount', () => {
+    const h = row(debt('beto', { amount: 10000000 }))
+    expect(text(h)).toContain('Semana del 16 nov · $10.000.000')
+    const line = h.match(/<span class="[^"]*">Semana del[^]*?<\/span><\/span>/)?.[0] ?? ''
+    expect(line).not.toContain('truncate')
+  })
+
   it('touch target of 44 px and long names truncate', () => {
     const h = row(debt('beto', { displayName: 'Nombre larguísimo '.repeat(6) }), { canMark: true })
     expect(h).toContain('h-11')
@@ -143,7 +163,7 @@ describe('FundDebtRow', () => {
 
 describe('VoteCard', () => {
   const card = (p: GroupFineProposal, o: { canVote?: boolean; pending?: boolean; error?: string | null } = {}) =>
-    renderToStaticMarkup(createElement(VoteCard, { proposal: p, canVote: o.canVote ?? true, pending: o.pending ?? false, error: o.error ?? null, onVote: () => {} }))
+    renderToStaticMarkup(createElement(VoteCard, { proposal: p, canVote: o.canVote ?? true, pending: o.pending ?? false, error: o.error ?? null, onVote: () => {}, now: NOW }))
 
   it('not voted: proposal copy, progress and both options', () => {
     const t = text(card(proposal))
@@ -175,6 +195,19 @@ describe('VoteCard', () => {
 
   it('read-only (archived): no buttons at all', () => {
     expect(card(proposal, { canVote: false })).not.toContain('<button')
+  })
+
+  it('past its expiry: "La votación terminó." and no buttons, voted or not', () => {
+    const late = renderToStaticMarkup(
+      createElement(VoteCard, { proposal, canVote: true, pending: false, error: null, onVote: () => {}, now: Date.parse('2026-11-30T12:00:00Z') }),
+    )
+    expect(text(late)).toContain('La votación terminó.')
+    expect(late).not.toContain('<button')
+    const lateVoted = renderToStaticMarkup(
+      createElement(VoteCard, { proposal: { ...proposal, myVote: true }, canVote: true, pending: false, error: null, onVote: () => {}, now: Date.parse('2026-12-01T00:00:00Z') }),
+    )
+    expect(lateVoted).not.toContain('<button')
+    expect(text(card(proposal))).not.toContain('La votación terminó.')
   })
 
   it('an error shows where the vote was cast', () => {
@@ -294,6 +327,21 @@ describe('FundSection', () => {
   it('the vote card is present only with an open proposal', () => {
     expect(text(section({ state: state({ proposal }) }))).toContain('Aceptaron 2 de 3 necesarios')
     expect(text(section())).not.toContain('Aceptaron')
+  })
+
+  it('an expired proposal shows no vote buttons', () => {
+    const h = renderToStaticMarkup(
+      createElement(FundSection, { groupId: 'g1', state: state({ proposal }), fund, role: 'member', archived: false, myUserId: 'u-zed', retryHref: '/grupos/g1', now: Date.parse('2026-12-02T00:00:00Z'), onChanged: () => {}, actions }),
+    )
+    expect(text(h)).toContain('La votación terminó.')
+    expect(h).not.toContain('No participar')
+  })
+
+  it('while fresh data is awaited the fine area is neutral: "Actualizando…" and no controls', () => {
+    const h = renderToStaticMarkup(createElement(FineUpdating))
+    expect(text(h)).toContain('Actualizando…')
+    expect(h).toContain('role="status"')
+    expect(h).not.toContain('<button')
   })
 
   it('an open proposal hides "Proponer multa" (one at a time)', () => {

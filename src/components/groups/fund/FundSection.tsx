@@ -10,32 +10,27 @@
  *  - `role: GroupRole`, `archived: boolean` (admin controls are absent, not disabled, for members
  *    and in an archived group, which is read-only), `myUserId: string`
  *  - `retryHref: string` (where the "Reintentar" of a failed read points: the group's page)
+ *  - `now: number` (the page's clock, epoch ms: a proposal past its expiry shows no buttons)
  *  - `actions: Pick<GroupFineActions, "propose" | "vote" | "acceptActive" | "stepOut" | "end" | "setDebtPaid">`
- *  - `onChanged?: () => void` (optional addition: called after any action the server accepted, so the
- *    page can refresh; the section already shows what was accepted until fresh props arrive)
- * Shows: the fine in force, the vote card while a proposal is open, the fund totals, who owes and the
- * recorded debts. Of each member: name, @usuario, avatar and amounts, nothing else. Every action has
- * a pending state and a single-flight guard; server errors show where the action was taken.
- * "La app solo registra. El pago se hace fuera de la app." is shown with every amount owed.
+ *  - `onChanged: () => void` (REQUIRED: the page refreshes; called after every accepted action)
+ * After an accepted fine action (propose, vote, accept, step out, end) the fine area shows a neutral
+ * "Actualizando…" with no controls until new `state` props arrive; a paid mark updates the debt row
+ * and the totals exactly. Of each member: name, @usuario, avatar and amounts, nothing else. Every
+ * action has a pending state and a single-flight guard; server errors show where the action was
+ * taken. "La app solo registra. El pago se hace fuera de la app." is shown with every amount owed.
  */
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { LoadFailed } from "@/components/LoadFailed";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { Sheet } from "@/components/ui/Sheet";
-import type {
-  GroupFineActions,
-  GroupFineProposal,
-  GroupFineState,
-  GroupFund,
-  GroupFundDebt,
-} from "@/lib/groups-fines-contract";
-import type { GroupResult, GroupRole } from "@/lib/groups-contract";
+import type { GroupRole } from "@/lib/groups-contract";
+import type { GroupFineActions, GroupFineState, GroupFund, GroupFundDebt } from "@/lib/groups-fines-contract";
 import { ConfirmBody } from "../detail/AdminSheets";
 import { createRunner } from "../detail/group-logic";
 import { ActiveFineCard } from "./ActiveFineCard";
-import { applyDebtPaid, applyVote, canMarkPaid, RULE_LINE, runAndNotify } from "./fund-logic";
+import { applyDebtPaid, canMarkPaid, createFineHandlers, RULE_LINE } from "./fund-logic";
 import { FundDebtRow } from "./FundDebtRow";
 import { FundPeople } from "./FundPeople";
 import { FundTotals } from "./FundTotals";
@@ -62,6 +57,17 @@ const CONFIRM = {
 
 const subLabel = "section-label flex h-6 items-center pt-1 text-muted";
 
+/** The fine area between an accepted action and the fresh props: nothing to press. */
+export function FineUpdating() {
+  return (
+    <Card className="p-4">
+      <p role="status" aria-busy="true" className="min-h-12 text-body text-muted">
+        Actualizando…
+      </p>
+    </Card>
+  );
+}
+
 export function FundSection({
   groupId,
   state,
@@ -70,6 +76,7 @@ export function FundSection({
   archived,
   myUserId,
   retryHref,
+  now,
   actions,
   onChanged,
 }: {
@@ -80,23 +87,24 @@ export function FundSection({
   archived: boolean;
   myUserId: string;
   retryHref: string;
+  now: number;
   actions: FundActions;
-  onChanged?: () => void;
+  onChanged: () => void;
 }) {
   const [runner] = useState(createRunner);
   const [pending, setPending] = useState<string | null>(null);
   const [errors, setErrors] = useState<Record<string, string | null>>({});
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [proposing, setProposing] = useState(false);
+  const [updating, setUpdating] = useState(false);
 
-  // what the server accepted, kept on top of the props until the page hands down fresh ones
-  const [proposalOv, setProposalOv] = useState<GroupFineProposal | null>(null);
+  // what the server accepted for a debt, kept on top of the props until the page hands down fresh ones
   const [fundOv, setFundOv] = useState<GroupFund | null>(null);
   const [seenState, setSeenState] = useState(state);
   const [seenFund, setSeenFund] = useState(fund);
   if (seenState !== state) {
     setSeenState(state);
-    setProposalOv(null);
+    setUpdating(false);
   }
   if (seenFund !== fund) {
     setSeenFund(fund);
@@ -105,22 +113,23 @@ export function FundSection({
 
   const live = !archived;
   const admin = live && role === "admin";
-  const proposal = state?.proposal ? (proposalOv?.id === state.proposal.id ? proposalOv : state.proposal) : null;
   const fundView = fundOv ?? fund;
   const busy = pending !== null;
 
-  /** One request with its pending state; the failed result becomes the error of its slot. */
-  async function exec<T>(slot: string, fn: () => Promise<GroupResult<T>>, onOk?: (data: T) => void) {
-    if (runner.busy()) return;
-    setPending(slot);
-    setErrors((e) => ({ ...e, [slot]: null }));
-    const r = await runAndNotify(runner, fn, (data) => {
-      onOk?.(data);
-      onChanged?.();
-    });
-    setPending(null);
-    if (r && !r.ok) setErrors((e) => ({ ...e, [slot]: r.error }));
-  }
+  const run = useMemo(
+    () =>
+      createFineHandlers(runner, actions, groupId, {
+        begin: (slot) => {
+          setPending(slot);
+          setErrors((e) => ({ ...e, [slot]: null }));
+        },
+        fail: (slot, error) => setErrors((e) => ({ ...e, [slot]: error })),
+        end: () => setPending(null),
+        updating: () => setUpdating(true),
+        changed: onChanged,
+      }),
+    [runner, actions, groupId, onChanged],
+  );
 
   const closeConfirm = () => {
     if (!busy) setConfirm(null);
@@ -131,13 +140,10 @@ export function FundSection({
   };
   const toggleDebt = (d: GroupFundDebt) => {
     const paid = d.paidAt === null;
-    void exec(
-      `debt:${d.debtId}`,
-      () => actions.setDebtPaid(d.debtId, paid),
-      () => setFundOv((f) => applyDebtPaid(f ?? fund ?? fundView!, d.debtId, paid)),
-    );
+    void run.debt(d.debtId, paid, () => setFundOv((f) => applyDebtPaid(f ?? fund ?? fundView!, d.debtId, paid)));
   };
 
+  const proposal = state?.proposal ?? null;
   const showFund =
     fundView !== null && (Boolean(state?.active) || fundView.totals.registered > 0 || fundView.debts.length > 0);
 
@@ -147,6 +153,8 @@ export function FundSection({
 
       {state === null ? (
         <LoadFailed href={retryHref} />
+      ) : updating ? (
+        <FineUpdating />
       ) : (
         <>
           {proposal ? (
@@ -155,13 +163,8 @@ export function FundSection({
               canVote={live}
               pending={busy}
               error={errors.vote ?? null}
-              onVote={(accept) =>
-                void exec(
-                  "vote",
-                  () => actions.vote(proposal.id, accept),
-                  () => setProposalOv(applyVote(proposal, accept)),
-                )
-              }
+              now={now}
+              onVote={(accept) => void run.vote(proposal.id, accept)}
             />
           ) : null}
           {state.active ? (
@@ -171,7 +174,7 @@ export function FundSection({
               canEnd={admin}
               pending={busy}
               error={confirm ? null : (errors.active ?? null)}
-              onAccept={() => void exec("active", () => actions.acceptActive(groupId))}
+              onAccept={() => void run.accept()}
               onStepOut={() => ask("stepOut")}
               onEnd={() => ask("end")}
             />
@@ -239,13 +242,7 @@ export function FundSection({
           singleAdmin={state.singleAdmin}
           pending={pending === "propose"}
           error={errors.propose ?? null}
-          onSubmit={(amount, purpose) =>
-            void exec(
-              "propose",
-              () => actions.propose(groupId, amount, purpose),
-              () => setProposing(false),
-            )
-          }
+          onSubmit={(amount, purpose) => void run.propose(amount, purpose, () => setProposing(false))}
         />
       ) : null}
 
@@ -257,13 +254,7 @@ export function FundSection({
             pending={pending === "active"}
             error={errors.active ?? null}
             onCancel={closeConfirm}
-            onConfirm={() =>
-              void exec(
-                "active",
-                () => (confirm === "end" ? actions.end(groupId) : actions.stepOut(groupId)),
-                () => setConfirm(null),
-              )
-            }
+            onConfirm={() => void (confirm === "end" ? run.end(() => setConfirm(null)) : run.stepOut(() => setConfirm(null)))}
           />
         </Sheet>
       ) : null}

@@ -4,7 +4,8 @@
  * VoteCard: an open fine proposal and the caller's vote.
  * Props: `proposal: GroupFineProposal`, `canVote` (false in an archived group: read-only, no
  * buttons), `pending` (the vote request is running), `error` (server error or null),
- * `onVote(accept)`. Before voting: "Aceptar" / "No participar"; after: the status and "Cambiar".
+ * `onVote(accept)`, `now` (page clock, epoch ms: past `expiresAt` the card says "La votación terminó."
+ * and has no buttons). Before voting: "Aceptar" / "No participar"; after: the status and "Cambiar".
  * Both states have the same control height, so a vote never moves the card.
  */
 import { Check } from "@phosphor-icons/react";
@@ -14,7 +15,7 @@ import { Card } from "@/components/ui/Card";
 import { formatCLP } from "@/domain/ledger";
 import type { GroupFineProposal } from "@/lib/groups-fines-contract";
 import { ErrorLine, Mono } from "../detail/parts";
-import { acceptedLine, voteStatus } from "./fund-logic";
+import { acceptedLine, proposalExpired, voteStatus } from "./fund-logic";
 
 export function VoteCard({
   proposal,
@@ -22,15 +23,19 @@ export function VoteCard({
   pending,
   error,
   onVote,
+  now,
 }: {
   proposal: GroupFineProposal;
   canVote: boolean;
   pending: boolean;
   error: string | null;
   onVote: (accept: boolean) => void;
+  /** The page's clock (epoch ms): a proposal past `expiresAt` shows "La votación terminó." and no buttons. */
+  now: number;
 }) {
   const [changing, setChanging] = useState(false);
   const status = voteStatus(proposal.myVote);
+  const closed = proposalExpired(proposal, now);
   const choosing = status === null || changing;
 
   function vote(accept: boolean) {
@@ -47,7 +52,11 @@ export function VoteCard({
         <p className="text-small text-muted">Fondo: {proposal.purpose}</p>
         <p className="font-mono text-small text-ink">{acceptedLine(proposal)}</p>
       </div>
-      {canVote ? (
+      {closed ? (
+        <p role="status" className="min-h-12 text-body font-medium text-ink">
+          La votación terminó.
+        </p>
+      ) : canVote ? (
         choosing ? (
           <div className="grid min-h-12 grid-cols-2 gap-2">
             <Button disabled={pending} aria-busy={pending} onClick={() => vote(true)} className="min-w-0 px-3!">

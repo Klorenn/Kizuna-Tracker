@@ -38,7 +38,7 @@ export const FundDebtRow = memo(function FundDebtRow({
         person={debt}
         you={debt.mine}
         detail={
-          <span className="truncate text-small text-muted">
+          <span className="text-small text-muted break-words">
             Semana del {dayMonthLabel(debt.weekStart)} · <span className="font-mono">{formatCLP(debt.amount)}</span>
           </span>
         }

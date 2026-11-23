@@ -6,8 +6,8 @@
  *
  * Props: `groupId`, `checkinId`, `ownerId`, `ownerName`, `myUserId`, `role`, `archived`,
  * `requiresPhoto` (the group's commitment), `hasPhoto` (the check-in carries a photo), `createdAt`
- * (the check-in's creation instant), `now?` (ms since epoch; the page's clock when given, else the
- * device's), `actions: Pick<GroupFineActions, "rejectPhoto">`, `onRejected?(checkinId)`.
+ * (the check-in's creation instant), `now` (REQUIRED, epoch ms from the page: no clock is read
+ * here, so server and client render the same),`actions: Pick<GroupFineActions, "rejectPhoto">`, `onRejected?(checkinId)`.
  * Shown only to admins, on another person's photo, less than 24 hours old, when the commitment
  * requires a photo. The reason is typed in a sheet and only that person sees it. After the server
  * accepts, the button is replaced in the same slot by "Foto rechazada" (no layout shift).
@@ -99,11 +99,10 @@ export function RejectPhotoButton({
   requiresPhoto: boolean;
   hasPhoto: boolean;
   createdAt: string;
-  now?: number;
+  now: number;
   actions: Pick<GroupFineActions, "rejectPhoto">;
   onRejected?: (checkinId: string) => void;
 }) {
-  const [clock] = useState(() => Date.now());
   const [runner] = useState(createRunner);
   const [open, setOpen] = useState(false);
   const [pending, setPending] = useState(false);
@@ -116,7 +115,7 @@ export function RejectPhotoButton({
         Foto rechazada
       </p>
     );
-  if (!canRejectPhoto({ role, archived, requiresPhoto, hasPhoto, ownerId, myUserId, createdAt, now: now ?? clock }))
+  if (!canRejectPhoto({ role, archived, requiresPhoto, hasPhoto, ownerId, myUserId, createdAt, now }))
     return null;
 
   async function submit(reason: string) {
