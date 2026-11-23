@@ -40,6 +40,10 @@ const LOG_TYPE_HINT: Record<LogType, string> = {
   none: "Solo marcas si lo hiciste.",
   reading: "Anotas el libro y las páginas de cada día.",
   workout: "Anotas el tipo de día, los ejercicios y los pesos.",
+  time: "Anotas cuánto rato le dedicaste.",
+  watch: "Anotas qué viste.",
+  quantity: "Sumas hasta llegar a la meta diaria.",
+  cardio: "Anotas distancia y tiempo.",
 };
 
 /** Create (with preset chips) or edit a habit. */
@@ -264,6 +268,7 @@ export function HabitForm({
             }}
           >
             {LOG_TYPE_OPTIONS.map((o) => {
+              const anySelected = LOG_TYPE_OPTIONS.some((x) => x.value === draft.logType);
               const selected = o.value === draft.logType;
               return (
                 <button
@@ -271,7 +276,8 @@ export function HabitForm({
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  tabIndex={selected ? 0 : -1}
+                  // a log type outside the offered options leaves nothing selected: the first radio stays reachable
+                  tabIndex={selected || (!anySelected && o === LOG_TYPE_OPTIONS[0]) ? 0 : -1}
                   onClick={() => patch({ logType: o.value })}
                   className={`h-11 flex-auto rounded-md px-2 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] ${
                     selected ? "bg-raised text-ink shadow-card" : "text-muted"

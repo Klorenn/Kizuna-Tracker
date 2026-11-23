@@ -1,9 +1,10 @@
 import { DEFAULT_HABIT_COLOR, PRESET_COLOR, isHabitColor, type HabitColor } from './habit-colors'
 import type { LogType } from './logs'
+import { validateQuantityConfig, type QuantityConfig } from './quantity'
 import type { Frequency } from './types'
 
 export type Visibility = 'private' | 'friends' | 'public'
-export type PresetKey = 'gym' | 'water' | 'study' | 'read' | 'walk' | 'sleep' | 'eat_well'
+export type PresetKey = 'gym' | 'water' | 'study' | 'read' | 'walk' | 'sleep' | 'eat_well' | 'watch' | 'run'
 
 export const HABIT_ICONS = [
   'barbell',
@@ -12,12 +13,14 @@ export const HABIT_ICONS = [
   'book',
   'laptop',
   'desk',
+  'television',
   'sneaker-move',
   'moon',
   'fork-knife',
   'flame',
   'target',
   'clock',
+  'timer',
   'calendar-blank',
   'bell',
   'camera',
@@ -46,6 +49,8 @@ export type HabitDraft = {
   preset: PresetKey | null
   color: HabitColor
   logType: LogType
+  /** Daily goal of a `quantity` habit; null for every other log type. */
+  quantity: QuantityConfig | null
 }
 
 export const MAX_ITEMS = 12
@@ -58,6 +63,7 @@ const base = (preset: PresetKey) => ({
   items: [] as HabitItemDraft[],
   color: PRESET_COLOR[preset],
   logType: 'none' as LogType,
+  quantity: null as QuantityConfig | null,
 })
 const daily: Frequency = { type: 'daily' }
 
@@ -71,13 +77,22 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
     preset: 'gym',
     logType: 'workout',
   },
-  water: { ...base('water'), name: 'Agua', icon: 'drop', frequency: daily, preset: 'water' },
+  water: {
+    ...base('water'),
+    name: 'Agua',
+    icon: 'drop',
+    frequency: daily,
+    preset: 'water',
+    logType: 'quantity',
+    quantity: { unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 },
+  },
   study: {
     ...base('study'),
     name: 'Estudiar',
     icon: 'book-open',
     frequency: { type: 'weekly', target: 5 },
     preset: 'study',
+    logType: 'time',
   },
   read: {
     ...base('read'),
@@ -87,7 +102,15 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
     preset: 'read',
     logType: 'reading',
   },
-  walk: { ...base('walk'), name: 'Caminar', icon: 'sneaker-move', frequency: daily, preset: 'walk' },
+  walk: {
+    ...base('walk'),
+    name: 'Caminar',
+    icon: 'sneaker-move',
+    frequency: daily,
+    preset: 'walk',
+    logType: 'quantity',
+    quantity: { unit: 'steps', label: null, target: 8000, step: 1000, display: 'base', glassMl: 250 },
+  },
   sleep: { ...base('sleep'), name: 'Dormir 8 h', icon: 'moon', frequency: daily, preset: 'sleep' },
   eat_well: {
     ...base('eat_well'),
@@ -96,6 +119,22 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
     frequency: daily,
     items: ['Desayuno', 'Almuerzo', 'Once', 'Cena'].map((label) => ({ label, requiresPhoto: false })),
     preset: 'eat_well',
+  },
+  watch: {
+    ...base('watch'),
+    name: 'Series y películas',
+    icon: 'television',
+    frequency: { type: 'weekly', target: 3 },
+    preset: 'watch',
+    logType: 'watch',
+  },
+  run: {
+    ...base('run'),
+    name: 'Trotar',
+    icon: 'sneaker-move',
+    frequency: { type: 'weekly', target: 3 },
+    preset: 'run',
+    logType: 'cardio',
   },
 }
 
@@ -106,6 +145,7 @@ function copy(d: HabitDraft): HabitDraft {
     ...d,
     frequency: { ...d.frequency },
     items: d.items.map((i) => ({ ...i })),
+    quantity: d.quantity === null ? null : { ...d.quantity },
   }
 }
 
@@ -125,7 +165,13 @@ export function customDraft(): HabitDraft {
     preset: null,
     color: DEFAULT_HABIT_COLOR,
     logType: 'none',
+    quantity: null,
   }
+}
+
+/** The database pairs `log_type = 'quantity'` with the quantity columns: any other type carries none. */
+export function normalizeHabitDraft(d: HabitDraft): HabitDraft {
+  return d.logType !== 'quantity' && d.quantity !== null ? { ...d, quantity: null } : d
 }
 
 export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; error: string } {
@@ -149,6 +195,15 @@ export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; e
   }
   if (d.items.length > 0 && d.logType !== 'none') {
     return fail('Un hábito con pasos no lleva registro detallado.')
+  }
+  if (d.requiresPhoto && (d.logType === 'time' || d.logType === 'quantity')) {
+    return fail('Un hábito con foto no lleva tiempo ni cantidad.')
+  }
+  // A draft with another log type carries no goal (see normalizeHabitDraft); only quantity needs one.
+  if (d.logType === 'quantity') {
+    if (d.quantity === null) return fail('Configura la meta diaria.')
+    const q = validateQuantityConfig(d.quantity)
+    if (!q.ok) return q
   }
   const seen = new Set<string>()
   for (const item of d.items) {

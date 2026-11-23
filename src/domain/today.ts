@@ -131,6 +131,10 @@ function pickLog(logs: TodayLog | TodayLog[] | undefined, logType: LogType): Tod
 const UNDO_LOSES: Record<TodayLog['kind'], string> = {
   reading: 'Se borrará también la lectura de hoy.',
   workout: 'Se borrará también el entrenamiento de hoy.',
+  time: 'Se borrará también el tiempo de hoy.',
+  watch: 'Se borrará también lo que viste hoy.',
+  quantity: 'Se borrará también la cantidad de hoy.',
+  cardio: 'Se borrará también la distancia de hoy.',
 }
 
 /**

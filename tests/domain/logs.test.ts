@@ -14,6 +14,7 @@ import {
   gymVisits,
   headlineGroup,
   lastMonths,
+  bookProgress,
   logSubtitle,
   pagesLabel,
   monthlyReading,
@@ -50,7 +51,7 @@ const entries: ReadingEntry[] = [
 
 describe('constants', () => {
   it('lists log types, day types and muscle groups in order', () => {
-    expect(LOG_TYPES).toEqual(['none', 'reading', 'workout'])
+    expect(LOG_TYPES).toEqual(['none', 'reading', 'workout', 'time', 'watch', 'quantity', 'cardio'])
     expect(DAY_TYPES).toEqual(['legs', 'chest', 'back', 'shoulders', 'arms', 'core', 'cardio', 'full_body'])
     expect(MUSCLE_GROUPS).toEqual(['legs', 'chest', 'back', 'shoulders', 'arms', 'core'])
     expect(DAY_TYPES.map((d) => DAY_TYPE_LABEL[d])).toEqual([
@@ -343,5 +344,52 @@ describe('logSubtitle', () => {
       'Pecho, hombros y brazos · 3 ejercicios',
     )
     expect(logSubtitle({ kind: 'workout', dayTypes: ['cardio'], exerciseCount: 0 })).toBe('Cardio')
+  })
+})
+
+describe('bookProgress', () => {
+  it('writes one progress format everywhere', () => {
+    expect(bookProgress(40, 412)).toBe('página 40 de 412 · 10 %')
+    expect(bookProgress(411, 412)).toBe('página 411 de 412 · 99 %')
+    expect(bookProgress(412, 412)).toBe('página 412 de 412 · 100 %')
+    expect(bookProgress(40, null)).toBe('página 40')
+    expect(bookProgress(0, 412)).toBe('412 páginas')
+    expect(bookProgress(null, null)).toBeNull()
+  })
+  it('survives a zero total and a page past the total', () => {
+    expect(bookProgress(40, 0)).toBe('página 40')
+    expect(bookProgress(0, 0)).toBeNull()
+    expect(bookProgress(500, 412)).toBe('página 500 de 412 · 100 %')
+  })
+})
+
+describe('logSubtitle (v4)', () => {
+  const water = { unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 } as const
+  it('describes time', () => {
+    expect(logSubtitle({ kind: 'time', minutes: 85, topic: 'Álgebra' })).toBe('1 h 25 min · Álgebra')
+    expect(logSubtitle({ kind: 'time', minutes: 45, topic: null })).toBe('45 min')
+  })
+  it('describes what you watched', () => {
+    expect(logSubtitle({ kind: 'watch', title: 'Dark', mediaKind: 'series', episodes: 3, minutes: null, completed: false })).toBe('3 episodios · Dark')
+    expect(logSubtitle({ kind: 'watch', title: 'Dark', mediaKind: 'series', episodes: 1, minutes: 50, completed: false })).toBe('1 episodio · Dark')
+    expect(logSubtitle({ kind: 'watch', title: 'Dune', mediaKind: 'movie', episodes: null, minutes: null, completed: true })).toBe('Completa · Dune')
+    expect(logSubtitle({ kind: 'watch', title: 'Past Lives', mediaKind: 'movie', episodes: null, minutes: 70, completed: false })).toBe('1 h 10 min · Past Lives')
+  })
+  it('describes quantity progress', () => {
+    expect(logSubtitle({ kind: 'quantity', total: 1250, config: water, done: false })).toBe('5 de 8 vasos')
+    expect(logSubtitle({ kind: 'quantity', total: 2000, config: water, done: true })).toBe('Meta de hoy cumplida · 8 de 8 vasos')
+  })
+  it('describes cardio outings', () => {
+    expect(logSubtitle({ kind: 'cardio', entries: [{ distanceM: 5200, durationS: 1780, kind: 'run' }] })).toBe('5,2 km · 29:40 · 5:42 /km')
+    expect(
+      logSubtitle({
+        kind: 'cardio',
+        entries: [
+          { distanceM: 3000, durationS: 1080, kind: 'run' },
+          { distanceM: 2500, durationS: 1800, kind: 'walk' },
+        ],
+      }),
+    ).toBe('5,5 km · 48:00 · 2 salidas')
+    expect(logSubtitle({ kind: 'cardio', entries: [{ distanceM: 1500, durationS: 1800, kind: 'swim' }] })).toBe('1.500 m · 30:00')
   })
 })
