@@ -36,7 +36,7 @@ export async function updateSettings(input: {
     .eq("id", uid)
     .select("id");
   if (error || !data || data.length === 0) return { ok: false, error: GENERIC };
-  revalidatePath("/perfil");
+  revalidatePath("/perfil", "layout");
   return { ok: true };
 }
 
@@ -76,7 +76,7 @@ export async function uploadAvatar(file: File): Promise<Result> {
   if (error) return { ok: false, error: "No pudimos subir la foto. Inténtalo de nuevo." };
   const { error: profileError } = await admin.from("profiles").update({ avatar_path: path, avatar_updated_at: new Date().toISOString() }).eq("id", uid);
   if (profileError) return { ok: false, error: GENERIC };
-  revalidatePath("/perfil");
+  revalidatePath("/perfil", "layout");
   return { ok: true };
 }
 

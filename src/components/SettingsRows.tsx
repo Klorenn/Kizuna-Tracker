@@ -1,32 +1,146 @@
 "use client";
 
-import { Bell, CaretRight, Globe, Palette, User } from "@phosphor-icons/react";
+import { At, Bell, Camera, Copy, EnvelopeSimple, Globe, Palette, User, Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition, type ReactNode } from "react";
+import { useState, useTransition } from "react";
 import { setTimezone, updateSettings } from "@/app/(app)/perfil/actions";
 import { setTheme } from "@/app/theme-actions";
+import { useAvatarUpload } from "@/components/profile/useAvatarUpload";
+import { Avatar } from "@/components/ui/Avatar";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ListRow } from "@/components/ui/ListRow";
 import { Segmented } from "@/components/ui/Segmented";
 import { Sheet } from "@/components/ui/Sheet";
+import { Toast, useToast } from "@/components/ui/Toast";
+import type { TimezoneLock } from "@/lib/profile-view";
 import { THEMES, THEME_LABEL, type Theme } from "@/lib/theme";
 
-type Props = {
+type Result = { ok: true } | { ok: false; error: string };
+
+function ErrorText({ error }: { error: string | null }) {
+  if (!error) return null;
+  return (
+    <p role="alert" className="flex items-center gap-1 text-small text-ink">
+      <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
+      {error}
+    </p>
+  );
+}
+
+/** Runs a server action, keeps its error, refreshes the page on success. */
+function useSave() {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [busy, start] = useTransition();
+  function run(action: () => Promise<Result>, onDone: () => void) {
+    setError(null);
+    start(async () => {
+      const r = await action();
+      if (!r.ok) return setError(r.error);
+      onDone();
+      router.refresh();
+    });
+  }
+  return { error, setError, busy, run };
+}
+
+/** Ajustes > Cuenta: name (editable), @usuario (copy), email (read-only), profile photo. */
+export function AccountRows({
+  firstName,
+  lastName,
+  reminderTime,
+  username,
+  email,
+  avatarSrc,
+}: {
   firstName: string;
   lastName: string;
-  reminderTime: string; // HH:MM
-  timezone: string;
-  theme: Theme;
-};
+  reminderTime: string; // HH:MM, saved together with the name
+  username: string;
+  email: string | null;
+  avatarSrc: string | null;
+}) {
+  const [open, setOpen] = useState(false);
+  const [first, setFirst] = useState(firstName);
+  const [last, setLast] = useState(lastName);
+  const { error, setError, busy, run } = useSave();
+  const avatar = useAvatarUpload();
+  const [toast, showToast] = useToast();
+  const name = `${firstName} ${lastName}`;
 
-function Row({ icon, label, value, onClick }: { icon: ReactNode; label: string; value?: string; onClick?: () => void }) {
+  const close = () => {
+    setOpen(false);
+    setError(null);
+  };
+
+  async function copyHandle() {
+    try {
+      await navigator.clipboard.writeText(`@${username}`);
+      showToast("Usuario copiado");
+    } catch {
+      showToast("No pudimos copiar tu usuario");
+    }
+  }
+
   return (
-    <button type="button" onClick={onClick} className="flex h-[52px] w-full items-center gap-3 px-4 text-left">
-      <span className="shrink-0 text-ink">{icon}</span>
-      <span className="min-w-0 flex-1 text-body text-ink">{label}</span>
-      {value ? <span className="shrink-0 font-mono text-[15px] font-medium text-muted">{value}</span> : null}
-      <CaretRight size={20} weight="light" className="shrink-0 text-muted" aria-hidden />
-    </button>
+    <>
+      <ListRow
+        icon={<User size={20} weight="light" />}
+        label="Nombre"
+        value={name}
+        chevron
+        onClick={() => {
+          setFirst(firstName);
+          setLast(lastName);
+          setOpen(true);
+        }}
+      />
+      <ListRow
+        icon={<At size={20} weight="light" />}
+        label="Usuario"
+        value={`@${username}`}
+        mono
+        trailing={<Copy size={18} weight="light" aria-hidden className="shrink-0 text-muted" />}
+        onClick={copyHandle}
+        aria-label={`Usuario @${username}. Copiar`}
+      />
+      <ListRow icon={<EnvelopeSimple size={20} weight="light" />} label="Correo" value={email ?? "Sin correo"} />
+      <ListRow
+        icon={<Camera size={20} weight="light" />}
+        label="Foto de perfil"
+        hint={
+          avatar.busy ? (
+            "Subiendo foto…"
+          ) : avatar.error ? (
+            <span role="alert" className="flex items-center gap-1 text-ink">
+              <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
+              {avatar.error}
+            </span>
+          ) : (
+            "Aparece en tu perfil"
+          )
+        }
+        trailing={<Avatar name={name} size="S" src={avatarSrc} />}
+        chevron
+        onClick={avatar.pick}
+        disabled={avatar.busy}
+      />
+      {avatar.input}
+      <Toast message={toast} />
+
+      <Sheet open={open} title="Nombre" onClose={close}>
+        <Input label="Nombre" value={first} maxLength={40} onChange={(e) => setFirst(e.target.value)} />
+        <Input label="Apellido" value={last} maxLength={40} onChange={(e) => setLast(e.target.value)} />
+        <ErrorText error={error} />
+        <Button
+          disabled={busy || (first.trim() === firstName && last.trim() === lastName)}
+          onClick={() => run(() => updateSettings({ firstName: first, lastName: last, reminderTime }), close)}
+        >
+          Guardar
+        </Button>
+      </Sheet>
+    </>
   );
 }
 
@@ -69,85 +183,78 @@ function ThemeRow({ initial }: { initial: Theme }) {
   }
 
   return (
-    <div className="flex flex-col gap-3 px-4 pb-4 pt-3.5">
+    <div className="flex flex-col gap-3 border-b border-line px-4 pb-4 pt-3.5">
       <div className="flex items-center gap-3">
         <Palette size={20} weight="light" className="shrink-0 text-ink" aria-hidden />
         <span className="text-body text-ink">Tema</span>
       </div>
       <Segmented label="Tema" options={THEME_OPTIONS} value={theme} onChange={choose} />
-      {error ? (
-        <p role="alert" className="text-small text-ink">
-          {error}
-        </p>
-      ) : null}
+      <ErrorText error={error} />
     </div>
   );
 }
 
-/** Ajustes rows: name, reminder time, timezone (once every 7 days) and the theme. */
-export function SettingsRows({ firstName, lastName, reminderTime, timezone, theme }: Props) {
-  const router = useRouter();
-  const [sheet, setSheet] = useState<null | "name" | "time" | "tz">(null);
-  const [first, setFirst] = useState(firstName);
-  const [last, setLast] = useState(lastName);
+/** Ajustes > Preferencias: theme, reminder time and timezone (once every 7 days). */
+export function PreferenceRows({
+  firstName,
+  lastName,
+  reminderTime,
+  timezone,
+  theme,
+  tzLock,
+}: {
+  firstName: string;
+  lastName: string;
+  reminderTime: string; // HH:MM
+  timezone: string;
+  theme: Theme;
+  tzLock: TimezoneLock;
+}) {
+  const [sheet, setSheet] = useState<null | "time" | "tz">(null);
   const [time, setTime] = useState(reminderTime);
   const [tz, setTz] = useState(timezone);
-  const [error, setError] = useState<string | null>(null);
-  const [busy, start] = useTransition();
+  const { error, setError, busy, run } = useSave();
 
   const close = () => {
     setSheet(null);
     setError(null);
   };
-
-  function save() {
-    setError(null);
-    start(async () => {
-      const r = await updateSettings({ firstName: first, lastName: last, reminderTime: time });
-      if (!r.ok) return setError(r.error);
-      close();
-      router.refresh();
-    });
-  }
-
-  function saveTz() {
-    setError(null);
-    start(async () => {
-      const r = await setTimezone(tz);
-      if (!r.ok) return setError(r.error);
-      close();
-      router.refresh();
-    });
-  }
-
-  const err = error ? (
-    <p role="alert" className="text-small text-ink">
-      {error}
-    </p>
-  ) : null;
+  const lockText = tzLock.locked ? `Podrás cambiarla el ${tzLock.label}` : null;
 
   return (
     <>
-      <div className="divide-y divide-line">
-        <Row icon={<User size={20} weight="light" aria-hidden />} label="Nombre" value={`${firstName}`} onClick={() => setSheet("name")} />
-        <Row icon={<Bell size={20} weight="light" aria-hidden />} label="Hora de recordatorio" value={reminderTime} onClick={() => setSheet("time")} />
-        <Row icon={<Globe size={20} weight="light" aria-hidden />} label="Zona horaria" value={city(timezone)} onClick={() => setSheet("tz")} />
-        <ThemeRow initial={theme} />
-      </div>
-
-      <Sheet open={sheet === "name"} title="Nombre" onClose={close}>
-        <Input label="Nombre" value={first} maxLength={40} onChange={(e) => setFirst(e.target.value)} />
-        <Input label="Apellido" value={last} maxLength={40} onChange={(e) => setLast(e.target.value)} />
-        {err}
-        <Button disabled={busy} onClick={() => save()}>
-          Guardar
-        </Button>
-      </Sheet>
+      <ThemeRow initial={theme} />
+      <ListRow
+        icon={<Bell size={20} weight="light" />}
+        label="Hora de recordatorio"
+        hint="Si te queda algo pendiente"
+        value={reminderTime}
+        mono
+        chevron
+        onClick={() => {
+          setTime(reminderTime);
+          setSheet("time");
+        }}
+      />
+      <ListRow
+        icon={<Globe size={20} weight="light" />}
+        label="Zona horaria"
+        hint={lockText ?? "Una vez cada 7 días"}
+        value={city(timezone)}
+        chevron
+        onClick={() => {
+          setTz(timezone);
+          setSheet("tz");
+        }}
+      />
 
       <Sheet open={sheet === "time"} title="Hora de recordatorio" onClose={close}>
         <Input label="Hora" type="time" value={time} onChange={(e) => setTime(e.target.value)} />
-        {err}
-        <Button disabled={busy || !time} onClick={() => save()}>
+        <ErrorText error={error} />
+        <Button
+          disabled={busy || !time || time === reminderTime}
+          onClick={() => run(() => updateSettings({ firstName, lastName, reminderTime: time }), close)}
+        >
           Guardar
         </Button>
       </Sheet>
@@ -157,8 +264,9 @@ export function SettingsRows({ firstName, lastName, reminderTime, timezone, them
           Zona horaria
           <select
             value={tz}
+            disabled={tzLock.locked}
             onChange={(e) => setTz(e.target.value)}
-            className="h-11 rounded-md border border-outline-strong bg-paper px-3 text-body text-ink"
+            className="h-11 rounded-md border border-outline-strong bg-paper px-3 text-body text-ink disabled:border-line disabled:text-muted"
           >
             {zones(timezone).map((z) => (
               <option key={z} value={z}>
@@ -167,9 +275,13 @@ export function SettingsRows({ firstName, lastName, reminderTime, timezone, them
             ))}
           </select>
         </label>
-        <p className="text-small text-muted">Puedes cambiarla una vez cada 7 días.</p>
-        {err}
-        <Button disabled={busy || tz === timezone} onClick={saveTz}>
+        <p className="text-small text-muted">
+          {tzLock.locked
+            ? `Ya la cambiaste hace poco. Podrás cambiarla de nuevo el ${tzLock.label}.`
+            : "Tus días se cuentan en esta zona. Puedes cambiarla una vez cada 7 días."}
+        </p>
+        <ErrorText error={error} />
+        <Button disabled={busy || tzLock.locked || tz === timezone} onClick={() => run(() => setTimezone(tz), close)}>
           Guardar
         </Button>
       </Sheet>

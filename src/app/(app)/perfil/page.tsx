@@ -1,39 +1,51 @@
-import { CaretRight, Receipt } from "@phosphor-icons/react/dist/ssr";
+import { CaretRight, GearSix, GlobeSimple, Plus, Receipt } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
-import { cookies, headers } from "next/headers";
+import { headers } from "next/headers";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { GoalCard } from "@/components/GoalCard";
-import { ProfileAvatar } from "@/components/ProfileAvatar";
-import { SettingsRows } from "@/components/SettingsRows";
-import { SignOutButton } from "@/components/SignOutButton";
+import { ActivityHeatmap } from "@/components/profile/ActivityHeatmap";
+import { HabitStrip } from "@/components/profile/HabitStrip";
+import { ProfileIdentity } from "@/components/profile/ProfileIdentity";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
+import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { ListCard, ListRow } from "@/components/ui/ListRow";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
-import { formatSignedCLP, netBalances } from "@/domain/ledger";
+import { toHabitColor } from "@/domain/habit-colors";
+import { netBalances } from "@/domain/ledger";
+import { dailyStreak, weeklyStreak } from "@/domain/streaks";
 import { avatarUrl } from "@/lib/avatar";
 import { loadGoals } from "@/lib/goals-data";
+import { activityGrid, debtSummary, lastDays, memberSince, streakText } from "@/lib/profile-view";
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
-import { THEME_COOKIE, parseTheme } from "@/lib/theme";
 
 export const metadata: Metadata = { title: "Perfil" };
 
-function Stat({ label, value, border }: { label: string; value: string; border?: string }) {
+function BigStat({ label, value, unit }: { label: string; value: number; unit: "days" | "weeks" }) {
   return (
-    <div className={`flex min-w-0 flex-1 flex-col gap-[2px] p-4 ${border ?? ""}`}>
+    <div className="flex min-w-0 flex-col gap-1.5 p-4">
       <p className="text-small text-muted">{label}</p>
-      <p className="text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-ink">{value}</p>
+      <p className="flex items-baseline gap-1.5">
+        <span className="font-mono text-[36px] font-semibold leading-none tracking-[-0.02em] text-ink">{value}</span>
+        <span className="text-small text-muted">{streakText(value, unit)}</span>
+      </p>
     </div>
   );
 }
 
-const streakLabel = (s: { value: number; unit: "days" | "weeks" }) =>
-  s.unit === "weeks" ? `${s.value} ${s.value === 1 ? "semana" : "semanas"}` : `${s.value} ${s.value === 1 ? "día" : "días"}`;
+function MiniStat({ label, value }: { label: string; value: number }) {
+  return (
+    <div className="flex min-h-12 min-w-0 items-center justify-between gap-2 px-4">
+      <p className="truncate text-small text-muted">{label}</p>
+      <p className="font-mono text-[17px] font-semibold text-ink">{value}</p>
+    </div>
+  );
+}
 
 export default async function PerfilPage() {
   const supabase = await createServerClient();
@@ -43,7 +55,7 @@ export default async function PerfilPage() {
   if (!user) redirect("/bienvenida");
   const { data: profile } = await supabase
     .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,reminder_time")
+    .select("username,first_name,last_name,avatar_path,avatar_updated_at,timezone,created_at")
     .eq("id", user.id)
     .maybeSingle();
   if (!profile) redirect("/login?error=perfil");
@@ -52,9 +64,10 @@ export default async function PerfilPage() {
   const [{ data: habits }, goals, record, { data: debtRows }] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,frequency_type,target_per_week")
+      .select("id,name,color,frequency_type,target_per_week")
       .eq("user_id", user.id)
-      .is("archived_at", null),
+      .is("archived_at", null)
+      .order("created_at"),
     loadGoals(supabase, user.id, today),
     challengeRecord(user.id),
     supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
@@ -72,10 +85,24 @@ export default async function PerfilPage() {
         .gte("local_date", from)
         .order("local_date", { ascending: false })
         .limit(limit);
-      return { ...h, dates: (data ?? []).map((c) => c.local_date) };
+      return { ...h, color: toHabitColor(h.color), dates: (data ?? []).map((c) => c.local_date) };
     }),
   );
   const { current, best } = profileStreaks(history, today);
+  const strip = history.map((h) => {
+    const weekly = h.frequency_type === "weekly";
+    return {
+      id: h.id,
+      name: h.name,
+      color: h.color,
+      streak: {
+        value: weekly ? weeklyStreak(h.dates, h.target_per_week ?? 1, today) : dailyStreak(h.dates, today),
+        unit: weekly ? ("weeks" as const) : ("days" as const),
+      },
+      week: lastDays(h.dates, today),
+    };
+  });
+  const activity = activityGrid(history, today);
 
   const balances = netBalances(
     (debtRows ?? []).map((d) => ({
@@ -87,77 +114,124 @@ export default async function PerfilPage() {
     })),
     user.id,
   );
-  const net = [...balances.values()].reduce((a, b) => a + b, 0);
+  const debt = debtSummary([...balances.values()].reduce((a, b) => a + b, 0));
 
   const name = `${profile.first_name} ${profile.last_name}`;
   const shareUrl = profileShareUrl(siteOrigin(await headers()), profile.username);
-  const theme = parseTheme((await cookies()).get(THEME_COOKIE)?.value);
 
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
-      <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Perfil</h1>
-      <ProfileAvatar name={name} username={profile.username} src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)} />
-
-      <Card>
-        <div className="flex border-b border-line">
-          <Stat label="Racha actual" value={streakLabel(current)} border="border-r border-line" />
-          <Stat label="Mejor racha" value={streakLabel(best)} />
+    <main className="mx-auto flex max-w-md flex-col gap-6 px-5 pb-8 pt-8">
+      <header className="flex flex-col gap-5">
+        <div className="flex items-center justify-between gap-3">
+          <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Perfil</h1>
+          <Link
+            href="/perfil/ajustes"
+            aria-label="Ajustes"
+            className="inline-flex size-11 shrink-0 items-center justify-center rounded-full border border-line bg-surface text-ink shadow-card transition-colors duration-[120ms] hover:bg-field"
+          >
+            <GearSix size={22} weight="light" aria-hidden />
+          </Link>
         </div>
-        <div className="flex">
-          <Stat label="Retos ganados" value={String(record.won)} border="border-r border-line" />
-          <Stat label="Retos perdidos" value={String(record.lost)} />
-        </div>
-      </Card>
+        <ProfileIdentity
+          name={name}
+          username={profile.username}
+          src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
+          since={memberSince(profile.created_at, profile.timezone)}
+        />
+      </header>
 
-      <ShareProfileButton kind="profile" url={shareUrl} />
-
-      <SectionHeader label="Metas" action="Ver todas" href="/metas" />
-      {goals.length === 0 ? (
-        <Link href="/metas" className="text-body text-accent">
-          Crear tu primera meta
-        </Link>
-      ) : (
-        <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">
-          {goals.slice(0, 2).map((g) => (
-            <GoalCard key={g.id} goal={g} archivable={false} />
-          ))}
+      <section aria-label="Tu progreso">
+        <Card>
+          <div className="grid grid-cols-2 divide-x divide-line">
+            <BigStat label="Racha actual" value={current.value} unit={current.unit} />
+            <BigStat label="Mejor racha" value={best.value} unit={best.unit} />
+          </div>
+          <div className="grid grid-cols-2 divide-x divide-line border-t border-line">
+            <MiniStat label="Retos ganados" value={record.won} />
+            <MiniStat label="Retos perdidos" value={record.lost} />
+          </div>
+          <Link
+            href="/deudas"
+            className="flex min-h-[52px] items-center gap-3 border-t border-line px-4 py-2 transition-colors duration-[120ms] hover:bg-field focus-visible:outline-offset-[-2px]"
+          >
+            <Receipt size={20} weight="light" aria-hidden className="shrink-0 text-ink" />
+            <span className="flex-1 text-body text-ink">Deudas</span>
+            <span className="flex items-center gap-2">
+              <span className="text-small text-muted">{debt.caption}</span>
+              <span className="inline-flex h-7 items-center rounded-full border border-line bg-field px-2.5 font-mono text-[14px] font-medium text-ink">
+                {debt.amount}
+              </span>
+            </span>
+            <CaretRight size={18} weight="light" aria-hidden className="-mr-1 shrink-0 text-muted" />
+          </Link>
         </Card>
-      )}
+      </section>
 
-      <SectionHeader label="Cuenta" />
-      <Card>
-        <Link href="/deudas" className="flex h-[52px] items-center gap-3 px-4">
-          <Receipt size={20} weight="light" aria-hidden />
-          <span className="flex-1 text-body text-ink">Deudas</span>
-          <span className="font-mono text-[15px] font-medium text-muted">{net === 0 ? "$0" : formatSignedCLP(net)}</span>
-          <CaretRight size={20} weight="light" className="text-muted" aria-hidden />
-        </Link>
-        <div className="border-t border-line">
-          <SettingsRows
-            firstName={profile.first_name}
-            lastName={profile.last_name}
-            reminderTime={String(profile.reminder_time).slice(0, 5)}
-            timezone={profile.timezone}
-            theme={theme}
+      <section aria-label="Tus hábitos" className="flex flex-col gap-2">
+        <SectionHeader label="Tus hábitos" action="Resumen" href="/resumen" />
+        {strip.length === 0 ? (
+          <Card className="flex items-center gap-3 p-4">
+            <p className="min-w-0 flex-1 text-body text-muted">Aún no tienes hábitos activos.</p>
+            <ButtonLink href="/habitos/nuevo" variant="secondary" className="h-11! w-auto! px-4! text-small!">
+              <Plus size={18} weight="light" aria-hidden />
+              Crear hábito
+            </ButtonLink>
+          </Card>
+        ) : (
+          <Card>
+            <HabitStrip habits={strip} />
+          </Card>
+        )}
+      </section>
+
+      {strip.length > 0 ? (
+        <section aria-labelledby="perfil-actividad" className="flex flex-col gap-2">
+          <h2 id="perfil-actividad" className="section-label flex h-6 items-center gap-2 text-muted">
+            <span className="flex-1">Actividad</span>
+            <span>12 semanas</span>
+          </h2>
+          <Card className="p-4">
+            <ActivityHeatmap grid={activity} today={today} />
+          </Card>
+        </section>
+      ) : null}
+
+      <section aria-label="Metas" className="flex flex-col gap-2">
+        <SectionHeader label="Metas" action={goals.length > 0 ? "Ver todas" : undefined} href="/metas" />
+        {goals.length === 0 ? (
+          <Card className="flex items-center gap-3 p-4">
+            <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+              <span className="text-body text-ink">Aún no tienes metas</span>
+              <span className="text-small text-muted">Semanales o a largo plazo</span>
+            </span>
+            <ButtonLink href="/metas" variant="secondary" className="h-11! w-auto! shrink-0 px-4! text-small!">
+              Crear meta
+            </ButtonLink>
+          </Card>
+        ) : (
+          <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">
+            {goals.slice(0, 2).map((g) => (
+              <GoalCard key={g.id} goal={g} archivable={false} />
+            ))}
+          </Card>
+        )}
+      </section>
+
+      <section aria-labelledby="perfil-publico" className="flex flex-col gap-2">
+        <h2 id="perfil-publico" className="section-label text-muted">
+          Perfil público
+        </h2>
+        <ListCard>
+          <ShareProfileButton kind="profile" url={shareUrl} variant="row" />
+          <ListRow
+            href={`/@${profile.username}`}
+            icon={<GlobeSimple size={20} weight="light" />}
+            label="Ver perfil público"
+            hint="Solo tus hábitos públicos, sin fotos"
+            chevron
           />
-        </div>
-      </Card>
-
-      <p className="text-center text-small text-muted">
-        <Link href="/legal/terminos" className="text-accent underline underline-offset-2">
-          Términos de uso
-        </Link>
-        {" · "}
-        <Link href="/legal/privacidad" className="text-accent underline underline-offset-2">
-          Política de privacidad
-        </Link>
-      </p>
-
-      <SignOutButton />
-      <DeleteAccountButton username={profile.username} />
-      <p className="text-center text-small text-muted">
-        Se borran tus fotos y datos. Tus amigos conservan el historial de deudas como &quot;cuenta eliminada&quot;.
-      </p>
+        </ListCard>
+      </section>
     </main>
   );
 }
