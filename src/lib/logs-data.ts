@@ -188,9 +188,9 @@ export async function loadWorkoutData(
   supabase: Supabase,
   userId: string,
   from: LocalDate,
+  opts: { exercises?: boolean } = {},
 ): Promise<{ exercises: ExerciseRef[]; sets: WorkoutSet[]; sessions: ({ date: LocalDate } & WorkoutDraft)[] }> {
-  const [exercises, setRows, sessionRows] = await Promise.all([
-    loadExercises(supabase, userId),
+  const [setRows, sessionRows] = await Promise.all([
     fetchAll<SetRow>((a, b) =>
       supabase
         .from("workout_sets")
@@ -212,6 +212,8 @@ export async function loadWorkoutData(
         .range(a, b),
     ),
   ]);
+  // the catalog is only needed to name sets: skip it when there are none (or the caller does not name them)
+  const exercises = opts.exercises === false || setRows.length === 0 ? [] : await loadExercises(supabase, userId);
   const setsBy = bySession(setRows);
   return {
     exercises,
@@ -282,52 +284,99 @@ export async function loadWeights(
   return rows.map((r) => ({ date: r.measured_on, kg: Number(r.weight_kg) }));
 }
 
+/** Newest weigh-in of the user, whenever it was (owner only, RLS); null with none. */
+export async function loadLatestWeight(supabase: Supabase, userId: string): Promise<WeightEntry | null> {
+  const { data } = await supabase
+    .from("body_weights")
+    .select("measured_on,weight_kg")
+    .eq("user_id", userId)
+    .order("measured_on", { ascending: false })
+    .order("id", { ascending: false })
+    .range(0, 0);
+  const row = (data as { measured_on: LocalDate; weight_kg: number | string }[] | null)?.[0];
+  return row ? { date: row.measured_on, kg: Number(row.weight_kg) } : null;
+}
+
 /**
- * The logs of a calendar month, by check-in id. Bounded
- * to the month's dates; books and exercises are small per-user lists.
+ * The logs of a calendar month, by check-in id. Bounded to the month's dates. `kinds` says
+ * which habit types exist: a kind that is absent is never queried, and the books and
+ * exercises are only read when there are entries or sets to name (and then only those ids).
  */
 export async function loadMonthLogs(
   supabase: Supabase,
   userId: string,
   range: { first: LocalDate; until: LocalDate },
+  kinds: { reading: boolean; workout: boolean },
 ): Promise<Map<string, DayLog>> {
   const { first, until } = range;
-  const [reading, sessions, sets, books, exercises] = await Promise.all([
-    fetchAll<ReadingRow>((a, b) =>
-      supabase
-        .from("reading_entries")
-        .select("checkin_id,book_id,local_date,from_page,to_page")
-        .eq("user_id", userId)
-        .gte("local_date", first)
-        .lte("local_date", until)
-        .order("local_date")
-        .order("id")
-        .range(a, b),
-    ),
-    fetchAll<SessionRow>((a, b) =>
-      supabase
-        .from("workout_sessions")
-        .select("id,checkin_id,local_date,day_types")
-        .eq("user_id", userId)
-        .gte("local_date", first)
-        .lte("local_date", until)
-        .order("local_date")
-        .order("id")
-        .range(a, b),
-    ),
-    fetchAll<SetRow>((a, b) =>
-      supabase
-        .from("workout_sets")
-        .select("session_id,exercise_id,position,reps,weight_kg,local_date")
-        .eq("user_id", userId)
-        .gte("local_date", first)
-        .lte("local_date", until)
-        .order("local_date")
-        .order("id")
-        .range(a, b),
-    ),
-    loadBooks(supabase, userId),
-    loadExercises(supabase, userId),
+  const [reading, sessions] = await Promise.all([
+    kinds.reading
+      ? fetchAll<ReadingRow>((a, b) =>
+          supabase
+            .from("reading_entries")
+            .select("checkin_id,book_id,local_date,from_page,to_page")
+            .eq("user_id", userId)
+            .gte("local_date", first)
+            .lte("local_date", until)
+            .order("local_date")
+            .order("id")
+            .range(a, b),
+        )
+      : Promise.resolve<ReadingRow[]>([]),
+    kinds.workout
+      ? fetchAll<SessionRow>((a, b) =>
+          supabase
+            .from("workout_sessions")
+            .select("id,checkin_id,local_date,day_types")
+            .eq("user_id", userId)
+            .gte("local_date", first)
+            .lte("local_date", until)
+            .order("local_date")
+            .order("id")
+            .range(a, b),
+        )
+      : Promise.resolve<SessionRow[]>([]),
   ]);
+  const bookIds = [...new Set(reading.map((r) => r.book_id))];
+  const [books, sets] = await Promise.all([
+    bookIds.length > 0
+      ? fetchAll<BookRow>((a, b) =>
+          supabase
+            .from("books")
+            .select("id,title,author,total_pages,status,finished_on")
+            .eq("user_id", userId)
+            .in("id", bookIds)
+            .order("id")
+            .range(a, b),
+        ).then((rows) => rows.map(toBook))
+      : Promise.resolve<Book[]>([]),
+    sessions.length > 0
+      ? fetchAll<SetRow>((a, b) =>
+          supabase
+            .from("workout_sets")
+            .select("session_id,exercise_id,position,reps,weight_kg,local_date")
+            .eq("user_id", userId)
+            .gte("local_date", first)
+            .lte("local_date", until)
+            .order("local_date")
+            .order("id")
+            .range(a, b),
+        )
+      : Promise.resolve<SetRow[]>([]),
+  ]);
+  const exerciseIds = [...new Set(sets.map((s) => s.exercise_id))];
+  const exercises =
+    exerciseIds.length > 0
+      ? (
+          await fetchAll<ExerciseRow>((a, b) =>
+            supabase
+              .from("exercises")
+              .select("id,name,muscle_group")
+              .in("id", exerciseIds)
+              .order("id")
+              .range(a, b),
+          )
+        ).map(toExerciseRef)
+      : [];
   return toDayLogs({ reading, sessions, sets, books, exercises });
 }

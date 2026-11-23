@@ -1,6 +1,8 @@
 import { describe, expect, test } from 'vitest'
 import type { Book, ExerciseRef } from '@/domain/logs'
 import {
+  loadLatestWeight,
+  loadMonthLogs,
   loadVisitDates,
   loadWeights,
   loadWorkoutData,
@@ -22,10 +24,11 @@ function fakeClient(tables: Record<string, Row[]>) {
   const client = {
     from(table: string) {
       const filters: ((r: Row) => boolean)[] = []
+      const sorts: { col: string; asc: boolean }[] = []
       const q = {
         select: () => q,
         or: () => q,
-        order: () => q,
+        order: (col: string, opts?: { ascending?: boolean }) => (sorts.push({ col, asc: opts?.ascending !== false }), q),
         eq: (c: string, v: unknown) => (filters.push((r) => r[c] === v), q),
         neq: (c: string, v: unknown) => (filters.push((r) => r[c] !== v), q),
         in: (c: string, v: unknown[]) => (filters.push((r) => v.includes(r[c])), q),
@@ -35,6 +38,8 @@ function fakeClient(tables: Record<string, Row[]>) {
         range: async (from: number, to: number) => {
           ;(ranges[table] ??= []).push([from, to])
           const rows = (tables[table] ?? []).filter((r) => filters.every((f) => f(r)))
+          const first = sorts[0]
+          if (first && !first.asc) rows.sort((a, b) => String(b[first.col]).localeCompare(String(a[first.col])))
           return { data: rows.slice(from, Math.min(to + 1, from + 1000)), error: null }
         },
       }
@@ -130,7 +135,9 @@ describe('loaders', () => {
 
   test('loadWorkoutData incluye ejercicios archivados y propios', async () => {
     const { client } = fakeClient({
-      workout_sets: [],
+      workout_sets: [
+        { id: 'x1', session_id: 's1', user_id: 'u1', local_date: '2026-11-22', exercise_id: 'squat', position: 0, reps: 5, weight_kg: 80 },
+      ],
       workout_sessions: [],
       exercises: [
         { id: 'squat', user_id: null, name: 'Sentadilla', muscle_group: 'legs', archived_at: null },
@@ -170,5 +177,80 @@ describe('loaders', () => {
       { date: '2026-11-20', kg: 71.9 },
       { date: '2026-10-01', kg: 72.4 },
     ])
+  })
+})
+
+describe('loaders sin consultas de más', () => {
+  const tables = {
+    reading_entries: [],
+    workout_sessions: [],
+    workout_sets: [],
+    books: [{ id: 'b1', user_id: 'u1', title: 'Dune', author: null, total_pages: 412, status: 'reading', finished_on: null }],
+    exercises: [{ id: 'squat', user_id: null, name: 'Sentadilla', muscle_group: 'legs' }],
+  }
+  const range = { first: '2026-11-01', until: '2026-11-22' }
+
+  test('loadMonthLogs sin hábitos de lectura ni entrenamiento no consulta nada', async () => {
+    const { client, ranges } = fakeClient(tables)
+    const logs = await loadMonthLogs(client as never, 'u1', range, { reading: false, workout: false })
+    expect(logs.size).toBe(0)
+    expect(Object.keys(ranges)).toEqual([])
+  })
+
+  test('loadMonthLogs: solo lectura, y sin entradas no carga libros', async () => {
+    const { client, ranges } = fakeClient(tables)
+    await loadMonthLogs(client as never, 'u1', range, { reading: true, workout: false })
+    expect(Object.keys(ranges)).toEqual(['reading_entries'])
+  })
+
+  test('loadMonthLogs: sin sesiones no carga series ni ejercicios', async () => {
+    const { client, ranges } = fakeClient(tables)
+    await loadMonthLogs(client as never, 'u1', range, { reading: false, workout: true })
+    expect(Object.keys(ranges)).toEqual(['workout_sessions'])
+  })
+
+  test('loadMonthLogs: con una entrada trae solo ese libro', async () => {
+    const { client, ranges } = fakeClient({
+      ...tables,
+      reading_entries: [
+        { id: 'r1', checkin_id: 'c1', user_id: 'u1', book_id: 'b1', local_date: '2026-11-03', from_page: 1, to_page: 9 },
+      ],
+      books: [
+        ...tables.books,
+        { id: 'b2', user_id: 'u1', title: 'Otro', author: null, total_pages: null, status: 'reading', finished_on: null },
+      ],
+    })
+    const logs = await loadMonthLogs(client as never, 'u1', range, { reading: true, workout: false })
+    expect(logs.get('c1')).toMatchObject({ kind: 'reading', bookTitle: 'Dune', pages: 8 })
+    expect(ranges.books).toHaveLength(1)
+  })
+
+  test('loadWorkoutData sin series no carga el catálogo de ejercicios', async () => {
+    const { client, ranges } = fakeClient(tables)
+    const data = await loadWorkoutData(client as never, 'u1', '2025-11-01')
+    expect(data.exercises).toEqual([])
+    expect(ranges.exercises).toBeUndefined()
+  })
+
+  test('loadWorkoutData con exercises:false no los carga aunque haya series', async () => {
+    const { client, ranges } = fakeClient({
+      ...tables,
+      workout_sets: [
+        { id: 'x1', session_id: 's1', user_id: 'u1', local_date: '2026-11-22', exercise_id: 'squat', position: 0, reps: 5, weight_kg: 80 },
+      ],
+    })
+    const data = await loadWorkoutData(client as never, 'u1', '2025-11-01', { exercises: false })
+    expect(data.sets).toHaveLength(1)
+    expect(ranges.exercises).toBeUndefined()
+  })
+
+  test('loadLatestWeight: el último pesaje aunque sea anterior a la ventana', async () => {
+    const { client } = fakeClient({
+      body_weights: [
+        { id: 'w1', user_id: 'u1', measured_on: '2024-05-01', weight_kg: '80.00' },
+        { id: 'w2', user_id: 'u1', measured_on: '2024-06-10', weight_kg: '79.50' },
+      ],
+    })
+    await expect(loadLatestWeight(client as never, 'u1')).resolves.toEqual({ date: '2024-06-10', kg: 79.5 })
   })
 })

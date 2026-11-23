@@ -34,19 +34,29 @@ export async function loadMonthDays(
   supabase: Supabase,
   opts: {
     userId: string;
-    habits: { id: string; created_at: string }[];
+    habits: { id: string; created_at: string; log_type?: string }[];
     month: MonthKey;
     today: LocalDate;
     timezone: string;
+    /**
+     * Attach the reading / workout detail of each check-in. Off by default: the detail is the
+     * owner's, so only the owner's own views (Resumen, habit detail) pass `true`; a view of
+     * someone else's calendar must never do.
+     */
+    includeLogs?: boolean;
   },
 ): Promise<Record<LocalDate, HabitDay[]>> {
-  const { userId, habits, month, today, timezone } = opts;
+  const { userId, habits, month, today, timezone, includeLogs = false } = opts;
   if (habits.length === 0) return {};
   const ids = habits.map((h) => h.id);
   const { first, last } = monthBounds(month);
   const until = last < today ? last : today;
   if (until < first) return {};
 
+  const kinds = {
+    reading: includeLogs && habits.some((h) => h.log_type === "reading"),
+    workout: includeLogs && habits.some((h) => h.log_type === "workout"),
+  };
   const [checkins, checkinItems, items, logs] = await Promise.all([
     fetchAll((from, to) =>
       supabase
@@ -82,7 +92,9 @@ export async function loadMonthDays(
         .order("id")
         .range(from, to),
     ),
-    loadMonthLogs(supabase, userId, { first, until }),
+    kinds.reading || kinds.workout
+      ? loadMonthLogs(supabase, userId, { first, until }, kinds)
+      : Promise.resolve(undefined),
   ]);
 
   const dates: LocalDate[] = [];
