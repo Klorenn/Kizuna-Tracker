@@ -1,6 +1,7 @@
 import { localDate } from '@/domain/dates'
 import { evaluatePeriod, isPeriodClosable, periodsFor, type Period } from '@/domain/challenges'
 import type { Frequency, LocalDate } from '@/domain/types'
+import { closeDueGroupWeeks, isMissingFunction, type GroupsClient } from '@/lib/groups-rpc'
 
 export type ActiveChallenge = {
   id: string
@@ -161,4 +162,65 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     await repo.finishChallenge(c.id)
   }
   return { closed, debtsCreated }
+}
+
+/** What the group half of the close-periods cron did. Never thrown: a group failure must not touch the challenge half. */
+export type GroupWeeksOutcome =
+  | { closed: number }
+  | { skipped: 'not_installed' }
+  | { timeout: true }
+  | { error: 'failed' }
+
+/** The group half never holds the cron response longer than this (the database finishes or rolls back each week on its own). */
+export const GROUP_WEEKS_TIMEOUT_MS = 15_000
+
+/**
+ * Closes every due group week through `close_due_group_weeks` (service role, idempotent). Before migration 0023 is in
+ * a database the function does not exist: that is logged as a warning and reported as `not_installed`, not as a failure.
+ * Any other failure (an error answer, a thrown call, an answer that is not a number) is logged and reported as `failed`.
+ */
+export async function closeGroupWeeks(
+  client: GroupsClient,
+  timeoutMs: number = GROUP_WEEKS_TIMEOUT_MS,
+): Promise<GroupWeeksOutcome> {
+  const abort = new AbortController()
+  let timer: ReturnType<typeof setTimeout> | undefined
+  const timedOut = new Promise<'timeout'>((resolve) => {
+    timer = setTimeout(() => {
+      abort.abort()
+      resolve('timeout')
+    }, timeoutMs)
+  })
+  try {
+    const answer = closeDueGroupWeeks(client, abort.signal)
+    answer.catch(() => {}) // an aborted call that loses the race must not become an unhandled rejection
+    const raced = await Promise.race([answer, timedOut])
+    if (raced === 'timeout' || abort.signal.aborted) {
+      console.warn(`close-periods: closing group weeks hit the ${timeoutMs / 1000}s limit; the response is not delayed further`)
+      return { timeout: true }
+    }
+    const { data, error } = raced
+    if (error) {
+      if (isMissingFunction(error)) {
+        console.warn('close-periods: close_due_group_weeks is not installed yet; skipping group weeks')
+        return { skipped: 'not_installed' }
+      }
+      console.error('close-periods: closing group weeks failed', error.code ?? 'unknown')
+      return { error: 'failed' }
+    }
+    if (typeof data !== 'number' || !Number.isFinite(data)) {
+      console.error('close-periods: close_due_group_weeks returned an unexpected answer')
+      return { error: 'failed' }
+    }
+    return { closed: data }
+  } catch (e) {
+    if (abort.signal.aborted) {
+      console.warn(`close-periods: closing group weeks hit the ${timeoutMs / 1000}s limit`)
+      return { timeout: true }
+    }
+    console.error('close-periods: closing group weeks threw', e instanceof Error ? e.name : 'unknown')
+    return { error: 'failed' }
+  } finally {
+    clearTimeout(timer)
+  }
 }
