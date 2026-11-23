@@ -42,19 +42,71 @@ export const CAT_EAT = {
 export const CAT_ASSETS = { lift: CAT_LIFT, jump: CAT_JUMP, eat: CAT_EAT } as const;
 export type CatAsset = keyof typeof CAT_ASSETS;
 
-/** CSS custom properties consumed by `.cat-mask` (globals.css), cropped to the cat's box. */
-export function catAnimationStyle(asset: CatAsset, width: number): CSSProperties {
-  const { box, stillBox, canvas, gif, still } = CAT_ASSETS[asset];
-  const s = width / box.w;
-  const px = (n: number) => `${Math.round(n * s * 100) / 100}px`;
+export type CatVariant = 'animated' | 'still'
+
+/** Badges this small (GoalCard "Meta cumplida", "Ganaste este reto") show the still PNG only: no GIF fetch. */
+export const STILL_MAX_WIDTH = 64
+
+export function catVariantFor(width: number): CatVariant {
+  return width <= STILL_MAX_WIDTH ? 'still' : 'animated'
+}
+
+/** Files a cat of that variant makes the browser fetch. */
+export function catUrls(asset: CatAsset, variant: CatVariant): string[] {
+  const { gif, still } = CAT_ASSETS[asset]
+  return variant === 'still' ? [still] : [gif, still]
+}
+
+/** CSS custom properties consumed by `.cat-mask` (globals.css), cropped to the cat's box. A still cat never names the GIF. */
+export function catAnimationStyle(asset: CatAsset, width: number, variant: CatVariant = 'animated'): CSSProperties {
+  const { box, stillBox, canvas, gif, still } = CAT_ASSETS[asset]
+  const s = width / box.w
+  const px = (n: number) => `${Math.round(n * s * 100) / 100}px`
   return {
     width,
     height: Math.round(box.h * s),
-    "--cat-gif": `url(${gif})`,
-    "--cat-still": `url(${still})`,
-    "--cat-mask-size": `${px(canvas)} ${px(canvas)}`,
-    "--cat-mask-pos": `${px(-box.x)} ${px(-box.y)}`,
-    "--cat-still-size": `${px(stillBox.w)} ${px(stillBox.h)}`,
-    "--cat-still-pos": `${px(stillBox.x - box.x)} ${px(stillBox.y - box.y)}`,
-  } as CSSProperties;
+    '--cat-gif': `url(${variant === 'still' ? still : gif})`,
+    '--cat-still': `url(${still})`,
+    '--cat-mask-size': `${px(canvas)} ${px(canvas)}`,
+    '--cat-mask-pos': `${px(-box.x)} ${px(-box.y)}`,
+    '--cat-still-size': `${px(stillBox.w)} ${px(stillBox.h)}`,
+    '--cat-still-pos': `${px(stillBox.x - box.x)} ${px(stillBox.y - box.y)}`,
+  } as CSSProperties
+}
+
+/** How long a `once` cat waits for its GIF before starting the pass anyway. */
+export const CAT_LOAD_FALLBACK_MS = 1500
+
+/**
+ * Calls `start` once: when `load` reports the asset ready, or after `fallbackMs`. Returns a cancel.
+ * `load` receives the ready callback (wire it to Image onload/decode).
+ */
+export function startWhenReady(load: (ready: () => void) => void, fallbackMs: number, start: () => void): () => void {
+  let done = false
+  const fire = () => {
+    if (done) return
+    done = true
+    clearTimeout(timer)
+    start()
+  }
+  const timer = setTimeout(fire, fallbackMs)
+  load(fire)
+  return () => {
+    done = true
+    clearTimeout(timer)
+  }
+}
+
+/** GIFs Hoy may celebrate with: jump (day complete), eat (item meals), lift (gym). */
+export function hoyCatAssets(rows: { preset: string | null; hasItems: boolean }[]): CatAsset[] {
+  if (rows.length === 0) return []
+  const out: CatAsset[] = ['jump']
+  if (rows.some((r) => r.preset === 'eat_well' && r.hasItems)) out.push('eat')
+  if (rows.some((r) => r.preset === 'gym')) out.push('lift')
+  return out
+}
+
+/** Preloading is a nicety: never under reduced motion (still frame only) or Save-Data. */
+export function shouldPreloadCats(env: { reducedMotion: boolean; saveData: boolean }): boolean {
+  return !env.reducedMotion && !env.saveData
 }

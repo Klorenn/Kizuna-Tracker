@@ -6,11 +6,14 @@ import { CatAnimation } from "./CatAnimation";
 export function CatLift({
   width = 172,
   once = false,
+  onPlayStart,
   className = "",
 }: {
   width?: number;
   once?: boolean;
+  /** `once` only: the single pass started (the GIF loaded). */
+  onPlayStart?: () => void;
   className?: string;
 }) {
-  return <CatAnimation asset="lift" width={width} once={once} className={className} />;
+  return <CatAnimation asset="lift" width={width} once={once} onPlayStart={onPlayStart} className={className} />;
 }

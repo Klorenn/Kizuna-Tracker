@@ -53,3 +53,43 @@ describe("cat-animation assets", () => {
     expect(s["--cat-still"]).toBe("url(/brand/cat-jump-still.png)");
   });
 });
+
+import { catUrls, catVariantFor, hoyCatAssets, shouldPreloadCats } from '@/lib/motion/cat-animation'
+
+describe('cat variants (small badges are still)', () => {
+  it('badges up to 64 px use the still PNG only', () => {
+    expect(catVariantFor(40)).toBe('still')
+    expect(catVariantFor(48)).toBe('still')
+    expect(catVariantFor(64)).toBe('still')
+    expect(catVariantFor(96)).toBe('animated')
+    expect(catVariantFor(160)).toBe('animated')
+  })
+  it('a still cat never references the GIF', () => {
+    expect(catUrls('jump', 'still')).toEqual(['/brand/cat-jump-still.png'])
+    const s = catAnimationStyle('jump', 40, 'still') as Record<string, string>
+    expect(JSON.stringify(s)).not.toContain('.gif')
+    expect(s['--cat-gif']).toBe('url(/brand/cat-jump-still.png)')
+  })
+  it('an animated cat uses the GIF and its still', () => {
+    expect(catUrls('lift', 'animated')).toEqual(['/brand/cat-lift.gif', '/brand/cat-lift-still.png'])
+  })
+})
+
+describe('Hoy cat preloading', () => {
+  it('preloads jump for any day, eat for item meals, lift for gym', () => {
+    expect(hoyCatAssets([])).toEqual([])
+    expect(hoyCatAssets([{ preset: 'read', hasItems: false }])).toEqual(['jump'])
+    expect(
+      hoyCatAssets([
+        { preset: 'eat_well', hasItems: true },
+        { preset: 'gym', hasItems: false },
+      ]),
+    ).toEqual(['jump', 'eat', 'lift'])
+    expect(hoyCatAssets([{ preset: 'eat_well', hasItems: false }])).toEqual(['jump'])
+  })
+  it('skips under reduced motion or Save-Data', () => {
+    expect(shouldPreloadCats({ reducedMotion: false, saveData: false })).toBe(true)
+    expect(shouldPreloadCats({ reducedMotion: true, saveData: false })).toBe(false)
+    expect(shouldPreloadCats({ reducedMotion: false, saveData: true })).toBe(false)
+  })
+})

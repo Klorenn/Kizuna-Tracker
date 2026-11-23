@@ -3,6 +3,7 @@ import { Camera, Plus } from "@phosphor-icons/react/dist/ssr";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
+import { CatPreload } from "@/components/brand/CatPreload";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -14,6 +15,7 @@ import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { addDays, localDate } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
+import { hoyCatAssets } from "@/lib/motion/cat-animation";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -136,10 +138,12 @@ export default async function Home() {
             Nuevo hábito
           </ButtonLink>
           <DayCompleteWatcher
+            today={today}
             done={view.doneCount}
             total={view.total}
             rows={view.rows.map((r) => ({ id: r.id, preset: r.preset, hasItems: r.items.length > 0, done: r.done }))}
           />
+          <CatPreload assets={hoyCatAssets(view.rows.map((r) => ({ preset: r.preset, hasItems: r.items.length > 0 })))} />
         </>
       )}
     </main>

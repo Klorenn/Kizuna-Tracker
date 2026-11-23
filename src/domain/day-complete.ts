@@ -19,13 +19,19 @@ export type HoyState = DayProgress & { rows: HoyRowState[] };
 
 /** An item-based "Comer bien" habit went from open to done (all its meals checked). */
 export function mealsJustCompleted(prev: HoyState, next: HoyState): boolean {
-  return next.rows.some(
+  return completedMealsHabit(prev, next) !== null;
+}
+
+/** Id of the item-based "Comer bien" habit that just got all its meals, if any. */
+export function completedMealsHabit(prev: HoyState, next: HoyState): string | null {
+  const row = next.rows.find(
     (r) =>
       r.preset === "eat_well" &&
       r.hasItems &&
       r.done &&
       prev.rows.some((p) => p.id === r.id && !p.done),
   );
+  return row?.id ?? null;
 }
 
 /**

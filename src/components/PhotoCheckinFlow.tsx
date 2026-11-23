@@ -3,6 +3,8 @@
 import { useRouter } from "next/navigation";
 import { useCallback, useState } from "react";
 import { habitStreak } from "@/app/(app)/habitos/[id]/foto/actions";
+import { localDate } from "@/domain/dates";
+import { celebrateKeyAndClaim } from "@/lib/celebrate-once";
 import { celebrationFor } from "@/lib/checkins";
 import type { PresetKey } from "@/domain/presets";
 import { CameraCapture } from "./CameraCapture";
@@ -43,6 +45,8 @@ export function PhotoCheckinFlow({
           onRetake={() => setBlob(null)}
           onDone={async (result) => {
             if (celebrationFor({ preset }, result) !== "workout") return leave();
+            // once per habit and local day per session
+            if (!celebrateKeyAndClaim("workout", habitId, localDate(new Date(), timeZone))) return leave();
             const info = await habitStreak(habitId);
             let streakLabel: string | null = null;
             if (info.ok) {

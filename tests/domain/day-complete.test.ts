@@ -69,3 +69,13 @@ describe("pickCelebration", () => {
     expect(pickCelebration(state([read0, eat1]), state([read0, eat1]))).toBeNull();
   });
 });
+
+import { completedMealsHabit } from '@/domain/day-complete'
+
+describe('completedMealsHabit', () => {
+  it('names the eat_well habit that just got all its meals', () => {
+    const row = (done: boolean) => ({ id: 'm1', preset: 'eat_well', hasItems: true, done })
+    expect(completedMealsHabit({ done: 0, total: 2, rows: [row(false)] }, { done: 1, total: 2, rows: [row(true)] })).toBe('m1')
+    expect(completedMealsHabit({ done: 1, total: 2, rows: [row(true)] }, { done: 1, total: 2, rows: [row(true)] })).toBeNull()
+  })
+})
