@@ -17,7 +17,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
   if (!user) redirect("/bienvenida");
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color")
+    .select("id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
@@ -40,6 +40,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
     requiresPhoto: habit.requires_photo,
     items: (items ?? []).map((i) => ({ label: i.label, requiresPhoto: i.requires_photo })),
     visibility: habit.visibility as Visibility,
+    logType: habit.log_type as HabitDraft["logType"],
     preset: habit.preset as PresetKey | null,
     color: toHabitColor(habit.color),
   };
