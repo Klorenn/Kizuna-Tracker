@@ -98,8 +98,9 @@ test("a suggestion row stays in place showing Solicitud enviada after Agregar, a
   await page.goto("/amigos");
   const suggestions = page.getByRole("region", { name: "Sugerencias" });
   const rows = suggestions.getByRole("listitem");
-  const before = await rows.allTextContents();
   const carla = suggestions.getByRole("listitem").filter({ hasText: `@${c.handle}` });
+  await expect(carla).toBeVisible();
+  const before = await rows.allTextContents();
   await carla.getByRole("button", { name: "Agregar", exact: true }).click();
   await expect(carla.getByText("Solicitud enviada")).toBeVisible();
   await expect(page.getByRole("region", { name: "Solicitudes" }).getByText(`@${c.handle}`)).toBeVisible();

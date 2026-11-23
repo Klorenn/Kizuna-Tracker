@@ -41,7 +41,7 @@ const START: Record<Person["relation"], RowState> = { none: "none", outgoing: "s
  * enviada", or accept / reject for a request they sent you (by person, since the list carries no
  * friendship ids). Each row keeps its own state, so appending the next page never resets it.
  */
-export function DiscoverPersonRow({ person }: { person: Person }) {
+export function DiscoverPersonRow({ person, refresh = true }: { person: Person; refresh?: boolean }) {
   const [state, setState] = useState<RowState>(START[person.relation]);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
@@ -53,7 +53,9 @@ export function DiscoverPersonRow({ person }: { person: Person }) {
       const r = await task();
       if (r.ok) {
         setState(r.next);
-        router.refresh();
+        // Explorar passes refresh={false}: a re-render would drop the row (and an emptied list
+        // would replace the page) while the person is still looking at it
+        if (refresh) router.refresh();
       } else setError(r.error);
     });
   }

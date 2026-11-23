@@ -1,3 +1,5 @@
+import { readFileSync } from 'node:fs'
+import { join } from 'node:path'
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
@@ -102,5 +104,12 @@ describe('PersonRow alone', () => {
   it('renders the slot it is given', () => {
     const out = renderToStaticMarkup(createElement(PersonRow, { person: base, action: createElement('i', null, 'slot') }))
     expect(out).toContain('<i>slot</i>')
+  })
+})
+
+describe('Explorar rows', () => {
+  it('do not refresh the page after an action (the row must stay while the person looks at it)', () => {
+    const src = readFileSync(join(process.cwd(), 'src/app/(app)/amigos/explorar/ExploreList.tsx'), 'utf8')
+    expect(src).toContain('<DiscoverPersonRow person={p} refresh={false} />')
   })
 })

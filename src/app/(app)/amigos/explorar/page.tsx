@@ -3,8 +3,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
-import { ShareProfileButton } from "@/components/ShareProfileButton";
-import { Card } from "@/components/ui/Card";
 import { LONG_QUERY_COPY, PAGE_SIZE, SHORT_QUERY_COPY, loadPeople, normalizeQuery } from "@/lib/discover-data";
 import { getSessionUser } from "@/lib/viewer";
 import { PeopleSearch } from "../PeopleSearch";
@@ -45,17 +43,6 @@ export default async function ExplorarPage({ searchParams }: { searchParams: Pro
         </p>
       ) : result && !result.ok ? (
         <LoadFailed href={here} />
-      ) : result && result.people.length === 0 ? (
-        query ? (
-          <p role="status" className="text-body text-muted">
-            Nadie coincide con esa búsqueda.
-          </p>
-        ) : (
-          <Card className="flex flex-col gap-3 p-4">
-            <p className="text-body text-muted">Todavía no hay más personas por aquí. Invita a alguien con tu enlace.</p>
-            <ShareProfileButton kind="invite" label="Invitar" />
-          </Card>
-        )
       ) : result ? (
         <ExploreList key={query ?? ""} query={query} initial={result.people} initialHasMore={result.hasMore} />
       ) : null}

@@ -4,6 +4,7 @@ import { Warning } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { loadMorePeople } from "@/app/(app)/amigos/actions";
 import { DiscoverPersonRow } from "@/components/FriendActions";
+import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import type { Person } from "@/lib/discover-data";
@@ -44,13 +45,28 @@ export function ExploreList({
     });
   }
 
+  // empty states live here, not in the page: a server action revalidates the route, and a page that
+  // swapped this list for a message would make the row the person just acted on vanish
+  if (people.length === 0) {
+    return query ? (
+      <p role="status" className="text-body text-muted">
+        Nadie coincide con esa búsqueda.
+      </p>
+    ) : (
+      <Card className="flex flex-col gap-3 p-4">
+        <p className="text-body text-muted">Todavía no hay más personas por aquí. Invita a alguien con tu enlace.</p>
+        <ShareProfileButton kind="invite" label="Invitar" />
+      </Card>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-4">
       <Card>
         <ul className="divide-y divide-line">
           {people.map((p) => (
             <li key={p.id}>
-              <DiscoverPersonRow person={p} />
+              <DiscoverPersonRow person={p} refresh={false} />
             </li>
           ))}
         </ul>
