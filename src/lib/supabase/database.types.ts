@@ -34,6 +34,93 @@ export type Database = {
   }
   public: {
     Tables: {
+      body_weights: {
+        Row: {
+          created_at: string
+          id: string
+          measured_on: string
+          user_id: string
+          weight_kg: number
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          measured_on: string
+          user_id: string
+          weight_kg: number
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          measured_on?: string
+          user_id?: string
+          weight_kg?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "body_weights_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "body_weights_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      books: {
+        Row: {
+          author: string | null
+          created_at: string
+          finished_on: string | null
+          id: string
+          status: string
+          title: string
+          total_pages: number | null
+          user_id: string
+        }
+        Insert: {
+          author?: string | null
+          created_at?: string
+          finished_on?: string | null
+          id?: string
+          status?: string
+          title: string
+          total_pages?: number | null
+          user_id: string
+        }
+        Update: {
+          author?: string | null
+          created_at?: string
+          finished_on?: string | null
+          id?: string
+          status?: string
+          title?: string
+          total_pages?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "books_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "books_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       challenge_periods: {
         Row: {
           challenge_id: string
@@ -398,6 +485,51 @@ export type Database = {
           },
         ]
       }
+      exercises: {
+        Row: {
+          archived_at: string | null
+          created_at: string
+          id: string
+          key: string | null
+          muscle_group: string
+          name: string
+          user_id: string | null
+        }
+        Insert: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          key?: string | null
+          muscle_group: string
+          name: string
+          user_id?: string | null
+        }
+        Update: {
+          archived_at?: string | null
+          created_at?: string
+          id?: string
+          key?: string | null
+          muscle_group?: string
+          name?: string
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "exercises_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "exercises_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       friendships: {
         Row: {
           addressee_id: string
@@ -572,6 +704,7 @@ export type Database = {
           frequency_type: string
           icon: string
           id: string
+          log_type: string
           name: string
           preset: string | null
           requires_photo: boolean
@@ -586,6 +719,7 @@ export type Database = {
           frequency_type: string
           icon: string
           id?: string
+          log_type?: string
           name: string
           preset?: string | null
           requires_photo?: boolean
@@ -600,6 +734,7 @@ export type Database = {
           frequency_type?: string
           icon?: string
           id?: string
+          log_type?: string
           name?: string
           preset?: string | null
           requires_photo?: boolean
@@ -738,6 +873,7 @@ export type Database = {
           deleted_at: string | null
           display_name: string | null
           first_name: string
+          height_cm: number | null
           id: string
           last_name: string
           reminder_time: string
@@ -754,6 +890,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string | null
           first_name: string
+          height_cm?: number | null
           id: string
           last_name: string
           reminder_time?: string
@@ -770,6 +907,7 @@ export type Database = {
           deleted_at?: string | null
           display_name?: string | null
           first_name?: string
+          height_cm?: number | null
           id?: string
           last_name?: string
           reminder_time?: string
@@ -822,6 +960,81 @@ export type Database = {
           },
         ]
       }
+      reading_entries: {
+        Row: {
+          book_id: string
+          checkin_id: string
+          created_at: string
+          from_page: number
+          habit_id: string
+          id: string
+          local_date: string
+          to_page: number
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          book_id: string
+          checkin_id: string
+          created_at?: string
+          from_page: number
+          habit_id: string
+          id?: string
+          local_date: string
+          to_page: number
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          book_id?: string
+          checkin_id?: string
+          created_at?: string
+          from_page?: number
+          habit_id?: string
+          id?: string
+          local_date?: string
+          to_page?: number
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "reading_entries_book_id_fkey"
+            columns: ["book_id"]
+            isOneToOne: false
+            referencedRelation: "books"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_entries_checkin_id_fkey"
+            columns: ["checkin_id"]
+            isOneToOne: true
+            referencedRelation: "checkins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_entries_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "reading_entries_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       reminder_log: {
         Row: {
           created_at: string
@@ -848,6 +1061,130 @@ export type Database = {
           },
           {
             foreignKeyName: "reminder_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workout_sessions: {
+        Row: {
+          checkin_id: string
+          created_at: string
+          day_types: string[]
+          habit_id: string
+          id: string
+          local_date: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          checkin_id: string
+          created_at?: string
+          day_types: string[]
+          habit_id: string
+          id?: string
+          local_date: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          checkin_id?: string
+          created_at?: string
+          day_types?: string[]
+          habit_id?: string
+          id?: string
+          local_date?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_sessions_checkin_id_fkey"
+            columns: ["checkin_id"]
+            isOneToOne: true
+            referencedRelation: "checkins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sessions_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sessions_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      workout_sets: {
+        Row: {
+          exercise_id: string
+          id: string
+          local_date: string
+          position: number
+          reps: number
+          session_id: string
+          user_id: string
+          weight_kg: number
+        }
+        Insert: {
+          exercise_id: string
+          id?: string
+          local_date: string
+          position: number
+          reps: number
+          session_id: string
+          user_id: string
+          weight_kg: number
+        }
+        Update: {
+          exercise_id?: string
+          id?: string
+          local_date?: string
+          position?: number
+          reps?: number
+          session_id?: string
+          user_id?: string
+          weight_kg?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "workout_sets_exercise_id_fkey"
+            columns: ["exercise_id"]
+            isOneToOne: false
+            referencedRelation: "exercises"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sets_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "workout_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sets_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "workout_sets_user_id_fkey"
             columns: ["user_id"]
             isOneToOne: false
             referencedRelation: "public_profiles"
@@ -913,10 +1250,20 @@ export type Database = {
         }[]
       }
       create_invite: { Args: never; Returns: string }
+      delete_body_weight: { Args: { p_id: string }; Returns: boolean }
+      delete_reading_entry: {
+        Args: { p_checkin_id: string }
+        Returns: undefined
+      }
+      delete_workout: { Args: { p_checkin_id: string }; Returns: undefined }
       email_for_username: { Args: { p_username: string }; Returns: string }
       habit_preset_color: { Args: { p_preset: string }; Returns: string }
       invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
+      log_body_weight: {
+        Args: { p_date?: string; p_kg: number }
+        Returns: string
+      }
       public_profile: { Args: { p_username: string }; Returns: Json }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
       reject_checkin: {
@@ -938,9 +1285,28 @@ export type Database = {
         Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
         Returns: undefined
       }
+      save_reading_entry: {
+        Args: {
+          p_book_id: string
+          p_checkin_id: string
+          p_finished?: boolean
+          p_from_page: number
+          p_to_page: number
+        }
+        Returns: string
+      }
+      save_workout: {
+        Args: { p_checkin_id: string; p_day_types: string[]; p_sets: Json }
+        Returns: string
+      }
+      set_height: { Args: { p_cm: number }; Returns: undefined }
       set_timezone: { Args: { p_tz: string }; Returns: undefined }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
       username_available: { Args: { p_username: string }; Returns: boolean }
+      workout_day_types_valid: {
+        Args: { p_day_types: string[] }
+        Returns: boolean
+      }
     }
     Enums: {
       [_ in never]: never
