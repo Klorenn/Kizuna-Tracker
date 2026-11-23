@@ -5,13 +5,17 @@ type SiteEnv = Partial<Record<string, string | undefined>> & {
   VERCEL_PROJECT_PRODUCTION_URL?: string;
 };
 
-function parse(raw: string | undefined): URL | null {
+const LOCAL_HOST = /^(localhost|127\.0\.0\.1)(:|\/|$)/i;
+
+/** Origin of a configured site URL; adds a protocol when missing (http for localhost). Null if unusable. */
+export function parse(raw: string | undefined): URL | null {
   const value = raw?.trim();
   if (!value) return null;
+  const withProtocol = /^https?:\/\//i.test(value)
+    ? value
+    : `${LOCAL_HOST.test(value) ? "http" : "https"}://${value}`;
   try {
-    const url = new URL(/^https?:\/\//i.test(value) ? value : `https://${value}`);
-    url.pathname = url.pathname.replace(/\/+$/, "") || "/";
-    return url;
+    return new URL(new URL(withProtocol).origin);
   } catch {
     return null;
   }

@@ -30,7 +30,6 @@ export async function generateMetadata(): Promise<Metadata> {
       locale: "es_CL",
       title: "Kizuna Tracker",
       description: SITE_DESCRIPTION,
-      url: "/",
     },
     twitter: {
       card: "summary_large_image",

@@ -50,4 +50,19 @@ describe("resolveSiteUrl", () => {
   it("falls back when the value is not a valid URL", () => {
     expect(resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "http://" }).href).toBe(`${FALLBACK_SITE_URL}/`);
   });
+
+  it("falls through to the Vercel value when NEXT_PUBLIC_SITE_URL is invalid", () => {
+    expect(
+      resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "http://", VERCEL_PROJECT_PRODUCTION_URL: "app.vercel.app" }).origin,
+    ).toBe("https://app.vercel.app");
+  });
+
+  it("keeps the origin only when the value has a path", () => {
+    expect(resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "https://x.com/app/" }).href).toBe("https://x.com/");
+  });
+
+  it("uses http for scheme-less localhost and 127.0.0.1", () => {
+    expect(resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "localhost:3000" }).origin).toBe("http://localhost:3000");
+    expect(resolveSiteUrl({ NEXT_PUBLIC_SITE_URL: "127.0.0.1:3000/" }).origin).toBe("http://127.0.0.1:3000");
+  });
 });

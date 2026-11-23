@@ -22,6 +22,11 @@ test.describe("social card", () => {
       const value = await meta(attr, key);
       expect(value, key).toMatch(/^https?:\/\/.+\/(opengraph|twitter)-image\.png/);
     }
+    // a layout-level og:url would be inherited by every page and canonicalise shares to the home page
+    const ogUrls = await page.locator('meta[property="og:url"]').evaluateAll((els) =>
+      els.map((el) => el.getAttribute("content") ?? ""),
+    );
+    for (const u of ogUrls) expect(new URL(u).pathname).toBe("/bienvenida");
     expect(await meta("property", "og:image:width")).toBe("1200");
     expect(await meta("property", "og:image:height")).toBe("630");
     expect(await meta("property", "og:image:alt")).toBeTruthy();
