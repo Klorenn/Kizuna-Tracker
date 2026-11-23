@@ -19,17 +19,6 @@ export const metadata: Metadata = { title: "Deudas" };
 const DELETED = "Cuenta eliminada";
 const HISTORY_LIMIT = 30;
 
-type ChallengeRow = {
-  id: string;
-  creator_id: string;
-  creator_habit_id: string;
-  rival_habit_id: string | null;
-  frequency_type: string;
-  target_per_week: number | null;
-  weeks: number;
-  starts_on: string | null;
-};
-
 export default async function DeudasPage() {
   const supabase = await createServerClient();
   const {
@@ -51,30 +40,26 @@ export default async function DeudasPage() {
   const people = [...new Set(debts.map(otherOf))];
   const challengeIds = [...new Set(debts.map((d) => d.challenge_id))];
 
-  const { data: challengeRows } = challengeIds.length
-    ? await supabase
-        .from("challenges")
-        .select("id,creator_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,starts_on")
-        .in("id", challengeIds)
-    : { data: [] as ChallengeRow[] };
-  const challenges = new Map((challengeRows ?? []).map((c) => [c.id, c]));
-  const habitIds = [
-    ...new Set((challengeRows ?? []).flatMap((c) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
-  ];
-
-  const [{ data: profiles }, { data: habits }] = await Promise.all([
+  // Challenge (with the two habit names) and profiles are independent: one level, not three.
+  // A habit the viewer cannot read comes back null, as it did when habits were read on their own.
+  const [{ data: challengeRows }, { data: profiles }] = await Promise.all([
+    challengeIds.length
+      ? supabase
+          .from("challenges")
+          .select(
+            "id,creator_id,creator_habit_id,rival_habit_id,frequency_type,target_per_week,weeks,starts_on,creator_habit:habits!creator_habit_id(name),rival_habit:habits!rival_habit_id(name)",
+          )
+          .in("id", challengeIds)
+      : Promise.resolve({ data: [] }),
     people.length
       ? supabase.from("public_profiles").select("id,display_name,avatar_path,avatar_preset").in("id", people)
       : Promise.resolve({
           data: [] as { id: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null }[],
         }),
-    habitIds.length
-      ? supabase.from("habits").select("id,name").in("id", habitIds)
-      : Promise.resolve({ data: [] as { id: string; name: string }[] }),
   ]);
+  const challenges = new Map((challengeRows ?? []).map((c) => [c.id, c]));
   // A profile missing from public_profiles is a deleted account.
   const nameOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p.display_name ?? ""] as const] : [])));
-  const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
   const profileOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p] as const] : [])));
   const personName = (id: string) => (nameOf.has(id) ? nameOf.get(id) || DELETED : DELETED);
   const shortName = (id: string) => (nameOf.has(id) ? firstName(nameOf.get(id), DELETED) : DELETED);
@@ -83,8 +68,7 @@ export default async function DeudasPage() {
   const reason = (d: (typeof debts)[number]) => {
     const c = challenges.get(d.challenge_id);
     if (!c) return "Reto";
-    const habitId = d.debtor_id === c.creator_id ? c.creator_habit_id : c.rival_habit_id;
-    const name = (habitId && habitName.get(habitId)) || "Reto";
+    const name = (d.debtor_id === c.creator_id ? c.creator_habit?.name : c.rival_habit?.name) || "Reto";
     const f = challengeFrequency(c);
     const idx = c.starts_on ? periodsFor(c.starts_on, c.weeks, f).findIndex((p) => p.start === d.period_start) : -1;
     return idx === -1 ? name : `${name} · ${f.type === "weekly" ? "semana" : "día"} ${idx + 1}`;

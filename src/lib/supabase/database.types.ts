@@ -1651,7 +1651,6 @@ export type Database = {
       add_pomodoro_block: {
         Args: {
           p_block_id: string
-          p_ended_at?: string
           p_habit_id: string
           p_minutes: number
           p_topic?: string
@@ -1693,6 +1692,13 @@ export type Database = {
           day_completed: boolean
         }[]
       }
+      checkin_dates: {
+        Args: { p_from: string; p_habit_ids: string[] }
+        Returns: {
+          dates: string[]
+          habit_id: string
+        }[]
+      }
       complete_day_from_items: {
         Args: { p_date: string; p_habit_id: string; p_user_id: string }
         Returns: boolean
@@ -1705,7 +1711,6 @@ export type Database = {
         }[]
       }
       create_invite: { Args: never; Returns: string }
-      cron_secret_valid: { Args: { p_secret: string }; Returns: boolean }
       delete_body_weight: { Args: { p_id: string }; Returns: boolean }
       delete_cardio_entry: { Args: { p_entry_id: string }; Returns: undefined }
       delete_reading_entry: {
@@ -1716,10 +1721,29 @@ export type Database = {
       delete_watch_entry: { Args: { p_checkin_id: string }; Returns: undefined }
       delete_workout: { Args: { p_checkin_id: string }; Returns: undefined }
       email_for_username: { Args: { p_username: string }; Returns: string }
-      ensure_cron_secret: { Args: never; Returns: undefined }
-      habit_date_period_closed: {
-        Args: { p_date: string; p_habit_id: string }
-        Returns: boolean
+      friend_feed: {
+        Args: {
+          p_cursor_at?: string
+          p_cursor_day?: string
+          p_cursor_id?: string
+          p_limit: number
+          p_owner?: string
+          p_photos_only?: boolean
+        }
+        Returns: {
+          created_at: string
+          habit_color: string
+          habit_frequency_type: string
+          habit_id: string
+          habit_name: string
+          habit_target_per_week: number
+          id: string
+          local_date: string
+          photo_path: string
+          rejected_at: string
+          rejected_by: string
+          user_id: string
+        }[]
       }
       habit_preset_color: { Args: { p_preset: string }; Returns: string }
       invite_preview: { Args: { p_code: string }; Returns: Json }

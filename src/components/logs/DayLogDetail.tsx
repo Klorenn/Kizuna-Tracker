@@ -1,49 +1,82 @@
-import { BookOpen, Lock, PencilSimple, Plus } from "@phosphor-icons/react/dist/ssr";
+import {
+  BookOpen,
+  Drop,
+  Lock,
+  PencilSimple,
+  PersonSimpleRun,
+  Plus,
+  Television,
+  Timer,
+} from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { formatKg1 } from "@/domain/body";
-import { formatKg, logSubtitle, type LogType } from "@/domain/logs";
+import { CARDIO_KIND_LABEL, cardioSummary } from "@/domain/cardio";
+import { bookProgress, formatKg, logSubtitle, type LogType } from "@/domain/logs";
+import { formatAmount, progressLabel } from "@/domain/quantity";
 import type { LocalDate } from "@/domain/types";
 import type { DayLog } from "@/lib/logs-data";
+import { logEntryHref, timeLine, watchLine } from "@/lib/log-text";
 
-/** Where to add or edit the log of a habit on a day (pages owned by the entry screens). */
-export function logEntryHref(habitId: string, logType: Exclude<LogType, "none">, date: LocalDate): string {
-  return `/habitos/${habitId}/${logType === "reading" ? "lectura" : "entrenamiento"}?fecha=${date}`;
-}
+// Re-exported so the other screens keep importing it from here. The text helpers live in the
+// pure `log-text` module: this client chunk must not pull the loaders of `logs-data`.
+export { logEntryHref };
+export type { EntryLogType } from "@/lib/log-text";
 
 const setText = (s: { reps: number; kg: number }) => `${s.reps} × ${formatKg(s.kg)}`;
 
+const lineClass = "flex min-w-0 items-center gap-1.5 text-small text-ink";
+
 /**
  * The detail of one day's log under its habit in the calendar day sheet: the book and pages,
- * or the day types and every exercise with its sets. Plus "Editar" / "Añadir registro".
+ * the day types and every exercise with its sets, the time, what was watched, the sums of a
+ * quantity goal or each outing. Plus "Editar" / "Añadir registro".
  */
 export function DayLogDetail({
   log,
   habitId,
   logType,
   date,
+  isToday = false,
+  hasCheckin = false,
 }: {
   log: DayLog | null;
   habitId: string;
   logType: Exclude<LogType, "none">;
   date: LocalDate;
+  /** Quantity sums are only edited from Hoy: on today the sheet points there. */
+  isToday?: boolean;
+  /** The day already has its check-in (the goal of that day was met). */
+  hasCheckin?: boolean;
 }) {
-  const href = logEntryHref(habitId, logType, date);
-  const action = (
-    <Link
-      href={href}
-      className="-ml-1 inline-flex h-11 items-center gap-1.5 self-start rounded-md px-1 text-small font-medium text-accent"
-    >
-      {log ? <PencilSimple size={16} weight="light" aria-hidden /> : <Plus size={16} weight="light" aria-hidden />}
-      {log ? "Editar" : "Añadir registro"}
-    </Link>
-  );
+  const action =
+    logType === "quantity" ? (
+      isToday ? (
+        <Link
+          href="/"
+          className="-ml-1 inline-flex h-11 items-center gap-1.5 self-start rounded-md px-1 text-small font-medium text-accent"
+        >
+          <PencilSimple size={16} weight="light" aria-hidden />
+          Editar en Hoy
+        </Link>
+      ) : null
+    ) : (
+      <Link
+        href={logEntryHref(habitId, logType, date)}
+        className="-ml-1 inline-flex h-11 items-center gap-1.5 self-start rounded-md px-1 text-small font-medium text-accent"
+      >
+        {log ? <PencilSimple size={16} weight="light" aria-hidden /> : <Plus size={16} weight="light" aria-hidden />}
+        {log ? "Editar" : "Añadir registro"}
+      </Link>
+    );
 
   if (!log) return action;
 
   if (log.kind === "reading") {
+    // same format as PROGRESO and /libros: "página 40 de 412 · 10 %" (only with the total known)
+    const progress = log.totalPages ? bookProgress(log.toPage, log.totalPages) : null;
     return (
       <div className="flex flex-col gap-0.5">
-        <p className="flex min-w-0 items-center gap-1.5 text-small text-ink">
+        <p className={lineClass}>
           <BookOpen size={16} weight="light" aria-hidden className="shrink-0" />
           <span className="truncate">{log.bookTitle}</span>
           {log.finishedBook ? (
@@ -53,6 +86,82 @@ export function DayLogDetail({
         <p className="font-mono text-small text-muted">
           {log.fromPage} → {log.toPage} · {log.pages} {log.pages === 1 ? "página" : "páginas"}
         </p>
+        {progress ? <p className="font-mono text-small text-muted">{progress}</p> : null}
+        {action}
+      </div>
+    );
+  }
+
+  if (log.kind === "time") {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <p className={lineClass}>
+          <Timer size={16} weight="light" aria-hidden className="shrink-0" />
+          <span className="min-w-0 break-words">{timeLine(log)}</span>
+        </p>
+        {action}
+      </div>
+    );
+  }
+
+  if (log.kind === "watch") {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <p className={lineClass}>
+          <Television size={16} weight="light" aria-hidden className="shrink-0" />
+          <span className="min-w-0 break-words">{watchLine(log)}</span>
+        </p>
+        {action}
+      </div>
+    );
+  }
+
+  if (log.kind === "quantity") {
+    const pct = log.target > 0 ? Math.min(100, Math.round((log.total / log.target) * 100)) : 0;
+    // The goal is today's: a past day that already has its check-in shows only what was drunk.
+    const againstGoal = isToday || !hasCheckin;
+    return (
+      <div className="flex flex-col gap-1.5">
+        <p className={lineClass}>
+          <Drop size={16} weight="light" aria-hidden className="shrink-0" />
+          <span className="font-mono">
+            {againstGoal ? progressLabel(log.total, log.config) : formatAmount(log.total, log.config)}
+          </span>
+        </p>
+        {againstGoal ? (
+          <div aria-hidden className="h-1.5 w-full overflow-hidden rounded-full bg-field">
+            <div className="h-full rounded-full bg-(--habit)" style={{ width: `${pct}%` }} />
+          </div>
+        ) : null}
+        <ul aria-label="Sumas del día" className="flex flex-col gap-0.5">
+          {log.entries.map((e, i) => (
+            <li key={`${e.time}-${i}`} className="flex items-baseline gap-2 text-small">
+              <span className="w-12 shrink-0 font-mono text-muted">
+                <span className="sr-only">a las </span>
+                {e.time}
+              </span>
+              <span className="font-mono text-ink">+ {formatAmount(e.amount, log.config)}</span>
+            </li>
+          ))}
+        </ul>
+        {action}
+      </div>
+    );
+  }
+
+  if (log.kind === "cardio") {
+    return (
+      <div className="flex flex-col gap-0.5">
+        <ul className="flex flex-col gap-0.5">
+          {log.entries.map((e) => (
+            <li key={e.id} className={lineClass}>
+              <PersonSimpleRun size={16} weight="light" aria-hidden className="shrink-0" />
+              <span className="min-w-0 break-words">
+                {CARDIO_KIND_LABEL[e.kind]} · {cardioSummary([e])}
+              </span>
+            </li>
+          ))}
+        </ul>
         {action}
       </div>
     );

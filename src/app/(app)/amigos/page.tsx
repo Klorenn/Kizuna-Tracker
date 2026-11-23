@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { AddFriendButton } from "@/components/FriendActions";
 import { FriendRequestRow } from "@/components/FriendRequestRow";
+import { LoadFailed } from "@/components/LoadFailed";
 import { ActivityFeed } from "@/components/friends/ActivityFeed";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Avatar } from "@/components/ui/Avatar";
@@ -14,7 +15,7 @@ import { loadFeedPage } from "@/lib/activity-feed";
 import { avatarUrl } from "@/lib/avatar";
 import type { FeedPage } from "@/lib/feed";
 import { friendStatusText } from "@/lib/friend-view";
-import { friendStreaks, type ListStreak } from "@/lib/friends-data";
+import { friendStreaks } from "@/lib/friends-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { searchUsers } from "./actions";
 
@@ -73,19 +74,24 @@ export default async function AmigosPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: me } = await supabase
-    .from("profiles")
-    .select("timezone")
-    .eq("id", user.id)
-    .maybeSingle();
+  // getUser is the only read everything else waits on: profile, friendships, search and the feed
+  // start together. The feed needs the timezone just to format times, so it gets the promise.
+  const meRead = Promise.resolve(supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle());
+  // never rejects: nobody may be awaiting it (an empty feed returns before formatting times)
+  const timezone = meRead.then(({ data }) => data?.timezone ?? "UTC").catch(() => "UTC");
+  const [{ data: me }, { data: friendships }, hits, feed] = await Promise.all([
+    meRead,
+    supabase
+      .from("friendships")
+      .select("id,requester_id,addressee_id,status")
+      .order("created_at", { ascending: false })
+      .limit(1000),
+    q.trim() ? searchUsers(q) : Promise.resolve([]),
+    loadFeedPage(supabase, user.id, { timezone }).catch((): null => null),
+  ]);
   if (!me) redirect("/login?error=perfil");
   const today = localDate(new Date(), me.timezone);
 
-  const { data: friendships } = await supabase
-    .from("friendships")
-    .select("id,requester_id,addressee_id,status")
-    .order("created_at", { ascending: false })
-    .limit(1000);
   const rows = friendships ?? [];
   const other = (f: { requester_id: string; addressee_id: string }) =>
     f.requester_id === user.id ? f.addressee_id : f.requester_id;
@@ -94,15 +100,14 @@ export default async function AmigosPage({
   const related = new Map(rows.map((f) => [other(f), f]));
   const friendIds = friends.map(other);
 
-  const [hits, feed, streaks, { data: people }] = await Promise.all([
-    q.trim() ? searchUsers(q) : Promise.resolve([]),
-    loadFeedPage(supabase, user.id, { timezone: me.timezone }).catch((): null => null),
-    // on failure: no status line at all (never a false "Sin racha activa")
-    friendStreaks(supabase, friendIds, today).catch((): Map<string, ListStreak> => new Map()),
+  const [streakRead, { data: people }] = await Promise.all([
+    // on failure: a retry line instead of status lines (never a false "Sin racha activa")
+    friendStreaks(supabase, friendIds, today).catch((): { ok: false } => ({ ok: false })),
     rows.length
       ? supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", rows.map(other))
       : Promise.resolve({ data: [] }),
   ]);
+  const streaks = streakRead.ok ? streakRead.streaks : null;
   const byId = new Map((people ?? []).map((p) => [p.id, p]));
 
   const friendRows = friends
@@ -115,7 +120,7 @@ export default async function AmigosPage({
         name: p?.display_name ?? "Usuario",
         avatar: avatarUrl(p?.avatar_path ?? null),
         preset: p?.avatar_preset ?? null,
-        status: streaks.has(id) ? friendStatusText(streaks.get(id)!) : undefined,
+        status: streaks?.has(id) ? friendStatusText(streaks.get(id)!) : undefined,
       };
     })
     .filter((r) => r.username)
@@ -203,6 +208,7 @@ export default async function AmigosPage({
       {friendRows.length > 0 ? (
         <section aria-label="Tus amigos" className="flex flex-col gap-2">
           <SectionHeader label="Tus amigos" action={String(friendRows.length)} />
+          {streaks ? null : <LoadFailed href="/amigos" />}
           <Card>
             <ul className="divide-y divide-line">
               {friendRows.map((r) => (

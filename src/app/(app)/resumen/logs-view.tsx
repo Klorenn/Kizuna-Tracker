@@ -6,6 +6,7 @@ import { monthTitle, parseMonthParam, shiftMonth, withSearch, type MonthKey } fr
 import { localDate } from "@/domain/dates";
 import { DEFAULT_HABIT_COLOR, toHabitColor, type HabitColor } from "@/domain/habit-colors";
 import type { LocalDate } from "@/domain/types";
+import type { QuantityColumns } from "@/lib/logs-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { VALUE_BASE, valueSizeClass } from "@/lib/value-size";
 
@@ -22,7 +23,14 @@ export type LogsContext = {
   current: MonthKey;
   readingHabit: { id: string; color: HabitColor } | null;
   workoutHabit: { id: string; color: HabitColor } | null;
+  timeHabit: { id: string; color: HabitColor } | null;
+  watchHabit: { id: string; color: HabitColor } | null;
+  cardioHabit: { id: string; color: HabitColor } | null;
+  /** Every habit with a log (archived too: their sums stay in Resumen), with the quantity goal columns. */
+  logHabits: LogHabitRow[];
 };
+
+type LogHabitRow = { id: string; name: string; color: string; log_type: string; archived_at: string | null } & QuantityColumns;
 
 /** Session, local today and the habits whose colors paint the charts (first active of each type). */
 export async function loadLogsContext(): Promise<LogsContext> {
@@ -31,18 +39,25 @@ export async function loadLogsContext(): Promise<LogsContext> {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
+  // two independent reads in one round trip (the habits list also gives the drill-downs their
+  // colors and the ownership check of /resumen/cantidad/[habitId])
+  const [{ data: profile }, { data: habits }] = await Promise.all([
+    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("habits")
+      .select(
+        "id,name,color,log_type,archived_at,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+      )
+      .eq("user_id", user.id)
+      .neq("log_type", "none")
+      .order("created_at")
+      .order("id"),
+  ]);
   if (!profile) redirect("/login?error=perfil");
-  const { data: habits } = await supabase
-    .from("habits")
-    .select("id,color,log_type")
-    .eq("user_id", user.id)
-    .is("archived_at", null)
-    .neq("log_type", "none")
-    .order("created_at")
-    .order("id");
+  const logHabits: LogHabitRow[] = habits ?? [];
+  // the first active habit of a type paints the charts
   const first = (type: string) => {
-    const h = (habits ?? []).find((x) => x.log_type === type);
+    const h = logHabits.find((x) => x.log_type === type && x.archived_at === null);
     return h ? { id: h.id, color: toHabitColor(h.color) } : null;
   };
   const today = localDate(new Date(), profile.timezone);
@@ -53,6 +68,10 @@ export async function loadLogsContext(): Promise<LogsContext> {
     current: today.slice(0, 7),
     readingHabit: first("reading"),
     workoutHabit: first("workout"),
+    timeHabit: first("time"),
+    watchHabit: first("watch"),
+    cardioHabit: first("cardio"),
+    logHabits,
   };
 }
 

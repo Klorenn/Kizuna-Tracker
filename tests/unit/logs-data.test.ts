@@ -1,8 +1,21 @@
 import { describe, expect, test } from 'vitest'
 import type { Book, ExerciseRef } from '@/domain/logs'
+import type { QuantityConfig } from '@/domain/quantity'
+import type { MediaItem } from '@/domain/watch'
+import { loadMonthDays } from '@/lib/calendar-data'
+import { fakeSupabase } from './support/fake-supabase'
 import {
+  loadCardioData,
   loadLatestWeight,
   loadMonthLogs,
+  loadQuantityData,
+  loadSeenEpisodes,
+  loadTimeData,
+  loadWatchData,
+  quantityConfigOf,
+  timeLine,
+  toQuantityDayLogs,
+  watchLine,
   loadVisitDates,
   loadWeights,
   loadWorkoutData,
@@ -72,7 +85,7 @@ describe('toDayLogs', () => {
     const logs = toDayLogs({ reading, sessions: [], sets: [], books, exercises })
     expect(logs).toEqual(
       new Map([
-        ['c1', { kind: 'reading', bookTitle: 'Dune', fromPage: 14, toPage: 40, pages: 26, finishedBook: true }],
+        ['c1', { kind: 'reading', bookTitle: 'Dune', fromPage: 14, toPage: 40, pages: 26, finishedBook: true, totalPages: 412 }],
       ]),
     )
   })
@@ -193,7 +206,7 @@ describe('loaders sin consultas de más', () => {
   test('loadMonthLogs sin hábitos de lectura ni entrenamiento no consulta nada', async () => {
     const { client, ranges } = fakeClient(tables)
     const logs = await loadMonthLogs(client as never, 'u1', range, { reading: false, workout: false })
-    expect(logs.size).toBe(0)
+    expect(logs.byCheckin.size).toBe(0)
     expect(Object.keys(ranges)).toEqual([])
   })
 
@@ -221,7 +234,7 @@ describe('loaders sin consultas de más', () => {
       ],
     })
     const logs = await loadMonthLogs(client as never, 'u1', range, { reading: true, workout: false })
-    expect(logs.get('c1')).toMatchObject({ kind: 'reading', bookTitle: 'Dune', pages: 8 })
+    expect(logs.byCheckin.get('c1')).toMatchObject({ kind: 'reading', bookTitle: 'Dune', pages: 8 })
     expect(ranges.books).toHaveLength(1)
   })
 
@@ -252,5 +265,244 @@ describe('loaders sin consultas de más', () => {
       ],
     })
     await expect(loadLatestWeight(client as never, 'u1')).resolves.toEqual({ date: '2024-06-10', kg: 79.5 })
+  })
+})
+
+describe('toDayLogs: tiempo, series, cantidad y distancia', () => {
+  const base = { reading: [], sessions: [], sets: [], books: [], exercises: [] }
+  const dune: MediaItem = {
+    id: 'm1', title: 'Dune', kind: 'movie', totalSeasons: null, totalEpisodes: null, runtimeMin: 155, status: 'finished', finishedOn: '2026-11-02',
+  }
+  const dark: MediaItem = {
+    id: 'm2', title: 'Dark', kind: 'series', totalSeasons: 3, totalEpisodes: 26, runtimeMin: null, status: 'watching', finishedOn: null,
+  }
+
+  test('tiempo: minutos, tema y pomodoros del check-in', () => {
+    const logs = toDayLogs({ ...base, time: [{ checkin_id: 'c1', minutes: 85, topic: 'Álgebra', pomodoros: 4 }] })
+    expect(logs).toEqual(new Map([['c1', { kind: 'time', minutes: 85, topic: 'Álgebra', pomodoros: 4 }]]))
+  })
+
+  test('película completa sin minutos cuenta su duración', () => {
+    const logs = toDayLogs({
+      ...base,
+      media: [dune],
+      watch: [{ checkin_id: 'c2', media_id: 'm1', local_date: '2026-11-02', episodes: null, season: null, episode_to: null, minutes: null, completed: true }],
+    })
+    expect(logs.get('c2')).toEqual({
+      kind: 'watch', title: 'Dune', mediaKind: 'movie', episodes: null, season: null, episodeTo: null, minutes: 155, completed: true,
+    })
+  })
+
+  test('serie: episodios y temporada, sin minutos estimados', () => {
+    const logs = toDayLogs({
+      ...base,
+      media: [dark],
+      watch: [{ checkin_id: 'c3', media_id: 'm2', local_date: '2026-11-03', episodes: 3, season: 1, episode_to: 6, minutes: null, completed: false }],
+    })
+    expect(logs.get('c3')).toMatchObject({ kind: 'watch', title: 'Dark', mediaKind: 'series', episodes: 3, season: 1, episodeTo: 6, minutes: 0, completed: false })
+  })
+
+  test('dos salidas del mismo check-in: un solo registro, en orden de creación', () => {
+    const logs = toDayLogs({
+      ...base,
+      cardio: [
+        { id: 'k2', checkin_id: 'c4', kind: 'run', distance_m: 3000, duration_s: 1000, created_at: '2026-11-04T13:00:00Z' },
+        { id: 'k1', checkin_id: 'c4', kind: 'run', distance_m: 5000, duration_s: 1800, created_at: '2026-11-04T11:00:00Z' },
+      ],
+    })
+    expect(logs.size).toBe(1)
+    expect(logs.get('c4')).toEqual({
+      kind: 'cardio',
+      entries: [
+        { id: 'k1', kind: 'run', distanceM: 5000, durationS: 1800 },
+        { id: 'k2', kind: 'run', distanceM: 3000, durationS: 1000 },
+      ],
+    })
+  })
+})
+
+describe('toQuantityDayLogs', () => {
+  const config: QuantityConfig = { unit: 'ml', label: null, target: 2000, step: 250, display: 'glasses', glassMl: 250 }
+  test('sumas con la hora en la zona del perfil y el total, por hábito y día', () => {
+    const logs = toQuantityDayLogs({
+      habits: [{ id: 'h1', config }],
+      timezone: 'America/Santiago',
+      rows: [
+        { id: 'q2', habit_id: 'h1', local_date: '2026-11-22', amount: '250.00', created_at: '2026-11-22T13:05:00Z' },
+        { id: 'q1', habit_id: 'h1', local_date: '2026-11-22', amount: 250, created_at: '2026-11-22T11:10:00Z' },
+      ],
+    })
+    expect(logs.get('h1:2026-11-22')).toEqual({
+      kind: 'quantity',
+      total: 500,
+      target: 2000,
+      config,
+      entries: [
+        { amount: 250, time: '8:10' },
+        { amount: 250, time: '10:05' },
+      ],
+    })
+  })
+
+  test('quantityConfigOf lee las columnas del hábito', () => {
+    expect(
+      quantityConfigOf({
+        quantity_unit: 'ml', quantity_label: null, quantity_target: '2000.00', quantity_step: '250.00', quantity_display: 'glasses', glass_ml: 250,
+      }),
+    ).toEqual(config)
+    expect(
+      quantityConfigOf({ quantity_unit: null, quantity_label: null, quantity_target: null, quantity_step: null, quantity_display: 'base', glass_ml: 250 }),
+    ).toBeNull()
+  })
+})
+
+describe('timeLine y watchLine', () => {
+  test('tiempo: "1 h 25 min · Álgebra · 2 pomodoros"', () => {
+    expect(timeLine({ kind: 'time', minutes: 85, topic: 'Álgebra', pomodoros: 2 })).toBe('1 h 25 min · Álgebra · 2 pomodoros')
+    expect(timeLine({ kind: 'time', minutes: 45, topic: null, pomodoros: 1 })).toBe('45 min · 1 pomodoro')
+    expect(timeLine({ kind: 'time', minutes: 45, topic: null, pomodoros: 0 })).toBe('45 min')
+  })
+  test('series y películas', () => {
+    const w = { kind: 'watch' as const, season: null, episodeTo: null, episodes: null, minutes: 0, completed: false }
+    expect(watchLine({ ...w, title: 'Dark', mediaKind: 'series', episodes: 3, season: 1, episodeTo: 6 })).toBe('Dark · 3 episodios · T1 E6')
+    expect(watchLine({ ...w, title: 'Dark', mediaKind: 'series', episodes: 1 })).toBe('Dark · 1 episodio')
+    expect(watchLine({ ...w, title: 'Dune', mediaKind: 'movie', completed: true, minutes: 155 })).toBe('Dune · Completa · 2 h 35 min')
+    expect(watchLine({ ...w, title: 'Past Lives', mediaKind: 'movie', minutes: 70 })).toBe('Past Lives · 1 h 10 min')
+  })
+})
+
+describe('loaders v4', () => {
+  test('loadQuantityData lee más de 1000 sumas, página por página', async () => {
+    const rows = Array.from({ length: 1005 }, (_, i) => ({
+      id: `q${i}`, user_id: 'u1', habit_id: 'h1', local_date: '2026-11-01', amount: 250, created_at: `2026-11-01T10:00:${String(i % 60).padStart(2, '0')}Z`,
+    }))
+    const { client, ranges } = fakeClient({ quantity_entries: rows, checkins: [] })
+    const data = await loadQuantityData(client as never, 'u1', 'h1', '2025-11-01')
+    expect(data.entries).toHaveLength(1005)
+    expect(data.doneDates).toEqual([])
+    expect(ranges.quantity_entries).toEqual([[0, 999], [1000, 1999]])
+  })
+
+  test('loadQuantityData: días cumplidos sin rechazados', async () => {
+    const { client } = fakeClient({
+      quantity_entries: [{ id: 'q1', user_id: 'u1', habit_id: 'h1', local_date: '2026-11-02', amount: '2000.00', created_at: 'x' }],
+      checkins: [
+        { id: 'c1', user_id: 'u1', habit_id: 'h1', local_date: '2026-11-02', rejected_at: null },
+        { id: 'c2', user_id: 'u1', habit_id: 'h1', local_date: '2026-11-03', rejected_at: '2026-11-03T10:00:00Z' },
+      ],
+    })
+    const data = await loadQuantityData(client as never, 'u1', 'h1', '2025-11-01')
+    expect(data.entries).toEqual([{ date: '2026-11-02', amount: 2000 }])
+    expect(data.doneDates).toEqual(['2026-11-02'])
+  })
+
+  test('loadTimeData, loadWatchData y loadCardioData devuelven el dominio', async () => {
+    const { client } = fakeClient({
+      time_entries: [{ id: 't1', user_id: 'u1', habit_id: 'h1', local_date: '2026-11-22', minutes: 85, topic: 'Álgebra', pomodoros: 2 }],
+      media_items: [{ id: 'm1', user_id: 'u1', title: 'Dune', kind: 'movie', total_seasons: null, total_episodes: null, runtime_min: 155, status: 'finished', finished_on: '2026-11-02' }],
+      watch_entries: [{ id: 'w1', user_id: 'u1', media_id: 'm1', local_date: '2026-11-02', episodes: null, season: null, episode_to: null, minutes: null, completed: true }],
+      cardio_entries: [{ id: 'k1', user_id: 'u1', local_date: '2026-11-22', kind: 'run', distance_m: 5200, duration_s: 1780 }],
+    })
+    await expect(loadTimeData(client as never, 'u1', '2025-11-01')).resolves.toEqual([
+      { date: '2026-11-22', habitId: 'h1', minutes: 85, topic: 'Álgebra', pomodoros: 2 },
+    ])
+    const watch = await loadWatchData(client as never, 'u1', '2025-11-01')
+    expect(watch.media[0]).toMatchObject({ id: 'm1', kind: 'movie', runtimeMin: 155, finishedOn: '2026-11-02' })
+    expect(watch.entries).toEqual([
+      { date: '2026-11-02', mediaId: 'm1', episodes: null, season: null, episodeTo: null, minutes: null, completed: true },
+    ])
+    await expect(loadCardioData(client as never, 'u1', '2025-11-01')).resolves.toEqual([
+      { id: 'k1', date: '2026-11-22', kind: 'run', distanceM: 5200, durationS: 1780 },
+    ])
+  })
+})
+
+describe('fix round 1: filtros por hábito, historial y forma del resultado', () => {
+  test('loadCardioData y loadWatchData con habitId solo traen las filas de ese hábito', async () => {
+    const { client } = fakeClient({
+      cardio_entries: [
+        { id: 'k1', user_id: 'u1', habit_id: 'ha', local_date: '2026-11-02', kind: 'run', distance_m: 5000, duration_s: 1800 },
+        { id: 'k2', user_id: 'u1', habit_id: 'hb', local_date: '2026-11-03', kind: 'bike', distance_m: 20000, duration_s: 3600 },
+      ],
+      media_items: [],
+      watch_entries: [
+        { id: 'w1', user_id: 'u1', habit_id: 'ha', media_id: 'm1', local_date: '2026-11-02', episodes: 2, season: null, episode_to: null, minutes: null, completed: false },
+        { id: 'w2', user_id: 'u1', habit_id: 'hb', media_id: 'm1', local_date: '2026-11-03', episodes: 1, season: null, episode_to: null, minutes: null, completed: false },
+      ],
+    })
+    expect((await loadCardioData(client as never, 'u1', '2025-11-01', 'ha')).map((e) => e.id)).toEqual(['k1'])
+    expect((await loadCardioData(client as never, 'u1', '2025-11-01')).map((e) => e.id)).toEqual(['k1', 'k2'])
+    expect((await loadWatchData(client as never, 'u1', '2025-11-01', 'hb')).entries.map((e) => e.episodes)).toEqual([1])
+    expect((await loadWatchData(client as never, 'u1', '2025-11-01')).entries).toHaveLength(2)
+  })
+
+  test('loadSeenEpisodes suma todos los episodios de la serie, sin ventana', async () => {
+    const { client } = fakeClient({
+      watch_entries: [
+        { id: 'w0', user_id: 'u1', media_id: 'm1', local_date: '2024-01-05', episodes: 3, habit_id: 'h' },
+        { id: 'w1', user_id: 'u1', media_id: 'm1', local_date: '2026-11-02', episodes: 2, habit_id: 'h' },
+        { id: 'w2', user_id: 'u1', media_id: 'm2', local_date: '2026-11-02', episodes: 9, habit_id: 'h' },
+      ],
+    })
+    await expect(loadSeenEpisodes(client as never, 'u1', 'm1')).resolves.toBe(5)
+  })
+
+  test('loadMonthLogs devuelve campos planos: byCheckin y quantityByHabitDay', async () => {
+    const { client } = fakeClient({ time_entries: [{ id: 't', user_id: 'u1', checkin_id: 'c1', local_date: '2026-11-03', minutes: 30, topic: null, pomodoros: 0 }] })
+    const logs = await loadMonthLogs(client as never, 'u1', { first: '2026-11-01', until: '2026-11-22' }, { reading: false, workout: false, time: true })
+    expect(logs.byCheckin.get('c1')).toMatchObject({ kind: 'time', minutes: 30 })
+    expect(logs.quantityByHabitDay).toBeInstanceOf(Map)
+    expect({ ...logs }).toHaveProperty('quantityByHabitDay')
+  })
+})
+
+describe('privacidad: los registros v4 son solo del dueño', () => {
+  const day = { userId: 'u1', month: '2026-11', today: '2026-11-22', timezone: 'America/Santiago' }
+  const habit = (id: string, log_type: string, extra: object = {}) => ({ id, created_at: '2026-11-01T12:00:00Z', log_type, ...extra })
+  const habits = [
+    habit('h1', 'time'),
+    habit('h2', 'watch'),
+    habit('h3', 'cardio'),
+    habit('h4', 'quantity', {
+      quantity_unit: 'ml', quantity_label: null, quantity_target: 2000, quantity_step: 250, quantity_display: 'base', glass_ml: 250,
+    }),
+  ]
+  const respond = (q: { table: string }) => {
+    if (q.table === 'checkins') {
+      return {
+        data: [{ id: 'c1', habit_id: 'h1', local_date: '2026-11-03', created_at: '2026-11-03T15:00:00Z', photo_path: null, rejected_at: null, reject_reason: null }],
+      }
+    }
+    if (q.table === 'time_entries') return { data: [{ checkin_id: 'c1', minutes: 30, topic: 'Álgebra', pomodoros: 1 }] }
+    if (q.table === 'quantity_entries') {
+      return { data: [{ id: 'q1', habit_id: 'h4', local_date: '2026-11-03', amount: 250, created_at: '2026-11-03T15:00:00Z' }] }
+    }
+    return { data: [] }
+  }
+  const V4 = ['time_entries', 'watch_entries', 'media_items', 'cardio_entries', 'quantity_entries']
+
+  test('sin includeLogs (calendario ajeno, perfil público) no se consulta ninguna tabla v4', async () => {
+    const { client, queries } = fakeSupabase(respond)
+    const days = await loadMonthDays(client, { ...day, habits })
+    expect(queries.map((q) => q.table).filter((t) => V4.includes(t))).toEqual([])
+    expect(Object.values(days).flat().every((e) => e.log === null)).toBe(true)
+    // ni siquiera "en progreso" por sumas de cantidad
+    expect(Object.values(days).flat().some((e) => e.status === 'partial')).toBe(false)
+  })
+
+  test('con includeLogs el dueño ve el tiempo y la suma de cantidad como en progreso', async () => {
+    const { client, queries } = fakeSupabase(respond)
+    const days = await loadMonthDays(client, { ...day, habits, includeLogs: true })
+    expect(queries.map((q) => q.table)).toContain('time_entries')
+    expect(queries.map((q) => q.table)).toContain('quantity_entries')
+    const d3 = days['2026-11-03']
+    expect(d3.find((e) => e.habitId === 'h1')?.log).toMatchObject({ kind: 'time', minutes: 30 })
+    expect(d3.find((e) => e.habitId === 'h4')).toMatchObject({ status: 'partial', progressLabel: '250 de 2.000 ml' })
+  })
+
+  test('includeLogs sin hábitos con registro v4 no consulta tablas v4', async () => {
+    const { client, queries } = fakeSupabase(respond)
+    await loadMonthDays(client, { ...day, habits: [habit('h9', 'none')], includeLogs: true })
+    expect(queries.map((q) => q.table).filter((t) => V4.includes(t))).toEqual([])
   })
 })

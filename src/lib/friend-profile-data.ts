@@ -14,6 +14,7 @@ import {
 } from "@/lib/challenge-view";
 import type { FeedPage } from "@/lib/feed";
 import { pairRecord } from "@/lib/friend-view";
+import { loadCheckinDates } from "@/lib/checkin-dates";
 import { fetchAll } from "@/lib/paginate";
 import { activityGrid, lastDays } from "@/lib/profile-view";
 import { profileStreaks, streakWindow } from "@/lib/stats";
@@ -81,7 +82,7 @@ export async function loadFriendProfile(
   timezone: string,
 ): Promise<FriendProfileData> {
   const pair = `and(creator_id.eq.${me},rival_id.eq.${friendId}),and(creator_id.eq.${friendId},rival_id.eq.${me})`;
-  const { from, limit } = streakWindow(today);
+  const { from } = streakWindow(today);
 
   // each section reads on its own: one transient error degrades that section, not the whole page
   const [habitsRead, pairRead, latestRead] = await Promise.all([
@@ -96,22 +97,10 @@ export async function loadFriendProfile(
           .order("created_at")
           .limit(1000),
       ).filter((h) => h.visibility !== "private");
-      // per-habit history, bounded by date and under the row cap (same window as the own Perfil)
-      return Promise.all(
-        rows.map(async (h) => {
-          const data = must(
-            await supabase
-              .from("checkins")
-              .select("local_date")
-              .eq("habit_id", h.id)
-              .is("rejected_at", null)
-              .gte("local_date", from)
-              .order("local_date", { ascending: false })
-              .limit(limit),
-          );
-          return { ...h, dates: data.map((c) => c.local_date) };
-        }),
-      );
+      // history of every habit in one call (one row per habit; same date window as the own Perfil)
+      const history = await loadCheckinDates(supabase, rows.map((h) => h.id), from);
+      if (!history.ok) throw new Error("checkin_dates failed");
+      return rows.map((h) => ({ ...h, dates: history.byHabit.get(h.id) ?? [] }));
     }),
     attempt(async () => {
       const [challenges, debts] = await Promise.all([

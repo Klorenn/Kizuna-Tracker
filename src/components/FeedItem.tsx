@@ -18,7 +18,15 @@ export function FeedItem({ entry }: { entry: FeedEntry }) {
     return (
       <article className="relative flex h-[220px] flex-col justify-end gap-[2px] overflow-hidden rounded-lg border border-line bg-media p-4">
         {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-        <img src={entry.photoUrl} alt="" className="absolute inset-0 size-full object-cover" />
+        <img
+          src={entry.photoUrl}
+          alt=""
+          width={448}
+          height={220}
+          loading="lazy"
+          decoding="async"
+          className="absolute inset-0 size-full object-cover"
+        />
         <span
           aria-hidden
           className="absolute inset-0 bg-gradient-to-b from-transparent from-40% to-media/75"

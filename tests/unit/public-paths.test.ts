@@ -12,6 +12,11 @@ describe('isPublicPath', () => {
   )
 })
 
+describe('health endpoint', () => {
+  it('/api/health is public', () => expect(isPublicPath('/api/health')).toBe(true))
+  it('/api/healthz is not', () => expect(isPublicPath('/api/healthz')).toBe(false))
+})
+
 describe('safeNextPath', () => {
   it('accepts invite and handle paths only', () => {
     expect(safeNextPath('/invite/abc')).toBe('/invite/abc')
