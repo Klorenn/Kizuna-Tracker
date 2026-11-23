@@ -69,7 +69,7 @@ export function MediaPicker({
   return (
     <div className="flex flex-col gap-2">
       <p id="media-picker-label" className="section-label text-muted">
-        TÍTULO
+        Título
       </p>
       <div className="flex flex-wrap gap-2" role="group" aria-labelledby="media-picker-label">
         {media.map((m) => (

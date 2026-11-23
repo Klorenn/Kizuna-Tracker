@@ -8,7 +8,7 @@ const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
 
 /**
  * Day section label of the activity feed, relative to the viewer's today. The check-in's
- * `local_date` is the owner's local date as stored. Rendered in a mono caps label (CSS uppercase).
+ * `local_date` is the owner's local date as stored. Rendered in a section label (sentence case).
  */
 export function feedDayLabel(date: LocalDate, today: LocalDate): string {
   if (date === today) return 'Hoy'

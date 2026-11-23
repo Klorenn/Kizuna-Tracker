@@ -60,12 +60,12 @@ export function SeriesView({ media, today }: { media: MediaView[]; today: LocalD
         </Card>
       ) : (
         <>
-          <Section id="viendo" label="VIENDO" empty="No estás viendo ningún título.">
+          <Section id="viendo" label="Viendo" empty="No estás viendo ningún título.">
             {watching.map((m) => (
               <MediaRow key={m.id} item={m} hint={m.summary} onOpen={() => setPanel({ kind: "edit", item: m })} />
             ))}
           </Section>
-          <Section id="terminadas" label="TERMINADAS" empty="Aún no terminas ningún título.">
+          <Section id="terminadas" label="Terminadas" empty="Aún no terminas ningún título.">
             {finished.map((m) => (
               <MediaRow
                 key={m.id}

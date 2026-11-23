@@ -339,7 +339,7 @@ function Timer({
             ) : (
               <>
                 <p className="section-label text-muted">
-                  {state.phase === "done" ? "TERMINADO" : mode === "timer" ? "TEMPORIZADOR" : "CRONÓMETRO"}
+                  {state.phase === "done" ? "Terminado" : mode === "timer" ? "Temporizador" : "Cronómetro"}
                 </p>
                 <CatAnimation
                   asset={state.phase === "done" ? "sleep" : "code"}
@@ -364,16 +364,16 @@ function Timer({
               <p className="section-label text-muted">
                 {state.phase === "focus"
                   ? view.cyclesTotal === null
-                    ? `FOCO · RONDA ${state.cycle}`
-                    : `FOCO · RONDA ${state.cycle} DE ${view.cyclesTotal}`
-                  : "DESCANSO"}
+                    ? `Foco · ronda ${state.cycle}`
+                    : `Foco · ronda ${state.cycle} de ${view.cyclesTotal}`
+                  : "Descanso"}
               </p>
               <CatAnimation asset={state.phase === "focus" ? "code" : "sleep"} width={96} />
               <Clock state={state} />
             </>
           ) : (
             <>
-              <p className="section-label text-muted">{state.phase === "ready" ? "LISTO" : "TERMINADO"}</p>
+              <p className="section-label text-muted">{state.phase === "ready" ? "Listo" : "Terminado"}</p>
               <CatAnimation asset="sleep" width={96} variant="still" />
             </>
           )}
@@ -578,7 +578,7 @@ function TimerPicker({
   return (
     <div className="flex w-full flex-col gap-2">
       <p id="timer-minutes" className="section-label text-muted">
-        MINUTOS
+        Minutos
       </p>
       <div className="flex gap-2" role="group" aria-labelledby="timer-minutes">
         {TIMER_CHIPS.map((m) => (

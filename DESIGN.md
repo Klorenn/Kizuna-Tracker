@@ -20,9 +20,9 @@ Shadow (single effect): `0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04)`.
 Borders: buttons, cards, chips 1px solid #E6E6E6; inputs 1px solid #8D8D8D.
 
 ## Typography
-- Inter for headings and body; Geist Mono for labels and numbers. Max two families.
+- Inter for headings, body and section labels; Geist Mono for numbers, @usuario and chips. Max two families.
 - Headlines weight 600, tracking -0.02em (32px md on mobile). Body 15px/1.5, small 13px/1.45.
-- Labels Geist Mono 11–14px, tracking 0.04em. Sentence case everywhere.
+- Section labels Inter 13px, weight 600, no tracking. Mono labels 11–14px, tracking 0.04em. Sentence case everywhere.
 
 ## Components
 - button-primary: accent fill, white label, radius 10, height 48.

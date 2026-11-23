@@ -73,7 +73,7 @@ export function LibrosView({ books, today }: { books: BookView[]; today: LocalDa
         </Card>
       ) : (
         <>
-          <Section id="leyendo" label="LEYENDO" empty="No estás leyendo ningún libro.">
+          <Section id="leyendo" label="Leyendo" empty="No estás leyendo ningún libro.">
             {reading.map((b) => (
               <BookRow
                 key={b.id}
@@ -84,7 +84,7 @@ export function LibrosView({ books, today }: { books: BookView[]; today: LocalDa
               />
             ))}
           </Section>
-          <Section id="terminados" label="TERMINADOS" empty="Aún no terminas un libro.">
+          <Section id="terminados" label="Terminados" empty="Aún no terminas un libro.">
             {finished.map((b) => (
               <BookRow
                 key={b.id}

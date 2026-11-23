@@ -1,6 +1,6 @@
 import Link from "next/link";
 
-/** Mono caps label with an optional accent action. `scroll={false}` keeps the scroll position. */
+/** Inter semibold label with an optional accent action. `scroll={false}` keeps the scroll position. */
 export function SectionHeader({
   label,
   action,

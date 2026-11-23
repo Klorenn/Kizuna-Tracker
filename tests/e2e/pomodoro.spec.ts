@@ -46,17 +46,17 @@ test("a pomodoro session: focus, break, reload, next round, finish early", async
   await page.getByLabel("Qué estudiaste").fill("Álgebra");
   await page.getByRole("button", { name: "Empezar foco" }).click();
   await expect(page.getByRole("timer")).toHaveText("05:00");
-  await expect(page.getByText("FOCO · RONDA 1 DE 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Foco · ronda 1 de 2", { exact: true })).toBeVisible();
   await shot(page, "02-focus");
 
   await page.clock.runFor(5 * MIN);
-  await expect(page.getByText("DESCANSO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Descanso", { exact: true })).toBeVisible();
   await expect(page.getByText("Sumamos 5 min a Estudiar.")).toBeVisible();
   await shot(page, "03-break");
 
   // the break survives a reload with its time left
   await page.reload();
-  await expect(page.getByText("DESCANSO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Descanso", { exact: true })).toBeVisible();
   // the fake clock keeps running after a reload: some seconds of the minute may have passed
   await expect(page.getByRole("timer")).toHaveText(/^(01:00|00:[0-5]\d)$/);
 
@@ -66,7 +66,7 @@ test("a pomodoro session: focus, break, reload, next round, finish early", async
   await shot(page, "04-ready");
 
   await page.getByRole("button", { name: "Siguiente ronda" }).click();
-  await expect(page.getByText("FOCO · RONDA 2 DE 2", { exact: true })).toBeVisible();
+  await expect(page.getByText("Foco · ronda 2 de 2", { exact: true })).toBeVisible();
   await page.clock.runFor(2.5 * MIN);
   await page.getByRole("button", { name: "Terminar ahora" }).click();
   await expect(page.getByText("2 pomodoros · 7 min")).toBeVisible();
@@ -102,7 +102,7 @@ test("a block whose first answer is lost is credited once", async ({ page }) => 
   await page.getByText("Sin límite", { exact: true }).click();
   await page.getByRole("button", { name: "Empezar foco" }).click();
   await page.clock.runFor(5 * MIN);
-  await expect(page.getByText("DESCANSO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Descanso", { exact: true })).toBeVisible();
   await expect.poll(() => posts).toBe(1);
 
   // back online: the retry is answered "already received" and counts as success
@@ -237,7 +237,7 @@ test("a timer of 15 minutes counts down, survives a reload and credits 15 minute
   await expect.poll(() => seconds(page)).toBeLessThanOrEqual(10 * 60);
 
   await page.clock.runFor(11 * MIN);
-  await expect(page.getByText("TERMINADO", { exact: true })).toBeVisible();
+  await expect(page.getByText("Terminado", { exact: true })).toBeVisible();
   await expect(page.getByText("Sumamos 15 min a Estudiar.")).toBeVisible();
   await expect(page.getByText("Hoy: 15 min · Álgebra")).toBeVisible();
   await shot(page, "12-timer-done");

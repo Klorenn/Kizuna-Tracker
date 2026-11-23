@@ -47,7 +47,7 @@ export function BookPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="section-label text-muted">LIBRO</p>
+      <p className="section-label text-muted">Libro</p>
       <div className="flex flex-wrap gap-2" role="group" aria-label="Libro">
         {books.map((b) => (
           <Chip key={b.id} selected={b.id === value} onClick={() => onChange(b.id)} className="max-w-full">
