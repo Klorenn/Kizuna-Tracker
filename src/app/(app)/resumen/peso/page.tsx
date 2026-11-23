@@ -7,6 +7,7 @@ import { WeightLine } from "@/components/charts/WeightLine";
 import { BodyEntryList } from "@/components/profile/BodyEntryList";
 import { RANGES, entryDateLabel, monthRowLabel, parseRange, rangeFrom } from "@/components/profile/body-view";
 import { ButtonLink } from "@/components/ui/Button";
+import { EmptyState } from "@/components/ui/EmptyState";
 import { Card } from "@/components/ui/Card";
 import {
   formatKg1,
@@ -39,7 +40,24 @@ export default async function PesoPage({ searchParams }: { searchParams: Promise
   const today = localDate(new Date(), profile.timezone);
   const range = parseRange(sp.rango);
   const from = rangeFrom(range, today);
-  const { rows, before } = await loadWeights(supabase, user.id, from);
+  const loaded = await loadWeights(supabase, user.id, from);
+  if (!loaded.ok) {
+    return (
+      <main className="mx-auto flex max-w-md flex-col gap-6 px-5 pb-10 pt-1">
+        <h1 className="text-display font-semibold text-ink">Peso</h1>
+        <EmptyState
+          title="No pudimos cargar tu peso"
+          body="Revisa tu conexión y vuelve a intentarlo."
+          action={
+            <ButtonLink href="/resumen/peso" variant="secondary">
+              Reintentar
+            </ButtonLink>
+          }
+        />
+      </main>
+    );
+  }
+  const { rows, before } = loaded;
 
   const asc: WeightEntry[] = rows.map((r) => ({ date: r.date, kg: r.kg })).reverse();
   const series = weightSeries(asc, from ?? "0000-01-01", today);

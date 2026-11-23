@@ -8,7 +8,7 @@ type Row = { id: string; measured_on: string; weight_kg: number }
 type Call = { filters: [string, unknown[]][]; range?: [number, number]; limit?: number }
 
 /** Fake query builder over `rows` (newest first) that records filters and honours range/limit. */
-function fakeClient(rows: Row[]) {
+function fakeClient(rows: Row[], failOn?: 'range' | 'lt' | 'limit') {
   const calls: Call[] = []
   const client = {
     from(table: string) {
@@ -40,6 +40,11 @@ function fakeClient(rows: Row[]) {
             if (lt) out = out.filter((r) => r.measured_on < String(lt[1][1]))
             if (call.range) out = out.slice(call.range[0], call.range[1] + 1)
             if (call.limit !== undefined) out = out.slice(0, call.limit)
+            const failed =
+              (failOn === 'range' && call.range) ||
+              (failOn === 'lt' && lt) ||
+              (failOn === 'limit' && call.limit !== undefined && !lt)
+            if (failed) return res({ data: null, error: { message: 'boom' } })
             return res({ data: out, error: null })
           }
           return b
@@ -58,13 +63,22 @@ describe('loadRecentWeights', () => {
     ])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const out = await loadRecentWeights(client as any, 'me', 5)
-    expect(out).toEqual([
-      { id: 'a', date: '2026-11-20', kg: 71.2 },
-      { id: 'b', date: '2026-11-05', kg: 71.9 },
-    ])
+    expect(out).toEqual({
+      ok: true,
+      rows: [
+        { id: 'a', date: '2026-11-20', kg: 71.2 },
+        { id: 'b', date: '2026-11-05', kg: 71.9 },
+      ],
+    })
     expect(calls[0].filters).toContainEqual(['eq', ['user_id', 'me']])
     expect(calls[0].filters).toContainEqual(['order', ['measured_on', { ascending: false }]])
     expect(calls[0].limit).toBe(5)
+  })
+
+  it('reports a failed query instead of an empty list', async () => {
+    const { client } = fakeClient([{ id: 'a', measured_on: '2026-11-20', weight_kg: 71.2 }], 'limit')
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(await loadRecentWeights(client as any, 'me', 5)).toEqual({ ok: false })
   })
 })
 
@@ -78,6 +92,7 @@ describe('loadWeights', () => {
     ])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const out = await loadWeights(client as any, 'me', '2026-08-22')
+    if (!out.ok) throw new Error('expected ok')
     expect(out.rows.map((r) => r.id)).toEqual(['a', 'b'])
     expect(out.before).toEqual({ date: '2026-07-30', kg: 72.8 })
   })
@@ -86,6 +101,7 @@ describe('loadWeights', () => {
     const { client } = fakeClient([{ id: 'a', measured_on: '2026-11-20', weight_kg: 71.2 }])
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const out = await loadWeights(client as any, 'me', null)
+    if (!out.ok) throw new Error('expected ok')
     expect(out.rows).toHaveLength(1)
     expect(out.before).toBeNull()
   })
@@ -99,11 +115,23 @@ describe('loadWeights', () => {
     const { client, calls } = fakeClient(rows)
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const out = await loadWeights(client as any, 'me', null)
+    if (!out.ok) throw new Error('expected ok')
     expect(out.rows).toHaveLength(2500)
     expect(calls.map((c) => c.range)).toEqual([
       [0, 999],
       [1000, 1999],
       [2000, 2999],
     ])
+  })
+
+  it('reports a failed page or a failed "before" lookup', async () => {
+    const rows = [
+      { id: 'a', measured_on: '2026-11-20', weight_kg: 71.2 },
+      { id: 'c', measured_on: '2026-07-30', weight_kg: 72.8 },
+    ]
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(await loadWeights(fakeClient(rows, 'range').client as any, 'me', '2026-08-22')).toEqual({ ok: false })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    expect(await loadWeights(fakeClient(rows, 'lt').client as any, 'me', '2026-08-22')).toEqual({ ok: false })
   })
 })

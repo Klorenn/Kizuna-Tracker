@@ -1,6 +1,6 @@
 "use client";
 
-import { CaretRight, LockSimple, PencilSimple, Plus } from "@phosphor-icons/react";
+import { CaretRight, LockSimple, PencilSimple, Plus, Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useState } from "react";
 import { BodyEntryList, type BodyEntry } from "@/components/profile/BodyEntryList";
@@ -21,14 +21,14 @@ export function BodyCard({
   height,
   today,
 }: {
-  /** The last entries, newest first (the first one is the latest weight). */
-  entries: BodyEntry[];
+  /** The last entries, newest first (the first one is the latest weight); null when they could not be loaded. */
+  entries: BodyEntry[] | null;
   height: number | null;
   today: LocalDate;
 }) {
   const [weightOpen, setWeightOpen] = useState(false);
   const [heightOpen, setHeightOpen] = useState(false);
-  const latest = entries[0] ?? null;
+  const latest = entries?.[0] ?? null;
 
   return (
     <section aria-labelledby="perfil-cuerpo" className="flex flex-col gap-2">
@@ -50,6 +50,11 @@ export function BodyCard({
                 </p>
                 <p className="text-small text-muted">{entryDateLabel(latest.date, today)}</p>
               </>
+            ) : entries === null ? (
+              <p role="alert" className="flex items-start gap-1.5 text-small text-pretty text-ink">
+                <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
+                No pudimos cargar tu peso. Recarga la página.
+              </p>
             ) : (
               <p className="text-body text-muted">Aún no registras tu peso.</p>
             )}
@@ -77,7 +82,7 @@ export function BodyCard({
           </Button>
         </div>
 
-        {entries.length > 0 ? (
+        {entries && entries.length > 0 ? (
           <>
             <div className="border-t border-line">
               <BodyEntryList entries={entries} today={today} />

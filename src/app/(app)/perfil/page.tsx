@@ -221,7 +221,7 @@ export default async function PerfilPage() {
         )}
       </section>
 
-      <BodyCard entries={bodyEntries} height={profile.height_cm} today={today} />
+      <BodyCard entries={bodyEntries.ok ? bodyEntries.rows : null} height={profile.height_cm} today={today} />
 
       <section aria-labelledby="perfil-publico" className="flex flex-col gap-2">
         <h2 id="perfil-publico" className="section-label text-muted">

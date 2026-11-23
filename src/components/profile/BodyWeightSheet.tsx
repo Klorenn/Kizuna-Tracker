@@ -19,7 +19,10 @@ function WeightForm({ today, onDone }: { today: LocalDate; onDone: () => void })
     e.preventDefault();
     setError(null);
     start(async () => {
-      // today is left to the server (the profile timezone decides it)
+      // `today` and the field's max come from the server in the PROFILE timezone (never the
+      // device clock), and native validation blocks a typed date past max. Today itself is left
+      // to the server: a sheet opened before midnight then saves on the new day instead of
+      // failing, so "fecha futura" cannot come from a device/profile timezone mismatch.
       const r = await logBodyWeight({ kg, date: date && date !== today ? date : undefined });
       if (!r.ok) return setError(r.error);
       onDone();
