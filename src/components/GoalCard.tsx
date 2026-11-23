@@ -3,6 +3,7 @@
 import { Archive } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { archiveGoal } from "@/app/(app)/metas/actions";
+import { CatJump } from "@/components/brand/CatJump";
 import { IconButton } from "@/components/ui/IconButton";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import type { HabitColor } from "@/domain/habit-colors";
@@ -22,7 +23,7 @@ export type GoalView = {
   progressLabel?: string;
 };
 
-const STATUS_LABEL = { done: "Cumplida", overdue: "Vencida", in_progress: "" } as const;
+const STATUS_LABEL = { done: "", overdue: "Vencida", in_progress: "" } as const;
 
 /** One goal row. Weekly: name, "1 de 4" and a bar. Total: name, detail and a progress ring. */
 export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivable?: boolean }) {
@@ -43,6 +44,14 @@ export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivab
     <IconButton label={`Archivar meta ${goal.title}`} onClick={archive} disabled={busy}>
       <Archive size={20} weight="light" aria-hidden />
     </IconButton>
+  ) : null;
+
+  const reached = goal.status === "done";
+  const reachedBadge = reached ? (
+    <p className="flex items-center gap-2 text-small font-medium text-accent">
+      <CatJump width={40} once />
+      Meta cumplida
+    </p>
   ) : null;
 
   return (
@@ -83,6 +92,7 @@ export function GoalCard({ goal, archivable = true }: { goal: GoalView; archivab
           {archiveButton}
         </div>
       )}
+      {reachedBadge}
       {error ? (
         <p role="alert" className="text-small text-ink">
           {error}

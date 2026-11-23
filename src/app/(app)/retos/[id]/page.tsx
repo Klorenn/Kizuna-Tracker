@@ -2,6 +2,7 @@ import { CaretLeft, Check, CheckCircle, Clock, Warning } from "@phosphor-icons/r
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
+import { CatJump } from "@/components/brand/CatJump";
 import { CancelChallengeButton, Pill } from "@/components/ChallengeCard";
 import { FeedItem } from "@/components/FeedItem";
 import { RejectPhotoButton } from "@/components/RejectSheet";
@@ -165,6 +166,10 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
     theirDates: friends === true ? theirDates : null,
   });
   const label = f.type === "weekly" ? "Semana" : "Día";
+  // same outcome rule as the Retos list: the viewer won when the rival owes more than they do
+  const iOwe = (debts ?? []).filter((d) => d.debtor_id === user.id).reduce((n, d) => n + d.amount, 0);
+  const theyOwe = (debts ?? []).filter((d) => d.creditor_id === user.id).reduce((n, d) => n + d.amount, 0);
+  const iWon = c.status === "finished" && theyOwe > iOwe;
 
   const closesLabel = st.state === "running" ? (f.type === "weekly" ? `Cierra ${weekdayLabel(st.period.end).split(" ")[0]} 23:59` : "Cierra hoy 23:59") : undefined;
   const statusPill =
@@ -189,6 +194,12 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         {statusPill}
         <p className="flex-1 text-small text-muted">{subtitle}</p>
       </div>
+      {iWon ? (
+        <p className="flex items-center gap-2 text-body font-medium text-ink">
+          <CatJump width={48} once />
+          Ganaste este reto
+        </p>
+      ) : null}
 
       <SectionHeader label={f.type === "weekly" ? "Esta semana" : "Hoy"} action={closesLabel} />
       <Card accent className="flex flex-col gap-4 p-4 pl-[19px]">

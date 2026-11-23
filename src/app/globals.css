@@ -97,10 +97,10 @@ body {
   }
 }
 
-/* Owner's animated cat (CatLift): the GIF is the mask, the token is the paint. */
-.cat-lift-mask {
-  -webkit-mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
-  mask: url(/brand/cat-lift.gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+/* Owner's animated cat (CatAnimation): the GIF is the mask, the token is the paint. */
+.cat-mask {
+  -webkit-mask: var(--cat-gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
+  mask: var(--cat-gif) var(--cat-mask-pos, center) / var(--cat-mask-size, contain) no-repeat;
   /* white body = paint, dark line details = holes: keeps the eyes and dumbbell lines crisp */
   mask-mode: luminance;
 }
@@ -112,9 +112,9 @@ body {
 }
 
 /* Resting (single pass done, `once`) and reduced motion both show the still frame. */
-.cat-lift-mask[data-cat-rest] {
-  -webkit-mask-image: url(/brand/cat-lift-still.png);
-  mask-image: url(/brand/cat-lift-still.png);
+.cat-mask[data-cat-rest] {
+  -webkit-mask-image: var(--cat-still);
+  mask-image: var(--cat-still);
   -webkit-mask-size: var(--cat-still-size, contain);
   mask-size: var(--cat-still-size, contain);
   -webkit-mask-position: var(--cat-still-pos, center);
@@ -125,10 +125,10 @@ body {
   .auth-step {
     animation: none;
   }
-  .cat-lift-mask {
+  .cat-mask {
     animation: cat-fade 300ms ease-out;
-    -webkit-mask-image: url(/brand/cat-lift-still.png);
-    mask-image: url(/brand/cat-lift-still.png);
+    -webkit-mask-image: var(--cat-still);
+    mask-image: var(--cat-still);
     -webkit-mask-size: var(--cat-still-size, contain);
     mask-size: var(--cat-still-size, contain);
     -webkit-mask-position: var(--cat-still-pos, center);

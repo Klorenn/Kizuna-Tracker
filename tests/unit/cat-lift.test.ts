@@ -29,12 +29,12 @@ describe("cat-lift css", () => {
   const css = readFileSync("src/app/globals.css", "utf8");
 
   it("swaps to the still when resting after one pass", () => {
-    expect(css).toMatch(/\.cat-lift-mask\[data-cat-rest\][^}]*cat-lift-still\.png/);
+    expect(css).toMatch(/\.cat-mask\[data-cat-rest\][^}]*var\(--cat-still\)/);
   });
 
   it("swaps to the still and fades in under prefers-reduced-motion", () => {
     const block = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
-    expect(block).toContain("cat-lift-still.png");
+    expect(block).toContain("var(--cat-still)");
     expect(block).toContain("animation: cat-fade 300ms");
   });
 });

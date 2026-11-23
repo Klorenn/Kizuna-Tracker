@@ -3,6 +3,7 @@ import { Camera, Plus } from "@phosphor-icons/react/dist/ssr";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
+import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -134,6 +135,7 @@ export default async function Home() {
             <Plus size={20} weight="light" aria-hidden />
             Nuevo hábito
           </ButtonLink>
+          <DayCompleteWatcher done={view.doneCount} total={view.total} />
         </>
       )}
     </main>
