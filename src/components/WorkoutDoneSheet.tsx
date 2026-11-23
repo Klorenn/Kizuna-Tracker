@@ -1,7 +1,6 @@
 "use client";
 
 import { Flame } from "@phosphor-icons/react";
-import { useRouter } from "next/navigation";
 import { useId, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
@@ -19,18 +18,18 @@ export function WorkoutDoneSheet({
   open,
   streakLabel,
   note,
-  habitId,
   logType,
   onClose,
+  onLog,
 }: {
   open: boolean;
   streakLabel: string | null;
   note: string;
-  habitId: string;
   logType: LogType;
   onClose: () => void;
+  /** "Registrar entrenamiento": the flow closes the sheet and moves to the logger. */
+  onLog: () => void;
 }) {
-  const router = useRouter();
   const doneRef = useRef<HTMLButtonElement>(null);
   const bodyId = useId();
   const auto = useCelebrationAutoClose(open, onClose, "lift");
@@ -43,11 +42,11 @@ export function WorkoutDoneSheet({
         onTouchStart={auto.cancel}
         onKeyDown={auto.cancel}
       >
-        <div className="flex items-center gap-4">
-          <CatLift width={88} once onPlayStart={auto.start} />
-          <div id={bodyId} className="flex min-w-0 flex-1 flex-col gap-1">
+        <div className="flex flex-col items-center gap-3 text-center">
+          <CatLift width={128} once onPlayStart={auto.start} />
+          <div id={bodyId} className="flex w-full min-w-0 flex-col items-center gap-1">
             {streakLabel ? (
-              <p className="flex items-center gap-1.5 font-mono text-[17px] font-medium text-ink">
+              <p className="flex items-center justify-center gap-1.5 font-mono text-[17px] font-medium text-ink">
                 <Flame size={16} weight="light" aria-hidden />
                 {streakLabel}
               </p>
@@ -64,8 +63,7 @@ export function WorkoutDoneSheet({
             onClick={() => {
               // moving to the logger: the sheet must not close by itself (nor go back to Hoy) meanwhile
               auto.cancel();
-              // replace, not push: the camera page of a checked-in habit must not stay in the history
-              router.replace(`/habitos/${habitId}/entrenamiento`);
+              onLog();
             }}
           >
             Registrar entrenamiento

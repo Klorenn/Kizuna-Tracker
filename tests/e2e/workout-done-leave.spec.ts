@@ -86,7 +86,7 @@ test("Listo closes the sheet at once, however long Hoy takes, and asks the serve
   const sheet = await openCelebration(page);
   const rscForHoy: string[] = [];
   await page.route(isRsc, async (route) => {
-    rscForHoy.push(route.request().url());
+    if (!route.request().headers()["next-router-prefetch"]) rscForHoy.push(route.request().url());
     await new Promise((r) => setTimeout(r, 3_000));
     await route.continue();
   });
@@ -105,20 +105,66 @@ test("Listo closes the sheet at once, however long Hoy takes, and asks the serve
   await expect(page.getByRole("link", { name: "Foto", exact: true })).toHaveCount(0);
 });
 
+test("Registrar entrenamiento closes the sheet at once, navigates once and lands on the logger", async ({ page }) => {
+  const sheet = await openCelebration(page);
+  const logger = new RegExp(`/habitos/${habitId}/entrenamiento$`);
+  const navigations: string[] = [];
+  await page.route(
+    (url) => url.searchParams.has("_rsc") && url.pathname === `/habitos/${habitId}/entrenamiento`,
+    async (route) => {
+      if (!route.request().headers()["next-router-prefetch"]) navigations.push(route.request().url());
+      await new Promise((r) => setTimeout(r, 3_000));
+      await route.continue();
+    },
+  );
+
+  // three quick taps in the same task: only the first one may navigate
+  await sheet.getByRole("button", { name: "Registrar entrenamiento" }).evaluate((el: HTMLElement) => {
+    el.click();
+    el.click();
+    el.click();
+  });
+
+  await expect(sheet).toHaveCount(0, { timeout: 500 });
+  await expect(page.locator("[aria-busy='true']")).toBeVisible();
+  await expect(page).toHaveURL(logger, { timeout: 10_000 });
+  await expect(page.getByRole("button", { name: "Guardar" })).toBeVisible();
+  expect(navigations).toHaveLength(1);
+});
+
+test("if the logger never answers, the app goes there with a full page load", async ({ page }) => {
+  const sheet = await openCelebration(page);
+  await page.route(
+    (url) => url.searchParams.has("_rsc") && url.pathname === `/habitos/${habitId}/entrenamiento`,
+    () => new Promise(() => {}),
+  );
+  await sheet.getByRole("button", { name: "Registrar entrenamiento" }).tap();
+  await expect(sheet).toHaveCount(0, { timeout: 500 });
+  await expect(page).toHaveURL(new RegExp(`/habitos/${habitId}/entrenamiento$`), { timeout: 15_000 });
+  await expect(page.getByRole("button", { name: "Guardar" })).toBeVisible();
+});
+
 for (const width of [360, 390, 412]) {
   test(`the counter line stays on one line at ${width} px`, async ({ page }) => {
     await page.setViewportSize({ width, height: 844 });
+    if (process.env.LAYOUT_SCHEME) await page.emulateMedia({ colorScheme: process.env.LAYOUT_SCHEME as "dark" | "light" });
     const sheet = await openCelebration(page);
     const counter = sheet.locator("p.font-mono");
     await expect(counter).toHaveText("1 de 5 esta semana");
     if (process.env.LAYOUT_SHOTS) await page.screenshot({ path: `${process.env.LAYOUT_SHOTS}-${width}.png` });
+    // stacked: the cat (128 px wide) sits centred above the counter
+    const cat = (await sheet.locator(".cat-mask").boundingBox())!;
+    const line = (await counter.boundingBox())!;
+    expect(Math.round(cat.width)).toBe(128);
+    expect(cat.y + cat.height).toBeLessThanOrEqual(line.y);
+    expect(Math.abs(cat.x + cat.width / 2 - width / 2)).toBeLessThanOrEqual(1);
     const heightOf = () => counter.evaluate((el) => el.getBoundingClientRect().height);
     // one line = the height of a one-character counter
     await counter.evaluate((el) => {
       el.lastChild!.textContent = "1";
     });
     const oneLine = await heightOf();
-    for (const text of ["1 de 5 esta semana", "Racha de 12 semanas"]) {
+    for (const text of ["1 de 5 esta semana", "Racha de 12 semanas", "Racha de 120 semanas"]) {
       await counter.evaluate((el, t) => {
         el.lastChild!.textContent = t;
       }, text);
