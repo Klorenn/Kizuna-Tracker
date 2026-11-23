@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, Swatches, Warning } from "@phosphor-icons/react";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState } from "react";
 import { setColor } from "@/app/theme-actions";
 import { COLORS, COLOR_LABEL, COLOR_NAME, nextColor, type Color } from "@/lib/theme";
 
@@ -38,21 +38,21 @@ export async function commitColor(
 export function ColorRow({ initial }: { initial: Color }) {
   const [color, setColorState] = useState<Color>(initial);
   const [error, setError] = useState<string | null>(null);
-  const [, start] = useTransition();
   const refs = useRef<(HTMLButtonElement | null)[]>([]);
 
+  // Not wrapped in a transition on purpose: the optimistic state must commit at once, even while an
+  // earlier save is still in flight (React batches transition updates until the pending action ends).
   function choose(next: Color) {
     if (next === color) return;
     const previous = color;
     setError(null);
-    start(async () => {
-      const r = await commitColor(next, previous, {
-        apply: (c) => {
-          setColorState(c);
-          document.documentElement.dataset.color = c;
-        },
-        save: setColor,
-      });
+    void commitColor(next, previous, {
+      apply: (c) => {
+        setColorState(c);
+        document.documentElement.dataset.color = c;
+      },
+      save: setColor,
+    }).then((r) => {
       if (!r.ok) setError(r.error);
     });
   }
@@ -66,7 +66,7 @@ export function ColorRow({ initial }: { initial: Color }) {
           {COLOR_LABEL[color]}
         </span>
       </div>
-      <div role="radiogroup" aria-label="Color" className="flex flex-wrap justify-between gap-y-1">
+      <div role="radiogroup" aria-label="Color" className="-mx-1.5 flex flex-wrap justify-between gap-y-1">
         {COLORS.map((c, i) => {
           const selected = c === color;
           return (

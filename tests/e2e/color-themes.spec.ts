@@ -1,4 +1,4 @@
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { expectNoHorizontalScroll, randomHandle, signUp } from "./helpers";
 
 // Computed colours of the light theme (#rrggbb in tokens.css as rgb()): the accent of each colour,
@@ -9,6 +9,8 @@ const MATCHA = "rgb(58, 122, 75)";
 const CAT_LIGHT = "rgb(90, 90, 194)";
 const CAT_DARK = "rgb(140, 140, 240)";
 
+const expectCookie = (context: BrowserContext, value: string) =>
+  expect.poll(async () => (await context.cookies()).find((c) => c.name === "color")?.value).toBe(value);
 const dataColor = (page: Page) => page.locator("html").getAttribute("data-color");
 const bg = (page: Page, selector: string) =>
   page.locator(selector).first().evaluate((el) => getComputedStyle(el).backgroundColor);
@@ -57,6 +59,11 @@ test.describe("Ajustes > Color", () => {
     }
     expect(await dataColor(page)).toBe("indigo");
     await expect(group.getByRole("radio", { name: "Índigo", exact: true })).toBeChecked();
+    // at 375 px the seven swatches fit on one line
+    await page.setViewportSize({ width: 375, height: 812 });
+    const ys = await group.getByRole("radio").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
+    expect(new Set(ys).size).toBe(1);
+    await page.setViewportSize({ width: 390, height: 844 });
 
     // each swatch paints its own colour, scoped by data-color (no hex in the component)
     expect(await bg(page, 'button[data-color-option="matcha"] [data-color]')).toBe(MATCHA);
@@ -74,6 +81,7 @@ test.describe("Ajustes > Color", () => {
     expect(after.y).toBe(before.y);
 
     // survives a reload and a brand new page of the same browser
+    await expectCookie(context, "sakura"); // the action is optimistic: wait until the server stored it
     await page.reload();
     expect(await dataColor(page)).toBe("sakura");
     const other = await context.newPage();
@@ -94,6 +102,7 @@ test.describe("Ajustes > Color", () => {
     await page.goto("/perfil/ajustes");
     await group.getByRole("radio", { name: "Índigo", exact: true }).click();
     await expect(page.locator("html")).toHaveAttribute("data-color", "indigo");
+    await expectCookie(context, "indigo");
     await page.goto("/habitos/nuevo");
     await page.getByRole("button", { name: "Agua", exact: true }).click();
     expect(await page.getByRole("button", { name: "Crear hábito" }).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(INDIGO);
