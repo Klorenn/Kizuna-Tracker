@@ -1,6 +1,6 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test, type Page } from "@playwright/test";
-import { logIn, PASSWORD, randomHandle, SEED_PASSWORD } from "./helpers";
+import { logIn, PASSWORD, randomHandle } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase seeded with supabase/seed.sql (E2E_SUPABASE=1)");
 
@@ -158,26 +158,55 @@ test("Ajustes: with a photo, a cat keeps the photo (hint); only Quitar foto, con
   await expect(presetImg(page, 5)).toBeVisible();
 });
 
-test("a friend sees the preset: Amigos list, feed and friend profile (seeded 1 and 7, then a change)", async ({ page }) => {
-  await logIn(page, "user_a", SEED_PASSWORD);
+test("a friend sees the preset: Amigos list, feed and friend profile (own users, then a change)", async ({ page }) => {
+  // own users (service role: test setup only), so the shared seed is never written
+  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const mk = async (prefix: string, first: string) => {
+    const handle = randomHandle(prefix);
+    const { data, error } = await admin.auth.admin.createUser({
+      email: `${handle}@example.com`,
+      password: PASSWORD,
+      email_confirm: true,
+      user_metadata: {
+        username: handle,
+        first_name: first,
+        last_name: "E2E",
+        birth_date: "1995-05-05",
+        timezone: "America/Santiago",
+        terms_accepted: true,
+      },
+    });
+    expect(error).toBeNull();
+    return { id: data.user!.id, handle };
+  };
+  const ana = await mk("avana", "Ana");
+  const beto = await mk("avbeto", "Beto");
+  expect((await admin.from("friendships").insert({ requester_id: ana.id, addressee_id: beto.id, status: "accepted" })).error).toBeNull();
+  expect((await admin.from("profiles").update({ avatar_preset: 7 }).eq("id", beto.id)).error).toBeNull();
+  // Beto has something to show in the feed
+  const habit = await admin
+    .from("habits")
+    .insert({ user_id: beto.id, name: "Leer", icon: "book", frequency_type: "daily", color: "arena", visibility: "friends" })
+    .select("id")
+    .single();
+  expect(habit.error).toBeNull();
+  const today = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Santiago" }).format(new Date());
+  expect((await admin.from("checkins").insert({ habit_id: habit.data!.id, user_id: beto.id, local_date: today })).error).toBeNull();
+
+  await logIn(page, ana.handle, PASSWORD);
   await page.goto("/amigos");
-  const betoRow = page.getByRole("region", { name: "Tus amigos" }).getByRole("link", { name: /Beto Prueba/ });
+  const betoRow = page.getByRole("region", { name: "Tus amigos" }).getByRole("link", { name: /Beto E2E/ });
   await expect(betoRow.locator(`img[src$="${preset(7)}"]`)).toBeVisible();
   await expect(page.getByRole("region", { name: "Actividad" }).locator(`img[src$="${preset(7)}"]`).first()).toBeVisible();
   await betoRow.click();
   await expect(presetImg(page, 7)).toBeVisible();
 
   // Beto changes it (service role stands in for his Ajustes; the UI path is covered above)
-  const admin = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.SUPABASE_SERVICE_ROLE_KEY!, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-  try {
-    await admin.from("profiles").update({ avatar_preset: 4 }).eq("username", "user_b");
-    await page.reload();
-    await expect(presetImg(page, 4)).toBeVisible();
-  } finally {
-    await admin.from("profiles").update({ avatar_preset: 7 }).eq("username", "user_b");
-  }
+  expect((await admin.from("profiles").update({ avatar_preset: 4 }).eq("id", beto.id)).error).toBeNull();
+  await page.reload();
+  await expect(presetImg(page, 4)).toBeVisible();
 });
 
 test("public profile of a seeded user shows its preset to a visitor", async ({ page }) => {

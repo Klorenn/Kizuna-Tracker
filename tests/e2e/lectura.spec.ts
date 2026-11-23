@@ -34,7 +34,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await page.getByRole("button", { name: "Leer", exact: true }).click();
   await expect(page.getByRole("radio", { name: "Lectura" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Comer bien", exact: true }).click();
-  await expect(page.getByRole("radiogroup", { name: "Registro detallado" })).toHaveCount(0);
+  // a habit with steps allows no detailed log: the options stay in view, disabled, with the reason
+  await expect(page.getByRole("radio", { name: "Lectura" })).toBeDisabled();
+  await expect(page.getByText("Un hábito con pasos no lleva registro detallado.")).toBeVisible();
   await page.getByRole("button", { name: "Otro", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Registro detallado" }).scrollIntoViewIfNeeded();
   await shot(page, "01-habit-form");
@@ -45,7 +47,7 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   const sheet = dialog(page, "¿Qué leíste hoy?");
   await expect(sheet).toBeVisible();
   await sheet.getByLabel("Título").fill("Dune");
-  await sheet.getByLabel("Páginas del libro (opcional)").fill("412");
+  await sheet.getByLabel("Páginas totales (opcional)").fill("412");
   await sheet.getByRole("button", { name: "Agregar libro" }).click();
   await expect(sheet.getByRole("button", { name: "Dune" })).toHaveAttribute("aria-pressed", "true");
   await sheet.getByLabel("Desde").fill("14");
