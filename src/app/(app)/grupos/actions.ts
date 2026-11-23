@@ -7,6 +7,7 @@ import { toHabitColor } from "@/domain/habit-colors";
 import {
   INVALID_GROUP_COPY,
   inviteUrlPath,
+  isInviteCodeShape,
   normalizeInviteCode,
   isLocalDate,
   isUuid,
@@ -26,7 +27,9 @@ import type {
   GroupWallCursor,
 } from "@/lib/groups-contract";
 import { GROUP_GENERIC_COPY, groupErrorCopy } from "@/lib/groups-copy";
-import { WALL_PAGE_SIZE, loadGroupWall, loadGroupWeek, loadInvitePreview } from "@/lib/groups-data";
+import { TOO_MANY_COPY } from "@/domain/group-invite";
+import { WALL_PAGE_SIZE, loadGroupWall, loadGroupWeek } from "@/lib/groups-data";
+import { JOIN_LIMIT, joinInviteKey, lookupInvite } from "@/lib/groups-invite-server";
 import * as rpc from "@/lib/groups-rpc";
 import type { GroupsClient, RpcAnswer } from "@/lib/groups-rpc";
 import { requireUser } from "@/lib/require-user";
@@ -75,7 +78,9 @@ async function enter(
   choice: GroupHabitChoice,
   commitment: GroupCommitment,
   color: string,
-  link: (habitId: string) => Promise<RpcAnswer<string>>,
+  link: (habitId: string) => Promise<RpcAnswer<string | null>>,
+  /** What a NULL answer without an error means (join_group: the link does not work). */
+  nullCopy: string = GROUP_GENERIC_COPY,
 ): Promise<GroupResult<{ id: string }>> {
   const { supabase, userId } = auth;
 
@@ -83,6 +88,7 @@ async function enter(
     try {
       const r = await link(choice.habitId);
       if (r.error) return fail(groupErrorCopy(r.error.message));
+      if (r.data === null) return fail(nullCopy);
       return isUuid(r.data) ? { ok: true, data: { id: r.data } } : fail(GROUP_GENERIC_COPY);
     } catch {
       return fail(GROUP_GENERIC_COPY);
@@ -104,6 +110,7 @@ async function enter(
     const r = await link(created.id);
     if (!r.error && isUuid(r.data)) return { ok: true, data: { id: r.data } };
     if (r.error) reason = groupErrorCopy(r.error.message);
+    else if (r.data === null) reason = nullCopy;
   } catch {
     // keep the generic reason
   }
@@ -228,9 +235,9 @@ export async function createInvite(groupId: string): ReturnType<GroupActions["cr
   const { data, error } = await rpc.createGroupInvite(auth.supabase, groupId);
   if (error) return fail(groupErrorCopy(error.message));
   // the code goes into a URL: only a code of the expected shape is ever used
-  const canonical = normalizeInviteCode(data);
-  if (canonical === null) return fail(GROUP_GENERIC_COPY);
-  return { ok: true, data: { code: canonical, url: `${siteOrigin(await headers())}${inviteUrlPath(canonical)}` } };
+  // what the database returns is used as it is or refused, never repaired
+  if (!isInviteCodeShape(data)) return fail(GROUP_GENERIC_COPY);
+  return { ok: true, data: { code: data, url: `${siteOrigin(await headers())}${inviteUrlPath(data)}` } };
 }
 
 export async function join(
@@ -249,15 +256,18 @@ export async function join(
   let commitment: GroupCommitment = { name: "", icon: "target", targetPerWeek: 1, requiresPhoto: false };
   let color = "indigo";
   if (choice.habit.kind === "create") {
-    const preview = await loadInvitePreview(code, auth.supabase);
-    if (!preview.ok) return fail(preview.error);
-    if (preview.data === null) return fail(LINK_GONE);
-    if (preview.data.full) return fail(groupErrorCopy("group_full"));
-    commitment = preview.data.commitment;
-    color = preview.data.color;
+    // the one lookup of this action: service-role preview, counted per person when the link does not work
+    const found = await lookupInvite({ code, viewerId: auth.userId, key: joinInviteKey(auth.userId), ...JOIN_LIMIT });
+    if (found.kind === "blocked") return fail(TOO_MANY_COPY);
+    if (found.kind === "failed") return fail(GROUP_GENERIC_COPY);
+    if (found.kind === "gone") return fail(LINK_GONE);
+    if (found.data.memberGroupId !== null) return fail(groupErrorCopy("already_member"));
+    if (found.data.preview.full) return fail(groupErrorCopy("group_full"));
+    commitment = found.data.preview.commitment;
+    color = found.data.preview.color;
   }
 
-  const joined = await enter(auth, choice.habit, commitment, color, (habitId) => rpc.joinGroup(auth.supabase, code, habitId));
+  const joined = await enter(auth, choice.habit, commitment, color, (habitId) => rpc.joinGroup(auth.supabase, code, habitId), LINK_GONE);
   if (!joined.ok) return joined;
   revalidatePath("/grupos");
   revalidatePath(`/grupos/${joined.data.id}`);
@@ -271,8 +281,8 @@ export async function leave(groupId: string): ReturnType<GroupActions["leave"]> 
   if (!isUuid(groupId)) return fail(NOT_FOUND);
   const { error } = await rpc.leaveGroup(auth.supabase, groupId);
   if (error) return fail(groupErrorCopy(error.message));
+  // not the page the person is on: it would render the 404 before `onLeft` navigates (the group page is fresh on its next visit)
   revalidatePath("/grupos");
-  revalidatePath(`/grupos/${groupId}`);
   revalidatePath("/"); // the habit is unlinked: its group chip leaves Hoy
   return { ok: true, data: undefined };
 }

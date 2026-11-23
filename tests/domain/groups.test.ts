@@ -129,8 +129,13 @@ describe('invitation code helpers', () => {
   it('normalise: any case, optional hyphen after the fourth, spaces ignored', () => {
     for (const v of ['K7QM4PXD', 'k7qm4pxd', 'K7QM-4PXD', 'k7qm-4pxd', ' K7QM 4PXD ', 'k7qm 4pxd']) expect(normalizeInviteCode(v)).toBe('K7QM4PXD')
   })
+  it('normalise: the same rule as the database (one hyphen anywhere, then 8 ASCII alphabet characters, checked before upper-casing)', () => {
+    expect(normalizeInviteCode('K7Q-M4PXD')).toBe('K7QM4PXD')
+    expect(normalizeInviteCode('\u{FB00}'.repeat(4))).toBeNull()
+    expect(normalizeInviteCode('x'.repeat(65))).toBeNull()
+  })
   it('normalise: refuses everything else', () => {
-    for (const v of ['K7Q-M4PXD', 'K7QM--4PXD', 'K7QM-4PX-D', 'K7QM4PX', 'K7QM4PXDD', 'K7QM-4PXDD', 'K7QM4PX0', 'K7QM4PX1', 'K7QMIPXD', 'K7QMOPXD', 'K7QM_4PXD', '../K7QM4PXD', 'K7QM%2D4PXD', '', null, undefined, 7]) expect(normalizeInviteCode(v)).toBeNull()
+    for (const v of ['K7QM--4PXD', 'K7QM-4PX-D', 'K7QM4PX', 'K7QM4PXDD', 'K7QM-4PXDD', 'K7QM4PX0', 'K7QM4PX1', 'K7QMIPXD', 'K7QMOPXD', 'K7QM_4PXD', 'ﬀ7QM4PXD', 'ſ7QM4PXD', 'Ｋ7QM4PXD', 'K7QM\t4PXD', 'K7QM\n4PXD', 'K7QM4PXD'.padEnd(65, ' ') + 'x', '../K7QM4PXD', 'K7QM%2D4PXD', '', null, undefined, 7]) expect(normalizeInviteCode(v)).toBeNull()
   })
   it('display form and url', () => {
     expect(formatInviteCode('K7QM4PXD')).toBe('K7QM-4PXD')

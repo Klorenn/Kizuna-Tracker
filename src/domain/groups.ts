@@ -27,18 +27,24 @@ export function isLocalDate(v: unknown): v is string {
 /** Invitation codes: 8 characters, no 0, 1, I or O. Canonical form is upper case with no separator. */
 export const INVITE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'
 const CANONICAL = /^[2-9A-HJ-NP-Z]{8}$/
-const LOOSE = /^([2-9A-HJ-NP-Z]{4})-?([2-9A-HJ-NP-Z]{4})$/
+const ASCII_CODE = /^[2-9A-HJ-NP-Za-hj-np-z]{8}$/
 
 /** The canonical shape only. Checked before any database call. */
 export function isInviteCodeShape(v: unknown): v is string {
   return typeof v === 'string' && CANONICAL.test(v)
 }
 
-/** What a person may type or paste (any case, spaces, one hyphen after the fourth) -> the canonical code, or null. */
+/**
+ * What a person may type or paste -> the canonical code, or null. Identical to the database's rule: trim, drop inner
+ * spaces and at most one hyphen, then the rest must already be 8 ASCII characters of the alphabet in either case
+ * (checked BEFORE upper-casing, so a ligature or full-width letters never become letters); longer than 64 is invalid at once.
+ */
 export function normalizeInviteCode(v: unknown): string | null {
   if (typeof v !== 'string') return null
-  const m = LOOSE.exec(v.replace(/\s+/g, '').toUpperCase())
-  return m ? m[1] + m[2] : null
+  const t = v.trim()
+  if (t.length > 64 || t.split('-').length > 2) return null
+  const joined = t.replace(/ /g, '').replace('-', '')
+  return ASCII_CODE.test(joined) ? joined.toUpperCase() : null
 }
 
 /** "K7QM4PXD" -> "K7QM-4PXD" (how people see and say it). */

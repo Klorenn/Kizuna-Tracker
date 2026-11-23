@@ -44,7 +44,6 @@ describe('parseInviteInput: trailing punctuation', () => {
   })
   it('does not strip anything else', () => {
     expect(parseInviteInput(`${code}#`)).toBeNull()
-    expect(parseInviteInput(`${code}-`)).toBeNull()
     expect(parseInviteInput(`${code}*`)).toBeNull()
   })
 })

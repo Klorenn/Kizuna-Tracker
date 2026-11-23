@@ -18,6 +18,7 @@ const EXPECTED: Record<string, string> = {
   group_archived: 'Este grupo está archivado.',
   invalid_group: 'Revisa los datos del grupo.',
   cannot_remove_self: 'Para salir, usa «Salir del grupo».',
+  too_many_attempts: 'Demasiados intentos. Prueba de nuevo en unos minutos.',
   not_authenticated: GROUP_SIGN_IN_COPY,
 }
 

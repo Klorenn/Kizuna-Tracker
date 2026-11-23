@@ -18,15 +18,20 @@ export function JoinGroup({
   loginHref,
   habits,
   code,
+  groupHref = "/grupos",
+  alreadyMember: member = false,
 }: {
   preview: GroupInvitePreview | null;
   signedIn: boolean;
   loginHref: string;
   habits: { id: string; name: string }[];
   code: string;
+  groupHref?: string;
+  /** The database says the signed-in person is already in the group. */
+  alreadyMember?: boolean;
 }) {
   const router = useRouter();
-  const [alreadyMember, setAlreadyMember] = useState(false);
+  const [alreadyMember, setAlreadyMember] = useState(member);
   const actions = useMemo(() => ({ join: watchAlreadyMember(join, () => setAlreadyMember(true)) }), []);
   return (
     <InvitePreviewView
@@ -35,7 +40,7 @@ export function JoinGroup({
       loginHref={loginHref}
       habits={habits}
       alreadyMember={alreadyMember}
-      groupHref="/grupos"
+      groupHref={groupHref}
       code={code}
       actions={actions}
       onJoined={(id) => router.replace(`/grupos/${id}`)}

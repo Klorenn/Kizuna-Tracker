@@ -1,61 +1,95 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { Card } from "@/components/ui/Card";
+import { inviteRouteDecision, TOO_MANY_COPY } from "@/domain/group-invite";
 import { eligibleGroupHabits, linkedHabitIds } from "@/domain/group-habits";
 import { groupInviteLoginHref } from "@/domain/group-join";
-import { inviteUrlPath, normalizeInviteCode } from "@/domain/groups";
 import { loadHabitCandidates } from "@/lib/group-habits-data";
-import { loadInvitePreview, loadMyGroups } from "@/lib/groups-data";
+import { loadMyGroups } from "@/lib/groups-data";
+import { lookupInvite, pageInviteKey, PAGE_LIMIT } from "@/lib/groups-invite-server";
+import { skipRateLimit } from "@/lib/rate-limit-mode";
+import { clientIp } from "@/lib/request-ip";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/viewer";
 import { JoinGroup } from "./JoinGroup";
 
 export const metadata: Metadata = { title: "Invitación a un grupo", robots: { index: false, follow: false } };
 
+const frame = "mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-5 py-8";
+
 /**
- * PUBLIC page (outside `(app)`): a signed-out visitor sees the preview and a login link. It reads
- * only through the invitation-preview loader and shows only what the preview carries, never member
- * names. A signed-in visitor also gets the habits they can bring (own, not already in a group).
+ * PUBLIC page (outside `(app)`): a signed-out visitor sees the preview and a login link, never member names. The lookup
+ * goes through the service-role preview (`lookupInvite`): wrong guesses are counted per client address, and a signed-in
+ * member gets "Ya eres parte de este grupo." with a link. A variant of the code redirects to the canonical URL.
  * GET shows; joining is a server action (requireUser first), so a link elsewhere can join nobody.
  */
-export default async function UnirsePage({ params }: { params: Promise<{ code: string }> }) {
+export default async function InvitePage({ params }: { params: Promise<{ code: string }> }) {
   const { code: typed } = await params;
-  const code = normalizeInviteCode(typed);
-  // /g/k7qm-4pxd and /g/K7QM4PXD are the same invitation: one canonical URL
-  if (code !== null && code !== typed) redirect(inviteUrlPath(code));
+  const route = inviteRouteDecision(typed);
+  if (route.kind === "redirect") redirect(route.to);
+
+  if (route.kind === "invalid") {
+    return (
+      <main className={frame}>
+        <JoinGroup preview={null} signedIn={false} loginHref="/login" habits={[]} code="" groupHref="/grupos" />
+      </main>
+    );
+  }
+
+  const { code } = route;
   const user = await getSessionUser();
+  const ip = clientIp(await headers());
   const supabase = await createServerClient();
 
-  const [preview, groups, candidates] = await Promise.all([
-    loadInvitePreview(code ?? '', supabase),
+  const [outcome, groups, candidates] = await Promise.all([
+    lookupInvite({ code, viewerId: user?.id ?? null, key: skipRateLimit(ip) ? null : pageInviteKey(ip), ...PAGE_LIMIT }),
     user ? loadMyGroups(supabase) : null,
     user ? loadHabitCandidates(user.id, supabase) : null,
   ]);
 
-  const failed = !preview.ok || (user !== null && (!groups?.ok || !candidates?.ok));
-
-  return (
-    <main className="mx-auto flex min-h-dvh max-w-md flex-col justify-center gap-4 px-5 py-8">
-      {failed || !preview.ok ? (
+  if (outcome.kind === "blocked") {
+    return (
+      <main className={frame}>
         <Card className="px-6 py-8">
-          <LoadFailed href={code ? inviteUrlPath(code) : "/"} />
+          <p role="status" className="text-body text-ink">
+            {TOO_MANY_COPY}
+          </p>
         </Card>
-      ) : (
-        <JoinGroup
-          preview={preview.data}
-          signedIn={user !== null}
-          loginHref={code ? groupInviteLoginHref(code) : "/login"}
-          habits={
-            groups?.ok && candidates?.ok
-              ? eligibleGroupHabits(candidates.data, linkedHabitIds(groups.data), {
-                  requiresPhoto: preview.data?.commitment.requiresPhoto ?? false,
-                })
-              : []
-          }
-          code={code ?? ""}
-        />
-      )}
+      </main>
+    );
+  }
+  const member = outcome.kind === "found" && outcome.data.memberGroupId !== null;
+  const habitsFailed = user !== null && !member && (!groups?.ok || !candidates?.ok);
+  if (outcome.kind === "failed" || habitsFailed) {
+    return (
+      <main className={frame}>
+        <Card className="px-6 py-8">
+          <LoadFailed href={`/g/${code}`} />
+        </Card>
+      </main>
+    );
+  }
+
+  const found = outcome.kind === "found" ? outcome.data : null;
+  return (
+    <main className={frame}>
+      <JoinGroup
+        preview={found?.preview ?? null}
+        signedIn={user !== null}
+        loginHref={groupInviteLoginHref(code)}
+        habits={
+          groups?.ok && candidates?.ok
+            ? eligibleGroupHabits(candidates.data, linkedHabitIds(groups.data), {
+                requiresPhoto: found?.preview.commitment.requiresPhoto ?? false,
+              })
+            : []
+        }
+        code={code}
+        groupHref={found?.memberGroupId ? `/grupos/${found.memberGroupId}` : "/grupos"}
+        alreadyMember={member}
+      />
     </main>
   );
 }

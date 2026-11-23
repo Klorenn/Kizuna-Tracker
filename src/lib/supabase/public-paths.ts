@@ -9,6 +9,11 @@ const GROUP_INVITE_PATH = /^\/g\/[2-9A-HJ-NP-Za-hj-np-z]{4}-?[2-9A-HJ-NP-Za-hj-n
 /** What a login may return to: only the canonical form (the page redirects the variants to it). */
 const GROUP_INVITE_NEXT = /^\/g\/[2-9A-HJ-NP-Z]{8}$/;
 
+/** A public group invitation path (the shape rule above). */
+export function isGroupInvitePath(path: string): boolean {
+  return GROUP_INVITE_PATH.test(path);
+}
+
 export function isPublicPath(path: string): boolean {
   if (path === "/robots.txt") return true; // exact match, served by src/app/robots.ts
   if (GROUP_INVITE_PATH.test(path)) return true;

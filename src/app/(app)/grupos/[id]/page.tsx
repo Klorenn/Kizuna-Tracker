@@ -4,6 +4,7 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { localDate } from "@/domain/dates";
+import { groupPageNotFound } from "@/domain/group-invite";
 import { loadGroupBoard, loadGroupDetail, loadGroupHistory, loadGroupWall } from "@/lib/groups-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { getViewer, viewerMissingDestination } from "@/lib/viewer";
@@ -25,9 +26,7 @@ export default async function GrupoPage({ params }: { params: Promise<{ id: stri
     loadGroupHistory(id, undefined, supabase),
   ]);
   // a stranger (or an id that is not a group) gets the same 404 whichever read answered first
-  if ((!detail.ok && detail.notFound) || (!board.ok && board.notFound) || (!wall.ok && wall.notFound) || (!history.ok && history.notFound)) {
-    notFound();
-  }
+  if (groupPageNotFound([detail, board, wall, history])) notFound();
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-1">

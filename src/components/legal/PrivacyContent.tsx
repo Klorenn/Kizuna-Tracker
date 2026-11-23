@@ -29,7 +29,7 @@ const SECTIONS: LegalSection[] = [
       title: "Grupos",
       body: [
         "Los miembros de un grupo al que te unes ven tu nombre, tu @usuario y tu avatar, y los registros y las fotos del único hábito que vinculas a ese grupo. No ven tus otros hábitos ni ningún otro dato tuyo. Pueden ser personas que no son tus amigos.",
-        "Lo ven desde el día en que te unes: lo anterior a ese día sigue siendo privado, aunque vincules un hábito que ya tenías. Al salir del grupo, o si te sacan, termina de inmediato.",
+        "Lo ven desde el día en que te unes: lo anterior a ese día sigue siendo privado, aunque vincules un hábito que ya tenías. Al salir del grupo, o si te sacan, los demás dejan de ver tus registros y fotos de inmediato. Tu nombre y tu resultado en las semanas que ya se cerraron quedan en el historial del grupo.",
         "Los grupos son solo por invitación: solo se entra con un enlace de invitación y no aparecen en ninguna lista ni en la búsqueda.",
       ],
     },
