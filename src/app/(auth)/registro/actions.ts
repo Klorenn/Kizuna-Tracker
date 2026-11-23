@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { localDate } from "@/domain/dates";
 import { isAvatarPreset } from "@/lib/avatar-presets";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { skipRateLimit } from "@/lib/rate-limit-mode";
 import { clientIp } from "@/lib/request-ip";
 import { createServerClient } from "@/lib/supabase/server";
 import { normalizeUsername, validateSignup, type SignupInput } from "@/lib/signup";
@@ -23,7 +24,7 @@ export async function checkUsername(
   if (!/^[a-z0-9_]{3,20}$/.test(normalized)) return { available: false };
   const ip = clientIp(await headers());
   const admin = createAdminClient();
-  if (ip) {
+  if (ip && !skipRateLimit(ip)) {
     const { data: ok, error: limitError } = await admin.rpc("register_login_attempt", {
       p_keys: [`chk:${ip}`],
     });
@@ -69,7 +70,7 @@ export async function signUp(
   if (!checked.ok) return { ok: false, error: checked.error };
 
   const ip = clientIp(await headers());
-  if (ip) {
+  if (ip && !skipRateLimit(ip)) {
     const { data: allowed, error: limitError } = await createAdminClient().rpc(
       "register_login_attempt",
       { p_keys: [`signup:${ip}`] },

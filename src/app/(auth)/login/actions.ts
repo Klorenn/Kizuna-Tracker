@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { LOGIN_GENERIC_ERROR, loginWith } from "@/lib/login";
+import { skipRateLimit } from "@/lib/rate-limit-mode";
 import { clientIp } from "@/lib/request-ip";
 
 export async function signIn(input: {
@@ -26,6 +27,7 @@ export async function signIn(input: {
   return loginWith(
     {
       async registerAttempt(keys) {
+        if (skipRateLimit(ip)) return true;
         const { data, error } = await admin.rpc("register_login_attempt", {
           p_keys: keys,
         });
