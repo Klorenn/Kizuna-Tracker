@@ -38,6 +38,7 @@ type Store = {
     archived_at: string | null
     habit_user_id: string
     habit_archived_at: string | null
+    habit_requires_photo: boolean
   } | null
   existing: { id: string } | null
   duplicate: boolean
@@ -159,7 +160,7 @@ describe('photoCheckin', () => {
 
   it('stores an item proof under items/ and completes the day', async () => {
     const { deps, inserted } = setup({
-      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: false, archived_at: null, habit_user_id: UID, habit_archived_at: null },
+      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: false, archived_at: null, habit_user_id: UID, habit_archived_at: null, habit_requires_photo: false },
     })
     const r = await photoCheckin(deps, UID, { kind: 'item', itemId: 'i1' }, file(), NOW)
     expect(r).toMatchObject({ status: 200, created: true, dayCompleted: true })
@@ -170,7 +171,7 @@ describe('photoCheckin', () => {
   it('reports an incomplete day for a non-last item', async () => {
     const { deps } = setup({
       dayCompleted: false,
-      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, archived_at: null, habit_user_id: UID, habit_archived_at: null },
+      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, archived_at: null, habit_user_id: UID, habit_archived_at: null, habit_requires_photo: false },
     })
     expect(
       await photoCheckin(deps, UID, { kind: 'item', itemId: 'i1' }, file(), NOW),
@@ -178,7 +179,7 @@ describe('photoCheckin', () => {
   })
 
   it('rejects an archived or foreign item', async () => {
-    const base = { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, habit_user_id: UID, habit_archived_at: null }
+    const base = { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, habit_user_id: UID, habit_archived_at: null, habit_requires_photo: false }
     expect(
       await photoCheckin(
         setup({ item: { ...base, archived_at: 'x' } }).deps,
@@ -193,18 +194,31 @@ describe('photoCheckin', () => {
     ).toMatchObject({ status: 403 })
   })
 
+  it('refuses a step of a habit that asks for a photo: only a habit photo can complete that day', async () => {
+    const { deps } = setup({
+      item: {
+        id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: false, archived_at: null,
+        habit_user_id: UID, habit_archived_at: null, habit_requires_photo: true,
+      },
+    })
+    expect(await photoCheckin(deps, UID, { kind: 'item', itemId: 'i1' }, file(), NOW)).toMatchObject({ status: 400 })
+    expect(deps.insertCheckin).not.toHaveBeenCalled()
+    expect(deps.upload).not.toHaveBeenCalled()
+    expect(deps.completeDay).not.toHaveBeenCalled()
+  })
+
   it('rejects an item whose parent habit is archived or foreign', async () => {
     const base = { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, archived_at: null }
     const t = { kind: 'item', itemId: 'i1' } as const
     expect(
       await photoCheckin(
-        setup({ item: { ...base, habit_user_id: UID, habit_archived_at: '2026-11-01' } }).deps,
+        setup({ item: { ...base, habit_user_id: UID, habit_archived_at: '2026-11-01', habit_requires_photo: false } }).deps,
         UID, t, file(), NOW,
       ),
     ).toMatchObject({ status: 404 })
     expect(
       await photoCheckin(
-        setup({ item: { ...base, habit_user_id: 'other', habit_archived_at: null } }).deps,
+        setup({ item: { ...base, habit_user_id: 'other', habit_archived_at: null, habit_requires_photo: false } }).deps,
         UID, t, file(), NOW,
       ),
     ).toMatchObject({ status: 403 })
@@ -222,7 +236,7 @@ describe('photoCheckin', () => {
 
   it('reports an open day when completeDay fails after the photo is stored', async () => {
     const { deps } = setup({
-      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, archived_at: null, habit_user_id: UID, habit_archived_at: null },
+      item: { id: 'i1', habit_id: 'h1', user_id: UID, requires_photo: true, archived_at: null, habit_user_id: UID, habit_archived_at: null, habit_requires_photo: false },
     })
     vi.mocked(deps.completeDay).mockRejectedValueOnce(new Error('rpc'))
     expect(

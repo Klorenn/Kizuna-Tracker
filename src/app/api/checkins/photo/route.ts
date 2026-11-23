@@ -39,12 +39,17 @@ function supabaseDeps(): PhotoCheckinDeps {
     async getItem(itemId) {
       const { data } = await admin
         .from("habit_items")
-        .select("id,habit_id,user_id,requires_photo,archived_at,habits!inner(user_id,archived_at)")
+        .select("id,habit_id,user_id,requires_photo,archived_at,habits!inner(user_id,archived_at,requires_photo)")
         .eq("id", itemId)
         .maybeSingle();
       if (!data) return null;
       const { habits, ...item } = data;
-      return { ...item, habit_user_id: habits.user_id, habit_archived_at: habits.archived_at };
+      return {
+        ...item,
+        habit_user_id: habits.user_id,
+        habit_archived_at: habits.archived_at,
+        habit_requires_photo: habits.requires_photo,
+      };
     },
     async findCheckin(target, date) {
       const q =

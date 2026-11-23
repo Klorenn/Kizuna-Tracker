@@ -31,6 +31,8 @@ export interface PhotoCheckinDeps {
     /** the parent habit (check_item requires it to be active) */
     habit_user_id: string
     habit_archived_at: string | null
+    /** a photo habit is completed only by its own photo check-in, never through steps */
+    habit_requires_photo: boolean
   } | null>
   /** Today's row for the target, if any. */
   findCheckin(target: PhotoTarget, date: string): Promise<{ id: string } | null>
@@ -150,6 +152,7 @@ async function run(
     const item = await deps.getItem(target.itemId)
     if (!item || item.archived_at || item.habit_archived_at) return fail(404, 'No encontramos ese paso.')
     if (item.user_id !== userId || item.habit_user_id !== userId) return fail(403, 'No tienes acceso.')
+    if (item.habit_requires_photo) return fail(400, 'Este hábito pide la foto en el hábito, no en sus pasos.')
     habitId = item.habit_id
     isItem = true
   }
