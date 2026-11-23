@@ -161,13 +161,28 @@ on conflict (checkin_id) do nothing;
 
 -- Gimnasio: photo check-ins (path shape {user}/{checkin}.jpg, objects not seeded) on m2 + 3,
 -- m1 + 3, m1 + 10 and today, with deterministic ids so the path can be computed.
-insert into public.checkins (id, habit_id, user_id, local_date, photo_path)
+-- created_at is the day itself (noon, Santiago) for past days, so the 24 h rejection window of
+-- a rival does not apply to old check-ins; today's is created now.
+insert into public.checkins (id, habit_id, user_id, local_date, photo_path, created_at)
 select md5('seed-gym-' || x.local_date)::uuid, 'b0000000-0000-0000-0000-0000000000a2',
        'a0000000-0000-0000-0000-00000000000a', x.local_date,
-       'a0000000-0000-0000-0000-00000000000a/' || md5('seed-gym-' || x.local_date)::uuid || '.jpg'
+       'a0000000-0000-0000-0000-00000000000a/' || md5('seed-gym-' || x.local_date)::uuid || '.jpg',
+       case when x.local_date < d.today
+            then (x.local_date + time '12:00') at time zone 'America/Santiago'
+            else now() end
 from seed_log_dates d, unnest(array[d.m2 + 3, d.m1 + 3, d.m1 + 10, d.today]) as x (local_date)
 where exists (select 1 from public.habits h where h.id = 'b0000000-0000-0000-0000-0000000000a2')
 on conflict do nothing;
+
+-- Same correction for seeded rows created by an earlier run of this block (idempotent: only
+-- the seeded gym check-ins of past days whose created_at is not already their own day).
+update public.checkins c
+set created_at = (c.local_date + time '12:00') at time zone 'America/Santiago'
+from seed_log_dates d
+where c.habit_id = 'b0000000-0000-0000-0000-0000000000a2'
+  and c.id = md5('seed-gym-' || c.local_date)::uuid
+  and c.local_date < d.today
+  and c.created_at <> (c.local_date + time '12:00') at time zone 'America/Santiago';
 
 -- Workouts (['legs']) on those check-ins, whatever their id.
 insert into public.workout_sessions (user_id, habit_id, checkin_id, local_date, day_types)
