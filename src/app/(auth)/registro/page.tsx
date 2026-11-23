@@ -307,7 +307,7 @@ export default function RegistroPage() {
                 label="Usuario"
                 name="username"
                 prefix="@"
-                placeholder="caro_fit"
+                placeholder="kizuna"
                 autoComplete="username"
                 autoCapitalize="none"
                 autoCorrect="off"
@@ -370,7 +370,7 @@ export default function RegistroPage() {
               autoCorrect="off"
               spellCheck={false}
               enterKeyHint="next"
-              placeholder="carolina.mendez@correo.cl"
+              placeholder="kizuna@gmail.com"
               autoFocus
               value={form.email}
               error={
