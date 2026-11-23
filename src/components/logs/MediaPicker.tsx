@@ -68,8 +68,10 @@ export function MediaPicker({
 
   return (
     <div className="flex flex-col gap-2">
-      <p className="section-label text-muted">TÍTULO</p>
-      <div className="flex flex-wrap gap-2" role="group" aria-label="Título">
+      <p id="media-picker-label" className="section-label text-muted">
+        TÍTULO
+      </p>
+      <div className="flex flex-wrap gap-2" role="group" aria-labelledby="media-picker-label">
         {media.map((m) => (
           <Chip key={m.id} selected={m.id === value} onClick={() => onChange(m.id)} className="max-w-full">
             <span className="truncate">{m.title}</span>
@@ -77,6 +79,8 @@ export function MediaPicker({
         ))}
         <Chip
           selected={adding}
+          // a toggle that opens a form: expanded state only, not also "pressed"
+          aria-pressed={undefined}
           aria-expanded={adding}
           icon={<Plus size={16} weight="light" aria-hidden />}
           onClick={() => setAdding((a) => !a)}

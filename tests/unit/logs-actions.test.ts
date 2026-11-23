@@ -59,7 +59,8 @@ import {
 beforeEach(() => {
   calls.length = 0
   rpc.mockReset()
-  results = {}
+  // an update that touched the book (zero rows is the failure case, set per test)
+  results = { 'books.update': { data: [{ id: 'b1' }], error: null } }
   user = { id: 'u1' }
 })
 
@@ -218,6 +219,27 @@ describe('books', () => {
     calls.length = 0
     await expect(setBookTotalPages('b1', 0)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
     await expect(setBookTotalPages('b1', 1.5)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
+    expect(calls).toEqual([])
+  })
+
+  it('updateBook and setBookTotalPages report a book that matched no row (foreign or deleted id)', async () => {
+    results['books.update'] = { data: [], error: null }
+    await expect(updateBook('b9', { title: 'Dune', author: null, totalPages: 412 })).resolves.toEqual({
+      ok: false,
+      error: 'No encontramos ese libro.',
+    })
+    await expect(setBookTotalPages('b9', 412)).resolves.toEqual({ ok: false, error: 'No encontramos ese libro.' })
+    // the update asked for the affected rows
+    expect(calls.every((c) => c.op === 'update')).toBe(true)
+  })
+
+  it('updateBook and setBookTotalPages need a session', async () => {
+    user = null
+    await expect(updateBook('b1', { title: 'Dune', author: null, totalPages: 412 })).resolves.toEqual({
+      ok: false,
+      error: 'Inicia sesión para continuar.',
+    })
+    await expect(setBookTotalPages('b1', 412)).resolves.toEqual({ ok: false, error: 'Inicia sesión para continuar.' })
     expect(calls).toEqual([])
   })
 

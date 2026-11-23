@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { localDate } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
-import { validateMedia, type MediaInput } from "@/domain/watch";
+import { validateMedia, validateWatchInput, type MediaInput } from "@/domain/watch";
 import { isLocalDate } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
@@ -63,8 +63,46 @@ function checkShape(entry: WatchInput): Result {
   return { ok: true };
 }
 
+type Client = Awaited<ReturnType<typeof createServerClient>>;
+
+/**
+ * The full domain validation, server side: the title is read through the caller's own client
+ * (owner-only RLS), so a foreign or deleted id is "not found". The RPC repeats the shape checks but
+ * not the title's totals.
+ */
+async function checkAgainstTitle(supabase: Client, entry: WatchInput): Promise<Result> {
+  const shape = checkShape(entry);
+  if (!shape.ok) return shape;
+  const { data: m } = await supabase
+    .from("media_items")
+    .select("id,title,kind,total_seasons,total_episodes,runtime_min")
+    .eq("id", entry.mediaId)
+    .maybeSingle();
+  if (!m) return { ok: false, error: ERRORS.media_not_found };
+  return validateWatchInput(
+    m.kind === "movie" ? "movie" : "series",
+    {
+      episodes: entry.episodes,
+      season: entry.season,
+      episodeTo: entry.episodeTo,
+      minutes: entry.minutes,
+      completed: entry.completed,
+    },
+    {
+      id: m.id,
+      title: m.title,
+      kind: m.kind === "movie" ? "movie" : "series",
+      totalSeasons: m.total_seasons,
+      totalEpisodes: m.total_episodes,
+      runtimeMin: m.runtime_min,
+      status: "watching",
+      finishedOn: null,
+    },
+  );
+}
+
 // The generated types mark every argument of save_watch_entry as non-null; the SQL accepts null for
-// episodes, season, episode and minutes (a movie has no episodes), so the nulls are cast through.
+// episodes, season, episode and minutes (a movie has no episodes), so the nulls are cast through (one cast: a wrong key still fails to compile).
 type SaveWatchArgs = Database["public"]["Functions"]["save_watch_entry"]["Args"];
 
 function watchArgs(checkinId: string, entry: WatchInput): SaveWatchArgs {
@@ -77,7 +115,7 @@ function watchArgs(checkinId: string, entry: WatchInput): SaveWatchArgs {
     p_minutes: entry.minutes,
     p_completed: entry.completed,
     p_finished: entry.finished,
-  } as unknown as SaveWatchArgs;
+  } as SaveWatchArgs;
 }
 
 /**
@@ -89,11 +127,11 @@ export async function checkInWithWatch(
   habitId: string,
   entry: WatchInput | null,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string; checkedIn: boolean }> {
+  const supabase = await createServerClient();
   if (entry) {
-    const valid = checkShape(entry);
+    const valid = await checkAgainstTitle(supabase, entry);
     if (!valid.ok) return { ok: false, error: valid.error, checkedIn: false };
   }
-  const supabase = await createServerClient();
   const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message), checkedIn: false };
@@ -110,9 +148,9 @@ export async function checkInWithWatch(
 
 /** Adds or replaces the watch entry of an existing check-in (edit mode, any day). Never touches the check-in. */
 export async function saveWatch(checkinId: string, entry: WatchInput): Promise<Result> {
-  const valid = checkShape(entry);
-  if (!valid.ok) return valid;
   const supabase = await createServerClient();
+  const valid = await checkAgainstTitle(supabase, entry);
+  if (!valid.ok) return valid;
   const { error } = await supabase.rpc("save_watch_entry", watchArgs(checkinId, entry));
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -159,6 +197,25 @@ export async function updateMedia(id: string, input: Omit<MediaInput, "kind">): 
   const kind = current.kind === "movie" ? "movie" : "series";
   const valid = validateMedia({ ...input, kind });
   if (!valid.ok) return valid;
+  if (kind === "series") {
+    // totals must still cover what is logged (episodes added up, highest season, highest "hasta")
+    const { data: logged } = await supabase
+      .from("watch_entries")
+      .select("episodes,season,episode_to")
+      .eq("media_id", id);
+    const rows = logged ?? [];
+    const episodes = Math.max(
+      rows.reduce((n, e) => n + (e.episodes ?? 0), 0),
+      ...rows.map((e) => e.episode_to ?? 0),
+    );
+    const season = Math.max(0, ...rows.map((e) => e.season ?? 0));
+    if (input.totalEpisodes !== null && input.totalEpisodes < episodes) {
+      return { ok: false, error: `Ya registraste ${episodes} episodios: el total no puede ser menor.` };
+    }
+    if (input.totalSeasons !== null && input.totalSeasons < season) {
+      return { ok: false, error: `Ya registraste la temporada ${season}: el total no puede ser menor.` };
+    }
+  }
   const { error } = await supabase
     .from("media_items")
     .update({

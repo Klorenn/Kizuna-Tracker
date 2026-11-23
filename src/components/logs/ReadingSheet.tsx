@@ -90,7 +90,11 @@ export function ReadingForm({
   const fromN = toInt(from);
   const toN = toInt(to);
   const pages = fromN !== null && toN !== null && toN >= fromN ? pagesRead({ fromPage: fromN, toPage: toN }) : null;
-  const finished = finishedChoice ?? (toN !== null && book?.totalPages != null && toN === book.totalPages);
+  // Auto-check only for a reading being added (Hoy, or a day without one). An old entry that ends
+  // at the total is not known to be the one that finished the book: re-saving it must not re-stamp
+  // the finished date, so it starts unchecked.
+  const finished =
+    finishedChoice ?? (!existing && toN !== null && book?.totalPages != null && toN === book.totalPages);
 
   function addTotal() {
     const n = toInt(totalDraft);

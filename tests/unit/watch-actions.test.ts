@@ -57,10 +57,14 @@ import {
 
 import { mediaDeleteCopy, pickerMedia } from '@/app/(app)/series/media-data'
 
+const DARK = { id: 'dark', title: 'Dark', kind: 'series', total_seasons: 3, total_episodes: 26, runtime_min: null }
+const DUNE = { id: 'dune', title: 'Dune', kind: 'movie', total_seasons: null, total_episodes: null, runtime_min: 155 }
+
 beforeEach(() => {
   calls.length = 0
   rpc.mockReset()
-  results = {}
+  // the caller's own title row (RLS owner-only): Dark, 3 seasons, 26 episodes
+  results = { 'media_items.select': { data: DARK, error: null } }
   user = { id: 'u1' }
 })
 
@@ -144,6 +148,58 @@ describe('checkInWithWatch', () => {
   })
 })
 
+describe('server-side validation against the title', () => {
+  const NO_RPC = (checkedIn: boolean, error: string) => ({ ok: false, checkedIn, error })
+
+  it('refuses episodes or "hasta" beyond the known total, before any rpc', async () => {
+    await expect(checkInWithWatch('h1', { ...series, episodes: 27 })).resolves.toEqual(
+      NO_RPC(false, 'Dark tiene 26 episodios.'),
+    )
+    await expect(checkInWithWatch('h1', { ...series, episodeTo: 30 })).resolves.toEqual(
+      NO_RPC(false, 'Dark tiene 26 episodios.'),
+    )
+    await expect(saveWatch('c1', { ...series, episodeTo: 30 })).resolves.toEqual({
+      ok: false,
+      error: 'Dark tiene 26 episodios.',
+    })
+    await expect(saveWatch('c1', { ...series, season: 4 })).resolves.toEqual({
+      ok: false,
+      error: 'Dark tiene 3 temporadas.',
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('accepts any episode count when the total is unknown', async () => {
+    results['media_items.select'] = { data: { ...DARK, total_episodes: null, total_seasons: null }, error: null }
+    rpc.mockResolvedValue({ data: 'w1', error: null })
+    await expect(saveWatch('c1', { ...series, episodes: 40, season: 9, episodeTo: 90 })).resolves.toEqual({ ok: true })
+  })
+
+  it('validates a movie: minutes range and no episodes', async () => {
+    results['media_items.select'] = { data: DUNE, error: null }
+    const movie = { ...series, mediaId: 'dune', episodes: null, season: null, episodeTo: null }
+    await expect(saveWatch('c1', { ...movie, minutes: 2000 })).resolves.toEqual({
+      ok: false,
+      error: 'Los minutos van de 1 a 1.440.',
+    })
+    await expect(saveWatch('c1', { ...movie, episodes: 2 })).resolves.toEqual({
+      ok: false,
+      error: 'Una película no lleva episodios ni temporada.',
+    })
+    rpc.mockResolvedValue({ data: 'w1', error: null })
+    await expect(saveWatch('c1', { ...movie, minutes: 90 })).resolves.toEqual({ ok: true })
+  })
+
+  it('a title that is not yours or does not exist is "not found", with no rpc', async () => {
+    results['media_items.select'] = { data: null, error: null }
+    await expect(checkInWithWatch('h1', series)).resolves.toEqual(NO_RPC(false, 'No encontramos ese título.'))
+    await expect(saveWatch('c1', series)).resolves.toEqual({ ok: false, error: 'No encontramos ese título.' })
+    expect(rpc).not.toHaveBeenCalled()
+    // read through the caller's own client, filtered by that id
+    expect(calls.find((c) => c.table === 'media_items')?.filters).toEqual([['id', 'dark']])
+  })
+})
+
 describe('saveWatch / deleteWatch', () => {
   it('saves on an existing check-in and maps every watch error', async () => {
     rpc.mockResolvedValue({ data: 'w1', error: null })
@@ -217,6 +273,29 @@ describe('media titles', () => {
     await expect(
       updateMedia('m9', { title: 'X', totalSeasons: null, totalEpisodes: null, runtimeMin: null }),
     ).resolves.toEqual({ ok: false, error: 'No encontramos ese título.' })
+  })
+
+  it('updateMedia refuses totals that do not cover what is already logged', async () => {
+    results['media_items.select'] = { data: { kind: 'series' }, error: null }
+    results['watch_entries.select'] = {
+      data: [
+        { episodes: 10, season: 1, episode_to: 10 },
+        { episodes: 16, season: 3, episode_to: 26 },
+      ],
+      error: null,
+    }
+    const input = { title: 'Dark', totalSeasons: 3, totalEpisodes: 20, runtimeMin: null }
+    await expect(updateMedia('m1', input)).resolves.toEqual({
+      ok: false,
+      error: 'Ya registraste 26 episodios: el total no puede ser menor.',
+    })
+    await expect(updateMedia('m1', { ...input, totalEpisodes: 30, totalSeasons: 2 })).resolves.toEqual({
+      ok: false,
+      error: 'Ya registraste la temporada 3: el total no puede ser menor.',
+    })
+    expect(calls.some((c) => c.op === 'update')).toBe(false)
+    await expect(updateMedia('m1', { ...input, totalEpisodes: 26 })).resolves.toEqual({ ok: true })
+    expect(calls.find((c) => c.table === 'watch_entries')?.filters).toEqual([['media_id', 'm1']])
   })
 
   it('setMediaFinished refuses a date after today in the profile timezone', async () => {

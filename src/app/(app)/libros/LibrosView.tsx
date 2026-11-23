@@ -135,10 +135,10 @@ function Section({ id, label, empty, children }: { id: string; label: string; em
   );
 }
 
-/** Same rounding as `bookProgress`: 100 only at the last page, never 100 before. */
+/** The percentage of `bookProgress` ("página 40 de 412 · 10 %"), so the bar and the text never disagree. */
 function progressPercent(page: number, total: number): number {
-  if (page <= 0) return 0;
-  return page >= total ? 100 : Math.min(99, Math.round((page / total) * 100));
+  const match = /(\d+) %/.exec(bookProgress(page, total) ?? "");
+  return match ? Number(match[1]) : 0;
 }
 
 function BookRow({
