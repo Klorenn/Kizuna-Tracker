@@ -231,3 +231,166 @@ update public.profiles set height_cm = 168
 where id = 'a0000000-0000-0000-0000-00000000000a' and height_cm is null;
 
 drop table seed_log_dates;
+
+-- ============================================================ time, series, quantity, distance (v4)
+-- Same rules as the block above: self-contained, idempotent (deterministic ids, ON CONFLICT DO
+-- NOTHING), additive only, and it can be applied on its own to an existing local database:
+--   psql postgresql://postgres:postgres@127.0.0.1:54322/postgres -f <this block>
+-- user_a gets four private habits (they never reach friends, the feed or the public profile):
+-- Estudiar (time), Series y películas (watch), Agua (quantity, 2.000 ml shown as 8 glasses) and
+-- Trotar (cardio), with data over the last ~8 weeks. Dates are relative to today in
+-- America/Santiago; m0 / m1 = first day of this / last month.
+-- Expectations used by tests/e2e/logs-v4.spec.ts: today "1 h 25 min · Álgebra · 2 pomodoros",
+-- Agua today "5 de 8 vasos" (5 sums, no check-in), Trotar today 5,2 km in 29:40 (5:42 /km),
+-- Dark "5 de 26 episodios", Dune finished this month.
+drop table if exists seed_v4_dates;
+create temp table seed_v4_dates as
+select t.today,
+       date_trunc('month', t.today)::date as m0,
+       (date_trunc('month', t.today) - interval '1 month')::date as m1
+from (select (now() at time zone 'America/Santiago')::date as today) t;
+
+insert into public.habits (
+  id, user_id, name, icon, frequency_type, target_per_week, requires_photo, visibility, preset, color, log_type,
+  quantity_unit, quantity_label, quantity_target, quantity_step, quantity_display, glass_ml
+)
+select v.id, 'a0000000-0000-0000-0000-00000000000a', v.name, v.icon, v.frequency_type, v.target_per_week, false,
+       'private', v.preset, v.color, v.log_type, v.q_unit, null, v.q_target, v.q_step, v.q_display, 250
+from (values
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, 'Estudiar', 'book-open', 'weekly', 5, 'study', 'lavanda', 'time',
+   null::text, null::numeric, null::numeric, 'base'),
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, 'Series y películas', 'television', 'weekly', 3, 'watch', 'rosa', 'watch',
+   null, null, null, 'base'),
+  ('b0000000-0000-0000-0000-0000000000c3'::uuid, 'Agua', 'drop', 'daily', null, 'water', 'cielo', 'quantity',
+   'ml', 2000, 250, 'glasses'),
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, 'Trotar', 'sneaker-move', 'weekly', 3, 'run', 'durazno', 'cardio',
+   null, null, null, 'base')
+) as v (id, name, icon, frequency_type, target_per_week, preset, color, log_type, q_unit, q_target, q_step, q_display)
+where exists (select 1 from public.profiles p where p.id = 'a0000000-0000-0000-0000-00000000000a')
+on conflict (id) do nothing;
+
+-- Check-ins of the three habits that complete a day with their log (Agua has its own block below).
+-- Past days are created at noon (Santiago); today's now.
+insert into public.checkins (habit_id, user_id, local_date, created_at)
+select v.habit_id, 'a0000000-0000-0000-0000-00000000000a', v.local_date,
+       case when v.local_date < d.today
+            then (v.local_date + time '12:00') at time zone 'America/Santiago'
+            else now() end
+from seed_v4_dates d,
+lateral (values
+  -- Estudiar: four days last month, five this month (today included)
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 4), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 11),
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 18), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.m1 + 24),
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 13), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 9),
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 5), ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today - 2),
+  ('b0000000-0000-0000-0000-0000000000c1'::uuid, d.today),
+  -- Series y películas: Dark in pieces, Past Lives last month, Dune this month
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 6), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 9),
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.m1 + 20), ('b0000000-0000-0000-0000-0000000000c2'::uuid, least(d.m0 + 2, d.today)),
+  ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today - 4), ('b0000000-0000-0000-0000-0000000000c2'::uuid, d.today),
+  -- Trotar: four outings last month, today, and two more this month
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 2), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 8),
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 14), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.m1 + 22),
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today - 8), ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today - 3),
+  ('b0000000-0000-0000-0000-0000000000c4'::uuid, d.today)
+) as v (habit_id, local_date)
+where exists (select 1 from public.habits h where h.id = v.habit_id)
+on conflict (habit_id, local_date) do nothing;
+
+-- Time: minutes, topic and pomodoros (today: 85 min of Álgebra with 2 pomodoros).
+insert into public.time_entries (user_id, habit_id, checkin_id, local_date, minutes, topic, pomodoros)
+select c.user_id, c.habit_id, c.id, c.local_date, v.minutes, v.topic, v.pomodoros
+from seed_v4_dates d,
+lateral (values
+  (d.m1 + 4, 90, 'Cálculo', 0), (d.m1 + 11, 120, 'Álgebra', 4), (d.m1 + 18, 45, null::text, 0), (d.m1 + 24, 75, 'Física', 3),
+  (d.today - 13, 60, 'Álgebra', 2), (d.today - 9, 100, 'Cálculo', 4), (d.today - 5, 50, null, 0),
+  (d.today - 2, 135, 'Física', 5), (d.today, 85, 'Álgebra', 2)
+) as v (local_date, minutes, topic, pomodoros)
+join public.checkins c
+  on c.habit_id = 'b0000000-0000-0000-0000-0000000000c1' and c.local_date = v.local_date
+on conflict (checkin_id) do nothing;
+
+-- Two focus blocks of 25 min (the Pomodoro receipts behind today's 2 pomodoros).
+insert into public.pomodoro_blocks (block_id, user_id, habit_id, checkin_id, local_date, minutes)
+select md5('seed-pomodoro-' || n)::uuid, c.user_id, c.habit_id, c.id, c.local_date, 25
+from seed_v4_dates d
+join public.checkins c on c.habit_id = 'b0000000-0000-0000-0000-0000000000c1' and c.local_date = d.today,
+generate_series(1, 2) as n
+on conflict (block_id) do nothing;
+
+-- Titles: Dark (watching, 5 of 26 episodes), Dune (finished this month) and Past Lives (last month).
+insert into public.media_items (id, user_id, title, kind, total_seasons, total_episodes, runtime_min, status, finished_on)
+select v.id, 'a0000000-0000-0000-0000-00000000000a', v.title, v.kind, v.seasons, v.episodes, v.runtime, v.status, v.finished_on
+from seed_v4_dates d,
+lateral (values
+  ('e0000000-0000-0000-0000-0000000000d1'::uuid, 'Dark', 'series', 3, 26, null::int, 'watching', null::date),
+  ('e0000000-0000-0000-0000-0000000000d2'::uuid, 'Dune', 'movie', null, null, 155, 'finished', least(d.m0 + 2, d.today)),
+  ('e0000000-0000-0000-0000-0000000000d3'::uuid, 'Past Lives', 'movie', null, null, 106, 'finished', d.m1 + 9)
+) as v (id, title, kind, seasons, episodes, runtime, status, finished_on)
+where exists (select 1 from public.profiles p where p.id = 'a0000000-0000-0000-0000-00000000000a')
+on conflict (id) do nothing;
+
+-- What was watched on each day: Dark 2 + 1 episodes last month, 1 + 1 this month (5 in all).
+insert into public.watch_entries (user_id, habit_id, checkin_id, media_id, local_date, episodes, season, episode_to, minutes, completed)
+select c.user_id, c.habit_id, c.id, v.media_id, c.local_date, v.episodes, v.season, v.episode_to, null, v.completed
+from seed_v4_dates d,
+lateral (values
+  (d.m1 + 6, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 2, 1, 2, false),
+  (d.m1 + 9, 'e0000000-0000-0000-0000-0000000000d3'::uuid, null::int, null::int, null::int, true),
+  (d.m1 + 20, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 3, false),
+  (least(d.m0 + 2, d.today), 'e0000000-0000-0000-0000-0000000000d2'::uuid, null, null, null, true),
+  (d.today - 4, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 4, false),
+  (d.today, 'e0000000-0000-0000-0000-0000000000d1'::uuid, 1, 1, 5, false)
+) as v (local_date, media_id, episodes, season, episode_to, completed)
+join public.checkins c
+  on c.habit_id = 'b0000000-0000-0000-0000-0000000000c2' and c.local_date = v.local_date
+join public.media_items m on m.id = v.media_id
+on conflict (checkin_id) do nothing;
+
+-- Outings (metres, seconds): last month 5 km 28:30, 8 km 49:20, 3 km 18:00, 10 km 58:00; this month
+-- 10 km 55:00, 7 km 38:20 and today 5,2 km in 29:40 (5:42 /km).
+insert into public.cardio_entries (user_id, habit_id, checkin_id, local_date, kind, distance_m, duration_s, created_at)
+select c.user_id, c.habit_id, c.id, c.local_date, 'run', v.distance_m, v.duration_s,
+       case when c.local_date < d.today
+            then (c.local_date + time '18:30') at time zone 'America/Santiago'
+            else now() end
+from seed_v4_dates d,
+lateral (values
+  (d.m1 + 2, 5000, 1710), (d.m1 + 8, 8000, 2960), (d.m1 + 14, 3000, 1080), (d.m1 + 22, 10000, 3480),
+  (d.today - 8, 10000, 3300), (d.today - 3, 7000, 2300), (d.today, 5200, 1780)
+) as v (local_date, distance_m, duration_s)
+join public.checkins c
+  on c.habit_id = 'b0000000-0000-0000-0000-0000000000c4' and c.local_date = v.local_date
+where not exists (select 1 from public.cardio_entries e where e.checkin_id = c.id);
+
+-- Agua: sums of 250 ml. Today 5 of 8 and no check-in yet; four earlier days reached the goal
+-- (8 sums, with check-in), and some days stayed short (no check-in).
+insert into public.quantity_entries (id, user_id, habit_id, local_date, amount, created_at)
+select md5('seed-water-' || v.local_date || '-' || n)::uuid, 'a0000000-0000-0000-0000-00000000000a',
+       'b0000000-0000-0000-0000-0000000000c3', v.local_date, 250,
+       (v.local_date + time '08:10' + n * interval '110 minutes') at time zone 'America/Santiago'
+from seed_v4_dates d,
+lateral (values
+  (d.today, 5),
+  (d.today - 1, 8), (d.today - 2, 8), (d.today - 3, 8), (d.today - 4, 8),
+  (d.today - 6, 5), (d.today - 9, 6), (d.today - 12, 9), (d.today - 15, 7), (d.today - 19, 8),
+  (d.m1 + 3, 8), (d.m1 + 4, 7), (d.m1 + 10, 8), (d.m1 + 17, 6), (d.m1 + 24, 8)
+) as v (local_date, sums),
+generate_series(0, 8) as n
+where n < v.sums
+  and exists (select 1 from public.habits h where h.id = 'b0000000-0000-0000-0000-0000000000c3')
+on conflict (id) do nothing;
+
+-- The check-in of a quantity habit exists only on days that reached 2.000 ml (8 sums or more).
+insert into public.checkins (habit_id, user_id, local_date, created_at)
+select e.habit_id, e.user_id, e.local_date,
+       case when e.local_date < d.today
+            then (e.local_date + time '18:00') at time zone 'America/Santiago'
+            else now() end
+from seed_v4_dates d, public.quantity_entries e
+where e.habit_id = 'b0000000-0000-0000-0000-0000000000c3'
+group by e.habit_id, e.user_id, e.local_date, d.today
+having sum(e.amount) >= 2000
+on conflict (habit_id, local_date) do nothing;
+
+drop table seed_v4_dates;
