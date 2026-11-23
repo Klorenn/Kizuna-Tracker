@@ -11,14 +11,14 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000001",
       },
       "habit": {
-        "color": "indigo",
+        "color": "rosa",
         "name": "Gimnasio",
       },
       "hasPhoto": true,
       "id": "00000000-0000-4000-8000-000000000001",
       "localDate": "2026-11-22",
       "person": {
-        "avatar": null,
+        "avatar": "https://supabase.test/storage/v1/object/public/avatars/44444444-4444-4444-8444-444444444444/avatar.jpg",
         "avatarPreset": null,
         "id": "44444444-4444-4444-8444-444444444444",
         "name": "Beto Soto",
@@ -41,7 +41,7 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000002",
       },
       "habit": {
-        "color": "indigo",
+        "color": "salvia",
         "name": "Correr",
       },
       "hasPhoto": false,
@@ -70,7 +70,7 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000003",
       },
       "habit": {
-        "color": "indigo",
+        "color": "durazno",
         "name": "Comer bien",
       },
       "hasPhoto": false,
@@ -96,7 +96,7 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000004",
       },
       "habit": {
-        "color": "indigo",
+        "color": "lavanda",
         "name": "Leer",
       },
       "hasPhoto": false,
@@ -125,7 +125,7 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000005",
       },
       "habit": {
-        "color": "indigo",
+        "color": "cielo",
         "name": "Estudiar",
       },
       "hasPhoto": false,
@@ -154,7 +154,7 @@ exports[`loadFeedPage output (characterization) > the whole first page: same ite
         "id": "00000000-0000-4000-8000-000000000006",
       },
       "habit": {
-        "color": "indigo",
+        "color": "arena",
         "name": "Meditar",
       },
       "hasPhoto": false,

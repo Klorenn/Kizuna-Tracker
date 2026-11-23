@@ -2,6 +2,8 @@ import { describe, expect, test, vi } from 'vitest'
 import { F1, FIXTURE, ME, NOW, feedClient } from './support/feed-fixture'
 
 vi.mock('server-only', () => ({}))
+// avatarUrl is null without it: a lost person.avatar would be invisible in the snapshot
+vi.stubEnv('NEXT_PUBLIC_SUPABASE_URL', 'https://supabase.test')
 const { loadFeedPage } = await import('@/lib/activity-feed')
 
 /**

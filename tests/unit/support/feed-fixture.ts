@@ -53,12 +53,12 @@ const ID = (n: number) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')
 
 export const FIXTURE: Db = {
   habits: [
-    { id: 'h1', name: 'Correr', color: 'sage', frequency_type: 'daily', target_per_week: null },
-    { id: 'h2', name: 'Leer', color: 'indigo', frequency_type: 'weekly', target_per_week: 3 },
-    { id: 'h3', name: 'Comer bien', color: 'amber', frequency_type: 'daily', target_per_week: null },
-    { id: 'h4', name: 'Gimnasio', color: 'rose', frequency_type: 'daily', target_per_week: null },
-    { id: 'h5', name: 'Meditar', color: 'sage', frequency_type: 'daily', target_per_week: null },
-    { id: 'h6', name: 'Estudiar', color: 'indigo', frequency_type: 'daily', target_per_week: null },
+    { id: 'h1', name: 'Correr', color: 'salvia', frequency_type: 'daily', target_per_week: null },
+    { id: 'h2', name: 'Leer', color: 'lavanda', frequency_type: 'weekly', target_per_week: 3 },
+    { id: 'h3', name: 'Comer bien', color: 'durazno', frequency_type: 'daily', target_per_week: null },
+    { id: 'h4', name: 'Gimnasio', color: 'rosa', frequency_type: 'daily', target_per_week: null },
+    { id: 'h5', name: 'Meditar', color: 'arena', frequency_type: 'daily', target_per_week: null },
+    { id: 'h6', name: 'Estudiar', color: 'cielo', frequency_type: 'daily', target_per_week: null },
   ],
   visible: [
     // newest first on purpose scrambled below to prove the order comes from the read, not the fixture
