@@ -36,6 +36,7 @@ const SECTIONS: LegalSection[] = [
         "Un grupo reúne hasta 50 personas con un compromiso semanal en común. No hace falta que sean tus amigos, y solo se entra con un enlace de invitación.",
         "Al unirte eliges el hábito que vinculas al grupo: los demás miembros verán tus registros y fotos de ese hábito desde el día en que te unes, además de tu nombre, tu @usuario y tu avatar. Súbelas solo si estás de acuerdo con eso y respeta a las demás personas del grupo.",
         "Puedes salir cuando quieras; tu hábito sigue siendo tuyo. Quienes administran el grupo pueden sacar a un miembro.",
+        "La multa de un grupo es un acuerdo entre sus miembros. Kizuna solo registra lo que cada persona debe al fondo del grupo y quién lo marcó como pagado: no cobra, no guarda, no transfiere ni garantiza dinero y no es parte de ese acuerdo.",
       ],
     },
     {

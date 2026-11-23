@@ -1,6 +1,7 @@
 import { isUuid } from '@/domain/groups'
-import type { GroupLoaded, GroupPerson } from '@/lib/groups-contract'
-import { GROUP_SIGN_IN_COPY, groupErrorCode, isNotFoundCode } from '@/lib/groups-copy'
+import type { GroupLoaded } from '@/lib/groups-contract'
+import { Malformed, bool, boolOrNull, list, notFound, personOf, row, run, str, strOrNull } from '@/lib/groups-data'
+import type { Row } from '@/lib/groups-data'
 import type {
   GroupFineActive,
   GroupFineProposal,
@@ -12,17 +13,16 @@ import type {
   MyFundDebts,
 } from '@/lib/groups-fines-contract'
 import * as rpc from '@/lib/groups-fines-rpc'
-import type { GroupsClient, RpcAnswer } from '@/lib/groups-rpc'
-import { createServerClient } from '@/lib/supabase/server'
+import type { GroupsClient } from '@/lib/groups-rpc'
 
 /**
  * Loaders of the optional fine: server-side reads over the fine RPCs (through `groups-fines-rpc`), mapped to the contract types.
- * A failed call, a thrown call or a payload that does not have the expected shape is an error state: never zeros, never an empty
- * list (money shown as zero by mistake is a defect). `group_not_found` / `not_group_member` are the not-found state.
+ * The strict readers, the runner and the not-found state are the ones of `groups-data`. A failed call, a thrown call or a payload
+ * that does not have the expected shape is an error state: never zeros, never an empty list (money shown as zero by mistake is a
+ * defect). `group_not_found` / `not_group_member` are the not-found state.
  * Every loader takes an optional client (a server action that already checked the session passes its own).
  */
 
-const NOT_FOUND_COPY = 'No encontramos ese grupo.'
 const COPY = {
   state: 'No pudimos cargar la multa. Inténtalo de nuevo.',
   fund: 'No pudimos cargar el fondo. Inténtalo de nuevo.',
@@ -30,100 +30,29 @@ const COPY = {
   rejected: 'No pudimos cargar las fotos rechazadas. Inténtalo de nuevo.',
 } as const
 
-const notFound = (): { ok: false; error: string; notFound: true } => ({ ok: false, error: NOT_FOUND_COPY, notFound: true })
+// fine-specific readers ------------------------------------------------------------------------------------------------
 
-// strict readers: a field of the wrong type means the answer cannot be trusted ----------------------------------------
-
-class Malformed extends Error {}
-
-type Obj = Record<string, unknown>
-
-function obj(v: unknown): Obj {
-  if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Malformed('object')
-  return v as Obj
-}
-function list(v: unknown): Obj[] {
-  if (!Array.isArray(v)) throw new Malformed('list')
-  return v.map(obj)
-}
-function str(o: Obj, k: string): string {
-  const v = o[k]
-  if (typeof v !== 'string') throw new Malformed(k)
-  return v
-}
-function strOrNull(o: Obj, k: string): string | null {
-  const v = o[k]
-  if (v === null || v === undefined) return null
-  if (typeof v !== 'string') throw new Malformed(k)
-  return v
-}
-function bool(o: Obj, k: string): boolean {
-  const v = o[k]
-  if (typeof v !== 'boolean') throw new Malformed(k)
-  return v
-}
-function boolOrNull(o: Obj, k: string): boolean | null {
-  const v = o[k]
-  if (v === null || v === undefined) return null
-  if (typeof v !== 'boolean') throw new Malformed(k)
-  return v
-}
 /** A whole number of pesos or a count: never negative, never fractional, never missing. */
-function whole(o: Obj, k: string): number {
+function whole(o: Row, k: string): number {
   const v = o[k]
   if (typeof v !== 'number' || !Number.isInteger(v) || v < 0) throw new Malformed(k)
   return v
 }
-function uuid(o: Obj, k: string): string {
+function uuid(o: Row, k: string): string {
   const v = o[k]
   if (!isUuid(v)) throw new Malformed(k)
   return v
 }
 /** The key must be present (null is an answer, an absent key is not). */
-function present(o: Obj, k: string): unknown {
+function present(o: Row, k: string): unknown {
   if (!(k in o)) throw new Malformed(k)
   return o[k]
 }
-function personOf(o: Obj): GroupPerson {
-  const preset = o.avatar_preset
-  if (preset !== null && preset !== undefined && (typeof preset !== 'number' || !Number.isFinite(preset))) throw new Malformed('avatar_preset')
-  return {
-    userId: str(o, 'user_id'),
-    username: str(o, 'username'),
-    displayName: str(o, 'display_name'),
-    avatarPath: strOrNull(o, 'avatar_path'),
-    avatarPreset: (preset ?? null) as number | null,
-  }
-}
-
-// the shared runner ----------------------------------------------------------------------------------------------------
-
-async function run<T>(
-  client: GroupsClient | undefined,
-  errorCopy: string,
-  call: (c: GroupsClient) => Promise<RpcAnswer<unknown>>,
-  map: (data: unknown) => T,
-): Promise<GroupLoaded<T>> {
-  try {
-    const c = client ?? (await createServerClient())
-    const { data, error } = await call(c)
-    if (error) {
-      const code = groupErrorCode(error.message)
-      if (isNotFoundCode(code)) return notFound()
-      if (code === 'not_authenticated') return { ok: false, error: GROUP_SIGN_IN_COPY }
-      return { ok: false, error: errorCopy }
-    }
-    return { ok: true, data: map(data) }
-  } catch {
-    return { ok: false, error: errorCopy }
-  }
-}
-
 // loaders --------------------------------------------------------------------------------------------------------------
 
 function activeOf(v: unknown): GroupFineActive | null {
   if (v === null) return null
-  const o = obj(v)
+  const o = row(v)
   return {
     id: uuid(o, 'id'),
     amount: whole(o, 'amount'),
@@ -139,7 +68,7 @@ function activeOf(v: unknown): GroupFineActive | null {
 
 function proposalOf(v: unknown): GroupFineProposal | null {
   if (v === null) return null
-  const o = obj(v)
+  const o = row(v)
   return {
     id: uuid(o, 'id'),
     amount: whole(o, 'amount'),
@@ -156,7 +85,7 @@ function proposalOf(v: unknown): GroupFineProposal | null {
 export function loadGroupFineState(groupId: string, client?: GroupsClient): Promise<GroupLoaded<GroupFineState>> {
   if (!isUuid(groupId)) return Promise.resolve(notFound())
   return run(client, COPY.state, (c) => rpc.groupFineState(c, groupId), (data) => {
-    const o = obj(data)
+    const o = row(data)
     return {
       active: activeOf(present(o, 'active')),
       proposal: proposalOf(present(o, 'proposal')),
@@ -169,8 +98,8 @@ export function loadGroupFineState(groupId: string, client?: GroupsClient): Prom
 export function loadGroupFund(groupId: string, client?: GroupsClient): Promise<GroupLoaded<GroupFund>> {
   if (!isUuid(groupId)) return Promise.resolve(notFound())
   return run(client, COPY.fund, (c) => rpc.groupFund(c, groupId), (data) => {
-    const o = obj(data)
-    const t = obj(o.totals)
+    const o = row(data)
+    const t = row(o.totals)
     return {
       totals: { registered: whole(t, 'registered'), paid: whole(t, 'paid'), pending: whole(t, 'pending') },
       people: list(o.people).map((p): GroupFundPerson => ({ ...personOf(p), pending: whole(p, 'pending') })),
@@ -194,7 +123,7 @@ export function loadMyFundDebts(client?: GroupsClient): Promise<GroupLoaded<MyFu
   const rows = (v: unknown) =>
     list(v).map((r) => ({ groupId: uuid(r, 'group_id'), groupName: str(r, 'group_name'), pending: whole(r, 'pending') }))
   return run(client, COPY.mine, (c) => rpc.myFundDebts(c), (data) => {
-    const o = obj(data)
+    const o = row(data)
     return { owed: rows(o.owed), administered: rows(o.administered) }
   })
 }

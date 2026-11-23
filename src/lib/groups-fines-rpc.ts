@@ -1,4 +1,5 @@
-import type { GroupsClient, RpcAnswer } from '@/lib/groups-rpc'
+import { callLoose } from '@/lib/groups-rpc'
+import type { GroupsClient } from '@/lib/groups-rpc'
 
 /**
  * The single seam over the fine RPCs of Grupos (migration 0025). The generated Supabase types do not know these functions,
@@ -8,12 +9,7 @@ import type { GroupsClient, RpcAnswer } from '@/lib/groups-rpc'
  * Reads return `jsonb` (an object, or an array for the rejected list); the loaders validate every field.
  */
 
-type Query<T> = PromiseLike<RpcAnswer<T>>
-
-async function call<T>(client: GroupsClient, fn: string, args?: Record<string, unknown>): Promise<RpcAnswer<T>> {
-  const rpc = client.rpc as (fn: string, args?: Record<string, unknown>) => Query<T>
-  return args === undefined ? rpc.call(client, fn) : rpc.call(client, fn, args)
-}
+const call = callLoose
 
 // writes ---------------------------------------------------------------------------------------------------------------
 

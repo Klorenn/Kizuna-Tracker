@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { validateFineProposal, validateRejectReason } from "@/domain/group-fines";
 import { isUuid } from "@/domain/groups";
 import type { GroupResult } from "@/lib/groups-contract";
-import { fineErrorCopy, GROUP_GENERIC_COPY } from "@/lib/groups-copy";
+import { fineErrorCode, fineErrorCopy, GROUP_GENERIC_COPY, UNDO_OWN_CHECKIN_COPY } from "@/lib/groups-copy";
 import type { GroupFineActions } from "@/lib/groups-fines-contract";
 import * as rpc from "@/lib/groups-fines-rpc";
 import type { RpcAnswer } from "@/lib/groups-rpc";
@@ -25,23 +25,25 @@ const CHECKIN_NOT_FOUND = "No encontramos ese registro.";
 const fail = (error: string) => ({ ok: false as const, error });
 
 /** Runs one RPC: the database's error code becomes its copy; an exception is the generic copy. `null` means it worked. */
-async function attempt<T>(call: () => Promise<RpcAnswer<T>>): Promise<{ data: T | null } | { error: string }> {
+async function attempt<T>(
+  call: () => Promise<RpcAnswer<T>>,
+  special: Record<string, string> = {},
+): Promise<{ data: T | null } | { error: string }> {
   try {
     const { data, error } = await call();
-    if (error) return { error: fineErrorCopy(error.message) };
+    if (error) {
+      const code = fineErrorCode(error.message);
+      return { error: (code && special[code]) || fineErrorCopy(error.message) };
+    }
     return { data };
   } catch {
     return { error: GROUP_GENERIC_COPY };
   }
 }
 
-/** Each path once: one render per change, not two. */
+/** Call sites pass distinct paths, so each is revalidated once. */
 function revalidate(paths: { path: string; type?: "page" }[]): void {
-  const seen = new Set<string>();
   for (const p of paths) {
-    const key = `${p.path}|${p.type ?? ""}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
     if (p.type) revalidatePath(p.path, p.type);
     else revalidatePath(p.path);
   }
@@ -132,7 +134,9 @@ export async function undoRejectPhoto(groupId: string, checkinId: string): Retur
   if (!auth.ok) return fail(auth.error);
   if (!isUuid(groupId)) return fail(NOT_FOUND);
   if (!isUuid(checkinId)) return fail(CHECKIN_NOT_FOUND);
-  const r = await attempt(() => rpc.undoGroupCheckinRejection(auth.supabase, groupId, checkinId));
+  const r = await attempt(() => rpc.undoGroupCheckinRejection(auth.supabase, groupId, checkinId), {
+    own_checkin: UNDO_OWN_CHECKIN_COPY,
+  });
   if ("error" in r) return fail(r.error);
   revalidate([groupPage(groupId)]);
   return { ok: true, data: undefined };

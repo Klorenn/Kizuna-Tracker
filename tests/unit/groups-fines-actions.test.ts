@@ -63,6 +63,7 @@ type Case = {
   args: Record<string, unknown>
   paths: unknown[][]
   codes: string[]
+  copy?: Record<string, string>
 }
 
 const cases: Case[] = [
@@ -72,7 +73,7 @@ const cases: Case[] = [
     rpcName: 'propose_group_fine',
     args: { p_group_id: G, p_amount: 2500, p_purpose: 'Asado' },
     paths: [[`/grupos/${G}`]],
-    codes: ['not_group_admin', 'invalid_fine', 'fine_pending', 'group_archived', 'group_not_found'],
+    codes: ['group_not_found', 'not_group_admin', 'group_archived', 'invalid_fine', 'fine_pending'],
   },
   {
     name: 'vote',
@@ -80,7 +81,7 @@ const cases: Case[] = [
     rpcName: 'vote_group_fine',
     args: { p_fine_id: F, p_accept: true },
     paths: [['/grupos/[id]', 'page']],
-    codes: ['fine_not_found', 'fine_closed', 'not_group_member', 'group_archived'],
+    codes: ['fine_not_found', 'group_not_found', 'group_archived', 'fine_closed'],
   },
   {
     name: 'acceptActive',
@@ -88,7 +89,7 @@ const cases: Case[] = [
     rpcName: 'accept_group_fine',
     args: { p_group_id: G },
     paths: [[`/grupos/${G}`]],
-    codes: ['no_active_fine', 'already_bound', 'not_group_member', 'group_archived'],
+    codes: ['group_not_found', 'group_archived', 'no_active_fine', 'already_bound'],
   },
   {
     name: 'stepOut',
@@ -96,7 +97,7 @@ const cases: Case[] = [
     rpcName: 'leave_group_fine',
     args: { p_group_id: G },
     paths: [[`/grupos/${G}`]],
-    codes: ['no_active_fine', 'not_bound', 'not_group_member'],
+    codes: ['group_not_found', 'group_archived', 'no_active_fine', 'not_bound'],
   },
   {
     name: 'end',
@@ -104,7 +105,7 @@ const cases: Case[] = [
     rpcName: 'end_group_fine',
     args: { p_group_id: G },
     paths: [[`/grupos/${G}`]],
-    codes: ['no_active_fine', 'not_group_admin', 'group_not_found'],
+    codes: ['group_not_found', 'not_group_admin', 'group_archived', 'no_active_fine'],
   },
   {
     name: 'setDebtPaid',
@@ -112,7 +113,7 @@ const cases: Case[] = [
     rpcName: 'set_group_debt_paid',
     args: { p_debt_id: D, p_paid: true },
     paths: [['/grupos/[id]', 'page'], ['/deudas']],
-    codes: ['debt_not_found', 'not_group_admin', 'own_debt'],
+    codes: ['debt_not_found', 'group_not_found', 'not_group_admin', 'own_debt'],
   },
   {
     name: 'rejectPhoto',
@@ -120,7 +121,7 @@ const cases: Case[] = [
     rpcName: 'reject_group_checkin',
     args: { p_group_id: G, p_checkin_id: C, p_reason: 'Foto borrosa' },
     paths: [[`/grupos/${G}`]],
-    codes: ['not_group_admin', 'no_photo_rule', 'checkin_not_found', 'own_checkin', 'reject_window_closed', 'week_closed', 'invalid_reason'],
+    codes: ['group_not_found', 'group_archived', 'not_group_admin', 'no_photo_rule', 'checkin_not_found', 'own_checkin', 'reject_window_closed', 'week_closed', 'invalid_reason'],
   },
   {
     name: 'undoRejectPhoto',
@@ -128,7 +129,8 @@ const cases: Case[] = [
     rpcName: 'undo_group_checkin_rejection',
     args: { p_group_id: G, p_checkin_id: C },
     paths: [[`/grupos/${G}`]],
-    codes: ['not_group_admin', 'checkin_not_found', 'week_closed'],
+    codes: ['group_not_found', 'group_archived', 'not_group_admin', 'checkin_not_found', 'own_checkin', 'week_closed'],
+    copy: { own_checkin: 'No puedes deshacer el rechazo de tu propia foto. Pídeselo a otro admin.' },
   },
 ]
 
@@ -174,7 +176,7 @@ describe.each(cases)('$name', (c) => {
 
   it.each(c.codes)('maps %s to its Spanish copy and revalidates nothing', async (code) => {
     fail(`ERROR: ${code}`)
-    expect(await c.run()).toEqual({ ok: false, error: COPY[code] })
+    expect(await c.run()).toEqual({ ok: false, error: c.copy?.[code] ?? COPY[code] })
     expect(revalidatePath).not.toHaveBeenCalled()
   })
 
@@ -252,6 +254,33 @@ describe('group-scoped actions refuse a bad group id before any call', () => {
   ])('%s', async (_n, run) => {
     expect(await run()).toEqual({ ok: false, error: COPY.group_not_found })
     expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('purpose and reason are sent normalised', () => {
+  it('propose collapses inner whitespace and refuses control characters', async () => {
+    rpc.mockResolvedValue({ data: NEW, error: null })
+    await actions.propose(G, 2500, '  Asado   de fin  ')
+    expect(rpc).toHaveBeenCalledWith('propose_group_fine', { p_group_id: G, p_amount: 2500, p_purpose: 'Asado de fin' })
+    rpc.mockClear()
+    expect(await actions.propose(G, 2500, 'a\u0000b')).toEqual({ ok: false, error: COPY.invalid_fine })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+  it('rejectPhoto collapses a line break into a space and refuses a control character', async () => {
+    rpc.mockResolvedValue(OK)
+    await actions.rejectPhoto(G, C, 'foto\n\nborrosa')
+    expect(rpc).toHaveBeenCalledWith('reject_group_checkin', { p_group_id: G, p_checkin_id: C, p_reason: 'foto borrosa' })
+    rpc.mockClear()
+    expect(await actions.rejectPhoto(G, C, 'a\u0007b')).toEqual({ ok: false, error: COPY.invalid_reason })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+})
+
+describe('setDebtPaid in an archived group', () => {
+  it('has no archived pre-check: the RPC is called (marking paid stays allowed)', async () => {
+    rpc.mockResolvedValue(OK)
+    expect(await actions.setDebtPaid(D, true)).toEqual({ ok: true, data: undefined })
+    expect(rpc).toHaveBeenCalledWith('set_group_debt_paid', { p_debt_id: D, p_paid: true })
   })
 })
 
