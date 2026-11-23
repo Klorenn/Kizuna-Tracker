@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
 const rpc = vi.fn()
 let user: { id: string } | null = { id: 'u1' }
@@ -254,6 +254,53 @@ describe('sendPomodoroBlock', () => {
   it('an empty answer without an error is retried', async () => {
     rpc.mockResolvedValue({ data: [], error: null })
     expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
+  })
+})
+
+describe('sendPomodoroBlock: a failed session check is not a lost session', () => {
+  const block = { blockId: 'b1', minutes: 25, endedAt: ENDED }
+  const CONNECT = 'No pudimos conectar. Inténtalo de nuevo en unos minutos.'
+  const realAuth = client.auth
+
+  afterEach(() => {
+    client.auth = realAuth
+  })
+
+  it.each([
+    ['a network failure', { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' }],
+    ['a server error', { name: 'AuthApiError', status: 503, message: 'upstream down' }],
+    ['an unknown error', { message: 'something odd' }],
+  ])('%s keeps the block and says it could not connect', async (_name, authError) => {
+    client.auth = { getUser: async () => ({ data: { user: null }, error: authError }) }
+    expect(await sendPomodoroBlock('h1', block, null)).toEqual({
+      ok: false,
+      error: CONNECT,
+      retry: true,
+      code: 'session_unavailable',
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('a getUser that throws says the same', async () => {
+    client.auth = {
+      getUser: async () => {
+        throw new TypeError('fetch failed')
+      },
+    }
+    expect(await sendPomodoroBlock('h1', block, null)).toMatchObject({ ok: false, retry: true, code: 'session_unavailable', error: CONNECT })
+  })
+
+  it.each([
+    ['no session', { name: 'AuthSessionMissingError', status: 400, message: 'Auth session missing!' }],
+    ['a rejected token', { name: 'AuthApiError', status: 401, message: 'invalid JWT' }],
+  ])('%s still says to sign in', async (_name, authError) => {
+    client.auth = { getUser: async () => ({ data: { user: null }, error: authError }) }
+    expect(await sendPomodoroBlock('h1', block, null)).toMatchObject({
+      ok: false,
+      retry: true,
+      code: 'not_authenticated',
+      error: 'Inicia sesión para guardar tus bloques.',
+    })
   })
 })
 

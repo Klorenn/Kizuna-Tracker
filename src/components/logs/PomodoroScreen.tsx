@@ -48,7 +48,7 @@ import {
   type PomodoroStorage,
   type PomodoroPresetKey,
 } from "@/lib/pomodoro-store";
-import { createRetryScheduler, expiredMessage, flushPendingDetailed } from "@/lib/pomodoro-sync";
+import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/pomodoro-sync";
 
 /*
  * PomodoroScreen: the timer of one habit (`/habitos/<id>/pomodoro`).
@@ -156,12 +156,7 @@ function Timer({
     });
     if (report.events.length > 0) act.apply(report.events);
     if (report.totalMinutes !== null) setToday(report.totalMinutes);
-    const lines = [
-      report.expired > 0 ? expiredMessage(report.expired) : null,
-      ...report.dropped.map((d) => d.message),
-      report.topicRejected ? "No guardamos el tema, pero sí los minutos." : null,
-      report.signedOut ? "Inicia sesión para guardar tus bloques." : null,
-    ].filter((l): l is string => l !== null);
+    const lines = reportLines(report);
     if (lines.length > 0) setNotice(lines.join(" "));
     return report.retryable > 0;
   }, [act, getState, timeZone]);

@@ -14,7 +14,8 @@ const INVALID_TOPIC = "El tema tiene hasta 60 caracteres.";
 const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
 const NOT_AUTHENTICATED = "Inicia sesión para continuar.";
 const SIGN_IN_BLOCKS = "Inicia sesión para guardar tus bloques.";
-const EXPIRED = "Un bloque terminó ayer y ya no se puede sumar.";
+const UNAVAILABLE = "No pudimos conectar. Inténtalo de nuevo en unos minutos.";
+const EXPIRED ="Un bloque terminó ayer y ya no se puede sumar.";
 const ERRORS: Record<string, string> = {
   invalid_minutes: INVALID_MINUTES,
   minutes_over_day: "Un día tiene 24 horas: revisa el tiempo.",
@@ -80,6 +81,29 @@ async function authed(): Promise<Client | null> {
   const supabase = await createServerClient();
   const { data } = await supabase.auth.getUser();
   return data?.user ? supabase : null;
+}
+
+/** An Auth answer that means "there is no valid session" (the user must sign in), not "could not ask". */
+function isSignedOutError(e: { name?: string; status?: number; message?: string }): boolean {
+  if (e.name === "AuthSessionMissingError") return true;
+  return typeof e.status === "number" && e.status >= 400 && e.status < 500;
+}
+
+/**
+ * Like `authed`, but a failed check (network, server trouble) is its own answer: only the Pomodoro
+ * block receipt needs to tell "sign in again" from "could not reach the server".
+ */
+async function sessionCheck(): Promise<
+  { state: "ok"; supabase: Client } | { state: "signed_out" } | { state: "unavailable" }
+> {
+  const supabase = await createServerClient();
+  try {
+    const { data, error } = await supabase.auth.getUser();
+    if (data?.user) return { state: "ok", supabase };
+    return error && !isSignedOutError(error) ? { state: "unavailable" } : { state: "signed_out" };
+  } catch {
+    return { state: "unavailable" };
+  }
 }
 
 /** Adds minutes to today's time for the habit. Creates the check-in when there was none (`checkedIn`). */
@@ -159,8 +183,10 @@ export async function sendPomodoroBlock(
   }
   if (t !== null && t.length > 60) return { ok: false, error: INVALID_TOPIC, retry: false, code: "invalid_topic" };
   try {
-    const supabase = await authed();
-    if (!supabase) return { ok: false, error: SIGN_IN_BLOCKS, retry: true, code: "not_authenticated" };
+    const session = await sessionCheck();
+    if (session.state === "unavailable") return { ok: false, error: UNAVAILABLE, retry: true, code: "session_unavailable" };
+    if (session.state === "signed_out") return { ok: false, error: SIGN_IN_BLOCKS, retry: true, code: "not_authenticated" };
+    const supabase = session.supabase;
     const { data, error } = await supabase.rpc("add_pomodoro_block", {
       p_habit_id: habitId,
       p_block_id: block.blockId,

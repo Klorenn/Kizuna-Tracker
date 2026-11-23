@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { initialPomodoro, type PomodoroState } from '@/domain/pomodoro'
 import { canOfferNotifications } from '@/lib/pomodoro-alerts'
 import {
@@ -8,7 +8,11 @@ import {
   expiredMessage,
   flushPending,
   flushPendingDetailed,
+  reportLines,
+  resetCreditedBlocks,
 } from '@/lib/pomodoro-sync'
+
+beforeEach(() => resetCreditedBlocks())
 
 type Send = Parameters<typeof flushPending>[1]
 
@@ -18,11 +22,13 @@ const withPending = (...ids: string[]): PomodoroState => ({
   pending: ids.map((blockId, i) => ({ blockId, minutes: 25, endedAt: 1000 + i })),
 })
 const ok: Awaited<ReturnType<Send>> = { ok: true, credited: true, totalMinutes: 25 }
+// the stored blocks of these tests end at 1970-01-01: this is a moment of that same day
+const DAY0 = { timeZone: 'UTC', now: 1500 }
 
 describe('flushPending', () => {
   it('confirms every block the server accepted', async () => {
     const send = vi.fn<Send>(async () => ok)
-    expect(await flushPending(withPending('b1', 'b2'), send, null)).toEqual([
+    expect(await flushPending(withPending('b1', 'b2'), send, null, DAY0)).toEqual([
       { type: 'confirm', blockId: 'b1' },
       { type: 'confirm', blockId: 'b2' },
     ])
@@ -33,8 +39,8 @@ describe('flushPending', () => {
   it('a retry sends the same block id and end instant again', async () => {
     const send = vi.fn<Send>(async () => ({ ok: false, error: 'red', retry: true }))
     const state = withPending('b1')
-    await flushPending(state, send, null)
-    await flushPending(state, send, null)
+    await flushPending(state, send, null, DAY0)
+    await flushPending(state, send, null, DAY0)
     expect(send).toHaveBeenNthCalledWith(1, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
     expect(send).toHaveBeenNthCalledWith(2, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
   })
@@ -43,7 +49,7 @@ describe('flushPending', () => {
     const send = vi.fn<Send>(async (_h, _b, topic) =>
       topic === null ? ok : { ok: false, error: 'tema', retry: false, code: 'invalid_topic' },
     )
-    await flushPending(withPending('b1'), send, 'x'.repeat(61))
+    await flushPending(withPending('b1'), send, 'x'.repeat(61), DAY0)
     expect(send).toHaveBeenNthCalledWith(1, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, 'x'.repeat(61))
     expect(send).toHaveBeenNthCalledWith(2, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
   })
@@ -54,21 +60,21 @@ describe('flushPending', () => {
       ...initialPomodoro('h1', config),
       pending: [{ blockId: 'old', minutes: 25 }],
     } as unknown as PomodoroState
-    const report = await flushPendingDetailed(legacy, send, null)
+    const report = await flushPendingDetailed(legacy, send, null, DAY0)
     expect(report.events).toEqual([{ type: 'drop', blockId: 'old' }])
     expect(report.expired).toBe(1)
     expect(send).not.toHaveBeenCalled()
   })
   it('a retryable failure stays pending (no event)', async () => {
     const send = vi.fn<Send>(async (_h, b) => (b.blockId === 'b1' ? { ok: false, error: 'red', retry: true } : ok))
-    expect(await flushPending(withPending('b1', 'b2'), send, null)).toEqual([{ type: 'confirm', blockId: 'b2' }])
+    expect(await flushPending(withPending('b1', 'b2'), send, null, DAY0)).toEqual([{ type: 'confirm', blockId: 'b2' }])
   })
 
   it('a final failure drops the block', async () => {
     const send = vi.fn<Send>(async (_h, b) =>
       b.blockId === 'b1' ? { ok: false, error: 'Este hábito ya no lleva tiempo.', retry: false } : ok,
     )
-    expect(await flushPending(withPending('b1', 'b2'), send, null)).toEqual([
+    expect(await flushPending(withPending('b1', 'b2'), send, null, DAY0)).toEqual([
       { type: 'drop', blockId: 'b1' },
       { type: 'confirm', blockId: 'b2' },
     ])
@@ -78,15 +84,15 @@ describe('flushPending', () => {
     const send = vi.fn<Send>(async () => {
       throw new TypeError('fetch failed')
     })
-    expect(await flushPending(withPending('b1'), send, null)).toEqual([])
+    expect(await flushPending(withPending('b1'), send, null, DAY0)).toEqual([])
   })
 
   it('never sends a block that is already in flight', async () => {
     const resolvers: ((r: Awaited<ReturnType<Send>>) => void)[] = []
     const send = vi.fn<Send>(() => new Promise((res) => resolvers.push(res)))
     const state = withPending('b1', 'b2')
-    const first = flushPending(state, send, null)
-    const second = flushPending(state, send, null)
+    const first = flushPending(state, send, null, DAY0)
+    const second = flushPending(state, send, null, DAY0)
     expect(await second).toEqual([])
     expect(send.mock.calls.map((c) => c[1].blockId)).toEqual(['b1', 'b2'])
     for (const r of resolvers) r(ok)
@@ -98,8 +104,8 @@ describe('flushPending', () => {
 
   it('a block can be sent again after its attempt finished', async () => {
     const send = vi.fn<Send>(async () => ({ ok: false, error: 'red', retry: true }))
-    await flushPending(withPending('b1'), send, null)
-    await flushPending(withPending('b1'), send, null)
+    await flushPending(withPending('b1'), send, null, DAY0)
+    await flushPending(withPending('b1'), send, null, DAY0)
     expect(send).toHaveBeenCalledTimes(2)
   })
 })
@@ -187,7 +193,7 @@ describe('flushPendingDetailed', () => {
 
   it('reports the refused block with its message', async () => {
     const send = vi.fn<Send>(async () => ({ ok: false, error: 'Este hábito ya no lleva tiempo.', retry: false, code: 'log_type_mismatch' }))
-    const r = await flushPendingDetailed(withPending('b1'), send, null)
+    const r = await flushPendingDetailed(withPending('b1'), send, null, DAY0)
     expect(r.dropped).toEqual([{ blockId: 'b1', minutes: 25, message: 'Este hábito ya no lleva tiempo. No guardamos 25 min.' }])
   })
 
@@ -198,7 +204,7 @@ describe('flushPendingDetailed', () => {
       retry: false,
       code: 'block_expired',
     }))
-    const r = await flushPendingDetailed(withPending('b1'), send, null)
+    const r = await flushPendingDetailed(withPending('b1'), send, null, DAY0)
     expect(r.events).toEqual([{ type: 'drop', blockId: 'b1' }])
     expect(r.dropped[0].message).toBe('Un bloque terminó ayer y ya no se puede sumar.')
   })
@@ -207,7 +213,7 @@ describe('flushPendingDetailed', () => {
     const send = vi.fn<Send>(async (_h, _b, topic) =>
       topic === null ? ok : { ok: false, error: 'El tema tiene hasta 60 caracteres.', retry: false, code: 'invalid_topic' },
     )
-    const r = await flushPendingDetailed(withPending('b1'), send, 'Álgebra')
+    const r = await flushPendingDetailed(withPending('b1'), send, 'Álgebra', DAY0)
     expect(send.mock.calls.map((c) => c[2])).toEqual(['Álgebra', null])
     expect(r.events).toEqual([{ type: 'confirm', blockId: 'b1' }])
     expect(r.topicRejected).toBe(true)
@@ -215,10 +221,111 @@ describe('flushPendingDetailed', () => {
 
   it('a lost session keeps the block and flags it', async () => {
     const send = vi.fn<Send>(async () => ({ ok: false, error: 'Inicia sesión para guardar tus bloques.', retry: true, code: 'not_authenticated' }))
-    const r = await flushPendingDetailed(withPending('b1'), send, null)
+    const r = await flushPendingDetailed(withPending('b1'), send, null, DAY0)
     expect(r.events).toEqual([])
     expect(r.retryable).toBe(1)
     expect(r.signedOut).toBe(true)
+  })
+})
+
+describe('flushPendingDetailed: connection trouble and blocks already credited', () => {
+  const NOW = at('2026-11-23T12:00:00Z')
+  const day = { timeZone: 'UTC', now: NOW }
+  const pendingAt = (blockId: string, endedAt: number): PomodoroState => ({
+    ...initialPomodoro('h1', config),
+    pending: [{ blockId, minutes: 25, endedAt }],
+  })
+
+  it('a failed session check keeps the block and flags the connection, not a sign-in', async () => {
+    const send = vi.fn<Send>(async () => ({
+      ok: false,
+      error: 'No pudimos conectar. Inténtalo de nuevo en unos minutos.',
+      retry: true,
+      code: 'session_unavailable',
+    }))
+    const r = await flushPendingDetailed(pendingAt('u1', at('2026-11-23T11:00:00Z')), send, null, day)
+    expect(r.events).toEqual([])
+    expect(r.retryable).toBe(1)
+    expect(r.signedOut).toBe(false)
+    expect(r.unreachable).toBe(true)
+  })
+
+  it('a block the server credited is a confirmation even when a later retry finds the day over', async () => {
+    const ended = at('2026-11-23T11:00:00Z')
+    const first = vi.fn<Send>(async () => ({ ok: true, credited: true, totalMinutes: 25 }))
+    const r1 = await flushPendingDetailed(pendingAt('c1', ended), first, null, day)
+    expect(r1.events).toEqual([{ type: 'confirm', blockId: 'c1' }])
+    // the confirmation never reached the stored state (another tab wrote over it): the block is pending again, next day
+    const next = { timeZone: 'UTC', now: at('2026-11-24T09:00:00Z') }
+    const again = vi.fn<Send>()
+    const r2 = await flushPendingDetailed(pendingAt('c1', ended), again, null, next)
+    expect(again).not.toHaveBeenCalled()
+    expect(r2.events).toEqual([{ type: 'confirm', blockId: 'c1' }])
+    expect(r2.expired).toBe(0)
+    expect(r2.dropped).toEqual([])
+  })
+
+  it('a block_expired for a block already credited is shown as credited, not expired', async () => {
+    const ended = at('2026-11-23T11:30:00Z')
+    const ok1 = vi.fn<Send>(async () => ({ ok: true, credited: true, totalMinutes: 25 }))
+    await flushPendingDetailed(pendingAt('c2', ended), ok1, null, day)
+    const expired = vi.fn<Send>(async () => ({
+      ok: false,
+      error: 'Un bloque terminó ayer y ya no se puede sumar.',
+      retry: false,
+      code: 'block_expired',
+    }))
+    // same local day by the clock here, so the send happens and the server answers block_expired
+    const r = await flushPendingDetailed(pendingAt('c2', ended), expired, null, day)
+    expect(r.events).toEqual([{ type: 'confirm', blockId: 'c2' }])
+    expect(r.dropped).toEqual([])
+  })
+
+  it('a block never credited that the server refuses as expired is still dropped with the message', async () => {
+    const expired = vi.fn<Send>(async () => ({
+      ok: false,
+      error: 'Un bloque terminó ayer y ya no se puede sumar.',
+      retry: false,
+      code: 'block_expired',
+    }))
+    const r = await flushPendingDetailed(pendingAt('never', at('2026-11-23T11:30:00Z')), expired, null, day)
+    expect(r.events).toEqual([{ type: 'drop', blockId: 'never' }])
+    expect(r.dropped).toHaveLength(1)
+  })
+})
+
+describe('reportLines', () => {
+  const base = {
+    events: [],
+    dropped: [],
+    expired: 0,
+    totalMinutes: null,
+    topicRejected: false,
+    retryable: 0,
+    signedOut: false,
+    unreachable: false,
+  }
+  it('says nothing when there is nothing to say', () => {
+    expect(reportLines(base)).toEqual([])
+  })
+  it('a failed session check says it could not connect, a lost session says to sign in', () => {
+    expect(reportLines({ ...base, unreachable: true })).toEqual(['No pudimos conectar. Inténtalo de nuevo en unos minutos.'])
+    expect(reportLines({ ...base, signedOut: true })).toEqual(['Inicia sesión para guardar tus bloques.'])
+  })
+  it('keeps the order: expired, refused, topic, session', () => {
+    const lines = reportLines({
+      ...base,
+      expired: 2,
+      dropped: [{ blockId: 'b', minutes: 25, message: 'Refused.' }],
+      topicRejected: true,
+      unreachable: true,
+    })
+    expect(lines).toEqual([
+      '2 bloques terminaron ayer y ya no se pueden sumar.',
+      'Refused.',
+      'No guardamos el tema, pero sí los minutos.',
+      'No pudimos conectar. Inténtalo de nuevo en unos minutos.',
+    ])
   })
 })
 
@@ -251,7 +358,7 @@ describe('retry schedule (I-2)', () => {
     expect(s.failures()).toBe(0)
   })
 
-  it('ignores a kick while a run is in progress', async () => {
+  it('does not start a second run while one is in progress', async () => {
     let release: (more: boolean) => void = () => {}
     const run = vi.fn(() => new Promise<boolean>((res) => (release = res)))
     const s = createRetryScheduler({ run, setTimer: () => 1, clearTimer: () => {} })
@@ -259,5 +366,47 @@ describe('retry schedule (I-2)', () => {
     s.kick()
     expect(run).toHaveBeenCalledTimes(1)
     release(false)
+  })
+
+  it('a kick during a run is not lost: it runs right after, once, however many arrived', async () => {
+    const releases: ((more: boolean) => void)[] = []
+    const run = vi.fn(() => new Promise<boolean>((res) => releases.push(res)))
+    const timers: number[] = []
+    const s = createRetryScheduler({ run, setTimer: (_fn, ms) => (timers.push(ms), 1), clearTimer: () => {} })
+    s.kick()
+    s.kick()
+    s.kick()
+    expect(run).toHaveBeenCalledTimes(1)
+    releases[0](false)
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
+    // the queued run starts at once (no backoff wait), and nothing else was queued behind it
+    expect(timers).toEqual([])
+    releases[1](false)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(run).toHaveBeenCalledTimes(2)
+  })
+
+  it('a queued kick still runs when the run it waited for asked to retry', async () => {
+    const releases: ((more: boolean) => void)[] = []
+    const run = vi.fn(() => new Promise<boolean>((res) => releases.push(res)))
+    const s = createRetryScheduler({ run, setTimer: () => 1, clearTimer: () => {} })
+    s.kick()
+    s.kick()
+    releases[0](true)
+    await vi.waitFor(() => expect(run).toHaveBeenCalledTimes(2))
+  })
+
+  it('stop() drops a queued kick', async () => {
+    const releases: ((more: boolean) => void)[] = []
+    const run = vi.fn(() => new Promise<boolean>((res) => releases.push(res)))
+    const s = createRetryScheduler({ run, setTimer: () => 1, clearTimer: () => {} })
+    s.kick()
+    s.kick()
+    s.stop()
+    releases[0](false)
+    await Promise.resolve()
+    await Promise.resolve()
+    expect(run).toHaveBeenCalledTimes(1)
   })
 })

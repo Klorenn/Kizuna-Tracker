@@ -117,6 +117,28 @@ const USER_NS = (userId: string) => `kizuna:user:${userId}:`;
 /** Writes a device refused (quota) or everything when storage is blocked: kept here, per user. */
 const overlays = new Map<string, Map<string, string>>();
 
+/** Storages already swept of the keys the first version wrote without a user namespace. */
+const sweptLegacy = new WeakSet<Storage>();
+
+/**
+ * Before the per-user namespace the timers lived under plain `kizuna:pomodoro:*` keys. No account
+ * can read them any more (and they would be sent under none), so they are removed, once per storage.
+ */
+function sweepLegacyKeys(b: Storage): void {
+  if (sweptLegacy.has(b)) return;
+  sweptLegacy.add(b);
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < b.length; i++) {
+      const k = b.key(i);
+      if (k !== null && k.startsWith(PREFIX)) doomed.push(k);
+    }
+    for (const k of doomed) b.removeItem(k);
+  } catch {
+    // blocked or failing storage: leave them, never break the timer
+  }
+}
+
 /** A `Storage` scoped to one signed-in user that never throws and falls back to memory. */
 export type PomodoroStorage = Storage & {
   /** True once storage was blocked or a write failed: the timer still runs, but not across reloads. */
@@ -159,7 +181,9 @@ export function openPomodoroStorage(userId: string, getBase: () => Storage = () 
     }
     return [...keys];
   };
-  if (base() === null) degraded = true;
+  const first = base();
+  if (first === null) degraded = true;
+  else sweepLegacyKeys(first);
   const store = {
     get length() {
       return own().length;
