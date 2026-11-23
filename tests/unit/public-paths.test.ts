@@ -30,3 +30,10 @@ describe('safeNextPath', () => {
     expect(safeNextPath(null)).toBe('/')
   })
 })
+
+describe('robots.txt', () => {
+  it('/robots.txt is public', () => expect(isPublicPath('/robots.txt')).toBe(true))
+  it.each(['/robots.txt/x', '/robots.txtx', '/robots', '/ROBOTS.TXT'])('%s is not public', (p) =>
+    expect(isPublicPath(p)).toBe(false),
+  )
+})

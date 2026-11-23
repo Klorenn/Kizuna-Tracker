@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setTimezone, updateSettings } from "@/app/(app)/perfil/actions";
 import { removeAvatar, setAvatarPreset } from "@/app/(app)/perfil/avatar-actions";
+import { ColorRow } from "@/components/ColorRow";
 import { AvatarPicker } from "@/components/avatars/AvatarPicker";
 import { setTheme } from "@/app/theme-actions";
 import { useAvatarUpload } from "@/components/profile/useAvatarUpload";
@@ -16,7 +17,7 @@ import { Segmented } from "@/components/ui/Segmented";
 import { Sheet } from "@/components/ui/Sheet";
 import { Toast, useToast } from "@/components/ui/Toast";
 import type { TimezoneLock } from "@/lib/profile-view";
-import { THEMES, THEME_LABEL, type Theme } from "@/lib/theme";
+import { THEMES, THEME_LABEL, type Color, type Theme } from "@/lib/theme";
 
 type Result = { ok: true } | { ok: false; error: string };
 
@@ -278,13 +279,14 @@ function ThemeRow({ initial }: { initial: Theme }) {
   );
 }
 
-/** Ajustes > Preferencias: theme, reminder time and timezone (once every 7 days). */
+/** Ajustes > Preferencias: theme, colour, reminder time and timezone (once every 7 days). */
 export function PreferenceRows({
   firstName,
   lastName,
   reminderTime,
   timezone,
   theme,
+  color,
   tzLock,
 }: {
   firstName: string;
@@ -292,6 +294,7 @@ export function PreferenceRows({
   reminderTime: string; // HH:MM
   timezone: string;
   theme: Theme;
+  color: Color;
   tzLock: TimezoneLock;
 }) {
   const [sheet, setSheet] = useState<null | "time" | "tz">(null);
@@ -308,6 +311,7 @@ export function PreferenceRows({
   return (
     <>
       <ThemeRow initial={theme} />
+      <ColorRow initial={color} />
       <ListRow
         icon={<Bell size={20} weight="light" />}
         label="Hora de recordatorio"

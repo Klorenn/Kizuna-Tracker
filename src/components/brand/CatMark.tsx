@@ -15,7 +15,7 @@ const W = 120.4;
 const H = 135.45;
 
 /**
- * Gato índigo con pesas, estático: cuerpo accent, pesas accent2, directo sobre el fondo.
+ * Gato índigo con pesas, estático: cuerpo cat, pesas cat2 (índigo fijo, no sigue el color elegido), directo sobre el fondo.
  * Para el gato animado usa CatLift (GIF del dueño).
  */
 export function CatMark({
