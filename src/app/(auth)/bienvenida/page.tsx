@@ -13,7 +13,7 @@ export default function BienvenidaPage() {
     <main className="relative isolate mx-auto flex min-h-dvh w-full max-w-md flex-col px-5 pb-[max(env(safe-area-inset-bottom),24px)] pt-[clamp(40px,10dvh,96px)]">
       <KanjiWatermark placement="middle" />
       <section className="flex flex-col gap-4">
-        <div className="flex flex-col items-start gap-3">
+        <div className="flex flex-col items-center gap-3 text-center">
           <Lockup cat={<CatLift width={172} />} />
           <p className="text-small text-muted">
             <span lang="ja">絆</span>, <i>kizuna</i>: el lazo entre amigos.
