@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowsClockwise, X } from "@phosphor-icons/react/dist/ssr";
+import { ArrowsClockwise, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useRef, useState } from "react";
 
 /**

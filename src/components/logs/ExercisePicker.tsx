@@ -1,6 +1,6 @@
 "use client";
 
-import { Archive, PencilSimple, Plus, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Archive, PencilSimple, Plus, Warning } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { archiveExercise, createExercise, renameExercise } from "@/app/(app)/registros/workout-actions";
 import { Button } from "@/components/ui/Button";

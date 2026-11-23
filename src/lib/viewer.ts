@@ -13,12 +13,14 @@ export type ViewerProfile = Viewer & {
   avatarPreset: number | null;
   timezoneChangedAt: string | null;
   reminderTime: string;
+  createdAt: string;
+  heightCm: number | null;
 };
 
 type Client = Awaited<ReturnType<typeof createServerClient>>;
 
 const PROFILE_COLUMNS =
-  "id,timezone,deleted_at,username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone_changed_at,reminder_time";
+  "id,timezone,deleted_at,username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone_changed_at,reminder_time,created_at,height_cm";
 
 /**
  * The verified user of this request, from the JWT claims. With asymmetric signing keys that is a
@@ -54,6 +56,8 @@ export async function loadViewerProfile(supabase: Client, id: string): Promise<V
     avatarPreset: data.avatar_preset,
     timezoneChangedAt: data.timezone_changed_at,
     reminderTime: String(data.reminder_time),
+    createdAt: data.created_at,
+    heightCm: data.height_cm,
   };
 }
 

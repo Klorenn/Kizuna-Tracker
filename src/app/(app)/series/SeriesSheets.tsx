@@ -1,6 +1,6 @@
 "use client";
 
-import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { createMedia, deleteMedia, setMediaFinished, updateMedia } from "@/app/(app)/registros/watch-actions";

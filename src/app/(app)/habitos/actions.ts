@@ -72,6 +72,12 @@ function refresh() {
   revalidatePath("/habitos/[id]", "page");
 }
 
+/** A check-in or undo changes Hoy and that one habit's page: Hoy once, no other habit page. */
+function refreshHabit(habitId: string) {
+  revalidatePath("/");
+  revalidatePath(`/habitos/${habitId}`);
+}
+
 function habitRow(draft: HabitDraft) {
   const q = draft.quantity;
   return {
@@ -301,7 +307,7 @@ export async function checkIn(
   const { data, error } = await auth.supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message) };
-  refresh();
+  refreshHabit(habitId);
   return { ok: true, checkinId: row.checkin_id, created: row.created };
 }
 
@@ -313,25 +319,26 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
   const auth = await requireUser();
   if (!auth.ok) return { ok: false, error: auth.error };
   const { supabase, userId: uid } = auth;
-  if (!(await ownHabit(supabase, uid, habitId))) return { ok: false, error: NOT_FOUND };
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
+  // ownership, time zone and steps do not depend on each other: one round, not three
+  const [habit, { data: profile }, { data: items, error: itemsError }] = await Promise.all([
+    ownHabit(supabase, uid, habitId),
+    supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle(),
+    supabase.from("habit_items").select("id").eq("habit_id", habitId).is("archived_at", null).limit(1),
+  ]);
+  if (!habit) return { ok: false, error: NOT_FOUND };
   if (!profile) return { ok: false, error: ERRORS.not_authenticated };
   const date = localDate(new Date(), profile.timezone);
 
   // habits with items are undone by unchecking an item; photo check-ins are not undoable here
-  const { data: items } = await supabase
-    .from("habit_items")
-    .select("id")
-    .eq("habit_id", habitId)
-    .is("archived_at", null)
-    .limit(1);
+  if (itemsError) return { ok: false, error: GENERIC };
   if (items && items.length > 0) return { ok: false, error: CANNOT_UNDO };
-  const { data: today } = await supabase
+  const { data: today, error: todayError } = await supabase
     .from("checkins")
     .select("photo_path")
     .eq("habit_id", habitId)
     .eq("local_date", date)
     .maybeSingle();
+  if (todayError) return { ok: false, error: GENERIC };
   if (today?.photo_path) return { ok: false, error: CANNOT_UNDO };
 
   const { data: removed, error } = await supabase
@@ -342,7 +349,7 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
     .select("id");
   if (error) return { ok: false, error: undoMessage(error.message) };
   if (!removed || removed.length === 0) return { ok: false, error: NO_CHECKIN_TODAY };
-  refresh();
+  refreshHabit(habitId);
   return { ok: true };
 }
 

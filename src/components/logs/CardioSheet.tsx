@@ -1,6 +1,6 @@
 "use client";
 
-import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {

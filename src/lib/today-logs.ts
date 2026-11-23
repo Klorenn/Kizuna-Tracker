@@ -95,8 +95,14 @@ export function todayLogs(
   return { logs, readings: byHabit, quantity }
 }
 
-/** Today's logs of every kind, in one round of parallel reads (each bounded to one local date). */
-export async function loadTodayLogs(supabase: SupabaseClient<Database>, userId: string, today: LocalDate) {
+export type TodayLogsResult = ({ ok: true } & ReturnType<typeof todayLogs>) | { ok: false };
+
+/**
+ * Today's logs of every kind, in one round of parallel reads (each bounded to one local date).
+ * Any failed read is `{ ok: false }`: a missing log must never pass for "no log yet" (Hoy would show
+ * zeros and offer to add a reading that already exists).
+ */
+export async function loadTodayLogs(supabase: SupabaseClient<Database>, userId: string, today: LocalDate): Promise<TodayLogsResult> {
   const [readings, sessions, sets, time, watch, cardio, quantity] = await Promise.all([
     supabase
       .from('reading_entries')
@@ -119,10 +125,14 @@ export async function loadTodayLogs(supabase: SupabaseClient<Database>, userId: 
       .order('created_at'),
     supabase.from('quantity_entries').select('id,habit_id,amount,created_at').eq('user_id', userId).eq('local_date', today),
   ])
-  return todayLogs(readings.data ?? [], sessions.data ?? [], sets.data ?? [], {
-    time: time.data ?? [],
-    watch: watch.data ?? [],
-    cardio: cardio.data ?? [],
-    quantity: quantity.data ?? [],
-  })
+  if ([readings, sessions, sets, time, watch, cardio, quantity].some((r) => r.error)) return { ok: false }
+  return {
+    ok: true,
+    ...todayLogs(readings.data ?? [], sessions.data ?? [], sets.data ?? [], {
+      time: time.data ?? [],
+      watch: watch.data ?? [],
+      cardio: cardio.data ?? [],
+      quantity: quantity.data ?? [],
+    }),
+  }
 }

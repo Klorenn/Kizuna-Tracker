@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowCounterClockwise, Plus, Trash, Warning } from "@phosphor-icons/react/dist/ssr";
+import { ArrowCounterClockwise, Plus, Trash, Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useMemo, useRef, useState, useTransition } from "react";
 import { deleteWorkout, saveWorkout } from "@/app/(app)/registros/workout-actions";

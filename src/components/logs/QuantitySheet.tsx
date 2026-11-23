@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
-import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Warning } from "@phosphor-icons/react";
 import { formatAmount, progressLabel, type QuantityConfig } from "@/domain/quantity";
 import { holdCelebrations } from "@/lib/celebration-bus";
 import { parseTypedAmountResult } from "@/lib/quantity-queue";

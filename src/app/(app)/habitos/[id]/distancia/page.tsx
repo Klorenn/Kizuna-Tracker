@@ -8,7 +8,9 @@ import { dayHeading } from "@/domain/calendar";
 import { CARDIO_KINDS, type CardioKind } from "@/domain/cardio";
 import { localDate } from "@/domain/dates";
 import { logDateParam } from "@/lib/log-date";
+import { read, readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { DistanciaEditor } from "./DistanciaEditor";
 
 export const metadata: Metadata = { title: "Distancia" };
@@ -27,21 +29,20 @@ export default async function DistanciaPage({
 }) {
   const [{ id }, { fecha }] = await Promise.all([params, searchParams]);
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, habitRes] = await Promise.all([
+    getViewerProfile(),
     supabase.from("habits").select("id,name,log_type").eq("id", id).eq("user_id", user.id).maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const today = localDate(new Date(), profile.timezone);
   const date = logDateParam(fecha, today);
   // rejected check-ins keep their logs too: the log is your data
-  const [{ data: checkin }, { data: rows }] = await Promise.all([
+  const [checkinRes, rowsRes] = await Promise.all([
     supabase
       .from("checkins")
       .select("id")
@@ -57,7 +58,8 @@ export default async function DistanciaPage({
       .order("created_at", { ascending: true })
       .limit(10),
   ]);
-  const entries = (rows ?? []).flatMap((r) =>
+  const checkin = read(checkinRes);
+  const entries = readRows(rowsRes).flatMap((r) =>
     CARDIO_KINDS.includes(r.kind as CardioKind)
       ? [
           {

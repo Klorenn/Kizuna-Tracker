@@ -6,12 +6,14 @@ import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { GoalCard } from "@/components/GoalCard";
+import { LoadFailed } from "@/components/LoadFailed";
 import { NewGoalSheet } from "@/components/NewGoalSheet";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate, weekStart } from "@/domain/dates";
-import { loadGoals } from "@/lib/goals-data";
+import { loadGoalsResult } from "@/lib/goals-data";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 
@@ -24,10 +26,12 @@ export default async function MetasPage() {
 
   const now = new Date();
   const today = localDate(now, viewer.timezone);
-  const [goals, { data: habits }] = await Promise.all([
-    loadGoals(supabase, viewer.id, today),
+  const [goalsRead, habitsRes] = await Promise.all([
+    loadGoalsResult(supabase, viewer.id, today),
     supabase.from("habits").select("id,name").eq("user_id", viewer.id).is("archived_at", null).order("created_at"),
   ]);
+  const habits = readRows(habitsRes);
+  const goals = goalsRead.goals;
   const weekly = goals.filter((g) => g.kind === "weekly");
   const total = goals.filter((g) => g.kind === "total");
   const monday = new TZDate(`${weekStart(today)}T12:00:00`, viewer.timezone);
@@ -41,12 +45,23 @@ export default async function MetasPage() {
       </Link>
       <h1 className="text-display font-semibold text-ink">Metas</h1>
 
-      {goals.length === 0 ? (
+      {!goalsRead.ok ? (
+        <>
+          <div className="flex items-center gap-2">
+            <div className="min-w-0 flex-1">
+              <SectionHeader label={weekLabel} />
+            </div>
+            <NewGoalSheet habits={habits} />
+          </div>
+          {/* never goal cards with zero progress when a read failed */}
+          <LoadFailed href="/metas" />
+        </>
+      ) : goals.length === 0 ? (
         <Card>
           <EmptyState
             title="Aún no tienes metas"
             body="Una meta semanal o un total de check-ins te da algo concreto a qué apuntar."
-            action={<NewGoalSheet habits={habits ?? []} />}
+            action={<NewGoalSheet habits={habits} />}
           />
         </Card>
       ) : (
@@ -55,7 +70,7 @@ export default async function MetasPage() {
             <div className="min-w-0 flex-1">
               <SectionHeader label={weekLabel} />
             </div>
-            <NewGoalSheet habits={habits ?? []} />
+            <NewGoalSheet habits={habits} />
           </div>
           {weekly.length > 0 ? (
             <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">

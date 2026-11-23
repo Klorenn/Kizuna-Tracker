@@ -1,6 +1,6 @@
 "use client";
 
-import { Warning } from "@phosphor-icons/react/dist/ssr";
+import { Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { checkInWithReading, deleteReading, saveReading, setBookTotalPages } from "@/app/(app)/registros/actions";

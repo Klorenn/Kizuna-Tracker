@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus } from "@phosphor-icons/react/dist/ssr";
+import { Minus } from "@phosphor-icons/react";
 import { IconButton } from "@/components/ui/IconButton";
 import type { SetFields } from "@/lib/workout-form";
 

@@ -8,6 +8,7 @@ import { DEFAULT_HABIT_COLOR, toHabitColor, type HabitColor } from "@/domain/hab
 import type { LocalDate } from "@/domain/types";
 import type { QuantityColumns } from "@/lib/logs-data";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { VALUE_BASE, valueSizeClass } from "@/lib/value-size";
 
 // Shared by the REGISTROS detail views (lectura, gimnasio, grupo, ejercicio). Owner only:
@@ -35,14 +36,12 @@ type LogHabitRow = { id: string; name: string; color: string; log_type: string; 
 /** Session, local today and the habits whose colors paint the charts (first active of each type). */
 export async function loadLogsContext(): Promise<LogsContext> {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
   // two independent reads in one round trip (the habits list also gives the drill-downs their
   // colors and the ownership check of /resumen/cantidad/[habitId])
-  const [{ data: profile }, { data: habits }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, { data: habits, error: habitsError }] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select(
@@ -53,6 +52,8 @@ export async function loadLogsContext(): Promise<LogsContext> {
       .order("created_at")
       .order("id"),
   ]);
+  // a failed read is an error page: an empty list would hide the log sections and 404 a real habit
+  if (habitsError) throw new Error(`habits read failed: ${habitsError.message}`);
   if (!profile) redirect("/login?error=perfil");
   const logHabits: LogHabitRow[] = habits ?? [];
   // the first active habit of a type paints the charts

@@ -62,3 +62,27 @@ export async function loadPickerBooks(
   ])
   return pickerBooks(books.data ?? [], entries.data ?? [], keep)
 }
+
+/** Same books, or null when a read failed (an empty list would pass for "no books yet"). */
+export async function loadPickerBooksOrNull(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  keep?: string,
+): Promise<PickerBook[] | null> {
+  const [books, entries] = await Promise.all([
+    supabase
+      .from('books')
+      .select('id,title,total_pages,status,created_at')
+      .eq('user_id', userId)
+      .order('created_at', { ascending: false })
+      .limit(200),
+    supabase
+      .from('reading_entries')
+      .select('book_id,local_date,from_page,to_page')
+      .eq('user_id', userId)
+      .order('local_date', { ascending: false })
+      .limit(500),
+  ])
+  if (books.error || entries.error) return null
+  return pickerBooks(books.data ?? [], entries.data ?? [], keep)
+}

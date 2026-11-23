@@ -73,12 +73,7 @@ export function pickerMedia(media: MediaRow[], entries: EntryRow[], keep?: strin
     });
 }
 
-/** Titles and recent entries for the picker (bounded: the last 500 entries decide order and hints). */
-export async function loadPickerMedia(
-  supabase: SupabaseClient<Database>,
-  userId: string,
-  keep?: string,
-): Promise<PickerMedia[]> {
+async function readPicker(supabase: SupabaseClient<Database>, userId: string) {
   const [media, entries] = await Promise.all([
     supabase
       .from("media_items")
@@ -93,7 +88,27 @@ export async function loadPickerMedia(
       .order("local_date", { ascending: false })
       .limit(500),
   ]);
-  return pickerMedia(media.data ?? [], entries.data ?? [], keep);
+  return { media: media.data ?? [], entries: entries.data ?? [], ok: !media.error && !entries.error };
+}
+
+/** Titles and recent entries for the picker (bounded: the last 500 entries decide order and hints). */
+export async function loadPickerMedia(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  keep?: string,
+): Promise<PickerMedia[]> {
+  const r = await readPicker(supabase, userId);
+  return pickerMedia(r.media, r.entries, keep);
+}
+
+/** Same titles, or null when a read failed (an empty chip list would pass for "no titles yet"). */
+export async function loadPickerMediaOrNull(
+  supabase: SupabaseClient<Database>,
+  userId: string,
+  keep?: string,
+): Promise<PickerMedia[] | null> {
+  const r = await readPicker(supabase, userId);
+  return r.ok ? pickerMedia(r.media, r.entries, keep) : null;
 }
 
 /** Confirmation copy before deleting a title: "Se borrarán 4 registros (5 episodios, 3 h 10 min). Tus check-ins no cambian." */

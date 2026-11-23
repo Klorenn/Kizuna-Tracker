@@ -1,6 +1,6 @@
 "use client";
 
-import { Flame } from "@phosphor-icons/react/dist/ssr";
+import { Flame } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useId, useRef } from "react";
 import { Button } from "@/components/ui/Button";

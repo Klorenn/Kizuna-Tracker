@@ -5,7 +5,9 @@ import { TopBar } from "@/components/ui/TopBar";
 import { toHabitColor } from "@/domain/habit-colors";
 import { quantityConfigOf } from "@/domain/today";
 import type { HabitDraft, IconKey, PresetKey, Visibility } from "@/domain/presets";
+import { read, readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/viewer";
 
 const QUANTITY_LOCKED =
   "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
@@ -15,11 +17,9 @@ export const metadata: Metadata = { title: "Editar hábito" };
 export default async function EditarHabitoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const { data: habit } = await supabase
+  const habit = read(await supabase
     .from("habits")
     .select(
       "id,name,icon,visibility,requires_photo,frequency_type,target_per_week,preset,color,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
@@ -27,9 +27,9 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
-    .maybeSingle();
+    .maybeSingle());
   if (!habit) notFound();
-  const [{ data: items }, inChallenge] = await Promise.all([
+  const [itemsRes, inChallenge] = await Promise.all([
     supabase
       .from("habit_items")
       .select("label,requires_photo,position")
@@ -54,7 +54,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
         ? { type: "weekly", target: habit.target_per_week ?? 1 }
         : { type: "daily" },
     requiresPhoto: habit.requires_photo,
-    items: (items ?? []).map((i) => ({ label: i.label, requiresPhoto: i.requires_photo })),
+    items: readRows(itemsRes).map((i) => ({ label: i.label, requiresPhoto: i.requires_photo })),
     visibility: habit.visibility as Visibility,
     logType: habit.log_type as HabitDraft["logType"],
     preset: habit.preset as PresetKey | null,
