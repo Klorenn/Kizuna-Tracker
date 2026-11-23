@@ -13,6 +13,7 @@ import {
   goalMet,
   offlineAfter,
   QUANTITY_MESSAGES,
+  refusalText,
   sharedQuantityQueue,
   type QuantityQueue,
   type QueueEvent,
@@ -191,7 +192,7 @@ export function QuantityControl({
       if (refused.length === 0) return;
       const gone = new Set(refused.map((n) => n.entryId));
       setList((l) => l.filter((e) => !gone.has(e.id)));
-      setRejection(refused[refused.length - 1].error);
+      setRejection(refusalText(refused));
     };
     showNotices(); // refusals that arrived while this control was not mounted
     return q.subscribe((e: QueueEvent) => {
@@ -217,7 +218,7 @@ export function QuantityControl({
   const add = useCallback(
     (amount: number) => {
       const q = queue();
-      const { entryId } = q.add(habitId, amount);
+      const { entryId } = q.add(habitId, amount, timeZone);
       const at = new Date().toISOString();
       stamps.current.set(entryId, at);
       dirty.current = true;
@@ -225,7 +226,7 @@ export function QuantityControl({
       setList((l) => [...l, { id: entryId, amount, at, saved: false }]);
       readView(q);
     },
-    [habitId, queue, readView],
+    [habitId, queue, readView, timeZone],
   );
 
   const remove = useCallback(

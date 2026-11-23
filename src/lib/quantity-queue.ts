@@ -1,4 +1,5 @@
 import type { addQuantity } from "@/app/(app)/registros/quantity-actions";
+import { localDate } from "@/domain/dates";
 import { parseAmount, type QuantityConfig } from "@/domain/quantity";
 
 /**
@@ -22,10 +23,16 @@ export const BACKOFF_MAX_MS = 30000;
 export const QUANTITY_MESSAGES = {
   offlineAdd: "Sin conexión. Guardaremos la suma cuando vuelvas a estar en línea.",
   offlineRemove: "Sin conexión. No pudimos quitar la suma.",
+  /** A tap from an earlier local day is never credited to a later one (same rule as Pomodoro blocks). */
+  staleDay: "Una suma de ayer no se guardó.",
   notFound: "No encontramos esa suma.",
 } as const;
 
-export type PendingSum = { entryId: string; habitId: string; amount: number };
+/**
+ * `day` is the local date (in `zone`, the profile time zone) on which the tap happened; sums stored
+ * before it was recorded have neither and are always sent.
+ */
+export type PendingSum = { entryId: string; habitId: string; amount: number; day?: string; zone?: string };
 type Send = typeof addQuantity;
 type SendResult = Awaited<ReturnType<Send>>;
 
@@ -51,8 +58,11 @@ export function offlineAfter(current: string | null, e: QueueEvent, habitId: str
 export type QuantityNotice = { habitId: string; entryId: string; error: string };
 
 export type QuantityQueue = {
-  /** Records the tap, sends it (and any backlog), and returns the optimistic total for the habit. */
-  add(habitId: string, amount: number): { entryId: string; optimisticTotal: number };
+  /**
+   * Records the tap (with its local day in `timeZone`), sends it (and any backlog), and returns the
+   * optimistic total for the habit. A tap still pending on a later local day is dropped, never sent.
+   */
+  add(habitId: string, amount: number, timeZone?: string): { entryId: string; optimisticTotal: number };
   /** Waits for sends in flight, then resends whatever is still pending. */
   flush(): Promise<void>;
   pending(): PendingSum[];
@@ -72,6 +82,8 @@ export type QuantityQueue = {
 
 type Options = {
   storage?: Pick<Storage, "getItem" | "setItem"> | null;
+  /** The clock, for tests (default `Date.now`). */
+  now?: () => number;
   /** Called after the server answers a send (accepted or refused), never for network failures. */
   onSettled?: (sum: PendingSum, result: SendResult) => void;
 };
@@ -90,6 +102,23 @@ function isSum(x: unknown): x is PendingSum {
   return typeof s.entryId === "string" && typeof s.habitId === "string" && typeof s.amount === "number" && s.amount > 0;
 }
 
+/** True when the tap's local day is over (its zone's date is now later). Unknown day or zone: not stale. */
+function isStale(sum: PendingSum, now: number): boolean {
+  if (!sum.day || !sum.zone) return false;
+  try {
+    return localDate(new Date(now), sum.zone) > sum.day;
+  } catch {
+    return false;
+  }
+}
+
+/** The line to show for refusals nobody has seen: "Una suma de ayer…" in singular or plural, else the last one. */
+export function refusalText(refused: readonly { error: string }[]): string {
+  const allStale = refused.length > 0 && refused.every((n) => n.error === QUANTITY_MESSAGES.staleDay);
+  if (allStale && refused.length > 1) return `${refused.length} sumas de ayer no se guardaron.`;
+  return refused[refused.length - 1].error;
+}
+
 const round2 = (n: number) => Math.round(n * 100) / 100;
 
 /** Delay before retry number `attempt` (1-based): 1 s, 2 s, 4 s ... capped at 30 s. */
@@ -97,6 +126,7 @@ export const backoffDelay = (attempt: number) => Math.min(BACKOFF_MAX_MS, BACKOF
 
 export function createQuantityQueue(send: Send, idFactory: () => string, options: Options = {}): QuantityQueue {
   const storage = options.storage === undefined ? defaultStorage() : options.storage;
+  const now = options.now ?? Date.now;
   const totals = new Map<string, number>();
   const inflight = new Map<string, Promise<void>>();
   const listeners = new Set<(e: QueueEvent) => void>();
@@ -112,7 +142,12 @@ export function createQuantityQueue(send: Send, idFactory: () => string, options
     try {
       const parsed: unknown = JSON.parse(storage.getItem(QUANTITY_QUEUE_KEY) ?? "[]");
       return Array.isArray(parsed)
-        ? parsed.filter(isSum).map((s) => ({ entryId: s.entryId, habitId: s.habitId, amount: s.amount }))
+        ? parsed.filter(isSum).map((s) => ({
+            entryId: s.entryId,
+            habitId: s.habitId,
+            amount: s.amount,
+            ...(typeof s.day === "string" && typeof s.zone === "string" ? { day: s.day, zone: s.zone } : {}),
+          }))
         : [];
     } catch {
       return [];
@@ -149,10 +184,15 @@ export function createQuantityQueue(send: Send, idFactory: () => string, options
     if (existing) return existing;
     const run = (async () => {
       let result: SendResult;
-      try {
-        result = await send(sum.habitId, sum.entryId, sum.amount);
-      } catch {
-        result = { ok: false, error: QUANTITY_MESSAGES.offlineAdd, retry: true };
+      if (isStale(sum, now())) {
+        // the day of the tap is over: it is not credited to today (refused for good, with a notice)
+        result = { ok: false, error: QUANTITY_MESSAGES.staleDay, retry: false };
+      } else {
+        try {
+          result = await send(sum.habitId, sum.entryId, sum.amount);
+        } catch {
+          result = { ok: false, error: QUANTITY_MESSAGES.offlineAdd, retry: true };
+        }
       }
       if (!result.ok && result.retry) {
         emit({ kind: "offline", sum, error: result.error });
@@ -182,8 +222,16 @@ export function createQuantityQueue(send: Send, idFactory: () => string, options
   }
 
   return {
-    add(habitId, amount) {
-      const sum = { entryId: idFactory(), habitId, amount };
+    add(habitId, amount, timeZone) {
+      let day: string | undefined;
+      if (timeZone) {
+        try {
+          day = localDate(new Date(now()), timeZone);
+        } catch {
+          day = undefined;
+        }
+      }
+      const sum: PendingSum = { entryId: idFactory(), habitId, amount, ...(day && timeZone ? { day, zone: timeZone } : {}) };
       write([...read(), sum]);
       const optimistic = optimisticTotal(habitId);
       void dispatch(sum);
