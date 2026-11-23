@@ -1,4 +1,9 @@
-import type { GroupSummary } from '@/lib/groups-contract'
+import { GROUP_LIMITS, type GroupSummary } from '@/lib/groups-contract'
+
+/** Whether the person may start another group: fewer than the per-person limit of live groups. */
+export function canCreateGroup(groups: readonly GroupSummary[]): boolean {
+  return groups.filter((g) => !g.archived).length < GROUP_LIMITS.groupsPerPerson
+}
 
 /** The habits the person has linked to a live group (an archived group no longer holds its habit). */
 export function linkedHabitIds(groups: readonly GroupSummary[]): Set<string> {
