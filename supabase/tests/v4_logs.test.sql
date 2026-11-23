@@ -122,7 +122,7 @@ select is((select count(*)::int from pg_indexes where schemaname = 'public' and 
   'the lookup indexes exist');
 select ok((select bool_and(not has_function_privilege('anon', f, 'EXECUTE') and has_function_privilege('authenticated', f, 'EXECUTE'))
            from unnest(array[
-             'public.add_time(uuid,int,text)', 'public.add_pomodoro_block(uuid,uuid,int,text)', 'public.set_time_entry(uuid,int,text)',
+             'public.add_time(uuid,int,text)', 'public.add_pomodoro_block(uuid,uuid,int,text,timestamptz)', 'public.set_time_entry(uuid,int,text)',
              'public.delete_time_entry(uuid)', 'public.save_watch_entry(uuid,uuid,int,int,int,int,boolean,boolean)',
              'public.delete_watch_entry(uuid)', 'public.add_quantity_entry(uuid,uuid,numeric)', 'public.remove_quantity_entry(uuid)',
              'public.add_cardio_entry(uuid,text,int,int,int,text)', 'public.update_cardio_entry(uuid,text,int,int,int,text)',
@@ -144,7 +144,7 @@ select ok(exists (select 1 from pg_indexes where schemaname = 'public' and index
   'pomodoro_blocks.checkin_id is indexed (the set-null cascade of every check-in delete)');
 select ok(not (select prosecdef from pg_proc where oid = 'public.habits_log_photo()'::regprocedure),
   'habits_log_photo does not need SECURITY DEFINER');
-select ok(pg_get_functiondef('public.add_pomodoro_block(uuid,uuid,int,text)'::regprocedure) ~ 't\.user_id = v_uid and t\.habit_id',
+select ok(pg_get_functiondef('public.add_pomodoro_block(uuid,uuid,int,text,timestamptz)'::regprocedure) ~ 't\.user_id = v_uid and t\.habit_id',
   'the pomodoro retry lookup filters by user (it uses the user/date index)');
 select is((select array_agg(public.habit_preset_color(p) order by p) from unnest(array['watch', 'run', 'water', 'zzz']) p),
   array['durazno', 'rosa', 'cielo', 'indigo'], 'the new presets have their palette color (run durazno, watch rosa)');
