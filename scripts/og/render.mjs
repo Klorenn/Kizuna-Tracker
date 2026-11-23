@@ -2,6 +2,7 @@
 // HTML template + real brand assets + the app's own Inter / Geist Mono files -> 1200x630 PNG.
 // Output: src/app/opengraph-image.png and src/app/twitter-image.png (Next.js file conventions).
 // Needs a system CJK font for the kanji in the label (Hiragino on macOS, Noto Sans CJK elsewhere).
+import { existsSync } from "node:fs";
 import { readFile, writeFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import path from "node:path";
@@ -14,9 +15,23 @@ const outDir = path.resolve(process.argv[2] ?? path.join(root, "src/app"));
 const dataUri = async (file, mime) =>
   `data:${mime};base64,${(await readFile(file)).toString("base64")}`;
 
+// Fonts: the latin variable woff2 files that next/font self-hosts for the app (Inter, Geist Mono;
+// SIL OFL, but no package ships their licence text, so they are NOT committed). Put them in
+// scripts/og/fonts/ (git-ignored) or point OG_FONT_DIR at a folder holding them. After `next build`
+// or `next dev` they are in .next/static/media/ (the Inter file with latin + latin-ext glyphs, and
+// the Geist Mono one), renamed to inter-latin-var.woff2 / geist-mono-latin-var.woff2.
+const fontPath = (name) => {
+  const file = path.join(process.env.OG_FONT_DIR ?? path.join(here, "fonts"), name);
+  if (!existsSync(file)) {
+    console.error(`Missing font file ${file}\nSee the comment above fontPath() in scripts/og/render.mjs for where to get it.`);
+    process.exit(1);
+  }
+  return file;
+};
+
 const assets = {
-  __FONT_INTER__: await dataUri(path.join(here, "fonts/inter-latin-var.woff2"), "font/woff2"),
-  __FONT_GEIST_MONO__: await dataUri(path.join(here, "fonts/geist-mono-latin-var.woff2"), "font/woff2"),
+  __FONT_INTER__: await dataUri(fontPath("inter-latin-var.woff2"), "font/woff2"),
+  __FONT_GEIST_MONO__: await dataUri(fontPath("geist-mono-latin-var.woff2"), "font/woff2"),
   __SEAL__: await dataUri(path.join(root, "src/app/icon.svg"), "image/svg+xml"),
 };
 const catSrc = await dataUri(path.join(root, "public/brand/cat-lift-still.png"), "image/png");
