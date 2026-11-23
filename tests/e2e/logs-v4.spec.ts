@@ -187,28 +187,62 @@ test("habit detail PROGRESO for each kind, and the book in one format", async ({
   await expect(page.getByText("página 40 de 412 · 10 %").first()).toBeVisible();
 });
 
+test("a habit id of someone else on the quantity drill-down is the same 404 as a random id", async ({ browser }) => {
+  test.setTimeout(90_000);
+  // someone else's quantity habit, created through that user's own session
+  const otherHandle = randomHandle("v4otro");
+  const admin = createClient(url, service, { auth: { persistSession: false, autoRefreshToken: false } });
+  const created = await admin.auth.admin.createUser({
+    email: `${otherHandle}@example.com`,
+    password: PASSWORD,
+    email_confirm: true,
+    user_metadata: { username: otherHandle, first_name: "Omar", last_name: "E2E", birth_date: "1992-04-04", timezone: TZ, terms_accepted: true },
+  });
+  const otherId = must({ data: created.data?.user?.id ?? null, error: created.error }, "createUser other");
+  const theirs: SupabaseClient = createClient(url, anon, { auth: { persistSession: false, autoRefreshToken: false } });
+  must({ data: (await theirs.auth.signInWithPassword({ email: `${otherHandle}@example.com`, password: PASSWORD })).data.session, error: null }, "signIn other");
+  const foreign = must(
+    await theirs
+      .from("habits")
+      .insert({
+        user_id: otherId, name: "Agua", icon: "drop", frequency_type: "daily", visibility: "private", color: "cielo", log_type: "quantity",
+        quantity_unit: "ml", quantity_target: 2000, quantity_step: 250, quantity_display: "glasses", glass_ml: 250,
+      })
+      .select("id")
+      .single(),
+    "foreign habit",
+  ).id as string;
+
+  const ctx = await browser.newContext();
+  const page = await ctx.newPage();
+  await logIn(page, `@${handle}`, PASSWORD);
+  const bodyOf = async (path: string) => {
+    await expectNotFound(page, path);
+    return page.locator("body").innerText();
+  };
+  const randomText = await bodyOf(`/resumen/cantidad/${randomUUID()}`);
+  expect(await bodyOf(`/resumen/cantidad/${foreign}`)).toBe(randomText);
+  await ctx.close();
+});
+
 test("none of it is visible to anyone else", async ({ browser }) => {
   const leaks = ["Álgebra", "Dark", "vasos", "km"];
-
-  const anon = await browser.newContext();
-  const anonPage = await anon.newPage();
-  await anonPage.goto(`/@${handle}`);
-  await expect(anonPage.getByRole("heading", { name: "Vera E2E", level: 1 })).toBeVisible();
-  await anonPage.waitForLoadState("networkidle");
-  const anonText = await anonPage.locator("main").innerText();
-  for (const leak of leaks) expect(anonText).not.toContain(leak);
-  await anon.close();
-
-  // another signed-in user neither (the seeded Beto, a friend of nobody here)
-  const other = await browser.newContext();
-  const otherPage = await other.newPage();
-  await logIn(otherPage, "@user_b", "kizuna-test-1");
-  await otherPage.goto(`/@${handle}`);
-  await expect(otherPage.getByRole("heading", { name: "Vera E2E", level: 1 })).toBeVisible();
-  await otherPage.waitForLoadState("networkidle");
-  const otherText = await otherPage.locator("main").innerText();
-  for (const leak of leaks) expect(otherText).not.toContain(leak);
-  await other.close();
+  const profileText = async (viewer: string | null) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    // another signed-in viewer is the seeded Beto, a friend of nobody here
+    if (viewer) await logIn(page, viewer, "kizuna-test-1");
+    await page.goto(`/@${handle}`);
+    await expect(page.getByRole("heading", { name: "Vera E2E", level: 1 })).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const text = await page.locator("main").innerText();
+    await ctx.close();
+    return text;
+  };
+  for (const viewer of [null, "@user_b"]) {
+    const text = await profileText(viewer);
+    for (const leak of leaks) expect(text).not.toContain(leak);
+  }
 });
 
 test("every new view fits 375 px", async ({ page }) => {
