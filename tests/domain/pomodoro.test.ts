@@ -8,6 +8,7 @@ import {
   formatReadout,
   sessionSummary,
   STOPWATCH_BLOCK_MIN,
+  STOPWATCH_LATE_SETTLE_MS,
   STOPWATCH_CAP_MIN,
   TIMER_CHIPS,
   validatePomodoroConfig,
@@ -249,11 +250,11 @@ describe('stopwatch mode', () => {
     ])
   })
 
-  it('stops at the 4-hour cap with 90 + 90 + 60', () => {
+  it('stops at the 4-hour cap with 90 + 90 + 60 (settled late: a and b end at the tick, c is exactly 60 s late)', () => {
     const s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 241 * M })
     expect(s.pending).toEqual([
-      { blockId: 'a', minutes: 90, endedAt: T + 90 * M },
-      { blockId: 'b', minutes: 90, endedAt: T + 180 * M },
+      { blockId: 'a', minutes: 90, endedAt: T + 241 * M },
+      { blockId: 'b', minutes: 90, endedAt: T + 241 * M },
       { blockId: 'c', minutes: 60, endedAt: T + 240 * M },
     ])
     expect(s.phase).toBe('done')
@@ -285,7 +286,7 @@ describe('stopwatch mode', () => {
 
   it('settles a chunk that passed while the page was away before a pause', () => {
     const s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 100 * M })
-    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 90 * M }])
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 100 * M }])
     const fin = pomodoroReducer(s, { type: 'finish', at: T + 120 * M })
     expect(fin.pending[1]).toEqual({ blockId: 'b', minutes: 10, endedAt: T + 120 * M })
   })
@@ -300,6 +301,8 @@ describe('fix round 1: session blocks by id, pause vs cap, legacy behaviour', ()
   it('a stopwatch paused for 20 minutes reaches the cap at T+260 and its first chunk at T+110', () => {
     let s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 30 * M })
     s = pomodoroReducer(s, { type: 'resume', at: T + 50 * M })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 110 * M })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 200 * M })
     const early = pomodoroReducer(s, { type: 'tick', at: T + 259 * M })
     expect(early.phase).toBe('focus')
     expect(early.pending).toEqual([
@@ -363,6 +366,43 @@ describe('fix round 1: session blocks by id, pause vs cap, legacy behaviour', ()
     expect(parsePomodoroState(JSON.stringify(s))).toEqual(s)
     s = pomodoroReducer(s, { type: 'start', at: T + 10 * M, blockIds: ids })
     expect(s.sessionBlocks).toEqual([])
+  })
+})
+
+describe('stopwatch chunks settled late end at the settle instant', () => {
+  const MS = 60_000
+  it('ticks every second up to T+90 keep the boundary instant', () => {
+    let s = watchAt()
+    for (let t = 1000; t <= 90 * M; t += 1000) s = pomodoroReducer(s, { type: 'tick', at: T + t })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 90 * M }])
+  })
+  it('one tick at T+95 (app was away) ends the chunk at the tick', () => {
+    const s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 95 * M })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 95 * M }])
+    expect(s.phase).toBe('focus')
+    expect(pomodoroView(s, T + 95 * M).elapsedMs).toBe(95 * M)
+  })
+  it('started 21:45, no ticks, finished 00:30: nothing ends on the earlier day', () => {
+    const start = new Date(2026, 10, 22, 21, 45).getTime()
+    const fin = new Date(2026, 10, 23, 0, 30).getTime()
+    const s = pomodoroReducer(watchAt(start), { type: 'finish', at: fin })
+    expect(s.pending).toEqual([
+      { blockId: 'a', minutes: 90, endedAt: fin },
+      { blockId: 'b', minutes: 75, endedAt: fin },
+    ])
+  })
+  it('paused 20 min at T+30, one tick at T+115: ends at T+115 (boundary T+110)', () => {
+    let s = pomodoroReducer(watchAt(), { type: 'pause', at: T + 30 * M })
+    s = pomodoroReducer(s, { type: 'resume', at: T + 50 * M })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 115 * M })
+    expect(s.pending).toEqual([{ blockId: 'a', minutes: 90, endedAt: T + 115 * M }])
+  })
+  it('exactly 60 000 ms late keeps the boundary, 60 001 ms ends at the tick', () => {
+    expect(STOPWATCH_LATE_SETTLE_MS).toBe(60_000)
+    const on = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M + MS })
+    expect(on.pending[0].endedAt).toBe(T + 90 * M)
+    const over = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M + MS + 1 })
+    expect(over.pending[0].endedAt).toBe(T + 90 * M + MS + 1)
   })
 })
 

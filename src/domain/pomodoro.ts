@@ -24,6 +24,12 @@ export const TIMER_CHIPS = [15, 25, 45, 60] as const
 export const STOPWATCH_BLOCK_MIN = 90
 /** A stopwatch ends by itself after this much running time (pauses never count). */
 export const STOPWATCH_CAP_MIN = 240
+/**
+ * An automatic stopwatch block settled more than this long after its boundary (the app was not
+ * running) ends at the settle instant, so a block closed while the phone slept is not refused as
+ * "ended yesterday" when the person comes back after midnight.
+ */
+export const STOPWATCH_LATE_SETTLE_MS = 60_000
 const STOPWATCH_SLOTS = 3
 
 export function validatePomodoroConfig(c: PomodoroConfig, mode: TimerMode = 'pomodoro'): Result {
@@ -187,15 +193,18 @@ function settleStopwatch(s: PomodoroState, at: number): PomodoroState {
   const block = STOPWATCH_BLOCK_MIN * MIN_MS
   let cur = s
   while (cur.chunks < STOPWATCH_SLOTS - 1 && at >= runStart + (cur.chunks + 1) * block) {
-    cur = addChunk(cur, STOPWATCH_BLOCK_MIN, runStart + (cur.chunks + 1) * block)
+    cur = addChunk(cur, STOPWATCH_BLOCK_MIN, lateEnd(runStart + (cur.chunks + 1) * block, at))
   }
   if (at >= runStart + STOPWATCH_CAP_MIN * MIN_MS) {
     const end = runStart + STOPWATCH_CAP_MIN * MIN_MS
-    cur = addChunk(cur, STOPWATCH_CAP_MIN - cur.chunks * STOPWATCH_BLOCK_MIN, end)
+    cur = addChunk(cur, STOPWATCH_CAP_MIN - cur.chunks * STOPWATCH_BLOCK_MIN, lateEnd(end, at))
     cur = { ...cur, phase: 'done', endReason: 'cap', blockIds: [], phaseStartedAt: end, pausedAt: null, pausedMs: 0, lastTickAt: at }
   }
   return cur
 }
+
+/** A chunk's end instant: its boundary, or the settle instant when it is settled late. */
+const lateEnd = (boundary: number, at: number): number => (at - boundary > STOPWATCH_LATE_SETTLE_MS ? at : boundary)
 
 function addChunk(s: PomodoroState, minutes: number, endedAt: number): PomodoroState {
   const id = s.blockIds[s.chunks]
