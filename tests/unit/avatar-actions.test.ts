@@ -73,6 +73,23 @@ describe('removeAvatar', () => {
     expect(update).not.toHaveBeenCalled()
   })
 
+  it('reports a failed storage removal as retryable and keeps the pointer (so "Quitar foto" stays)', async () => {
+    remove.mockResolvedValue({ data: null, error: { message: 'storage down' } })
+    await expect(removeAvatar()).resolves.toEqual({
+      ok: false,
+      error: 'No pudimos quitar la foto. Inténtalo de nuevo.',
+    })
+    expect(update).not.toHaveBeenCalled()
+  })
+
+  it('removes the file before clearing the pointer', async () => {
+    const order: string[] = []
+    remove.mockImplementation(async () => (order.push('remove'), { error: null }))
+    eq.mockImplementation(async () => (order.push('update'), { error: null }))
+    await removeAvatar()
+    expect(order).toEqual(['remove', 'update'])
+  })
+
   it('reports a failed profile update', async () => {
     eq.mockResolvedValue({ error: { message: 'x' } })
     await expect(removeAvatar()).resolves.toMatchObject({ ok: false })

@@ -35,11 +35,14 @@ function useSave() {
   const router = useRouter();
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
-  function run(action: () => Promise<Result>, onDone: () => void) {
+  function run(action: () => Promise<Result>, onDone: () => void, onFail?: () => void) {
     setError(null);
     start(async () => {
       const r = await action();
-      if (!r.ok) return setError(r.error);
+      if (!r.ok) {
+        onFail?.();
+        return setError(r.error);
+      }
       onDone();
       router.refresh();
     });
@@ -67,6 +70,7 @@ export function AccountRows({
 }) {
   const [open, setOpen] = useState(false);
   const [photoOpen, setPhotoOpen] = useState(false);
+  const [confirmRemove, setConfirmRemove] = useState(false);
   // optimistic pick while the preset is being saved
   const [picked, setPicked] = useState<number | null>(null);
   const [first, setFirst] = useState(firstName);
@@ -80,8 +84,8 @@ export function AccountRows({
   const [toast, showToast] = useToast();
   const name = `${firstName} ${lastName}`;
   const hasPhoto = avatarSrc !== null;
-  // the ring follows the preset in use; an uploaded photo has priority, so no preset is marked
-  const shownPreset = picked ?? (hasPhoto ? null : avatarPreset);
+  // the ring marks the saved cat; with a photo it is the fallback (the photo keeps priority)
+  const shownPreset = picked ?? avatarPreset;
 
   const closePhoto = () => {
     setPhotoOpen(false);
@@ -89,16 +93,16 @@ export function AccountRows({
     photoSave.setError(null);
   };
 
+  // Choosing a cat saves ONLY the preset: an uploaded photo stays (and keeps priority) until
+  // "Quitar foto", the one path that deletes it, after its own confirmation.
   function choosePreset(n: number) {
     if (n === shownPreset) return;
+    const previous = picked;
     setPicked(n);
-    // choosing a cat replaces the photo, otherwise nothing would visibly change
     photoSave.run(
-      async () => {
-        const r = await setAvatarPreset(n);
-        return r.ok && hasPhoto ? removeAvatar() : r;
-      },
+      () => setAvatarPreset(n),
       () => showToast("Avatar actualizado"),
+      () => setPicked(previous),
     );
   }
 
@@ -152,7 +156,7 @@ export function AccountRows({
 
       <Sheet open={photoOpen} title="Foto de perfil" onClose={closePhoto} tall>
         <div className="flex justify-center">
-          <Avatar name={name} size="L" src={picked ? null : avatarSrc} preset={picked ?? avatarPreset} />
+          <Avatar name={name} size="L" src={avatarSrc} preset={picked ?? avatarPreset} />
         </div>
         <Button variant="secondary" onClick={avatar.pick} disabled={avatar.busy || photoSave.busy}>
           <Camera size={20} weight="light" aria-hidden />
@@ -167,20 +171,46 @@ export function AccountRows({
             onChange={choosePreset}
             disabled={photoSave.busy || avatar.busy}
           />
+          {hasPhoto ? (
+            <p className="text-small text-pretty text-muted">
+              Tu foto sigue visible. Toca &apos;Quitar foto&apos; para mostrar el gatito.
+            </p>
+          ) : null}
         </div>
         <ErrorText error={photoSave.error ?? avatar.error} />
         {hasPhoto ? (
-          <Button
-            variant="ghost"
-            disabled={photoSave.busy || avatar.busy}
-            onClick={() => {
-              setPicked(null);
-              photoSave.run(removeAvatar, () => showToast("Foto quitada"));
-            }}
-          >
+          <Button variant="ghost" disabled={photoSave.busy || avatar.busy} onClick={() => setConfirmRemove(true)}>
             Quitar foto
           </Button>
         ) : null}
+      </Sheet>
+
+      <Sheet
+        open={confirmRemove}
+        title="¿Quitar tu foto?"
+        onClose={() => setConfirmRemove(false)}
+        describedBy="quitar-foto-cuerpo"
+      >
+        <p id="quitar-foto-cuerpo" className="text-body text-muted">
+          Se borra la foto que subiste y vuelve a verse tu gatito.
+        </p>
+        <ErrorText error={photoSave.error} />
+        <div className="flex flex-col gap-2">
+          <Button
+            disabled={photoSave.busy}
+            onClick={() =>
+              photoSave.run(removeAvatar, () => {
+                setConfirmRemove(false);
+                showToast("Foto quitada");
+              })
+            }
+          >
+            Quitar foto
+          </Button>
+          <Button variant="secondary" onClick={() => setConfirmRemove(false)}>
+            Cancelar
+          </Button>
+        </div>
       </Sheet>
 
       <Sheet open={open} title="Nombre" onClose={close}>

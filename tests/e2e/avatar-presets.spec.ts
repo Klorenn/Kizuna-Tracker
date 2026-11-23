@@ -99,6 +99,65 @@ test("Ajustes: change the preset in the photo sheet, it persists after reload", 
   await expect(presetImg(page, 6)).toBeVisible();
 });
 
+test("Ajustes: with a photo, a cat keeps the photo (hint); only Quitar foto, confirmed, deletes it", async ({ page }) => {
+  const handle = randomHandle("avp");
+  await signupUntilStep3(page, handle);
+  await page.getByRole("radio", { name: "Avatar 2" }).click();
+  await finishSignup(page, handle);
+  await page.goto("/perfil/ajustes");
+  const jpeg = await page.evaluate(() => {
+    const c = document.createElement("canvas");
+    c.width = 96;
+    c.height = 96;
+    const g = c.getContext("2d")!;
+    g.fillStyle = "#2e3a5e";
+    g.fillRect(0, 0, 96, 96);
+    return c.toDataURL("image/jpeg", 0.9).split(",")[1];
+  });
+
+  await page.getByRole("button", { name: /Foto de perfil/ }).click();
+  const sheet = page.getByRole("dialog", { name: "Foto de perfil" });
+  await page.locator('input[type="file"][accept="image/*"]').setInputFiles({
+    name: "yo.jpg",
+    mimeType: "image/jpeg",
+    buffer: Buffer.from(jpeg, "base64"),
+  });
+  // a successful upload closes the sheet; reopen it
+  await expect(sheet).toHaveCount(0);
+  await expect(page.locator('img[src*="/storage/v1/object/public/avatars/"]').first()).toBeVisible();
+  await page.getByRole("button", { name: /Foto de perfil/ }).click();
+  await expect(sheet.getByRole("button", { name: "Quitar foto" })).toBeVisible();
+  const hint = "Tu foto sigue visible. Toca 'Quitar foto' para mostrar el gatito.";
+  await expect(sheet.getByText(hint)).toBeVisible();
+
+  // a cat is saved as the fallback; the photo stays
+  await sheet.getByRole("radio", { name: "Avatar 5" }).click();
+  await expect(page.getByText("Avatar actualizado")).toBeVisible();
+  await expect(sheet.getByRole("radio", { name: "Avatar 5" })).toHaveAttribute("aria-checked", "true");
+  await expect(sheet.getByRole("button", { name: "Quitar foto" })).toBeVisible();
+  await page.reload();
+  await page.goto("/perfil");
+  await expect(page.locator('main img[src*="/storage/v1/object/public/avatars/"]').first()).toBeVisible();
+  await expect(presetImg(page, 5)).toHaveCount(0);
+
+  // Quitar foto asks first; cancel keeps it, confirm deletes it and the cat shows
+  await page.goto("/perfil/ajustes");
+  await page.getByRole("button", { name: /Foto de perfil/ }).click();
+  await sheet.getByRole("button", { name: "Quitar foto" }).click();
+  const confirm = page.getByRole("dialog", { name: "¿Quitar tu foto?" });
+  await expect(confirm).toHaveAccessibleDescription("Se borra la foto que subiste y vuelve a verse tu gatito.");
+  await confirm.getByRole("button", { name: "Cancelar" }).click();
+  await expect(confirm).toHaveCount(0);
+  await expect(sheet.getByRole("button", { name: "Quitar foto" })).toBeVisible();
+  await sheet.getByRole("button", { name: "Quitar foto" }).click();
+  await confirm.getByRole("button", { name: "Quitar foto" }).click();
+  await expect(page.getByText("Foto quitada")).toBeVisible();
+  await expect(sheet.getByRole("button", { name: "Quitar foto" })).toHaveCount(0);
+  await expect(sheet.getByText(hint)).toHaveCount(0);
+  await page.goto("/perfil");
+  await expect(presetImg(page, 5)).toBeVisible();
+});
+
 test("a friend sees the preset: Amigos list, feed and friend profile (seeded 1 and 7, then a change)", async ({ page }) => {
   await logIn(page, "user_a", SEED_PASSWORD);
   await page.goto("/amigos");

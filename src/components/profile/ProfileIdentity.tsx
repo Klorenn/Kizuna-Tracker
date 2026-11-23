@@ -23,7 +23,7 @@ export function ProfileIdentity({
     <div className="flex flex-col">
       <div className="flex items-center gap-4">
         <div className="relative shrink-0">
-          <Avatar name={name} size="XL" src={src} preset={preset} />
+          <Avatar name={name} size="XL" src={src} preset={preset} priority />
           <button
             type="button"
             onClick={pick}

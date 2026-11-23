@@ -138,6 +138,8 @@ export default function RegistroPage() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [today] = useState(() => localDate(new Date(), browserTimezone()));
   // Random cat preselected once (lazy init, so it survives re-renders and step changes).
+  // Hydration-safe only because step 1 is what SSR renders and the picker lives on step 3: if a
+  // step is ever restored on load, move this pick into an effect (server and client would differ).
   const [avatarPreset, setAvatarPreset] = useState(() => pickRandomPreset());
   const stepRef = useRef<HTMLDivElement>(null);
 

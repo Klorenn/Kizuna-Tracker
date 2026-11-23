@@ -25,7 +25,8 @@ const INITIALS: Record<Size, string> = {
 /**
  * Person avatar: uploaded photo (`src`), else the bundled cat `preset` (1..8), else initials.
  * Decorative by default (the name is always next to it); pass `decorative={false}` to expose the
- * name as alt text. `deleted` forces initials. S = 32, M = 40, L = 72, XL = 88.
+ * name as alt text. `deleted` forces initials. S = 32, M = 40, L = 72, XL = 88. Lazy by default;
+ * `priority` loads it eagerly for above-the-fold headers (Perfil XL, /u/<usuario>).
  */
 export function Avatar({
   name,
@@ -34,6 +35,7 @@ export function Avatar({
   preset,
   deleted = false,
   decorative = true,
+  priority = false,
 }: {
   name: string;
   size?: Size;
@@ -41,6 +43,7 @@ export function Avatar({
   preset?: number | null;
   deleted?: boolean;
   decorative?: boolean;
+  priority?: boolean;
 }) {
   const source = resolveAvatarSource({ photo: src, preset, deleted });
   if (source.kind !== "initials") {
@@ -50,7 +53,8 @@ export function Avatar({
         src={source.src}
         alt={decorative ? "" : name}
         aria-hidden={decorative || undefined}
-        loading="lazy"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : undefined}
         decoding="async"
         draggable={false}
         data-avatar={source.kind}

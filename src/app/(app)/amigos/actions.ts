@@ -28,7 +28,7 @@ async function currentUserId() {
 
 export type UserHit = { id: string; username: string; displayName: string; avatarPath: string | null; avatarPreset: number | null };
 
-/** Username prefix search (max 20) through the 4-column public_profiles view. */
+/** Username prefix search (max 20) through the public_profiles view (id, username, display_name, avatar_path, avatar_preset). */
 export async function searchUsers(q: string): Promise<UserHit[]> {
   const term = (typeof q === "string" ? q : "").trim().toLowerCase().replace(/^@/, "");
   if (!/^[a-z0-9_]{1,20}$/.test(term)) return [];

@@ -144,7 +144,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const page = (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
       <header className="flex items-center gap-4">
-        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} preset={view.avatarPreset} />
+        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} preset={view.avatarPreset} priority />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <h1 className="truncate text-title font-semibold text-ink">{view.displayName}</h1>
           <p className="truncate font-mono text-[14px] text-muted">@{view.username}</p>

@@ -28,7 +28,7 @@ const SECTIONS: LegalSection[] = [
     {
       title: "Perfil público",
       body: [
-        "Tu perfil público, la página con tu @usuario, muestra tu nombre, tu @usuario y la racha de tus hábitos públicos. Si tienes foto de perfil, también se ve en tu perfil público. Las fotos de prueba de tus hábitos nunca se muestran. Tampoco se muestran tu fecha de nacimiento ni tu correo.",
+        "Tu perfil público, la página con tu @usuario, muestra tu nombre, tu @usuario y la racha de tus hábitos públicos. También muestra tu avatar: tu foto de perfil si subiste una o, si no, el gatito que elegiste. Las fotos de prueba de tus hábitos nunca se muestran. Tampoco se muestran tu fecha de nacimiento ni tu correo.",
         "Para retirar un hábito del perfil público, cambia su visibilidad a Amigos o Solo yo desde su detalle. Si no tienes hábitos públicos, tu perfil queda sin contenido.",
       ],
     },

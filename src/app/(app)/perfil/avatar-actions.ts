@@ -26,15 +26,21 @@ export async function setAvatarPreset(preset: number): Promise<Result> {
   return { ok: true };
 }
 
-/** Removes the uploaded photo (service role, like the upload) so the preset shows again. */
+/**
+ * Removes the uploaded photo (service role, like the upload) so the preset shows again. The
+ * bucket is public with a predictable path, so the FILE goes first: if that fails nothing
+ * changed and "Quitar foto" stays to retry. Removing an already missing file is not an error,
+ * so a retry after a failed pointer update also works.
+ */
 export async function removeAvatar(): Promise<Result> {
+  const failed: Result = { ok: false, error: "No pudimos quitar la foto. Inténtalo de nuevo." };
   const { uid } = await currentUserId();
   if (!uid) return { ok: false, error: LOGIN };
   const admin = createAdminClient();
-  // clear the pointer first: a leftover file in the bucket is harmless, a dangling pointer is not
+  const { error: storageError } = await admin.storage.from("avatars").remove([`${uid}.jpg`]);
+  if (storageError) return failed;
   const { error } = await admin.from("profiles").update({ avatar_path: null, avatar_updated_at: null }).eq("id", uid);
-  if (error) return { ok: false, error: "No pudimos quitar la foto. Inténtalo de nuevo." };
-  await admin.storage.from("avatars").remove([`${uid}.jpg`]);
+  if (error) return failed;
   revalidatePath("/", "layout");
   return { ok: true };
 }
