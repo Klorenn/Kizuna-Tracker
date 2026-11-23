@@ -243,10 +243,8 @@ export function MonthCalendar({
     }
   }
 
-  const closeSheet = useCallback((date: LocalDate) => {
-    setSelected(null);
-    buttons.current.get(date)?.focus();
-  }, []);
+  // Sheet restores focus to the tapped day cell on close.
+  const closeSheet = useCallback(() => setSelected(null), []);
 
   function cell(date: LocalDate, inMonth: boolean) {
     const n = Number(date.slice(8));

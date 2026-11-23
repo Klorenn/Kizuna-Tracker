@@ -2,7 +2,7 @@
 
 import { CheckCircle, CircleHalf, Clock, ImageBroken, MinusCircle, WarningCircle } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
-import { useCallback, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import { Sheet } from "@/components/ui/Sheet";
 import { HabitIcon } from "@/components/habit-icon";
 import { dayHeading } from "@/domain/calendar";
@@ -17,12 +17,11 @@ export type CalendarHabitView = { id: string; name: string; color: HabitColor; i
 
 const FOCUSABLE = 'a[href], button:not([disabled]), [tabindex]:not([tabindex="-1"])';
 
-/** Moves focus into the sheet's dialog and keeps Tab inside it while it is open. */
-function useDialogFocus(ref: React.RefObject<HTMLElement | null>) {
+/** Keeps Tab inside the dialog while it is open. Sheet already moves focus in on open and restores it on close. */
+function useTabTrap(ref: React.RefObject<HTMLElement | null>) {
   useEffect(() => {
     const dialog = ref.current?.closest<HTMLElement>('[role="dialog"]');
     if (!dialog) return;
-    dialog.querySelector<HTMLElement>(FOCUSABLE)?.focus();
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Tab") return;
       const items = [...dialog.querySelectorAll<HTMLElement>(FOCUSABLE)];
@@ -123,11 +122,10 @@ export function DaySheet({
   habits: CalendarHabitView[];
   /** Habit detail page: one habit, no need to repeat its name as a list. */
   single: boolean;
-  onClose: (date: LocalDate) => void;
+  onClose: () => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  useDialogFocus(ref);
-  const close = useCallback(() => onClose(date), [date, onClose]);
+  useTabTrap(ref);
   const byId = new Map(habits.map((h) => [h.id, h]));
   const records = hasRecords(entries);
   const shown = records ? entries : [];
@@ -135,7 +133,7 @@ export function DaySheet({
   const title = dayHeading(date, today);
 
   return (
-    <Sheet open title={title} onClose={close}>
+    <Sheet open title={title} onClose={onClose}>
       <div ref={ref} className="-mx-5 max-h-[min(62dvh,560px)] overflow-y-auto px-5">
         {records ? (
           <ul className="flex flex-col divide-y divide-line">
