@@ -284,7 +284,7 @@ describe("timeouts and the overall deadline", () => {
     expect(TOKEN_TIMEOUT_MS).toBe(10_000);
     expect(timeoutFor(`${URL_OK}/auth/v1/token?grant_type=refresh_token`)).toBe(10_000);
     expect(timeoutFor(new URL(`${URL_OK}/auth/v1/token?grant_type=refresh_token`))).toBe(10_000);
-    expect(timeoutFor(`${URL_OK}/auth/v1/user`)).toBe(3000);
+    expect(timeoutFor(`${URL_OK}/auth/v1/user`)).toBe(5000);
     expect(timeoutFor(`${URL_OK}/rest/v1/profiles?select=id`)).toBe(3000);
   });
 
@@ -322,7 +322,7 @@ describe("timeouts and the overall deadline", () => {
     expect(loggedOut(f)).toBe(false);
   });
 
-  it("overall deadline (12 s): signed-out rules on a clean response, cookies untouched, no sign-out", async () => {
+  it("overall deadline (12 s) with session cookies: 503 on protected paths, the page loads on public ones, no sign-out", async () => {
     setEnv(GOOD);
     vi.useFakeTimers();
     const f = vi.fn(() => new Promise<Response>(() => {})); // never answers
@@ -336,7 +336,8 @@ describe("timeouts and the overall deadline", () => {
     expect(settled).toBe(false);
     await vi.advanceTimersByTimeAsync(1);
     const a = await protectedRes;
-    expect(location(a)).toBe("/login");
+    expect(a.status).toBe(503);
+    expect(a.headers.get("location")).toBeNull();
     expect(a.headers.get("set-cookie")).toBeNull();
     const b = await publicRes;
     expect(b.headers.get("location")).toBeNull();

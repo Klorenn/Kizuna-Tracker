@@ -6,14 +6,27 @@ import { supabasePublicConfig, supabasePublicKey, supabaseUrl } from "./env";
 import { shouldSignOut } from "./profile-gate";
 import { isPublicPath, safeNextPath } from "./public-paths";
 
-/** Every auth and REST call fails fast: a hanging Supabase must not become a 504. */
-export const FETCH_TIMEOUT_MS = 3000;
-/**
- * The token endpoint rotates the refresh token: aborting it mid-flight can sign the person out
- * for good, so it gets a long timeout instead of the short one.
+/*
+ * Time budgets (a hanging Supabase must not become a 504, and a slow one must not log anyone out):
+ *  - REST (the profile query): 3 s, no retries.
+ *  - Auth calls (/auth/v1/user, JWKS, logout): 5 s. With the legacy HS256 secret every request
+ *    asks /auth/v1/user, so this is the latency Auth may have before protected pages answer 503.
+ *  - /auth/v1/token: 10 s, never the short one: it rotates the refresh token, and aborting it
+ *    mid-flight can sign the person out for good.
+ *  - The whole middleware: 12 s, then everything in flight is aborted.
+ * Worst-case wall time per scenario:
+ *  - signed out, no cookies: no network call, instant.
+ *  - valid HS256 session: /user <= 5 s + profile <= 3 s = 8 s.
+ *  - valid asymmetric session: JWKS <= 5 s (cold isolate only) + profile <= 3 s = 8 s.
+ *  - expired token, refresh slow but answering: /token <= 10 s + /user <= 5 s = 15 s, cut at the
+ *    12 s deadline (503 with whatever cookies were already set).
+ *  - Auth down with an expired token: auth-js keeps retrying the refresh (0.2, 0.4, 0.8 ... s);
+ *    the 12 s deadline ends it with a 503.
  */
+export const FETCH_TIMEOUT_MS = 3000;
+export const AUTH_TIMEOUT_MS = 5000;
 export const TOKEN_TIMEOUT_MS = 10_000;
-/** The whole middleware: after this the signed-out rules apply, with cookies untouched. */
+/** The whole middleware: after this the answer is a 503 (session cookies) or the signed-out rules. */
 export const DEADLINE_MS = 12_000;
 
 let warned = false; // log the configuration problem once per process, not per request
@@ -21,8 +34,30 @@ let warned = false; // log the configuration problem once per process, not per r
 const AUTH_PAGES = ["/bienvenida", "/login", "/registro"];
 
 export function timeoutFor(input: RequestInfo | URL): number {
-  const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
-  return url.includes("/auth/v1/token") ? TOKEN_TIMEOUT_MS : FETCH_TIMEOUT_MS;
+  const raw = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+  let pathname: string;
+  try {
+    pathname = new URL(raw).pathname;
+  } catch {
+    return FETCH_TIMEOUT_MS;
+  }
+  if (pathname === "/auth/v1/token") return TOKEN_TIMEOUT_MS;
+  if (pathname.startsWith("/auth/v1/")) return AUTH_TIMEOUT_MS;
+  return FETCH_TIMEOUT_MS;
+}
+
+/** Aborts when any of the signals does (AbortSignal.any where the runtime has it). */
+function anySignal(signals: AbortSignal[]): AbortSignal {
+  if (typeof AbortSignal.any === "function") return AbortSignal.any(signals);
+  const c = new AbortController();
+  for (const s of signals) {
+    if (s.aborted) {
+      c.abort(s.reason);
+      break;
+    }
+    s.addEventListener("abort", () => c.abort(s.reason), { once: true });
+  }
+  return c.signal;
 }
 
 function redirectTo(
@@ -41,9 +76,13 @@ function redirectTo(
 
 const RETRY_PAGE = `<!doctype html><html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="color-scheme" content="light dark"><title>Kizuna</title></head><body style="margin:0;min-height:100dvh;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:16px;padding:0 20px;text-align:center;font-family:system-ui,sans-serif"><p style="max-width:28rem;margin:0">Algo salió mal. Inténtalo de nuevo en unos minutos.</p><a href="" style="text-decoration:underline">Reintentar</a></body></html>`;
 
-/** Lightweight "try again" answer: the person stays signed in (no redirect, no cookie changes). */
-function retryResponse() {
-  return new NextResponse(RETRY_PAGE, {
+/**
+ * Lightweight "try again" answer: the person stays signed in (no redirect, no sign-out). It still
+ * carries the cookies the Supabase client set during this request, so a refresh that already
+ * succeeded is not lost (the next try would rotate the refresh token again).
+ */
+function retryResponse(from: NextResponse) {
+  const res = new NextResponse(RETRY_PAGE, {
     status: 503,
     headers: {
       "content-type": "text/html; charset=utf-8",
@@ -51,6 +90,8 @@ function retryResponse() {
       "cache-control": "no-store",
     },
   });
+  from.cookies.getAll().forEach((c) => res.cookies.set(c));
+  return res;
 }
 
 function applyDecision(
@@ -61,43 +102,63 @@ function applyDecision(
   if (decision.kind === "redirect") {
     return redirectTo(request, decision.to, response, decision.search);
   }
-  if (decision.kind === "unavailable") return retryResponse();
+  if (decision.kind === "unavailable") return retryResponse(response);
   return response;
 }
 
-/** Auth could not answer (network, timeout, 5xx), as opposed to answering "no". */
+/**
+ * Auth could not answer. auth-js wraps every real network failure, timeout and 5xx as
+ * AuthRetryableFetchError; a raw TypeError or the like is bad data (a malformed cookie), which
+ * is "signed out", not an outage.
+ */
 function isTransient(e: unknown): boolean {
   if (!e || typeof e !== "object") return false;
   const { name, status } = e as { name?: string; status?: number };
-  if (name === "AbortError" || name === "TimeoutError" || name === "TypeError") return true;
   if (name === "AuthRetryableFetchError") return true;
-  return typeof status === "number" && (status === 0 || status >= 500);
+  return typeof status === "number" && status >= 500;
 }
 
-const hasSessionCookie = (request: NextRequest) =>
-  request.cookies.getAll().some((c) => /^sb-.+-auth-token/.test(c.name));
+/** The session cookie by name, chunks (.0, .1 ...) included; not the PKCE code verifier. */
+export function hasSessionCookie(request: NextRequest): boolean {
+  return request.cookies.getAll().some((c) => /^sb-[^.]+-auth-token(\.\d+)?$/.test(c.name));
+}
 
 export async function updateSession(request: NextRequest): Promise<NextResponse> {
+  // Shared with run(): setAll replaces .response, so the deadline path always sees the latest cookies.
+  const state = { response: NextResponse.next({ request }) };
+  const abort = new AbortController();
   let timer: ReturnType<typeof setTimeout> | undefined;
   const deadline = new Promise<"deadline">((resolve) => {
     timer = setTimeout(() => resolve("deadline"), DEADLINE_MS);
   });
   try {
-    const result = await Promise.race([run(request), deadline]);
+    const work = run(request, state, abort.signal);
+    work.catch(() => {}); // after the deadline nobody awaits it
+    const result = await Promise.race([work, deadline]);
     if (result !== "deadline") return result;
-    // Too slow: signed-out rules on a clean response, so no half-written cookies leak out.
+    abort.abort(new DOMException("middleware deadline", "TimeoutError"));
     return applyDecision(
       request,
-      decideAccess({ path: request.nextUrl.pathname, configPresent: true, user: null, authError: true }),
-      NextResponse.next({ request }),
+      decideAccess({
+        path: request.nextUrl.pathname,
+        configPresent: true,
+        user: null,
+        authError: true,
+        // someone with a session is not "signed out" just because Supabase was slow
+        unavailable: hasSessionCookie(request),
+      }),
+      state.response,
     );
   } finally {
     clearTimeout(timer);
   }
 }
 
-async function run(request: NextRequest): Promise<NextResponse> {
-  let response = NextResponse.next({ request });
+async function run(
+  request: NextRequest,
+  state: { response: NextResponse },
+  deadlineSignal: AbortSignal,
+): Promise<NextResponse> {
   const path = request.nextUrl.pathname;
   const config = supabasePublicConfig();
 
@@ -107,15 +168,18 @@ async function run(request: NextRequest): Promise<NextResponse> {
       supabase = createServerClient<Database>(config.url, config.key, {
         global: {
           fetch: (input, init) =>
-            fetch(input, { ...init, signal: AbortSignal.timeout(timeoutFor(input)) }),
+            fetch(input, {
+              ...init,
+              signal: anySignal([AbortSignal.timeout(timeoutFor(input)), deadlineSignal]),
+            }),
         },
         cookies: {
           getAll: () => request.cookies.getAll(),
           setAll(list) {
             list.forEach(({ name, value }) => request.cookies.set(name, value));
-            response = NextResponse.next({ request });
+            state.response = NextResponse.next({ request });
             list.forEach(({ name, value, options }) =>
-              response.cookies.set(name, value, options),
+              state.response.cookies.set(name, value, options),
             );
           },
         },
@@ -137,14 +201,14 @@ async function run(request: NextRequest): Promise<NextResponse> {
     return applyDecision(
       request,
       decideAccess({ path, configPresent: false, user: null, authError: false }),
-      response,
+      state.response,
     );
   }
 
   // getClaims verifies the JWT locally against the cached JWKS (asymmetric keys; with the legacy
   // HS256 secret it makes the same /auth/v1/user call getUser() made) and refreshes an expired
   // session through the cookie adapter above. auth-js rethrows what is not an AuthError (a
-  // malformed token, an unknown alg, a network failure): none of it may become a 500.
+  // malformed token, an unknown alg): none of it may become a 500.
   let user: { id: string } | null = null;
   let authError = false;
   let unavailable = false;
@@ -157,8 +221,7 @@ async function run(request: NextRequest): Promise<NextResponse> {
       unavailable = hasSessionCookie(request) && isTransient(error);
     }
   } catch (e) {
-    // Signed-out rules, cookies untouched. A network failure while a session exists is not
-    // "signed out": answer "try again" instead of bouncing the person to /login.
+    // Signed-out rules, cookies untouched. Only a real outage with a session is "try again".
     authError = true;
     unavailable = hasSessionCookie(request) && isTransient(e);
   }
@@ -171,7 +234,7 @@ async function run(request: NextRequest): Promise<NextResponse> {
     unavailable,
   });
   if (decision.kind !== "continue" || !user) {
-    return applyDecision(request, decision, response);
+    return applyDecision(request, decision, state.response);
   }
 
   const isPublic = isPublicPath(path);
@@ -179,7 +242,7 @@ async function run(request: NextRequest): Promise<NextResponse> {
   const isInvite = path.startsWith("/invite/");
 
   // Signed in: public pages other than the auth pages and invites need no profile.
-  if (isPublic && !isAuthPage && !isInvite) return response;
+  if (isPublic && !isAuthPage && !isInvite) return state.response;
 
   // No automatic retries here: a slow database must cost one 3 s attempt, not several.
   const { data: profile, error: profileError } = await supabase
@@ -191,14 +254,14 @@ async function run(request: NextRequest): Promise<NextResponse> {
     .maybeSingle();
 
   // A failed query (outage, timeout) must not log the user out: let the request through.
-  if (profileError) return response;
+  if (profileError) return state.response;
   if (shouldSignOut({ data: profile, error: profileError })) {
     await supabase.auth.signOut();
-    return redirectTo(request, "/login", response, "?error=perfil");
+    return redirectTo(request, "/login", state.response, "?error=perfil");
   }
   if (isAuthPage) {
     const next = safeNextPath(request.nextUrl.searchParams.get("next"));
-    return redirectTo(request, next, response);
+    return redirectTo(request, next, state.response);
   }
-  return response;
+  return state.response;
 }
