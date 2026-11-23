@@ -44,3 +44,10 @@ export function parseNewChallengeParams(params: URLSearchParams): { habitId: str
   const habitId = params.get('habito')
   return habitId ? { habitId, habitLocked: true } : { habitId: null, habitLocked: false }
 }
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** `/retos/nuevo?amigo=<id>` (from a friend's profile): the friend to preselect, uuid only. */
+export function parseRivalParam(value: unknown): string | null {
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null
+}

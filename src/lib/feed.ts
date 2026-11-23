@@ -1,0 +1,154 @@
+import { addDays } from '@/domain/dates'
+import { dailyStreak, weeklyStreak } from '@/domain/streaks'
+import type { Frequency, LocalDate } from '@/domain/types'
+
+const MONTHS = ['ene', 'feb', 'mar', 'abr', 'may', 'jun', 'jul', 'ago', 'sep', 'oct', 'nov', 'dic']
+const WEEKDAYS = ['dom', 'lun', 'mar', 'mié', 'jue', 'vie', 'sáb']
+
+/**
+ * Day section label of the activity feed, relative to the viewer's today. The check-in's
+ * `local_date` is the owner's local date as stored. Rendered in a mono caps label (CSS uppercase).
+ */
+export function feedDayLabel(date: LocalDate, today: LocalDate): string {
+  if (date === today) return 'Hoy'
+  if (date === addDays(today, -1)) return 'Ayer'
+  const [y, m, d] = date.split('-').map(Number)
+  const weekday = WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]
+  const year = date.slice(0, 4) === today.slice(0, 4) ? '' : ` ${y}`
+  return `${weekday} ${d} ${MONTHS[m - 1]}${year}`
+}
+
+export type DayGroup<T> = { date: LocalDate; label: string; items: T[]; continued: boolean }
+
+/**
+ * Consecutive items of the same day form a group (input is already newest first). `continuesFrom`
+ * is the last day of the previous page: a page that starts on that day does not repeat its label.
+ */
+export function groupByDay<T extends { localDate: LocalDate }>(
+  items: T[],
+  today: LocalDate,
+  continuesFrom: LocalDate | null = null,
+): DayGroup<T>[] {
+  const groups: DayGroup<T>[] = []
+  for (const item of items) {
+    const last = groups[groups.length - 1]
+    if (last && last.date === item.localDate) {
+      last.items.push(item)
+      continue
+    }
+    groups.push({
+      date: item.localDate,
+      label: feedDayLabel(item.localDate, today),
+      items: [item],
+      continued: groups.length === 0 && continuesFrom === item.localDate,
+    })
+  }
+  return groups
+}
+
+export type CheckinKind = { kind: 'done' } | { kind: 'photo' } | { kind: 'items'; done: number; total: number }
+
+/** What happened, in plain words. */
+export function actionCopy(habit: string, k: CheckinKind): string {
+  if (k.kind === 'photo') return `Subió su foto de ${habit}`
+  if (k.kind === 'items') return `${habit} · ${k.done} de ${k.total}`
+  return `Completó ${habit}`
+}
+
+export const MILESTONES = [7, 14, 21, 30, 50, 100] as const
+export const isMilestone = (n: number) => (MILESTONES as readonly number[]).includes(n)
+
+/** Days of history read before the oldest feed item, enough to reach the highest milestone. */
+export const STREAK_LOOKBACK_DAYS = 100
+
+/**
+ * Streak as of the check-in's day (later check-ins ignored). Daily habits are worth a line from
+ * 3 days and a milestone chip at 7, 14, 21, 30, 50 and 100; weekly ones from 2 weeks.
+ */
+export function streakContext(
+  dates: LocalDate[],
+  at: LocalDate,
+  frequency: Frequency,
+): { text: string; milestone: boolean } | null {
+  const upTo = dates.filter((d) => d <= at)
+  if (frequency.type === 'weekly') {
+    const n = weeklyStreak(upTo, frequency.target, at)
+    return n >= 2 ? { text: `Racha de ${n} semanas`, milestone: false } : null
+  }
+  const n = dailyStreak(upTo, at)
+  return n >= 3 ? { text: `Racha de ${n} días`, milestone: isMilestone(n) } : null
+}
+
+const REVIEW_WINDOW_MS = 24 * 3_600_000
+
+type ReviewCheckin = {
+  user_id: string
+  habit_id: string
+  local_date: LocalDate
+  created_at: string
+  photo_path: string | null
+  rejected_at: string | null
+  rejected_by: string | null
+}
+type ReviewChallenge = {
+  id: string
+  creator_id: string
+  rival_id: string
+  creator_habit_id: string
+  rival_habit_id: string | null
+  status: string
+  requires_photo: boolean
+  starts_on: string | null
+  weeks: number
+}
+
+export type ReviewStatus =
+  | { kind: 'rejected'; byMe: boolean }
+  | { kind: 'pending'; hours: number; challengeId: string }
+  | null
+
+/**
+ * Status chip of a check-in for this viewer. "Se aprueba sola en N h" only when the viewer can
+ * still reject the photo (mirror of reject_checkin: active photo challenge, viewer is the owner's
+ * rival on that habit, inside the challenge dates, under 24 h old).
+ */
+export function reviewStatus(
+  k: ReviewCheckin,
+  me: string,
+  challenges: ReviewChallenge[],
+  now: Date,
+): ReviewStatus {
+  if (k.rejected_at) return { kind: 'rejected', byMe: k.rejected_by === me }
+  if (!k.photo_path || k.user_id === me) return null
+  const left = new Date(k.created_at).getTime() + REVIEW_WINDOW_MS - now.getTime()
+  if (!(left > 0)) return null
+  const c = challenges.find(
+    (c) =>
+      c.status === 'active' &&
+      c.requires_photo &&
+      c.starts_on !== null &&
+      ((c.creator_id === me && c.rival_id === k.user_id && c.rival_habit_id === k.habit_id) ||
+        (c.rival_id === me && c.creator_id === k.user_id && c.creator_habit_id === k.habit_id)) &&
+      k.local_date >= c.starts_on &&
+      k.local_date <= addDays(c.starts_on, c.weeks * 7 - 1),
+  )
+  return c ? { kind: 'pending', hours: Math.ceil(left / 3_600_000), challengeId: c.id } : null
+}
+
+/** Keyset cursor (created_at, id) of the last item shown. */
+export type FeedCursor = { at: string; id: string }
+
+const ISO = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,6})?(Z|[+-]\d{2}:\d{2})$/
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** Cursors come back from the client: strict shapes only (they end up in a PostgREST filter). */
+export function parseCursor(value: unknown): FeedCursor | null {
+  if (!value || typeof value !== 'object') return null
+  const { at, id } = value as Record<string, unknown>
+  if (typeof at !== 'string' || typeof id !== 'string') return null
+  if (!ISO.test(at) || Number.isNaN(Date.parse(at)) || !UUID.test(id)) return null
+  return { at, id }
+}
+
+export type FeedFilter = 'all' | 'photos'
+export const parseFilter = (value: unknown): FeedFilter => (value === 'photos' ? 'photos' : 'all')
