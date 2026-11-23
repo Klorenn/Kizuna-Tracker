@@ -1,11 +1,12 @@
 "use client";
 
-import { useMemo, useState, useTransition } from "react";
+import { useEffect, useMemo, useState, useTransition } from "react";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
 import { Sheet } from "@/components/ui/Sheet";
 import { Warning } from "@phosphor-icons/react/dist/ssr";
 import { formatAmount, progressLabel, type QuantityConfig } from "@/domain/quantity";
+import { holdCelebrations } from "@/lib/celebration-bus";
 import { parseTypedAmountResult } from "@/lib/quantity-queue";
 
 /** One sum of today. `saved` is false while it waits for the server (no "Quitar" until then). */
@@ -25,19 +26,7 @@ export type QuantityEntryView = { id: string; amount: number; at: string; saved:
  * - messages: optional notices (a refused sum, offline, pending count) shown inside the sheet, because
  *   the page's own notices sit under the sheet's overlay.
  */
-export function QuantitySheet({
-  open,
-  onClose,
-  config,
-  total,
-  entries,
-  timeZone,
-  onAdd,
-  onRemove,
-  messages = [],
-}: {
-  open: boolean;
-  onClose: () => void;
+type PanelProps = {
   config: QuantityConfig;
   total: number;
   entries: QuantityEntryView[];
@@ -45,7 +34,21 @@ export function QuantitySheet({
   onAdd: (amount: number) => void;
   onRemove: (entryId: string) => Promise<void> | void;
   messages?: string[];
-}) {
+};
+
+export function QuantitySheet({ open, onClose, ...panel }: PanelProps & { open: boolean; onClose: () => void }) {
+  // While this sheet is open Hoy must not open a celebration on top of it (one sheet at a time),
+  // even if a refresh lands underneath: the same hold the other sheets use.
+  useEffect(() => (open ? holdCelebrations() : undefined), [open]);
+  return (
+    <Sheet open={open} title="Cantidad de hoy" onClose={onClose} tall>
+      <QuantityPanel {...panel} />
+    </Sheet>
+  );
+}
+
+/** The content of the sheet. `touch-manipulation` on every button: a fast second tap is not a zoom. */
+export function QuantityPanel({ config, total, entries, timeZone, onAdd, onRemove, messages = [] }: PanelProps) {
   const [raw, setRaw] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
@@ -76,7 +79,7 @@ export function QuantitySheet({
   const remove = (id: string) => startTransition(async () => void (await onRemove(id)));
 
   return (
-    <Sheet open={open} title="Cantidad de hoy" onClose={onClose} tall>
+    <>
       <p className="font-mono text-body font-medium text-ink" aria-live="polite">
         {progressLabel(total, config)}
       </p>
@@ -108,7 +111,7 @@ export function QuantitySheet({
           }}
           error={error}
         />
-        <Button type="submit">
+        <Button type="submit" className="touch-manipulation">
           Sumar
         </Button>
       </form>
@@ -128,7 +131,7 @@ export function QuantitySheet({
                   type="button"
                   disabled={pending}
                   onClick={() => remove(e.id)}
-                  className="inline-flex h-11 min-w-11 items-center justify-center rounded-md px-3 text-small font-medium text-accent hover:bg-accent-soft disabled:text-muted"
+                  className="inline-flex h-11 min-w-11 touch-manipulation items-center justify-center rounded-md px-3 text-small font-medium text-accent hover:bg-accent-soft disabled:text-muted"
                 >
                   Quitar
                 </button>
@@ -139,10 +142,10 @@ export function QuantitySheet({
       )}
 
       {last ? (
-        <Button variant="secondary" disabled={pending} onClick={() => remove(last.id)}>
+        <Button variant="secondary" className="touch-manipulation" disabled={pending} onClick={() => remove(last.id)}>
           Deshacer la última
         </Button>
       ) : null}
-    </Sheet>
+    </>
   );
 }

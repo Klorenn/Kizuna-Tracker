@@ -92,11 +92,8 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await expect(add).toBeVisible();
   await noScroll(page);
 
-  // a very fast double tap is two sums (not one, not three). Two back-to-back clicks: Playwright's
-  // dblclick fires both in the same instant, which no finger does (see the task report)
-  // TODO(double-tap): the real `dblclick` e2e comes with the QuantityControl fix (see the review, I3)
-  await add.click();
-  await add.click();
+  // a very fast double click is two sums (not one, not three); the touch double tap is its own test below
+  await add.dblclick();
   await expect(page.getByText("2 de 8 vasos")).toBeVisible();
   await page.reload();
   await expect(page.getByText("2 de 8 vasos")).toBeVisible();
@@ -152,6 +149,51 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await expect(page).toHaveURL(new RegExp(`/habitos/${habitId}$`));
   const { data: saved } = await admin().from("habits").select("quantity_target").eq("id", habitId).single();
   expect(Number(saved!.quantity_target)).toBe(2500);
+});
+
+const WALKS = { quantity_unit: "times", quantity_target: 4, quantity_step: 1, quantity_display: "base" };
+
+test.describe("touch", () => {
+  test.use({ hasTouch: true });
+
+  test("quantity: a fast touch double tap is two sums", async ({ page }) => {
+    test.setTimeout(90_000);
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    const u = await makeUser("toque", "Lu");
+    await addHabit(u, "Paseos", "sneaker-move", "quantity", WALKS);
+    await logIn(page, u.email, PASSWORD);
+    await expect(page.getByText("0 de 4 veces")).toBeVisible();
+    const add = page.getByRole("button", { name: /^Sumar 1/ });
+    const box = (await add.boundingBox())!;
+    const x = box.x + box.width / 2;
+    const y = box.y + box.height / 2;
+    await page.touchscreen.tap(x, y);
+    await page.waitForTimeout(30);
+    await page.touchscreen.tap(x, y);
+    await expect(page.getByText("2 de 4 veces")).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("2 de 4 veces")).toBeVisible();
+  });
+});
+
+test("quantity: no celebration opens on top of the quantity sheet", async ({ page }) => {
+  test.setTimeout(90_000);
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  const u = await makeUser("pausa", "Lu");
+  await addHabit(u, "Paseos", "sneaker-move", "quantity", { ...WALKS, quantity_target: 1 });
+  await logIn(page, u.email, PASSWORD);
+  await page.getByRole("button", { name: "Más opciones de cantidad" }).click();
+  const sheet = page.getByRole("dialog", { name: "Cantidad de hoy" });
+  await sheet.getByLabel(/^Otra cantidad/).fill("1");
+  await sheet.getByRole("button", { name: "Sumar", exact: true }).click();
+  // the sum reaches the server and Hoy refreshes underneath: the day is complete, but the sheet stays alone
+  await expect(sheet.getByText("guardando")).toHaveCount(0);
+  await page.waitForTimeout(1500);
+  await expect(page.getByRole("dialog", { name: "Día completo" })).toHaveCount(0);
+  await expect(sheet).toBeVisible();
+  // closing it lets the celebration open
+  await sheet.getByRole("button", { name: "Cerrar" }).first().click();
+  await expect(page.getByRole("dialog", { name: "Día completo" })).toBeVisible();
 });
 
 test("time: Estudiar asks how long, then adds more; the Pomodoro screen leaves its strip on Hoy", async ({ page }) => {

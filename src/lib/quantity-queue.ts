@@ -37,6 +37,17 @@ export type QueueEvent =
   /** The last pending tap was answered. */
   | { kind: "drained" };
 
+/**
+ * The connectivity line of one habit's control after a queue event: shown by an offline event of
+ * that habit, cleared by any answer from the server for it (accepted or refused) and when the queue
+ * drains, left alone by events of other habits.
+ */
+export function offlineAfter(current: string | null, e: QueueEvent, habitId: string): string | null {
+  if (e.kind === "drained") return null;
+  if (e.sum.habitId !== habitId) return current;
+  return e.kind === "offline" ? e.error : null;
+}
+
 export type QuantityNotice = { habitId: string; entryId: string; error: string };
 
 export type QuantityQueue = {

@@ -3,6 +3,7 @@
 import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react/dist/ssr";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createQuickAddPress } from "@/lib/quick-add-press";
 import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import type { HabitColor } from "@/domain/habit-colors";
@@ -10,6 +11,7 @@ import { formatAmount, progressLabel, stepAmount, type QuantityConfig } from "@/
 import {
   doneAfterSync,
   goalMet,
+  offlineAfter,
   QUANTITY_MESSAGES,
   sharedQuantityQueue,
   type QuantityQueue,
@@ -193,19 +195,20 @@ export function QuantityControl({
     };
     showNotices(); // refusals that arrived while this control was not mounted
     return q.subscribe((e: QueueEvent) => {
+      // the line clears on any answer (accepted or refused) and when the queue drains
+      setOffline((current) => offlineAfter(current, e, habitId));
       if (e.kind === "drained") {
         refreshIfIdle();
         return;
       }
       if (e.sum.habitId !== habitId) return;
-      if (e.kind === "offline") {
-        setOffline(e.error);
-      } else if (e.result.ok) {
-        setServerDone(e.result.done);
-        setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
-        setOffline(null);
-      } else {
-        showNotices();
+      if (e.kind === "settled") {
+        if (e.result.ok) {
+          setServerDone(e.result.done);
+          setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
+        } else {
+          showNotices();
+        }
       }
       readView(q);
     });
@@ -255,16 +258,19 @@ export function QuantityControl({
     refreshIfIdle();
   }, [refreshIfIdle]);
 
-  // Press and hold 500 ms opens the sheet; the click that follows a long press adds nothing.
-  const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
-  const cancelHold = () => {
-    if (hold.current.timer) clearTimeout(hold.current.timer);
-    hold.current.timer = null;
-  };
-  useEffect(() => cancelHold, []);
-
   const step = stepAmount(config);
   const stepText = formatAmount(step, config);
+
+  // Press and hold 500 ms opens the sheet; the click that follows a long press adds nothing. Every
+  // other click is one sum, so a fast double tap is two.
+  const latest = useRef({ add: () => {}, openSheet: () => {} });
+  useEffect(() => {
+    latest.current = { add: () => add(step), openSheet: () => setSheetOpen(true) };
+  });
+  const [press] = useState(() =>
+    createQuickAddPress({ add: () => latest.current.add(), openSheet: () => latest.current.openSheet() }),
+  );
+  useEffect(() => press.cancel, [press]);
 
   return (
     <div className="flex flex-col gap-3">
@@ -283,27 +289,14 @@ export function QuantityControl({
         <button
           type="button"
           aria-label={`Sumar ${stepText}`}
-          onPointerDown={() => {
-            hold.current.fired = false;
-            cancelHold();
-            hold.current.timer = setTimeout(() => {
-              hold.current.fired = true;
-              hold.current.timer = null;
-              setSheetOpen(true);
-            }, 500);
-          }}
-          onPointerUp={cancelHold}
-          onPointerLeave={cancelHold}
-          onPointerCancel={cancelHold}
+          onPointerDown={press.onPointerDown}
+          onPointerUp={press.cancel}
+          onPointerLeave={press.cancel}
+          onPointerCancel={press.cancel}
           onContextMenu={(e) => e.preventDefault()}
-          onClick={() => {
-            if (hold.current.fired) {
-              hold.current.fired = false;
-              return;
-            }
-            add(step);
-          }}
-          className="inline-flex h-11 min-w-0 flex-1 select-none items-center justify-center gap-1 rounded-md bg-accent px-3 font-mono text-small font-medium text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover active:scale-[0.98] motion-reduce:active:scale-100"
+          onClick={press.onClick}
+          // touch-manipulation: a fast second tap must not be read as a double-tap zoom
+          className="inline-flex h-11 min-w-0 flex-1 touch-manipulation select-none items-center justify-center gap-1 rounded-md bg-accent px-3 font-mono text-small font-medium text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover active:scale-[0.98] motion-reduce:active:scale-100"
         >
           +{stepText}
         </button>
@@ -311,7 +304,7 @@ export function QuantityControl({
           type="button"
           aria-label="Más opciones de cantidad"
           onClick={() => setSheetOpen(true)}
-          className="inline-flex size-11 shrink-0 items-center justify-center rounded-md border border-outline-strong text-ink transition-colors duration-[120ms] hover:bg-field"
+          className="inline-flex size-11 shrink-0 touch-manipulation items-center justify-center rounded-md border border-outline-strong text-ink transition-colors duration-[120ms] hover:bg-field"
         >
           <DotsThree size={24} weight="light" aria-hidden />
         </button>

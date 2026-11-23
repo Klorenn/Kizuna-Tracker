@@ -5,6 +5,7 @@ import {
   createQuantityQueue,
   goalMet,
   newEntryId,
+  offlineAfter,
   parseTypedAmount,
   parseTypedAmountResult,
   doneAfterSync,
@@ -181,6 +182,49 @@ describe('burst with a rejection', () => {
     expect(refused).toHaveLength(1)
     expect(refused[0]).toMatchObject({ sum: { entryId: 'q2' }, result: { error: 'Es demasiado para un día.' } })
     expect(events.at(-1)).toEqual({ kind: 'drained' })
+  })
+})
+
+describe('offlineAfter (the offline line of a control)', () => {
+  const sum = (habitId: string) => ({ entryId: 'e1', habitId, amount: 250 })
+  const LINE = 'Sin conexión.'
+
+  it('an offline event of this habit shows its line', () => {
+    expect(offlineAfter(null, { kind: 'offline', sum: sum('h1'), error: LINE }, 'h1')).toBe(LINE)
+  })
+
+  it('any settled event of this habit clears it: accepted or refused by the server', () => {
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h1'), result: OK(250) }, 'h1')).toBeNull()
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h1'), result: NO('Es demasiado.') }, 'h1')).toBeNull()
+  })
+
+  it('the queue draining clears it', () => {
+    expect(offlineAfter(LINE, { kind: 'drained' }, 'h1')).toBeNull()
+  })
+
+  it('events of another habit leave it alone', () => {
+    expect(offlineAfter(LINE, { kind: 'offline', sum: sum('h2'), error: 'otra' }, 'h1')).toBe(LINE)
+    expect(offlineAfter(LINE, { kind: 'settled', sum: sum('h2'), result: OK(1) }, 'h1')).toBe(LINE)
+  })
+
+  it('a retried tap that ends in a refusal clears the line the queue showed (end to end)', async () => {
+    vi.useFakeTimers()
+    try {
+      const send = vi.fn<Send>().mockResolvedValueOnce(NET).mockResolvedValue(NO('Es demasiado para un día.'))
+      const q = createQuantityQueue(send, ids)
+      let line: string | null = null
+      q.subscribe((e) => {
+        line = offlineAfter(line, e, 'h1')
+      })
+      q.add('h1', 250)
+      await vi.advanceTimersByTimeAsync(0)
+      expect(line).toBe('Sin conexión.')
+      await vi.advanceTimersByTimeAsync(1000)
+      expect(line).toBeNull()
+      expect(q.pending()).toEqual([])
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 
