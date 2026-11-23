@@ -2,8 +2,9 @@
 
 import { getISOWeek } from "date-fns";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis } from "recharts";
+import type { HabitColor } from "@/domain/habit-colors";
 
-type Props = { data: { weekStart: string; count: number }[]; target: number };
+type Props = { data: { weekStart: string; count: number }[]; target: number; color: HabitColor };
 
 function Tick({ x, y, payload }: { x?: number; y?: number; payload?: { value: string } }) {
   return (
@@ -13,8 +14,8 @@ function Tick({ x, y, payload }: { x?: number; y?: number; payload?: { value: st
   );
 }
 
-/** Check-ins per week. Bars under the target are grey (outline-strong), the rest accent. */
-export function WeeklyBars({ data, target }: Props) {
+/** Check-ins per week. Bars under the target are grey (outline-strong), the rest in the habit color. */
+export function WeeklyBars({ data, target, color }: Props) {
   const rows = data.map((d) => ({
     ...d,
     label: `S${getISOWeek(new Date(`${d.weekStart}T12:00:00Z`))}`,
@@ -22,6 +23,7 @@ export function WeeklyBars({ data, target }: Props) {
   return (
     <div
       className="h-[140px] w-full"
+      data-habit-color={color}
       role="img"
       aria-label={`Check-ins por semana: ${rows.map((r) => `${r.label} ${r.count}`).join(", ")}`}
     >
@@ -30,7 +32,7 @@ export function WeeklyBars({ data, target }: Props) {
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={<Tick />} interval={0} />
           <Bar dataKey="count" radius={[4, 4, 0, 0]} isAnimationActive={false}>
             {rows.map((r) => (
-              <Cell key={r.weekStart} className={r.count >= target ? "fill-accent" : "fill-outline-strong"} />
+              <Cell key={r.weekStart} className={r.count >= target ? "fill-(--habit)" : "fill-outline-strong"} />
             ))}
             <LabelList dataKey="count" position="top" className="fill-muted font-mono text-[13px]" />
           </Bar>

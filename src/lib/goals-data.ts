@@ -1,5 +1,6 @@
 import type { GoalView } from "@/components/GoalCard";
 import { goalProgressFromCount, goalWindow, type Goal } from "@/domain/goals";
+import { toHabitColor } from "@/domain/habit-colors";
 import type { createServerClient } from "@/lib/supabase/server";
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
@@ -22,8 +23,9 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
 
   const habitIds = [...new Set(goals.map((g) => g.habit_id))];
   // goals on archived habits are hidden
-  const { data: habits } = await supabase.from("habits").select("id,name").in("id", habitIds).is("archived_at", null);
+  const { data: habits } = await supabase.from("habits").select("id,name,color").in("id", habitIds).is("archived_at", null);
   const names = new Map((habits ?? []).map((h) => [h.id, h.name]));
+  const colors = new Map((habits ?? []).map((h) => [h.id, toHabitColor(h.color)]));
 
   const views: GoalView[] = (
     await Promise.all(
@@ -45,13 +47,14 @@ export async function loadGoals(supabase: Supabase, userId: string, today: strin
             .lte("local_date", to);
           const p = goalProgressFromCount(goal, count ?? 0, today);
           const name = names.get(g.habit_id) ?? "Hábito";
+          const color = toHabitColor(colors.get(g.habit_id));
           if (g.kind === "weekly") {
-            return { id: g.id, title: name, kind: "weekly", ...p, progressLabel: `${p.current} de ${p.target}` };
+            return { id: g.id, title: name, kind: "weekly", ...p, color, progressLabel: `${p.current} de ${p.target}` };
           }
           const parts = [`${p.current} de ${p.target}`];
           if (p.current < p.target) parts.push(`faltan ${p.target - p.current}`);
           parts.push(g.deadline ? `hasta el ${shortDate(g.deadline)}` : "sin fecha límite");
-          return { id: g.id, title: `${g.target} · ${name}`, kind: "total", ...p, detail: parts.join(" · ") };
+          return { id: g.id, title: `${g.target} · ${name}`, kind: "total", ...p, color, detail: parts.join(" · ") };
         }),
     )
   ).filter(Boolean);

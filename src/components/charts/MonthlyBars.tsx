@@ -1,6 +1,7 @@
 "use client";
 
 import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
+import type { HabitColor } from "@/domain/habit-colors";
 
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -12,19 +13,20 @@ function Tick({ x, y, payload }: { x?: number; y?: number; payload?: { value: st
   );
 }
 
-/** Check-ins per month (`YYYY-MM`), accent bars with the count on top. */
-export function MonthlyBars({ data }: { data: { month: string; count: number }[] }) {
+/** Check-ins per month (`YYYY-MM`), bars in the habit color with the count on top. */
+export function MonthlyBars({ data, color }: { data: { month: string; count: number }[]; color: HabitColor }) {
   const rows = data.map((d) => ({ ...d, label: MONTHS[Number(d.month.slice(5, 7)) - 1] }));
   return (
     <div
       className="h-[140px] w-full"
+      data-habit-color={color}
       role="img"
       aria-label={`Check-ins por mes: ${rows.map((r) => `${r.label} ${r.count}`).join(", ")}`}
     >
       <ResponsiveContainer width="100%" height="100%" minWidth={0}>
         <BarChart data={rows} margin={{ top: 16, right: 0, bottom: 0, left: 0 }} barCategoryGap={8}>
           <XAxis dataKey="label" axisLine={false} tickLine={false} tick={<Tick />} interval={0} />
-          <Bar dataKey="count" radius={[4, 4, 0, 0]} className="fill-accent" isAnimationActive={false}>
+          <Bar dataKey="count" radius={[4, 4, 0, 0]} className="fill-(--habit)" isAnimationActive={false}>
             <LabelList dataKey="count" position="top" className="fill-muted font-mono text-[13px]" />
           </Bar>
         </BarChart>

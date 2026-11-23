@@ -37,6 +37,38 @@ export function monthlyCounts(
   })
 }
 
+/** Resumen `?h=todos`: every habit at once (the default with two or more habits). */
+export const ALL_HABITS = 'todos'
+
+/** Stacked chart rows: one per bucket (week start or month) with each habit's count and the total. */
+export function stackRows(
+  buckets: string[],
+  series: { id: string; counts: number[] }[],
+): ({ bucket: string; total: number } & Record<string, number | string>)[] {
+  return buckets.map((bucket, i) => {
+    const row: { bucket: string; total: number } & Record<string, number | string> = { bucket, total: 0 }
+    for (const s of series) {
+      const n = s.counts[i] ?? 0
+      row[s.id] = n
+      row.total += n
+    }
+    return row
+  })
+}
+
+/** Habit ids done on each date, in the order of `habits` (for the all-habits calendar dots). */
+export function completionsByDay(habits: { id: string; dates: LocalDate[] }[]): Map<LocalDate, string[]> {
+  const map = new Map<LocalDate, string[]>()
+  for (const h of habits) {
+    for (const d of new Set(h.dates)) {
+      const list = map.get(d)
+      if (list) list.push(h.id)
+      else map.set(d, [h.id])
+    }
+  }
+  return map
+}
+
 type ChallengeRow = { id: string; creator_id: string; rival_id: string; status: string }
 type DebtRow = { challenge_id: string; debtor_id: string }
 

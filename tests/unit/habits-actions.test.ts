@@ -53,6 +53,7 @@ import {
   setHabitVisibility,
   uncheckItem,
   undoCheckIn,
+  updateHabit,
 } from '@/app/(app)/habitos/actions'
 
 beforeEach(() => {
@@ -89,6 +90,35 @@ describe('habit actions', () => {
     expect(items.map((i) => i.position)).toEqual([0, 1, 2, 3])
     expect(items.map((i) => i.label)).toEqual(['Desayuno', 'Almuerzo', 'Once', 'Cena'])
     expect(items.every((i) => i.habit_id === 'h1' && i.user_id === 'u1')).toBe(true)
+  })
+
+  it('createHabit stores the chosen color key (presets bring their default)', async () => {
+    await createHabit(presetDraft('gym'))
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ preset: 'gym', color: 'durazno' })
+    calls.length = 0
+    await createHabit({ ...presetDraft('gym'), color: 'rosa' })
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ color: 'rosa' })
+  })
+
+  it('createHabit refuses a color outside the palette before touching the db', async () => {
+    const r = await createHabit({ ...presetDraft('read'), color: '#ff0000' as never })
+    expect(r).toEqual({ ok: false, error: 'Elige un color.' })
+    expect(calls).toHaveLength(0)
+  })
+
+  it('updateHabit sends the color with the rest of the habit', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    await expect(updateHabit('h1', { ...presetDraft('walk'), color: 'cielo' })).resolves.toEqual({ ok: true })
+    const update = calls.find((c) => c.table === 'habits' && c.op === 'update')!
+    expect(update.payload).toMatchObject({ name: 'Caminar', color: 'cielo' })
+  })
+
+  it('updateHabit refuses a color outside the palette', async () => {
+    await expect(updateHabit('h1', { ...presetDraft('walk'), color: 'neon' as never })).resolves.toEqual({
+      ok: false,
+      error: 'Elige un color.',
+    })
+    expect(calls).toHaveLength(0)
   })
 
   it('createHabit rejects invalid drafts before touching the db', async () => {

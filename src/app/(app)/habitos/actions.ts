@@ -39,6 +39,7 @@ function habitRow(draft: HabitDraft) {
     requires_photo: draft.requiresPhoto,
     visibility: draft.visibility,
     preset: draft.preset,
+    color: draft.color,
   };
 }
 

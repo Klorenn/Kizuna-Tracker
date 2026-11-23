@@ -11,6 +11,7 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
+import { avatarUrl } from "@/lib/avatar";
 import type { IconKey } from "@/domain/presets";
 import {
   profileShareUrl,
@@ -94,7 +95,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
       <header className="flex items-center gap-4">
-        <Avatar name={view.displayName} size="L" />
+        <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <h1 className="truncate text-title font-semibold text-ink">{view.displayName}</h1>
           <p className="truncate text-small text-muted">@{view.username}</p>
@@ -126,9 +127,9 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
           const weekly = hab.frequencyType === "weekly";
           const doneCount = hab.weeks.flat().filter((d) => d.done).length;
           return (
-            <Card key={`${habIndex}-${hab.name}`} className="flex flex-col gap-3 p-4">
+            <Card key={`${habIndex}-${hab.name}`} className="flex flex-col gap-3 p-4" data-habit-color={hab.color}>
               <div className="flex items-center gap-3">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-field text-ink">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-(--habit-soft) text-ink ring-[1.5px] ring-inset ring-(--habit)">
                   <HabitIcon name={hab.icon as IconKey} />
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
@@ -159,7 +160,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
                         <span
                           key={d.date}
                           className={`aspect-square rounded-[2px] ${
-                            d.future ? "bg-transparent" : d.done ? "bg-accent" : "bg-line"
+                            d.future ? "bg-transparent" : d.done ? "bg-(--habit)" : "bg-(--habit-soft)"
                           }`}
                         />
                       ))}

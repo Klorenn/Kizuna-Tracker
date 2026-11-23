@@ -567,6 +567,7 @@ export type Database = {
       habits: {
         Row: {
           archived_at: string | null
+          color: string
           created_at: string
           frequency_type: string
           icon: string
@@ -580,6 +581,7 @@ export type Database = {
         }
         Insert: {
           archived_at?: string | null
+          color?: string
           created_at?: string
           frequency_type: string
           icon: string
@@ -593,6 +595,7 @@ export type Database = {
         }
         Update: {
           archived_at?: string | null
+          color?: string
           created_at?: string
           frequency_type?: string
           icon?: string
@@ -911,6 +914,7 @@ export type Database = {
       }
       create_invite: { Args: never; Returns: string }
       email_for_username: { Args: { p_username: string }; Returns: string }
+      habit_preset_color: { Args: { p_preset: string }; Returns: string }
       invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
       public_profile: { Args: { p_username: string }; Returns: Json }

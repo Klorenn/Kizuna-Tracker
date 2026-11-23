@@ -49,6 +49,22 @@ describe('public profile view', () => {
     expect(v.habits[0].streak).toBe(1)
   })
 
+  it('passes the habit color key through, falling back to indigo for anything unknown', () => {
+    const colored = { ...row, habits: [{ ...row.habits[0], color: 'salvia' }] }
+    expect(toPublicProfileView(colored as never, '2026-11-23').habits[0].color).toBe('salvia')
+    const odd = { ...row, habits: [{ ...row.habits[0], color: 'url(javascript:x)' }] }
+    expect(toPublicProfileView(odd as never, '2026-11-23').habits[0].color).toBe('indigo')
+    expect(toPublicProfileView(row as never, '2026-11-23').habits[0].color).toBe('indigo')
+  })
+
+  it('keeps the avatar path and its version (cache-buster) for the public avatar', () => {
+    const withAvatar = { ...row, avatarPath: 'u1.jpg', avatarUpdatedAt: '2026-11-20T10:00:00Z' }
+    const v = toPublicProfileView(withAvatar as never, '2026-11-23')
+    expect(v.avatarPath).toBe('u1.jpg')
+    expect(v.avatarUpdatedAt).toBe('2026-11-20T10:00:00Z')
+    expect(toPublicProfileView(row as never, '2026-11-23').avatarUpdatedAt).toBe(null)
+  })
+
   it('builds the share url', () => {
     expect(profileShareUrl('https://kizuna.app', 'pau_k')).toBe('https://kizuna.app/@pau_k')
   })

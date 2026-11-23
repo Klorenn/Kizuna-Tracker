@@ -1,4 +1,5 @@
 import { addDays, weekStart } from "@/domain/dates";
+import { toHabitColor, type HabitColor } from "@/domain/habit-colors";
 import { dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { LocalDate } from "@/domain/types";
 
@@ -7,11 +8,15 @@ export type PublicProfileRow = {
   username: string;
   displayName: string;
   avatarPath: string | null;
+  /** Cache-buster for the public avatar URL (0013); older rows may lack it. */
+  avatarUpdatedAt?: string | null;
   habits: {
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
     targetPerWeek: number | null;
+    /** Palette key (0012_habit_colors); older rows may lack it. */
+    color?: string;
     dates: LocalDate[];
   }[];
 };
@@ -20,11 +25,13 @@ export type PublicProfileView = {
   username: string;
   displayName: string;
   avatarPath: string | null;
+  avatarUpdatedAt: string | null;
   habits: {
     name: string;
     icon: string;
     frequencyType: "daily" | "weekly";
     targetPerWeek: number | null;
+    color: HabitColor;
     streak: number;
     /** 26 columns (weeks, Monday to Sunday), oldest first; days after today are `future`. */
     weeks: { date: LocalDate; done: boolean; future: boolean }[][];
@@ -42,6 +49,7 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
     username: row.username,
     displayName: row.displayName,
     avatarPath: row.avatarPath ?? null,
+    avatarUpdatedAt: row.avatarUpdatedAt ?? null,
     habits: row.habits.map((h) => {
       const done = new Set(h.dates);
       const first = addDays(weekStart(today), -7 * (HEATMAP_WEEKS - 1));
@@ -67,6 +75,7 @@ export function toPublicProfileView(row: PublicProfileRow, today: LocalDate): Pu
         icon: h.icon,
         frequencyType: h.frequencyType,
         targetPerWeek: h.targetPerWeek,
+        color: toHabitColor(h.color),
         streak:
           h.frequencyType === "weekly"
             ? weeklyStreak(h.dates, h.targetPerWeek ?? 1, today)

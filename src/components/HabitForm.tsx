@@ -14,6 +14,7 @@ import {
   type HabitDraft,
   type PresetKey,
 } from "@/domain/presets";
+import { ColorPicker } from "./ColorPicker";
 import { IconPicker } from "./IconPicker";
 import { VisibilityPicker } from "./VisibilityPicker";
 import { HabitIcon } from "./habit-icon";
@@ -109,6 +110,8 @@ export function HabitForm({
         <p className="text-small text-ink">Ícono</p>
         <IconPicker value={draft.icon} onChange={(icon) => patch({ icon })} />
       </div>
+
+      <ColorPicker value={draft.color} onChange={(color) => patch({ color })} />
 
       <div className="flex flex-col gap-2">
         <p className="text-small text-ink">Frecuencia</p>

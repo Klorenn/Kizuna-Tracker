@@ -1,11 +1,17 @@
-/** 36 px ring with the percentage in accent. */
-export function ProgressRing({ value, label }: { value: number; label?: string }) {
+import type { HabitColor } from "@/domain/habit-colors";
+
+/**
+ * 36 px ring with the percentage in accent. With a habit `color` the arc takes that color and the
+ * number stays ink (habit colors are tuned for shapes and dark text, not for text on surface).
+ */
+export function ProgressRing({ value, label, color }: { value: number; label?: string; color?: HabitColor }) {
   const pct = Math.max(0, Math.min(100, Math.round(value)));
   const r = 16;
   const c = 2 * Math.PI * r;
   return (
     <div
       className="flex items-center gap-2"
+      data-habit-color={color}
       role="img"
       aria-label={label ?? `${pct}% completado`}
     >
@@ -20,10 +26,10 @@ export function ProgressRing({ value, label }: { value: number; label?: string }
           strokeLinecap="round"
           strokeDasharray={c}
           strokeDashoffset={c * (1 - pct / 100)}
-          className="stroke-accent"
+          className={color ? "stroke-(--habit)" : "stroke-accent"}
         />
       </svg>
-      <span className="text-[17px] font-semibold tracking-[-0.02em] text-accent">{pct}%</span>
+      <span className={`text-[17px] font-semibold tracking-[-0.02em] ${color ? "text-ink" : "text-accent"}`}>{pct}%</span>
     </div>
   );
 }

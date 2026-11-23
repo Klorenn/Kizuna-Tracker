@@ -1,3 +1,4 @@
+import { DEFAULT_HABIT_COLOR, PRESET_COLOR, isHabitColor, type HabitColor } from './habit-colors'
 import type { Frequency } from './types'
 
 export type Visibility = 'private' | 'friends' | 'public'
@@ -40,37 +41,43 @@ export type HabitDraft = {
   items: HabitItemDraft[]
   visibility: Visibility
   preset: PresetKey | null
+  color: HabitColor
 }
 
 export const MAX_ITEMS = 12
 export const MAX_NAME = 60
 export const MAX_ITEM_LABEL = 40
 
-const base = () => ({ visibility: 'friends' as Visibility, requiresPhoto: false, items: [] as HabitItemDraft[] })
+const base = (preset: PresetKey) => ({
+  visibility: 'friends' as Visibility,
+  requiresPhoto: false,
+  items: [] as HabitItemDraft[],
+  color: PRESET_COLOR[preset],
+})
 const daily: Frequency = { type: 'daily' }
 
 export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
   gym: {
-    ...base(),
+    ...base('gym'),
     name: 'Gimnasio',
     icon: 'barbell',
     frequency: { type: 'weekly', target: 4 },
     requiresPhoto: true,
     preset: 'gym',
   },
-  water: { ...base(), name: 'Agua', icon: 'drop', frequency: daily, preset: 'water' },
+  water: { ...base('water'), name: 'Agua', icon: 'drop', frequency: daily, preset: 'water' },
   study: {
-    ...base(),
+    ...base('study'),
     name: 'Estudiar',
     icon: 'book-open',
     frequency: { type: 'weekly', target: 5 },
     preset: 'study',
   },
-  read: { ...base(), name: 'Leer', icon: 'book', frequency: daily, preset: 'read' },
-  walk: { ...base(), name: 'Caminar', icon: 'sneaker-move', frequency: daily, preset: 'walk' },
-  sleep: { ...base(), name: 'Dormir 8 h', icon: 'moon', frequency: daily, preset: 'sleep' },
+  read: { ...base('read'), name: 'Leer', icon: 'book', frequency: daily, preset: 'read' },
+  walk: { ...base('walk'), name: 'Caminar', icon: 'sneaker-move', frequency: daily, preset: 'walk' },
+  sleep: { ...base('sleep'), name: 'Dormir 8 h', icon: 'moon', frequency: daily, preset: 'sleep' },
   eat_well: {
-    ...base(),
+    ...base('eat_well'),
     name: 'Comer bien',
     icon: 'fork-knife',
     frequency: daily,
@@ -103,6 +110,7 @@ export function customDraft(): HabitDraft {
     items: [],
     visibility: 'friends',
     preset: null,
+    color: DEFAULT_HABIT_COLOR,
   }
 }
 
@@ -114,6 +122,7 @@ export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; e
   if (!(HABIT_ICONS as readonly string[]).includes(d.icon)) return fail('Elige un ícono.')
   if (!['private', 'friends', 'public'].includes(d.visibility)) return fail('Elige quién puede ver el hábito.')
   if (d.preset !== null && !(d.preset in PRESETS)) return fail('Hábito predefinido no válido.')
+  if (!isHabitColor(d.color)) return fail('Elige un color.')
   if (d.frequency.type === 'weekly') {
     const t = d.frequency.target
     if (!Number.isInteger(t) || t < 1 || t > 7) return fail('Elige entre 1 y 7 veces por semana.')

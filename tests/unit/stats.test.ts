@@ -1,5 +1,13 @@
 import { describe, expect, test } from 'vitest'
-import { monthlyCounts, profileStreaks, recordFromRows, streakWindow, weeklyCounts } from '@/lib/stats'
+import {
+  completionsByDay,
+  monthlyCounts,
+  profileStreaks,
+  recordFromRows,
+  stackRows,
+  streakWindow,
+  weeklyCounts,
+} from '@/lib/stats'
 
 describe('weeklyCounts', () => {
   test('incluye semanas en cero y termina en la semana actual', () => {
@@ -70,5 +78,34 @@ describe('profileStreaks', () => {
   })
   test('sin hábitos es 0 días', () => {
     expect(profileStreaks([], today).current).toEqual({ value: 0, unit: 'days' })
+  })
+})
+
+describe('stackRows', () => {
+  test('une los conteos por hábito en una fila por período, con total', () => {
+    expect(
+      stackRows(['2026-11-09', '2026-11-16'], [
+        { id: 'a', counts: [1, 2] },
+        { id: 'b', counts: [0, 3] },
+      ]),
+    ).toEqual([
+      { bucket: '2026-11-09', total: 1, a: 1, b: 0 },
+      { bucket: '2026-11-16', total: 5, a: 2, b: 3 },
+    ])
+  })
+  test('sin hábitos deja filas en cero', () => {
+    expect(stackRows(['x'], [])).toEqual([{ bucket: 'x', total: 0 }])
+  })
+})
+
+describe('completionsByDay', () => {
+  test('agrupa por día los hábitos cumplidos, en el orden de los hábitos y sin repetir', () => {
+    const map = completionsByDay([
+      { id: 'a', dates: ['2026-11-20', '2026-11-21', '2026-11-21'] },
+      { id: 'b', dates: ['2026-11-21'] },
+    ])
+    expect(map.get('2026-11-21')).toEqual(['a', 'b'])
+    expect(map.get('2026-11-20')).toEqual(['a'])
+    expect(map.get('2026-11-19')).toBeUndefined()
   })
 })

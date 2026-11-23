@@ -58,7 +58,7 @@ export function PhotoReview({
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col bg-ink text-on-accent">
+    <div className="fixed inset-0 z-40 flex flex-col bg-media text-on-media">
       <div className="flex items-center px-2 pt-[calc(0.5rem+env(safe-area-inset-top))]">
         <button
           type="button"

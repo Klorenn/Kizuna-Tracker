@@ -13,6 +13,18 @@ const habit = (o: Partial<Parameters<typeof buildToday>[0]['habits'][number]> = 
 })
 
 describe('buildToday', () => {
+  it('carries the habit color, defaulting to indigo when missing or unknown', () => {
+    const r = buildToday({
+      habits: [habit({ color: 'salvia' }), habit({ id: 'h2', color: 'neon' }), habit({ id: 'h3' })],
+      items: [],
+      checkins: [],
+      itemChecks: [],
+      today: '2026-11-22',
+      timeZone: 'America/Santiago',
+    })
+    expect(r.rows.map((x) => x.color)).toEqual(['salvia', 'indigo', 'indigo'])
+  })
+
   it('marks done, streak and totals for daily habits', () => {
     const r = buildToday({
       habits: [habit(), habit({ id: 'h2', name: 'Agua' })],
