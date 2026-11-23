@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { QUANTITY_MESSAGES } from "@/lib/quantity-queue";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Totals = { total: number; target: number; done: boolean };
@@ -9,13 +10,12 @@ export type AddQuantityResult = ({ ok: true } & Totals) | { ok: false; error: st
 export type RemoveQuantityResult = ({ ok: true } & Totals) | { ok: false; error: string };
 
 const GENERIC = "No pudimos guardar la cantidad. Inténtalo de nuevo.";
-const OFFLINE = "Sin conexión. Guardaremos la suma cuando vuelvas a estar en línea.";
 
 const ERRORS: Record<string, string> = {
   invalid_amount: "Revisa la cantidad.",
   amount_over_day: "Es demasiado para un día.",
   entry_not_today: "Solo puedes quitar lo de hoy.",
-  entry_not_found: "No encontramos esa suma.",
+  entry_not_found: QUANTITY_MESSAGES.notFound,
   invalid_entry: "No pudimos guardar esa suma.",
   habit_not_found: "No encontramos ese hábito.",
   log_type_mismatch: "Este hábito ya no es de cantidad.",
@@ -49,7 +49,11 @@ function totalsOf(data: unknown): Totals | null {
   return { total, target, done: Boolean(row.done) };
 }
 
-function refresh() {
+/**
+ * Refreshes the pages that show quantity totals. The client calls it once when its queue drains or
+ * its sheet closes, never per tap (a burst of taps would re-render all of Hoy each time).
+ */
+export async function refreshQuantity(): Promise<void> {
   revalidatePath("/");
   revalidatePath("/habitos/[id]", "page");
   revalidatePath("/resumen");
@@ -70,15 +74,14 @@ export async function addQuantity(habitId: string, entryId: string, amount: numb
     });
     if (error) {
       return isNetwork(error)
-        ? { ok: false, error: OFFLINE, retry: true }
+        ? { ok: false, error: QUANTITY_MESSAGES.offlineAdd, retry: true }
         : { ok: false, error: messageFor(error), retry: false };
     }
     const totals = totalsOf(data);
     if (!totals) return { ok: false, error: GENERIC, retry: false };
-    refresh();
     return { ok: true, ...totals };
   } catch {
-    return { ok: false, error: OFFLINE, retry: true };
+    return { ok: false, error: QUANTITY_MESSAGES.offlineAdd, retry: true };
   }
 }
 
@@ -87,12 +90,11 @@ export async function removeQuantity(entryId: string): Promise<RemoveQuantityRes
   try {
     const supabase = await createServerClient();
     const { data, error } = await supabase.rpc("remove_quantity_entry", { p_entry_id: entryId });
-    if (error) return { ok: false, error: isNetwork(error) ? OFFLINE : messageFor(error) };
+    if (error) return { ok: false, error: isNetwork(error) ? QUANTITY_MESSAGES.offlineRemove : messageFor(error) };
     const totals = totalsOf(data);
     if (!totals) return { ok: false, error: GENERIC };
-    refresh();
     return { ok: true, ...totals };
   } catch {
-    return { ok: false, error: OFFLINE };
+    return { ok: false, error: QUANTITY_MESSAGES.offlineRemove };
   }
 }

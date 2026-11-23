@@ -3,9 +3,9 @@
 import { useRef, useState } from "react";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";
+import { parseTypedAmount, resolveTarget } from "@/lib/quantity-queue";
 import {
   MAX_QUANTITY_LABEL,
-  parseAmount,
   validateQuantityConfig,
   type QuantityConfig,
 } from "@/domain/quantity";
@@ -18,7 +18,8 @@ import {
  * - onChange(next): called on every edit with the new config. A field that does not parse is sent as
  *   NaN, so `validateHabitDraft` / `validateQuantityConfig` refuse the draft instead of saving stale data.
  * - lockedReason: when set (the habit is in a challenge) the unit and label are disabled, the goal
- *   cannot go below its starting value, and the reason is shown.
+ *   cannot go below its starting value, and the reason is shown. A goal typed below that value stays
+ *   visible but is sent as NaN, so the draft is refused (never clamped silently).
  */
 export function QuantityFields({
   value,
@@ -33,6 +34,7 @@ export function QuantityFields({
   const unitKey: UnitKey = value.unit === "ml" && value.display === "glasses" ? "glasses" : value.unit;
   const locked = Boolean(lockedReason);
   const minTarget = useRef(value.target).current;
+  const lockedMin = locked ? minTarget : null;
 
   const fieldText = (n: number, c: QuantityConfig) =>
     String(c.display === "glasses" ? Math.round((n / c.glassMl) * 100) / 100 : n).replace(".", ",");
@@ -69,11 +71,11 @@ export function QuantityFields({
 
   const editTarget = (raw: string) => {
     setTarget(raw);
-    emit({ target: parseAmount(raw, value) ?? NaN });
+    emit({ target: resolveTarget(raw, value, lockedMin) });
   };
   const editStep = (raw: string) => {
     setStep(raw);
-    emit({ step: parseAmount(raw, value) ?? NaN });
+    emit({ step: parseTypedAmount(raw, value) ?? NaN });
   };
   const editGlass = (raw: string) => {
     setGlass(raw);
@@ -82,13 +84,14 @@ export function QuantityFields({
     const next = { ...value, glassMl: ml };
     emit({
       glassMl: ml,
-      target: parseAmount(target, next) ?? NaN,
-      step: parseAmount(step, next) ?? NaN,
+      target: resolveTarget(target, next, lockedMin),
+      step: parseTypedAmount(step, next) ?? NaN,
     });
   };
 
   const checked = validateQuantityConfig(value);
-  const belowLock = locked && Number.isFinite(value.target) && value.target < minTarget;
+  const typedTarget = parseTypedAmount(target, value);
+  const belowLock = locked && typedTarget !== null && typedTarget < minTarget;
   const targetError = belowLock ? (lockedReason ?? null) : !checked.ok && /meta debe|meta no/i.test(checked.error) ? checked.error : null;
   const stepError = !checked.ok && /suma rápida/i.test(checked.error) ? checked.error : null;
   const glassError = !checked.ok && /vaso/i.test(checked.error) && value.display === "glasses" ? checked.error : null;

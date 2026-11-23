@@ -1,14 +1,19 @@
 "use client";
 
-import { CheckCircle, DotsThree } from "@phosphor-icons/react/dist/ssr";
+import { CheckCircle, DotsThree, Warning } from "@phosphor-icons/react/dist/ssr";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { addQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
+import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
 import { ProgressRing } from "@/components/ui/ProgressRing";
-import { Toast, useToast } from "@/components/ui/Toast";
 import type { HabitColor } from "@/domain/habit-colors";
 import { formatAmount, progressLabel, stepAmount, type QuantityConfig } from "@/domain/quantity";
-import { createQuantityQueue, type QuantityQueue } from "@/lib/quantity-queue";
+import {
+  goalMet,
+  QUANTITY_MESSAGES,
+  sharedQuantityQueue,
+  type QuantityQueue,
+  type QueueEvent,
+} from "@/lib/quantity-queue";
 import type { QuantityEntryView } from "./QuantitySheet";
 
 // The sheet is not visible on first paint, so it loads on demand.
@@ -25,8 +30,10 @@ const QuantitySheet = dynamic(() => import("./QuantitySheet").then((m) => m.Quan
  * - timeZone: IANA zone of the profile, used for the "08:10" time of each sum.
  * - color: optional habit color for the ring.
  *
- * One tap = one sum (optimistic, retried with the same id when the network fails). Press and hold
- * 500 ms, or the "⋯" button, opens the sheet. Nothing here refreshes the whole screen by itself.
+ * One tap = one sum, shown at once (the running number) and sent by the tab's shared queue, which
+ * retries with the same id when the network fails. "Meta de hoy cumplida" only follows the total the
+ * server confirmed. Press and hold 500 ms, or the "⋯" button, opens the sheet. Nothing here
+ * refreshes the page per tap: it refreshes once when the queue drains or the sheet closes.
  */
 export function QuantityControl({
   habitId,
@@ -43,87 +50,132 @@ export function QuantityControl({
   timeZone: string;
   color?: HabitColor;
 }) {
-  const [shownTotal, setShownTotal] = useState(total);
+  const [view, setView] = useState({ shown: total, confirmed: total, pending: 0 });
+  const [serverDone, setServerDone] = useState(false);
   const [list, setList] = useState<QuantityEntryView[]>(() => entries.map((e) => ({ ...e, saved: true })));
+  const [message, setMessage] = useState<{ text: string; kind: "error" | "offline" } | null>(null);
   const [sheetOpen, setSheetOpen] = useState(false);
-  const [toast, showToast] = useToast();
   const queueRef = useRef<QuantityQueue | null>(null);
-  const showToastRef = useRef(showToast);
-  useEffect(() => {
-    showToastRef.current = showToast;
-  });
+  const dirty = useRef(false);
+  const stamps = useRef(new Map<string, string>());
 
-  // The queue is created lazily on the client; its settled callback keeps the screen in step.
-  const ensureQueue = useCallback((): QuantityQueue => {
-    if (queueRef.current) return queueRef.current;
-    const q = createQuantityQueue(addQuantity, () => crypto.randomUUID(), {
-      onSettled: (sum, result) => {
-        if (sum.habitId !== habitId) return;
-        if (result.ok) {
-          setList((l) => l.map((e) => (e.id === sum.entryId ? { ...e, saved: true } : e)));
-          setShownTotal(queueRef.current ? queueRef.current.optimisticTotal(habitId) : result.total);
-        } else {
-          setList((l) => l.filter((e) => e.id !== sum.entryId));
-          setShownTotal(queueRef.current ? queueRef.current.optimisticTotal(habitId) : 0);
-          showToastRef.current(result.error);
-        }
-      },
-    });
-    queueRef.current = q;
-    return q;
-  }, [habitId]);
+  const queue = useCallback((): QuantityQueue => {
+    if (!queueRef.current) queueRef.current = sharedQuantityQueue(addQuantity);
+    return queueRef.current;
+  }, []);
 
-  // New server data (after a refresh) replaces the local view; pending sums are added back on top.
+  const readView = useCallback(
+    (q: QuantityQueue) =>
+      setView({
+        shown: q.optimisticTotal(habitId),
+        confirmed: q.total(habitId),
+        pending: q.pending().filter((s) => s.habitId === habitId).length,
+      }),
+    [habitId],
+  );
+
+  // Refresh Hoy once, when nothing is waiting any more.
+  const refreshIfIdle = useCallback(() => {
+    if (!dirty.current || queue().pending().length > 0) return;
+    dirty.current = false;
+    void refreshQuantity();
+  }, [queue]);
+
+  // Server data (first render and every refresh) is the new base; pending taps go back on top.
   const entriesRef = useRef(entries);
   useEffect(() => {
     entriesRef.current = entries;
   });
   const entriesKey = entries.map((e) => e.id).join(",");
   useEffect(() => {
-    const entries = entriesRef.current;
-    const q = ensureQueue();
-    q.setTotal(habitId, total);
+    const q = queue();
+    const server = entriesRef.current;
+    q.setTotal(habitId, total, server.map((e) => e.id));
     const waiting = q.pending().filter((s) => s.habitId === habitId);
     setList([
-      ...entries.map((e) => ({ ...e, saved: true })),
-      ...waiting.filter((s) => !entries.some((e) => e.id === s.entryId)).map((s) => ({ id: s.entryId, amount: s.amount, at: new Date().toISOString(), saved: false })),
+      ...server.map((e) => ({ ...e, saved: true })),
+      ...waiting.map((s) => ({
+        id: s.entryId,
+        amount: s.amount,
+        at: stamps.current.get(s.entryId) ?? new Date().toISOString(),
+        saved: false,
+      })),
     ]);
-    setShownTotal(q.optimisticTotal(habitId));
-  }, [habitId, total, entriesKey, ensureQueue]);
+    readView(q);
+  }, [habitId, total, entriesKey, queue, readView]);
 
-  // Resend whatever could not be sent: on mount and whenever the connection comes back.
+  // Answers from the queue: confirmed, refused (rolled back) or offline (kept, retried).
   useEffect(() => {
-    const q = ensureQueue();
-    const retry = () => void q.flush();
-    retry();
-    window.addEventListener("online", retry);
-    return () => window.removeEventListener("online", retry);
-  }, [ensureQueue]);
+    const q = queue();
+    const showNotices = () => {
+      const refused = q.takeNotices(habitId);
+      if (refused.length === 0) return;
+      const gone = new Set(refused.map((n) => n.entryId));
+      setList((l) => l.filter((e) => !gone.has(e.id)));
+      setMessage({ text: refused[refused.length - 1].error, kind: "error" });
+    };
+    showNotices(); // refusals that arrived while this control was not mounted
+    return q.subscribe((e: QueueEvent) => {
+      if (e.kind === "drained") {
+        refreshIfIdle();
+        return;
+      }
+      if (e.sum.habitId !== habitId) return;
+      if (e.kind === "offline") {
+        setMessage({ text: e.error, kind: "offline" });
+      } else if (e.result.ok) {
+        setServerDone(e.result.done);
+        setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
+        setMessage((m) => (m?.kind === "offline" ? null : m));
+      } else {
+        showNotices();
+      }
+      readView(q);
+    });
+  }, [habitId, queue, readView, refreshIfIdle]);
 
   const add = useCallback(
     (amount: number) => {
-      const q = ensureQueue();
-      const { entryId, optimisticTotal } = q.add(habitId, amount);
-      setList((l) => [...l, { id: entryId, amount, at: new Date().toISOString(), saved: false }]);
-      setShownTotal(optimisticTotal);
+      const q = queue();
+      const { entryId } = q.add(habitId, amount);
+      const at = new Date().toISOString();
+      stamps.current.set(entryId, at);
+      dirty.current = true;
+      setMessage((m) => (m?.kind === "error" ? null : m));
+      setList((l) => [...l, { id: entryId, amount, at, saved: false }]);
+      readView(q);
     },
-    [ensureQueue, habitId],
+    [habitId, queue, readView],
   );
 
   const remove = useCallback(
     async (entryId: string): Promise<void> => {
+      const q = queue();
       const res = await removeQuantity(entryId);
       if (!res.ok) {
-        showToast(res.error);
+        setMessage({ text: res.error, kind: "error" });
+        if (res.error === QUANTITY_MESSAGES.notFound) {
+          // gone elsewhere: drop the stale row and refresh the numbers
+          setList((l) => l.filter((e) => e.id !== entryId));
+          dirty.current = true;
+          refreshIfIdle();
+        }
         return;
       }
-      const q = ensureQueue();
       q.setTotal(habitId, res.total);
+      setServerDone(res.done);
+      setMessage(null);
       setList((l) => l.filter((e) => e.id !== entryId));
-      setShownTotal(q.optimisticTotal(habitId));
+      dirty.current = true;
+      readView(q);
     },
-    [ensureQueue, habitId, showToast],
+    [habitId, queue, readView, refreshIfIdle],
   );
+
+  const closeSheet = useCallback(() => {
+    setSheetOpen(false);
+    refreshIfIdle();
+  }, [refreshIfIdle]);
 
   // Press and hold 500 ms opens the sheet; the click that follows a long press adds nothing.
   const hold = useRef<{ timer: ReturnType<typeof setTimeout> | null; fired: boolean }>({ timer: null, fired: false });
@@ -134,17 +186,17 @@ export function QuantityControl({
   useEffect(() => cancelHold, []);
 
   const step = stepAmount(config);
-  const done = shownTotal >= config.target;
-  const pct = config.target > 0 ? (shownTotal / config.target) * 100 : 0;
+  const done = goalMet(view.confirmed, config.target, serverDone);
+  const pct = config.target > 0 ? (view.shown / config.target) * 100 : 0;
+  const stepText = formatAmount(step, config);
+  const pendingText = `${view.pending} ${view.pending === 1 ? "suma pendiente" : "sumas pendientes"} de guardar`;
 
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-center gap-3">
-        <ProgressRing value={pct} label={progressLabel(shownTotal, config)} color={color} />
-        <div className="flex min-w-0 flex-1 flex-col">
-          <p className="font-mono text-small text-ink" aria-live="polite">
-            {progressLabel(shownTotal, config)}
-          </p>
+        <ProgressRing value={pct} label={progressLabel(view.shown, config)} color={color} />
+        <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
+          <p className="font-mono text-small text-ink">{progressLabel(view.shown, config)}</p>
           {done ? (
             <p className="flex items-center gap-1 text-small text-ink">
               <CheckCircle size={16} weight="light" className="text-accent" aria-hidden />
@@ -153,9 +205,20 @@ export function QuantityControl({
           ) : null}
         </div>
       </div>
+      {message ? (
+        <p role="status" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+          <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
+          {message.text}
+        </p>
+      ) : view.pending > 0 ? (
+        <p role="status" className="text-small text-muted">
+          {pendingText}
+        </p>
+      ) : null}
       <div className="flex items-center gap-2">
         <button
           type="button"
+          aria-label={`Sumar ${stepText}`}
           onPointerDown={() => {
             hold.current.fired = false;
             cancelHold();
@@ -178,7 +241,7 @@ export function QuantityControl({
           }}
           className="inline-flex h-11 min-w-0 flex-1 select-none items-center justify-center gap-1 rounded-md bg-accent px-3 font-mono text-small font-medium text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover active:scale-[0.98] motion-reduce:active:scale-100"
         >
-          +{formatAmount(step, config)}
+          +{stepText}
         </button>
         <button
           type="button"
@@ -192,17 +255,16 @@ export function QuantityControl({
       {sheetOpen ? (
         <QuantitySheet
           open
-          onClose={() => setSheetOpen(false)}
+          onClose={closeSheet}
           config={config}
-          total={shownTotal}
+          total={view.shown}
           entries={list}
           timeZone={timeZone}
           onAdd={add}
           onRemove={remove}
+          message={message?.text ?? (view.pending > 0 ? pendingText : null)}
         />
       ) : null}
-      <Toast message={toast} />
     </div>
   );
 }
-

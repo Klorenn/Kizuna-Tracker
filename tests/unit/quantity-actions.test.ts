@@ -1,15 +1,17 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const rpc = vi.fn()
-vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
+const revalidatePath = vi.fn()
+vi.mock('next/cache', () => ({ revalidatePath: (...a: unknown[]) => revalidatePath(...a) }))
 vi.mock('@/lib/supabase/server', () => ({
   createServerClient: async () => ({ rpc }),
 }))
 
-import { addQuantity, removeQuantity } from '@/app/(app)/registros/quantity-actions'
+import { addQuantity, refreshQuantity, removeQuantity } from '@/app/(app)/registros/quantity-actions'
 
 beforeEach(() => {
   rpc.mockReset()
+  revalidatePath.mockReset()
 })
 
 describe('addQuantity', () => {
@@ -66,8 +68,29 @@ describe('removeQuantity', () => {
     await expect(removeQuantity('q1')).resolves.toEqual({ ok: false, error: 'Este hábito ya no es de cantidad.' })
   })
 
-  it('does not throw on a network failure', async () => {
+  it('offline removal does not promise to save it later', async () => {
     rpc.mockRejectedValue(new TypeError('fetch failed'))
-    await expect(removeQuantity('q1')).resolves.toMatchObject({ ok: false })
+    await expect(removeQuantity('q1')).resolves.toEqual({ ok: false, error: 'Sin conexión. No pudimos quitar la suma.' })
+    rpc.mockResolvedValue({ data: null, error: { message: 'TypeError: fetch failed' } })
+    await expect(removeQuantity('q1')).resolves.toEqual({ ok: false, error: 'Sin conexión. No pudimos quitar la suma.' })
+  })
+
+  it('maps entry_not_found', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'entry_not_found' } })
+    await expect(removeQuantity('q1')).resolves.toEqual({ ok: false, error: 'No encontramos esa suma.' })
+  })
+})
+
+describe('revalidation', () => {
+  it('add and remove never revalidate (a burst of taps must not re-render Hoy each time)', async () => {
+    rpc.mockResolvedValue({ data: [{ total: 250, target: 2000, done: false, created: true }], error: null })
+    await addQuantity('h1', 'q1', 250)
+    await removeQuantity('q1')
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
+
+  it('refreshQuantity revalidates Hoy, the habit pages and Resumen once', async () => {
+    await refreshQuantity()
+    expect(revalidatePath.mock.calls).toEqual([['/'], ['/habitos/[id]', 'page'], ['/resumen']])
   })
 })
