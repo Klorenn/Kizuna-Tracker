@@ -12,7 +12,9 @@ import { periodsFor } from "@/domain/challenges";
 import { formatCLP, formatSignedCLP, netBalances } from "@/domain/ledger";
 import { challengeFrequency, firstName } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Deudas" };
 
@@ -21,9 +23,7 @@ const HISTORY_LIMIT = 30;
 
 export default async function DeudasPage() {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
 
   // balances are summed from every debt: a capped read (1000 rows) would misreport money
@@ -42,7 +42,7 @@ export default async function DeudasPage() {
 
   // Challenge (with the two habit names) and profiles are independent: one level, not three.
   // A habit the viewer cannot read comes back null, as it did when habits were read on their own.
-  const [{ data: challengeRows }, { data: profiles }] = await Promise.all([
+  const [challengesRes, profilesRes] = await Promise.all([
     challengeIds.length
       ? supabase
           .from("challenges")
@@ -57,10 +57,12 @@ export default async function DeudasPage() {
           data: [] as { id: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null }[],
         }),
   ]);
-  const challenges = new Map((challengeRows ?? []).map((c) => [c.id, c]));
+  const challengeRows = readRows(challengesRes);
+  const profiles = readRows(profilesRes);
+  const challenges = new Map(challengeRows.map((c) => [c.id, c]));
   // A profile missing from public_profiles is a deleted account.
-  const nameOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p.display_name ?? ""] as const] : [])));
-  const profileOf = new Map((profiles ?? []).flatMap((p) => (p.id ? [[p.id, p] as const] : [])));
+  const nameOf = new Map(profiles.flatMap((p) => (p.id ? [[p.id, p.display_name ?? ""] as const] : [])));
+  const profileOf = new Map(profiles.flatMap((p) => (p.id ? [[p.id, p] as const] : [])));
   const personName = (id: string) => (nameOf.has(id) ? nameOf.get(id) || DELETED : DELETED);
   const shortName = (id: string) => (nameOf.has(id) ? firstName(nameOf.get(id), DELETED) : DELETED);
 

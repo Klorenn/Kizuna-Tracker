@@ -1,6 +1,6 @@
 "use client";
 
-import { Plus, Television } from "@phosphor-icons/react/dist/ssr";
+import { Plus, Television } from "@phosphor-icons/react";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import dynamic from "next/dynamic";

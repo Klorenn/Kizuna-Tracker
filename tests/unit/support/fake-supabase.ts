@@ -2,7 +2,7 @@
 export type Call = { method: string; args: unknown[] }
 export type Recorded = { table: string; calls: Call[] }
 
-export type Respond = (q: Recorded) => { data: unknown; error?: { message: string } | null }
+export type Respond = (q: Recorded) => { data: unknown; error?: { message: string } | null; count?: number | null }
 
 export function fakeSupabase(respond: Respond) {
   const queries: Recorded[] = []
@@ -17,7 +17,7 @@ export function fakeSupabase(respond: Respond) {
             return (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
               try {
                 const r = respond(q)
-                return Promise.resolve({ data: r.data, error: r.error ?? null }).then(resolve, reject)
+                return Promise.resolve({ data: r.data, error: r.error ?? null, count: r.count ?? null }).then(resolve, reject)
               } catch (e) {
                 return Promise.reject(e).then(resolve, reject)
               }
@@ -40,7 +40,7 @@ export function fakeSupabase(respond: Respond) {
       then: (resolve: (v: unknown) => unknown, reject: (e: unknown) => unknown) => {
         try {
           const r = respond(q)
-          return Promise.resolve({ data: r.data, error: r.error ?? null }).then(resolve, reject)
+          return Promise.resolve({ data: r.data, error: r.error ?? null, count: r.count ?? null }).then(resolve, reject)
         } catch (e) {
           return Promise.reject(e).then(resolve, reject)
         }

@@ -10,7 +10,7 @@ import {
   SpeakerHigh,
   SpeakerSlash,
   Warning,
-} from "@phosphor-icons/react/dist/ssr";
+} from "@phosphor-icons/react";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { sendPomodoroBlock } from "@/app/(app)/registros/time-actions";

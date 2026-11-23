@@ -1,9 +1,7 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { CelebrationSheet } from "@/components/CelebrationSheet";
-import { BookDoneSheet } from "@/components/logs/BookDoneSheet";
-import { ReadingDoneSheet } from "@/components/logs/ReadingDoneSheet";
 import {
   celebratedHabit,
   completedMealsHabit,
@@ -17,6 +15,11 @@ import { celebrationKey, claimCelebration, sessionStore } from "@/lib/celebrate-
 import { celebrationsHeld, onCelebrationsReleased, takeReading } from "@/lib/celebration-bus";
 import { watchStep, type Shown } from "@/lib/celebration-watch";
 import type { CatAsset } from "@/lib/motion/cat-animation";
+
+// Celebrations are rare: their code loads the first time one has to open, not with Hoy.
+const CelebrationSheet = dynamic(() => import("@/components/CelebrationSheet").then((m) => m.CelebrationSheet), { ssr: false });
+const BookDoneSheet = dynamic(() => import("@/components/logs/BookDoneSheet").then((m) => m.BookDoneSheet), { ssr: false });
+const ReadingDoneSheet = dynamic(() => import("@/components/logs/ReadingDoneSheet").then((m) => m.ReadingDoneSheet), { ssr: false });
 
 const COPY = {
   day: { title: "Día completo", body: "Completaste todos tus hábitos de hoy.", asset: "jump" },
@@ -72,6 +75,8 @@ export function DayCompleteWatcher({
 }: DayProgress & { rows: HoyRowState[]; today: LocalDate }) {
   const prev = useRef<HoyState | null>(null);
   const [shown, setShown] = useState<Shown | null>(null);
+  // nothing mounts (or loads) until the first celebration; after that the sheet stays for its close animation
+  const [armed, setArmed] = useState(false);
   const last = useRef<Shown>({ kind: "day", reading: null });
   const latest = useRef<HoyState>({ done, total, rows });
   latest.current = { done, total, rows };
@@ -85,6 +90,7 @@ export function DayCompleteWatcher({
     prev.current = step.prev;
     if (step.show) {
       last.current = step.show;
+      setArmed(true);
       setShown(step.show);
     }
   }, [today]);
@@ -97,6 +103,7 @@ export function DayCompleteWatcher({
   const close = useCallback(() => setShown(null), []);
   const { kind, reading } = shown ?? last.current;
   const open = shown !== null;
+  if (!armed) return null;
   if (kind === "book") return <BookDoneSheet open={open} title={reading?.finishedTitle ?? ""} onClose={close} />;
   if (kind === "reading") return <ReadingDoneSheet open={open} pages={reading?.pages ?? 0} onClose={close} />;
   return <DayCompleteSheet kind={kind} open={open} onClose={close} />;

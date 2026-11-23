@@ -1,6 +1,6 @@
 "use client";
 
-import { Timer, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Timer, Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";

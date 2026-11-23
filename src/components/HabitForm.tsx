@@ -1,6 +1,6 @@
 "use client";
 
-import { Minus, Plus, Warning, X } from "@phosphor-icons/react/dist/ssr";
+import { Minus, Plus, Warning, X } from "@phosphor-icons/react";
 import { radioKeyTarget } from "@/lib/radio-keys";
 import { useRouter } from "next/navigation";
 import { useId, useState, useTransition } from "react";

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check } from "@phosphor-icons/react/dist/ssr";
+import { Check } from "@phosphor-icons/react";
 import { HABIT_COLORS, HABIT_COLOR_LABEL, type HabitColor } from "@/domain/habit-colors";
 
 /**

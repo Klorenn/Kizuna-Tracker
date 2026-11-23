@@ -25,7 +25,9 @@ import { activityGrid, debtSummary, lastDays, memberSince, streakText } from "@/
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
 import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { loadRecentWeights } from "./body-data";
 
 export const metadata: Metadata = { title: "Perfil" };
@@ -53,17 +55,11 @@ function MiniStat({ label, value }: { label: string; value: number }) {
 
 export default async function PerfilPage() {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
   // Reads that need only the user id start with the profile; the ones that need its timezone follow.
-  const [{ data: profile }, { data: habits }, record, { data: debtRows }, bodyEntries] = await Promise.all([
-    supabase
-      .from("profiles")
-      .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset,timezone,created_at,height_cm")
-      .eq("id", user.id)
-      .maybeSingle(),
+  const [profile, habitsRes, record, debtsRes, bodyEntries] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select("id,name,color,frequency_type,target_per_week")
@@ -75,11 +71,13 @@ export default async function PerfilPage() {
     loadRecentWeights(supabase, user.id, 5),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  // a failed read is the error page, never an empty list or a zero balance
+  const habitRows = readRows(habitsRes);
+  const debtRows = readRows(debtsRes);
 
   const today = localDate(new Date(), profile.timezone);
   // History of every habit in one call (one row per habit), alongside the goals
   const { from } = streakWindow(today);
-  const habitRows = habits ?? [];
   const [goalsRead, dated] = await Promise.all([
     loadGoalsResult(supabase, user.id, today),
     loadCheckinDates(supabase, habitRows.map((h) => h.id), from),
@@ -105,7 +103,7 @@ export default async function PerfilPage() {
   const activity = activityGrid(history, today);
 
   const balances = netBalances(
-    (debtRows ?? []).map((d) => ({
+    debtRows.map((d) => ({
       id: d.id,
       debtorId: d.debtor_id,
       creditorId: d.creditor_id,
@@ -116,7 +114,7 @@ export default async function PerfilPage() {
   );
   const debt = debtSummary([...balances.values()].reduce((a, b) => a + b, 0));
 
-  const name = `${profile.first_name} ${profile.last_name}`;
+  const name = `${profile.firstName} ${profile.lastName}`;
   const shareUrl = profileShareUrl(siteOrigin(await headers()), profile.username);
 
   return (
@@ -135,9 +133,9 @@ export default async function PerfilPage() {
         <ProfileIdentity
           name={name}
           username={profile.username}
-          src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
-          preset={profile.avatar_preset}
-          since={memberSince(profile.created_at, profile.timezone)}
+          src={avatarUrl(profile.avatarPath, profile.avatarUpdatedAt)}
+          preset={profile.avatarPreset}
+          since={memberSince(profile.createdAt, profile.timezone)}
         />
       </header>
 
@@ -232,7 +230,7 @@ export default async function PerfilPage() {
         )}
       </section>
 
-      <BodyCard entries={bodyEntries.ok ? bodyEntries.rows : null} height={profile.height_cm} today={today} />
+      <BodyCard entries={bodyEntries.ok ? bodyEntries.rows : null} height={profile.heightCm} today={today} />
 
       <section aria-labelledby="perfil-publico" className="flex flex-col gap-2">
         <h2 id="perfil-publico" className="section-label text-muted">

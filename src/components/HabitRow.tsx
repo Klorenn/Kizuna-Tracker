@@ -1,14 +1,14 @@
 "use client";
 
-import { Camera, Check, Timer, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Camera, Check, Timer, Warning } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { memo, useId, useOptimistic, useState, useTransition } from "react";
 import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
-import type { PickerMedia } from "@/app/(app)/series/media-data";
 import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
 import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
+import { addLogOffered, habitRowPropsEqual } from "./habit-row-equal";
 import { ItemChecklist } from "./ItemChecklist";
 import type { CardioSheetMode } from "./logs/CardioSheet";
 import { QuantityControl } from "./logs/QuantityControl";
@@ -16,14 +16,14 @@ import type { ReadingSheetMode } from "./logs/ReadingSheet";
 import type { TimeSheetMode } from "./logs/TimeSheet";
 import type { WatchSheetMode } from "./logs/WatchSheet";
 import { Button } from "./ui/Button";
-import { Sheet } from "./ui/Sheet";
 import { Toast, useToast } from "./ui/Toast";
 import { VisibilityIcon } from "./habit-icon";
 
 // Sheets are not on screen at first paint: each loads on demand, when its row opens it.
 const ReadingSheet = dynamic(() => import("./logs/ReadingSheet").then((m) => m.ReadingSheet), { ssr: false });
 const TimeSheet = dynamic(() => import("./logs/TimeSheet").then((m) => m.TimeSheet), { ssr: false });
-const WatchSheet = dynamic(() => import("./logs/WatchSheet").then((m) => m.WatchSheet), { ssr: false });
+const HabitWatchSheet = dynamic(() => import("./HabitWatchSheet").then((m) => m.HabitWatchSheet), { ssr: false });
+const Sheet = dynamic(() => import("./ui/Sheet").then((m) => m.Sheet), { ssr: false });
 const CardioSheet = dynamic(() => import("./logs/CardioSheet").then((m) => m.CardioSheet), { ssr: false });
 
 /** What a reading habit's row needs for its sheet: your books and today's check-in and reading. */
@@ -70,7 +70,7 @@ function HabitRowView({
   timeZone,
   checkinId,
   reading,
-  media,
+  logsKnown = true,
 }: {
   row: TodayRow;
   /** local date of Hoy (`YYYY-MM-DD`), for the "Añadir registro" link */
@@ -79,7 +79,8 @@ function HabitRowView({
   /** today's check-in of this habit, when it exists */
   checkinId: string | null;
   reading?: RowReading;
-  media?: PickerMedia[];
+  /** false when today's logs could not be read: no "Añadir registro" then (Hoy itself shows a retry instead of rows) */
+  logsKnown?: boolean;
 }) {
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
@@ -94,7 +95,7 @@ function HabitRowView({
   const plain = !hasItems && !row.requiresPhoto;
   const readingFlow = plain && row.logType === "reading" && reading !== undefined;
   const timeFlow = plain && row.logType === "time";
-  const watchFlow = plain && row.logType === "watch" && media !== undefined;
+  const watchFlow = plain && row.logType === "watch";
   const cardioFlow = plain && row.logType === "cardio";
   const quantity = plain && row.logType === "quantity" ? row.quantity : null;
 
@@ -164,7 +165,7 @@ function HabitRowView({
         + Salida
       </button>
     );
-  } else if (done && row.log === null && row.logType !== "none" && row.logType !== "quantity") {
+  } else if (done && addLogOffered(row, logsKnown) && row.logType !== "none" && row.logType !== "quantity") {
     action =
       row.logType === "reading" && readingFlow && reading.checkinId ? (
         <button
@@ -265,8 +266,8 @@ function HabitRowView({
       {sheet?.type === "time" ? (
         <TimeSheet open mode={sheet.mode} preset={row.preset} onClose={close} onSaved={showToast} />
       ) : null}
-      {sheet?.type === "watch" && media ? (
-        <WatchSheet open mode={sheet.mode} media={media} onClose={close} onSaved={showToast} />
+      {sheet?.type === "watch" && sheet.mode.kind === "checkin" ? (
+        <HabitWatchSheet habitId={sheet.mode.habitId} onClose={close} onSaved={showToast} />
       ) : null}
       {sheet?.type === "cardio" ? (
         <CardioSheet
@@ -278,9 +279,9 @@ function HabitRowView({
           onSaved={showToast}
         />
       ) : null}
-      {undoCopy ? (
+      {undoCopy && confirmUndo ? (
         <Sheet
-          open={confirmUndo}
+          open
           title="¿Deshacer el hábito de hoy?"
           onClose={() => setConfirmUndo(false)}
           describedBy={undoBodyId}
@@ -297,18 +298,6 @@ function HabitRowView({
   );
 }
 
-type RowProps = Parameters<typeof HabitRowView>[0];
+export type HabitRowProps = Parameters<typeof HabitRowView>[0];
 
-/** Props compare by value: Hoy re-renders with fresh (equal) objects after every refresh. */
-function same(a: RowProps, b: RowProps): boolean {
-  return (
-    a.today === b.today &&
-    a.timeZone === b.timeZone &&
-    a.checkinId === b.checkinId &&
-    JSON.stringify(a.row) === JSON.stringify(b.row) &&
-    JSON.stringify(a.reading) === JSON.stringify(b.reading) &&
-    JSON.stringify(a.media) === JSON.stringify(b.media)
-  );
-}
-
-export const HabitRow = memo(HabitRowView, same);
+export const HabitRow = memo(HabitRowView, habitRowPropsEqual);

@@ -6,7 +6,8 @@ import { notFound, redirect } from "next/navigation";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { WeeklyBarsLazy } from "@/components/charts/LazyCharts";
-import { GoalCard } from "@/components/GoalCard";
+import { HabitGoals } from "@/components/HabitGoals";
+import { LoadFailed } from "@/components/LoadFailed";
 import { CardioProgress } from "@/components/logs/CardioProgress";
 import { QuantityProgress } from "@/components/logs/QuantityProgress";
 import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
@@ -35,7 +36,7 @@ import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
-import { loadGoals } from "@/lib/goals-data";
+import { loadGoalsResult } from "@/lib/goals-data";
 import {
   loadCardioData,
   loadQuantityData,
@@ -49,7 +50,10 @@ import {
   quantityConfigOf,
 } from "@/lib/logs-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
+import { read, readRows } from "@/lib/read";
+import { countLogged } from "@/lib/today-entry";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Hábito" };
 
@@ -57,6 +61,8 @@ export const metadata: Metadata = { title: "Hábito" };
 const MONTHS_VIEW = "meses";
 const OVERVIEW_MONTHS = 12;
 const HISTORY_DAYS = 366;
+
+class CountFailed extends Error {}
 
 export default async function HabitoPage({
   params,
@@ -68,12 +74,10 @@ export default async function HabitoPage({
   const { id } = await params;
   const { mes, vista } = await searchParams;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, habitRes] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select(
@@ -85,6 +89,7 @@ export default async function HabitoPage({
       .maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const color = toHabitColor(habit.color);
@@ -99,31 +104,30 @@ export default async function HabitoPage({
 
   // PROGRESO of a habit with a detailed log: this month against the last, from a bounded window.
   const loadProgress = async (): Promise<ReactNode> => {
+    try {
+      return await loadProgressInner();
+    } catch (e) {
+      // a failed "is today logged" count: the retry line, never an "Añadir" or "Editar" guess
+      if (e instanceof CountFailed) return <LoadFailed href={`/habitos/${habit.id}`} />;
+      throw e;
+    }
+  };
+  const loadProgressInner = async (): Promise<ReactNode> => {
     if (logType === "none") return null;
     const windowStart = logWindowStart(today);
     // today's check-in, and whether it already has its log (not for quantity: no check-in needed)
     const todayEntry = async (): Promise<{ logged: boolean } | null> => {
-      const { data: todayCheckin } = await supabase
+      const todayCheckin = read(await supabase
         .from("checkins")
         .select("id")
         .eq("habit_id", habit.id)
         .eq("local_date", today)
-        .maybeSingle();
+        .maybeSingle());
       if (!todayCheckin) return null;
       const cid = todayCheckin.id;
-      let count: number | null = null;
-      if (logType === "reading") {
-        count = (await supabase.from("reading_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "workout") {
-        count = (await supabase.from("workout_sessions").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "time") {
-        count = (await supabase.from("time_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "watch") {
-        count = (await supabase.from("watch_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      } else if (logType === "cardio") {
-        count = (await supabase.from("cardio_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
-      }
-      return { logged: (count ?? 0) > 0 };
+      const res = await countLogged(supabase, logType, cid);
+      if (!res.ok) throw new CountFailed();
+      return { logged: res.logged };
     };
 
     switch (logType) {
@@ -212,7 +216,7 @@ export default async function HabitoPage({
   };
 
   // independent reads in one go (the month of the calendar depends on the first check-in, below)
-  const [{ data: checkins }, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
+  const [checkinsRes, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
     supabase
       .from("checkins")
       .select("local_date")
@@ -221,7 +225,7 @@ export default async function HabitoPage({
       .gte("local_date", from)
       .order("local_date", { ascending: false })
       .limit(limit),
-    loadGoals(supabase, user.id, today, id),
+    loadGoalsResult(supabase, user.id, today, id),
     loadFirstCheckinDate(supabase, user.id, [habit.id]),
     loadProgress(),
     monthsView
@@ -233,7 +237,7 @@ export default async function HabitoPage({
           .gte("local_date", addDays(today, -HISTORY_DAYS))
       : Promise.resolve(null),
   ]);
-  const dates = (checkins ?? []).map((c) => c.local_date);
+  const dates = readRows(checkinsRes).map((c) => c.local_date);
   const frequency: Frequency =
     habit.frequency_type === "weekly"
       ? { type: "weekly", target: habit.target_per_week ?? 1 }
@@ -259,7 +263,7 @@ export default async function HabitoPage({
   let calendar: ReactNode;
   if (monthsView) {
     const doneByDay: Record<LocalDate, number> = {};
-    for (const c of yearCheckins?.data ?? []) doneByDay[c.local_date] = 1;
+    for (const c of yearCheckins ? readRows(yearCheckins) : []) doneByDay[c.local_date] = 1;
     const since = localDate(new Date(habit.created_at), profile.timezone);
     const months = recentMonths(thisMonth, earliest, OVERVIEW_MONTHS);
     calendar = (
@@ -379,16 +383,7 @@ export default async function HabitoPage({
         <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
       </Card>
 
-      {goals.length > 0 ? (
-        <>
-          <SectionHeader label="Meta" action="Ver metas" href="/metas" />
-          <Card accent className="divide-y divide-line py-1 pl-[19px] pr-4">
-            {goals.map((g) => (
-              <GoalCard key={g.id} goal={g} archivable={false} />
-            ))}
-          </Card>
-        </>
-      ) : null}
+      <HabitGoals result={goals} retryHref={`/habitos/${habit.id}`} />
 
       <SectionHeader label="Ajustes" />
       <HabitSettings habitId={habit.id} visibility={habit.visibility as Visibility} />

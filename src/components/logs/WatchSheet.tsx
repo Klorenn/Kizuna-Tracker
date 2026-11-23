@@ -14,7 +14,7 @@
  * - `onSaved?`: edit mode and check-in mode, after a save or delete, with the toast message.
  */
 
-import { Minus, Plus, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Minus, Plus, Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { checkInWithWatch, deleteWatch, saveWatch, type WatchInput } from "@/app/(app)/registros/watch-actions";

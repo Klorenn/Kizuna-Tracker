@@ -19,6 +19,7 @@ import {
 import { monthOf, withSearch } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Peso" };
 
@@ -30,11 +31,9 @@ type Search = { rango?: string | string[]; n?: string | string[] };
 export default async function PesoPage({ searchParams }: { searchParams: Promise<Search> }) {
   const sp = await searchParams;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
+  const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
   const today = localDate(new Date(), profile.timezone);

@@ -51,7 +51,9 @@ import {
   stackRows,
   weeklyCounts,
 } from "@/lib/stats";
+import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Resumen" };
 
@@ -169,12 +171,10 @@ export default async function ResumenPage({
 }) {
   const { h, mes, vista } = await searchParams;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habitRows }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, habitsRes] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select(
@@ -186,7 +186,7 @@ export default async function ResumenPage({
       .order("id"),
   ]);
   if (!profile) redirect("/login?error=perfil");
-  const habits = (habitRows ?? []).map((x) => ({
+  const habits = readRows(habitsRes).map((x) => ({
     ...x,
     color: toHabitColor(x.color),
     logType: ((LOG_TYPES as readonly string[]).includes(x.log_type) ? x.log_type : "none") as LogType,

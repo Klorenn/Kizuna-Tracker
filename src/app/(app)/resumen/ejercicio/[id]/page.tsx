@@ -9,6 +9,7 @@ import { DAY_TYPE_LABEL, MUSCLE_GROUPS, exerciseProgress, formatKg, type MuscleG
 import { lastSessionSets } from "@/lib/exercise-last";
 import { loadWorkoutData, logWindowStart } from "@/lib/logs-data";
 import { DetailHeader, Stat, colorOf, loadLogsContext } from "../../logs-view";
+import { read } from "@/lib/read";
 
 export const metadata: Metadata = { title: "Ejercicio" };
 
@@ -19,11 +20,11 @@ export default async function EjercicioPage({ params }: { params: Promise<{ id: 
   if (!UUID.test(id)) notFound();
   const ctx = await loadLogsContext();
   // only the catalog or the user's own exercises (RLS hides anyone else's; checked again here)
-  const { data: exercise } = await ctx.supabase
+  const exercise = read(await ctx.supabase
     .from("exercises")
     .select("id,name,muscle_group,user_id")
     .eq("id", id)
-    .maybeSingle();
+    .maybeSingle());
   if (!exercise || (exercise.user_id !== null && exercise.user_id !== ctx.userId)) notFound();
 
   const { sets } = await loadWorkoutData(ctx.supabase, ctx.userId, logWindowStart(ctx.today), {

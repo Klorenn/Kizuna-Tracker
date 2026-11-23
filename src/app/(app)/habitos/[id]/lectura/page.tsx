@@ -2,13 +2,16 @@ import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
+import { LoadFailed } from "@/components/LoadFailed";
 import { ButtonLink } from "@/components/ui/Button";
 import { TopBar } from "@/components/ui/TopBar";
 import { dayHeading } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { logDateParam } from "@/lib/log-date";
-import { loadPickerBooks } from "@/lib/reading-books";
+import { loadPickerBooksOrNull } from "@/lib/reading-books";
+import { read } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { LecturaEditor } from "./LecturaEditor";
 
 export const metadata: Metadata = { title: "Lectura" };
@@ -27,38 +30,40 @@ export default async function LecturaPage({
 }) {
   const [{ id }, { fecha }] = await Promise.all([params, searchParams]);
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, habitRes] = await Promise.all([
+    getViewerProfile(),
     supabase.from("habits").select("id,name,log_type").eq("id", id).eq("user_id", user.id).maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");
+  const habit = read(habitRes);
   if (!habit) notFound();
 
   const today = localDate(new Date(), profile.timezone);
   const date = logDateParam(fecha, today);
   // rejected check-ins keep their logs too: the log is your data
-  const { data: checkin } = await supabase
+  const checkin = read(await supabase
     .from("checkins")
     .select("id")
     .eq("habit_id", id)
     .eq("user_id", user.id)
     .eq("local_date", date)
-    .maybeSingle();
-  const { data: entry } = checkin
-    ? await supabase
-        .from("reading_entries")
-        .select("book_id,from_page,to_page")
-        .eq("checkin_id", checkin.id)
-        .maybeSingle()
-    : { data: null };
+    .maybeSingle());
+  // a failed read must not open an empty editor: saving would replace the stored reading
+  const entry = checkin
+    ? read(
+        await supabase
+          .from("reading_entries")
+          .select("book_id,from_page,to_page")
+          .eq("checkin_id", checkin.id)
+          .maybeSingle(),
+      )
+    : null;
   const isReading = habit.log_type === "reading";
   // the log type changed after logging: the old reading still shows, so it can be fixed or deleted
   const leftover = !isReading && entry !== null;
-  const books = checkin && (isReading || leftover) ? await loadPickerBooks(supabase, user.id, entry?.book_id) : [];
+  const books = checkin && (isReading || leftover) ? await loadPickerBooksOrNull(supabase, user.id, entry?.book_id) : [];
 
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">
@@ -81,6 +86,8 @@ export default async function LecturaPage({
             }
           />
         </Card>
+      ) : books === null ? (
+        <LoadFailed href={`/habitos/${id}/lectura`} />
       ) : !checkin ? (
         <Card>
           <EmptyState
