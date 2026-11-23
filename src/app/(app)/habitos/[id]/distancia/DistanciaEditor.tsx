@@ -8,11 +8,26 @@ import { deleteCardio } from "@/app/(app)/registros/cardio-actions";
 import { CardioEntryRow, type CardioRowEntry } from "@/components/logs/CardioEntryRow";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
+import { SkeletonBar } from "@/components/ui/Skeleton";
 import { Toast, useToast } from "@/components/ui/Toast";
 import type { CardioKind } from "@/domain/cardio";
 
 // the sheet is not visible on first paint: its code loads when it first opens
-const CardioSheet = dynamic(() => import("@/components/logs/CardioSheet").then((m) => m.CardioSheet));
+const CardioSheet = dynamic(() => import("@/components/logs/CardioSheet").then((m) => m.CardioSheet), {
+  loading: () => <CardioSheetPlaceholder />,
+});
+
+/** Faint sheet shape while the code arrives (only ever shown after a tap on "Salida"). */
+function CardioSheetPlaceholder() {
+  return (
+    <div role="status" className="fixed inset-x-0 bottom-0 z-50 mx-auto flex w-full max-w-md flex-col gap-4 rounded-t-lg bg-surface px-5 pb-6 pt-8 shadow-card">
+      <span className="sr-only">Cargando</span>
+      <SkeletonBar className="h-6 w-48" />
+      <SkeletonBar className="h-11 w-full" />
+      <SkeletonBar className="h-11 w-full" />
+    </div>
+  );
+}
 
 const MAX_PER_DAY = 10;
 
@@ -34,6 +49,9 @@ export function DistanciaEditor({
   const router = useRouter();
   const [toast, showToast] = useToast();
   const [adding, setAdding] = useState(false);
+  // a new round remounts the form, so every opening starts from the defaults
+  const [addRound, setAddRound] = useState(0);
+  const addedOnce = addRound > 0;
   const [editing, setEditing] = useState<CardioRowEntry | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -88,15 +106,22 @@ export function DistanciaEditor({
             {error}
           </p>
         ) : null}
-        <Button variant="secondary" onClick={() => setAdding(true)} disabled={full}>
+        <Button variant="secondary" onClick={() => {
+            setAddRound((n) => n + 1);
+            setAdding(true);
+          }}
+          disabled={full}
+        >
           <Plus size={20} weight="light" aria-hidden />
           Salida
         </Button>
         {full ? <p className="text-small text-muted">Puedes registrar hasta 10 salidas por día.</p> : null}
       </Card>
-      {adding ? (
+      {/* first tap loads the code; afterwards the sheet stays mounted and only `open` changes */}
+      {addedOnce ? (
         <CardioSheet
-          open
+          key={addRound}
+          open={adding}
           onClose={() => setAdding(false)}
           habitId={habitId}
           mode={{ kind: "add", checkinId }}

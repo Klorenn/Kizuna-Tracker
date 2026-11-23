@@ -191,3 +191,56 @@ describe('lastCardio', () => {
     expect(await lastCardio('h1')).toBeNull()
   })
 })
+
+describe('updateCardio validation and errors', () => {
+  it.each([
+    ['no distance', { ...run, distanceM: 0 }, 'Escribe la distancia.'],
+    ['no time', { ...run, durationS: 0 }, 'Escribe el tiempo.'],
+    ['distance above 500 km', { ...run, distanceM: 500001 }, 'La distancia va hasta 500 km.'],
+    ['time above 24 h', { ...run, durationS: 86401 }, 'El tiempo va hasta 24 horas.'],
+    ['a fractional distance', { ...run, distanceM: 5200.5 }, 'La distancia debe ser un número entero de metros.'],
+    ['a fractional time', { ...run, durationS: 1780.5 }, 'El tiempo debe ser un número entero de segundos.'],
+    ['effort out of range', { ...run, effort: 0 }, 'Revisa la distancia y el tiempo.'],
+    ['a fractional effort', { ...run, effort: 2.5 }, 'Revisa la distancia y el tiempo.'],
+  ])('refuses %s before any rpc', async (_name, entry, error) => {
+    expect(await updateCardio('e1', entry)).toEqual({ ok: false, error })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('names the note limit', async () => {
+    expect(await updateCardio('e1', { ...run, note: 'x'.repeat(61) })).toEqual({
+      ok: false,
+      error: 'La nota puede tener hasta 60 caracteres.',
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('accepts a note of exactly 60 characters', async () => {
+    rpc.mockResolvedValue({ data: null, error: null })
+    expect(await updateCardio('e1', { ...run, note: 'x'.repeat(60) })).toEqual({ ok: true })
+  })
+
+  it('maps not_authenticated on update', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'not_authenticated' } })
+    expect(await updateCardio('e1', run)).toEqual({ ok: false, error: 'Inicia sesión para continuar.' })
+  })
+})
+
+describe('not_authenticated on the other writes', () => {
+  it.each([
+    ['addCardio', () => addCardio('c1', run)],
+    ['deleteCardio', () => deleteCardio('e1')],
+  ])('%s asks to sign in', async (_name, call) => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'not_authenticated' } })
+    expect(await call()).toEqual({ ok: false, error: 'Inicia sesión para continuar.' })
+  })
+
+  it('checkInWithCardio asks to sign in and reports no check-in', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'not_authenticated' } })
+    expect(await checkInWithCardio('h1', run)).toEqual({
+      ok: false,
+      checkedIn: false,
+      error: 'Inicia sesión para continuar.',
+    })
+  })
+})

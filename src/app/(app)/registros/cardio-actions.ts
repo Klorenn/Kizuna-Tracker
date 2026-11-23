@@ -46,6 +46,13 @@ function refresh() {
 
 /** The checks the database repeats, so the sheet can answer before any round trip. */
 function check(entry: CardioInput): { ok: true; note: string | null } | { ok: false; error: string } {
+  // a fractional amount is a format problem, not an out-of-range one: it gets its own copy
+  if (Number.isFinite(entry.distanceM) && entry.distanceM > 0 && !Number.isInteger(entry.distanceM)) {
+    return { ok: false, error: "La distancia debe ser un número entero de metros." };
+  }
+  if (Number.isFinite(entry.durationS) && entry.durationS > 0 && !Number.isInteger(entry.durationS)) {
+    return { ok: false, error: "El tiempo debe ser un número entero de segundos." };
+  }
   // 0 (or a non-number) means "nothing typed": the same copy as an empty field
   const valid = validateCardioInput({
     kind: entry.kind,
@@ -75,7 +82,7 @@ function fields(entry: CardioInput, note: string | null) {
 }
 
 /**
- * "Guardar" / "Omitir" in the sheet on Hoy: checks the habit in (create_checkin) and, with an
+ * "Guardar" / "Solo marcar" in the sheet on Hoy: checks the habit in (create_checkin) and, with an
  * entry, adds the outing to that check-in. When the outing fails the habit stays checked in
  * (`checkedIn: true`) so the sheet can say so and retry with addCardio.
  */

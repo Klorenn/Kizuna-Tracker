@@ -26,6 +26,7 @@ import {
   type CardioKind,
 } from "@/domain/cardio";
 import { holdCelebrations } from "@/lib/celebration-bus";
+import { cardioDistanceError, cardioTimeError, repeatedMessage } from "@/lib/cardio-form";
 import { radioKeyTarget } from "@/lib/radio-keys";
 
 /**
@@ -107,6 +108,7 @@ function LivePace({ text }: { text: string }) {
 }
 
 const EFFORTS = [1, 2, 3, 4, 5] as const;
+const TIME_ERROR_ID = "cardio-time-error";
 
 /**
  * Activity chips, distance, h/min/s with live pace, effort 1–5, note. Check-in mode: Guardar /
@@ -137,6 +139,8 @@ export function CardioForm({
   const [effort, setEffort] = useState<number | null>(existing?.effort ?? null);
   const [note, setNote] = useState(existing?.note ?? "");
   const [errors, setErrors] = useState<{ distance?: string; time?: string; form?: string }>({});
+  // what "Repetir el último" copied, announced once
+  const [status, setStatus] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const effortRefs = useRef<(HTMLButtonElement | null)[]>([]);
   // Hoy's check-in sheet: no celebration may open on top of it (one sheet at a time)
@@ -159,14 +163,13 @@ export function CardioForm({
     if ((next === "swim") !== swim) setDistance("");
     onKind(next);
     setErrors({});
+    setStatus(null);
   }
 
   function entryOrErrors(): { entry: CardioInput } | { errors: typeof errors } {
     const next: typeof errors = {};
-    if (distanceM === null) next.distance = distance.trim() === "" ? "Escribe la distancia." : swim ? "Escribe los metros con números enteros." : "La distancia va hasta 500 km.";
-    if (durationS === null) {
-      next.time = h.trim() === "" && m.trim() === "" && s.trim() === "" ? "Escribe el tiempo." : "El tiempo va de 1 segundo a 24 horas.";
-    }
+    if (distanceM === null) next.distance = cardioDistanceError(distance, kind) ?? undefined;
+    if (durationS === null) next.time = cardioTimeError(h, m, s) ?? undefined;
     if (next.distance || next.time || distanceM === null || durationS === null) return { errors: next };
     return { entry: { kind, distanceM, durationS, effort, note: note.trim() === "" ? null : note.trim() } };
   }
@@ -211,12 +214,16 @@ export function CardioForm({
 
   function repeatLast() {
     setErrors({});
+    setStatus(null);
     start(async () => {
       const last = await lastCardio(habitId);
       if (!last) return setErrors({ form: "Aún no tienes salidas para repetir." });
       onKind(last.kind);
       setDistance(distanceText(last.distanceM, last.kind));
       [setH, setM, setS].forEach((set, i) => set(hmsParts(last.durationS)[i]));
+      setEffort(last.effort);
+      setNote(last.note ?? "");
+      setStatus(repeatedMessage(last));
     });
   }
 
@@ -229,6 +236,8 @@ export function CardioForm({
   }
 
   const timeInvalid = Boolean(errors.time);
+  // the one time message describes all three time fields
+  const timeDescribedBy = timeInvalid ? TIME_ERROR_ID : undefined;
   return (
     <div className="flex flex-col gap-4 pb-1">
       <div role="group" aria-label="Actividad" className="flex flex-wrap gap-2">
@@ -251,12 +260,12 @@ export function CardioForm({
       />
       <div className="flex flex-col gap-2">
         <div className="grid grid-cols-3 gap-3">
-          <Input label="Horas" name="hours" inputMode="numeric" autoComplete="off" value={h} className="font-mono" invalid={timeInvalid} onChange={(e) => setH(e.target.value)} />
-          <Input label="Minutos" name="minutes" inputMode="numeric" autoComplete="off" value={m} className="font-mono" invalid={timeInvalid} onChange={(e) => setM(e.target.value)} />
-          <Input label="Segundos" name="seconds" inputMode="numeric" autoComplete="off" value={s} className="font-mono" invalid={timeInvalid} onChange={(e) => setS(e.target.value)} />
+          <Input label="Horas" name="hours" inputMode="numeric" autoComplete="off" value={h} className="font-mono" invalid={timeInvalid} aria-describedby={timeDescribedBy} onChange={(e) => setH(e.target.value)} />
+          <Input label="Minutos" name="minutes" inputMode="numeric" autoComplete="off" value={m} className="font-mono" invalid={timeInvalid} aria-describedby={timeDescribedBy} onChange={(e) => setM(e.target.value)} />
+          <Input label="Segundos" name="seconds" inputMode="numeric" autoComplete="off" value={s} className="font-mono" invalid={timeInvalid} aria-describedby={timeDescribedBy} onChange={(e) => setS(e.target.value)} />
         </div>
         {errors.time ? (
-          <p role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+          <p id={TIME_ERROR_ID} role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
             <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
             {errors.time}
           </p>
@@ -304,6 +313,11 @@ export function CardioForm({
         <Button variant="secondary" onClick={repeatLast} disabled={pending}>
           Repetir el último
         </Button>
+      ) : null}
+      {status ? (
+        <p role="status" className="text-small text-pretty text-muted">
+          {status}
+        </p>
       ) : null}
       {errors.form ? (
         <p role="alert" className="flex items-start gap-1 text-small text-pretty text-ink">
