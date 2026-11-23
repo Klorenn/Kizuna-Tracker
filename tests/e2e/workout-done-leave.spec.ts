@@ -105,6 +105,28 @@ test("Listo closes the sheet at once, however long Hoy takes, and asks the serve
   await expect(page.getByRole("link", { name: "Foto", exact: true })).toHaveCount(0);
 });
 
+for (const width of [360, 390, 412]) {
+  test(`the counter line stays on one line at ${width} px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    const sheet = await openCelebration(page);
+    const counter = sheet.locator("p.font-mono");
+    await expect(counter).toHaveText("1 de 5 esta semana");
+    if (process.env.LAYOUT_SHOTS) await page.screenshot({ path: `${process.env.LAYOUT_SHOTS}-${width}.png` });
+    const heightOf = () => counter.evaluate((el) => el.getBoundingClientRect().height);
+    // one line = the height of a one-character counter
+    await counter.evaluate((el) => {
+      el.lastChild!.textContent = "1";
+    });
+    const oneLine = await heightOf();
+    for (const text of ["1 de 5 esta semana", "Racha de 12 semanas"]) {
+      await counter.evaluate((el, t) => {
+        el.lastChild!.textContent = t;
+      }, text);
+      expect(await heightOf(), text).toBe(oneLine);
+    }
+  });
+}
+
 test("if Hoy never answers, the app goes to Hoy with a full page load", async ({ page }) => {
   const sheet = await openCelebration(page);
   // the client-side navigation hangs (flaky network, odd proxy); a normal document load still works

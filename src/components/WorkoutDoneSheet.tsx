@@ -44,7 +44,7 @@ export function WorkoutDoneSheet({
         onKeyDown={auto.cancel}
       >
         <div className="flex items-center gap-4">
-          <CatLift width={160} once onPlayStart={auto.start} />
+          <CatLift width={88} once onPlayStart={auto.start} />
           <div id={bodyId} className="flex min-w-0 flex-1 flex-col gap-1">
             {streakLabel ? (
               <p className="flex items-center gap-1.5 font-mono text-[17px] font-medium text-ink">
