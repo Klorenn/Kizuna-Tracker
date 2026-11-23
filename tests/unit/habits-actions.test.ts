@@ -141,6 +141,113 @@ describe('habit actions', () => {
     expect(calls).toHaveLength(0)
   })
 
+  it('createHabit(Agua) writes the quantity columns', async () => {
+    await createHabit(presetDraft('water'))
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({
+      log_type: 'quantity',
+      quantity_unit: 'ml',
+      quantity_label: null,
+      quantity_target: 2000,
+      quantity_step: 250,
+      quantity_display: 'glasses',
+      glass_ml: 250,
+    })
+  })
+
+  it('another log type carries no quantity columns (normalized before saving)', async () => {
+    await createHabit({ ...presetDraft('water'), logType: 'none' })
+    expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({
+      log_type: 'none',
+      quantity_unit: null,
+      quantity_target: null,
+      quantity_step: null,
+      quantity_label: null,
+    })
+  })
+
+  it('refuses a NaN or invalid quantity goal on the server, before touching the db', async () => {
+    const water = presetDraft('water')
+    for (const q of [
+      { ...water.quantity!, target: Number.NaN },
+      { ...water.quantity!, step: Number.NaN },
+      { ...water.quantity!, step: 5000 },
+    ]) {
+      expect((await createHabit({ ...water, quantity: q })).ok).toBe(false)
+      expect((await updateHabit('h1', { ...water, quantity: q })).ok).toBe(false)
+    }
+    expect(calls).toHaveLength(0)
+  })
+
+  it('updateHabit saves the quantity columns', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    const water = presetDraft('water')
+    await updateHabit('h1', { ...water, quantity: { ...water.quantity!, target: 2500 } })
+    expect(calls.find((c) => c.table === 'habits' && c.op === 'update')!.payload).toMatchObject({
+      log_type: 'quantity',
+      quantity_target: 2500,
+    })
+  })
+
+  it('updateHabit on a quantity habit in a challenge says what can change', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    reads['habits.select'] = { data: { log_type: 'quantity', visibility: 'friends' }, error: null }
+    updateError = { message: 'habit_in_challenge' }
+    const water = presetDraft('water')
+    await expect(updateHabit('h1', { ...water, quantity: { ...water.quantity!, target: 1500 } })).resolves.toEqual({
+      ok: false,
+      error: 'Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.',
+    })
+  })
+
+  it('maps items_with_log, photo_conflict by context and the quantity rules', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    updateError = { message: 'items_with_log' }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito con pasos no lleva registro detallado.',
+    })
+    updateError = { message: 'photo_conflict' }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito con foto no lleva tiempo ni cantidad.',
+    })
+    await expect(updateHabit('h1', presetDraft('gym'))).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito con pasos pide la foto en cada paso, no en el hábito.',
+    })
+    updateError = { message: 'quantity_habit' }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.',
+    })
+  })
+
+  it('undo and uncheckItem map period_closed and quantity_habit', async () => {
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    reads['habit_items.select'] = { data: [], error: null }
+    reads['checkins.select'] = { data: { photo_path: null }, error: null }
+    reads['checkins.delete'] = { error: { message: 'period_closed' } }
+    await expect(undoCheckIn('h1')).resolves.toEqual({
+      ok: false,
+      error: 'Este día ya cerró en un reto: no puedes deshacerlo.',
+    })
+    reads['checkins.delete'] = { error: { message: 'quantity_habit' } }
+    await expect(undoCheckIn('h1')).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito de cantidad se deshace quitando sumas.',
+    })
+    rpc.mockResolvedValue({ data: null, error: { message: 'period_closed' } })
+    await expect(uncheckItem('i1')).resolves.toEqual({
+      ok: false,
+      error: 'Este día ya cerró en un reto: no puedes deshacerlo.',
+    })
+    rpc.mockResolvedValue({ data: null, error: { message: 'quantity_habit' } })
+    await expect(uncheckItem('i1')).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito de cantidad se deshace quitando sumas.',
+    })
+  })
+
   it('setHabitVisibility maps habit_in_challenge', async () => {
     updateError = { message: 'habit_in_challenge' }
     await expect(setHabitVisibility('h1', 'private')).resolves.toEqual({

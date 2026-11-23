@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { localDate } from "@/domain/dates";
-import { validateHabitDraft, type HabitDraft, type Visibility } from "@/domain/presets";
+import { normalizeHabitDraft, validateHabitDraft, type HabitDraft, type Visibility } from "@/domain/presets";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -11,6 +11,9 @@ const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
 const ERRORS: Record<string, string> = {
   habit_in_challenge: "Este hábito tiene un reto activo. No puede ser solo tuyo.",
   photo_conflict: "Un hábito con pasos pide la foto en cada paso, no en el hábito.",
+  items_with_log: "Un hábito con pasos no lleva registro detallado.",
+  period_closed: "Este día ya cerró en un reto: no puedes deshacerlo.",
+  quantity_habit: "Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.",
   habit_has_items: "Este hábito se completa marcando sus pasos.",
   photo_required: "Este hábito pide una foto de prueba.",
   item_not_found: "No encontramos ese paso.",
@@ -19,10 +22,25 @@ const ERRORS: Record<string, string> = {
   not_authenticated: "Inicia sesión para continuar.",
 };
 
-function messageFor(raw: string | undefined): string {
+const QUANTITY_IN_CHALLENGE =
+  "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
+const PHOTO_WITH_LOG = "Un hábito con foto no lleva tiempo ni cantidad.";
+const QUANTITY_UNDO = "Un hábito de cantidad se deshace quitando sumas.";
+
+/** `context` picks the copy of a code several rules share (photo_conflict, habit_in_challenge). */
+function messageFor(raw: string | undefined, context: { logType?: string; quantityInChallenge?: boolean } = {}): string {
   if (!raw) return GENERIC;
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
+  if (key === "habit_in_challenge" && context.quantityInChallenge) return QUANTITY_IN_CHALLENGE;
+  if (key === "photo_conflict" && (context.logType === "time" || context.logType === "quantity")) {
+    return PHOTO_WITH_LOG;
+  }
   return key ? ERRORS[key] : GENERIC;
+}
+
+/** A failed undo: the quantity rule has its own copy here (the row offers no undo for them). */
+function undoMessage(raw: string | undefined): string {
+  return raw?.includes("quantity_habit") ? QUANTITY_UNDO : messageFor(raw);
 }
 
 function refresh() {
@@ -31,6 +49,7 @@ function refresh() {
 }
 
 function habitRow(draft: HabitDraft) {
+  const q = draft.quantity;
   return {
     name: draft.name.trim(),
     icon: draft.icon,
@@ -42,12 +61,19 @@ function habitRow(draft: HabitDraft) {
     color: draft.color,
     // a habit with steps never carries a detailed log (validateHabitDraft refuses the mix)
     log_type: draft.logType,
+    // the database pairs log_type 'quantity' with these columns; any other type carries none
+    quantity_unit: q?.unit ?? null,
+    quantity_label: q?.label?.trim() ?? null,
+    quantity_target: q?.target ?? null,
+    quantity_step: q?.step ?? null,
+    ...(q ? { quantity_display: q.display, glass_ml: q.glassMl } : { quantity_display: "base", glass_ml: 250 }),
   };
 }
 
 export async function createHabit(
-  draft: HabitDraft,
+  input: HabitDraft,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const draft = normalizeHabitDraft(input);
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
   const supabase = await createServerClient();
@@ -60,7 +86,7 @@ export async function createHabit(
     .insert({ user_id: uid, ...habitRow(draft) })
     .select("id")
     .single();
-  if (error || !habit) return { ok: false, error: GENERIC };
+  if (error || !habit) return { ok: false, error: messageFor(error?.message, { logType: draft.logType }) };
 
   if (draft.items.length > 0) {
     const { error: itemsError } = await supabase.from("habit_items").insert(
@@ -81,7 +107,8 @@ export async function createHabit(
   return { ok: true, id: habit.id };
 }
 
-export async function updateHabit(id: string, draft: HabitDraft): Promise<Result> {
+export async function updateHabit(id: string, input: HabitDraft): Promise<Result> {
+  const draft = normalizeHabitDraft(input);
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
   const supabase = await createServerClient();
@@ -115,10 +142,19 @@ export async function updateHabit(id: string, draft: HabitDraft): Promise<Result
       .from("habit_items")
       .update({ archived_at: new Date().toISOString() })
       .in("id", dropped);
-    if (archiveError) return { ok: false, error: messageFor(archiveError.message) };
+    if (archiveError) return { ok: false, error: messageFor(archiveError.message, { logType: draft.logType }) };
   }
   const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id);
-  if (error) return { ok: false, error: messageFor(error.message) };
+  if (error) {
+    // habit_in_challenge also guards visibility and photos: tell which rule a quantity habit broke
+    let quantityInChallenge = false;
+    if (error.message?.includes("habit_in_challenge")) {
+      const { data: now } = await supabase.from("habits").select("log_type,visibility").eq("id", id).maybeSingle();
+      quantityInChallenge =
+        now?.log_type === "quantity" && !(draft.visibility === "private" && now.visibility !== "private");
+    }
+    return { ok: false, error: messageFor(error.message, { logType: draft.logType, quantityInChallenge }) };
+  }
 
   for (const [position, item] of draft.items.entries()) {
     const label = item.label.trim();
@@ -202,7 +238,7 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
     .delete()
     .eq("habit_id", habitId)
     .eq("local_date", date);
-  if (error) return { ok: false, error: GENERIC };
+  if (error) return { ok: false, error: undoMessage(error.message) };
   refresh();
   return { ok: true };
 }
@@ -221,7 +257,7 @@ export async function checkItem(
 export async function uncheckItem(itemId: string): Promise<Result> {
   const supabase = await createServerClient();
   const { error } = await supabase.rpc("uncheck_item", { p_item_id: itemId });
-  if (error) return { ok: false, error: messageFor(error.message) };
+  if (error) return { ok: false, error: undoMessage(error.message) };
   refresh();
   return { ok: true };
 }
