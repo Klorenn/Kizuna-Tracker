@@ -4,22 +4,13 @@ import { CatJump } from "@/components/brand/CatJump";
 import { Avatar } from "@/components/ui/Avatar";
 import { ButtonLink } from "@/components/ui/Button";
 import { avatarUrl } from "@/lib/avatar";
-import { createServerClient } from "@/lib/supabase/server";
+import { getViewerProfile, viewerMissingDestination } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Listo" };
 
 export default async function ListoPage() {
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("username,first_name,last_name,avatar_path,avatar_updated_at,avatar_preset")
-    .eq("id", user.id)
-    .maybeSingle();
-  if (!profile) redirect("/login?error=perfil");
+  const profile = await getViewerProfile();
+  if (!profile) redirect(await viewerMissingDestination());
 
   return (
     <main className="mx-auto flex min-h-[calc(100dvh-3.5rem-env(safe-area-inset-bottom))] w-full max-w-md flex-col px-5 pt-24">
@@ -28,10 +19,10 @@ export default async function ListoPage() {
       </div>
       <section className="mt-10 flex flex-col gap-4">
         <Avatar
-          name={`${profile.first_name} ${profile.last_name}`}
+          name={`${profile.firstName} ${profile.lastName}`}
           size="L"
-          src={avatarUrl(profile.avatar_path, profile.avatar_updated_at)}
-          preset={profile.avatar_preset}
+          src={avatarUrl(profile.avatarPath, profile.avatarUpdatedAt)}
+          preset={profile.avatarPreset}
         />
         <div className="flex flex-col gap-2">
           <h1 className="text-display font-semibold text-ink">

@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { CacheFirst, NetworkOnly, Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
-import { isStaticAsset, STATIC_CACHE_NAME } from '../lib/sw-cache'
+import { CacheFirst, ExpirationPlugin, NetworkOnly, Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
+import { BRAND_CACHE_LIMITS, BRAND_CACHE_NAME, isBrandAsset, isStaticAsset, STATIC_CACHE_NAME } from '../lib/sw-cache'
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -15,7 +15,17 @@ new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
-    { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME }) },
+    // brand art: its own bounded cache (entries and age), so superseded versions are evicted
+    {
+      matcher: isBrandAsset,
+      handler: new CacheFirst({
+        cacheName: BRAND_CACHE_NAME,
+        matchOptions: { ignoreSearch: false },
+        plugins: [new ExpirationPlugin({ ...BRAND_CACHE_LIMITS, purgeOnQuotaError: true })],
+      }),
+    },
+    // the query is part of the cache key: /brand/x.gif?v=2 is a different entry from ?v=1
+    { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME, matchOptions: { ignoreSearch: false } }) },
     // pages, RSC, /api, Supabase: never cached
     { matcher: () => true, handler: new NetworkOnly() },
   ],
@@ -62,5 +72,16 @@ self.addEventListener('notificationclick', (event) => {
       }
       await self.clients.openWindow(url)
     })(),
+  )
+})
+
+// Brand art moved to its own bounded cache: drop the copies the older shared static cache holds.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.open(STATIC_CACHE_NAME).then(async (cache) => {
+      for (const req of await cache.keys()) {
+        if (new URL(req.url).pathname.startsWith('/brand/')) await cache.delete(req)
+      }
+    }),
   )
 })

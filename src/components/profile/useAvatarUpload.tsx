@@ -1,12 +1,12 @@
 "use client";
 
-import imageCompression from "browser-image-compression";
 import { useRouter } from "next/navigation";
 import { useRef, useState, useTransition } from "react";
 import { uploadAvatar } from "@/app/(app)/perfil/actions";
+import { AVATAR_COMPRESSION } from "./avatar-compression";
 
 /**
- * Profile photo picker: compressed to 512 px in the browser, re-validated and stripped of EXIF on
+ * Profile photo picker: compressed to 256 px in the browser, re-validated and stripped of EXIF on
  * the server. Render `input` once and call `pick()` from a button.
  */
 export function useAvatarUpload(onUploaded?: () => void) {
@@ -22,12 +22,9 @@ export function useAvatarUpload(onUploaded?: () => void) {
     setError(null);
     start(async () => {
       try {
-        const small = await imageCompression(file, {
-          maxWidthOrHeight: 512,
-          maxSizeMB: 0.4,
-          fileType: "image/jpeg",
-          useWebWorker: true,
-        });
+        // loaded on demand: the library (~20 kB gz) is only needed when someone actually uploads
+        const { default: imageCompression } = await import("browser-image-compression");
+        const small = await imageCompression(file, { ...AVATAR_COMPRESSION });
         const jpeg = new File([small], "avatar.jpg", { type: "image/jpeg" });
         const r = await uploadAvatar(jpeg);
         if (!r.ok) setError(r.error);

@@ -1,5 +1,6 @@
 import type { CSSProperties } from "react";
 import { isRestHabit, isStudyHabit } from "@/domain/day-complete";
+import { brandUrl } from "@/lib/brand-assets";
 
 /*
  * Owner's cat GIFs. Each is rendered as a luminance CSS mask cropped to the cat's union bounding
@@ -8,12 +9,17 @@ import { isRestHabit, isStudyHabit } from "@/domain/day-complete";
  *
  * - lift: 360 x 360 canvas, 60 frames; cat box 235 x 239 at (68, 45). The still is frame 0
  *   trimmed to 195 x 214, which sits at (91, 70).
- * - jump: 720 x 720 canvas, 73 frames x 80 ms; cat box 465 x 589 at (159, 78). The still is the
+ * - jump: 480 x 480 canvas, 73 frames x 80 ms; cat box 310 x 393 at (106, 52). The still is the
  *   full coalesced frame 0.
+ *
+ * Every GIF was re-encoded with `gifsicle -O3 --lossy=60 --colors 16` (frame count and delays
+ * untouched; the mask only needs gray levels). jump and eat were downscaled 720 -> 480 and code
+ * 480 -> 320 (they are shown at 96 to 112 CSS px), so their boxes are the union of the new
+ * coalesced frames. Stills of resized cats were resized with them. sleep was already 15 colors.
  */
 export const CAT_LIFT = {
-  gif: "/brand/cat-lift.gif",
-  still: "/brand/cat-lift-still.png",
+  gif: brandUrl("cat-lift.gif"),
+  still: brandUrl("cat-lift-still.png"),
   canvas: 360,
   box: { x: 68, y: 45, w: 235, h: 239 },
   stillBox: { x: 91, y: 70, w: 195, h: 214 },
@@ -22,47 +28,47 @@ export const CAT_LIFT = {
 } as const;
 
 export const CAT_JUMP = {
-  gif: "/brand/cat-jump.gif",
-  still: "/brand/cat-jump-still.png",
-  canvas: 720,
-  box: { x: 159, y: 78, w: 465, h: 589 },
-  stillBox: { x: 0, y: 0, w: 720, h: 720 },
+  gif: brandUrl("cat-jump.gif"),
+  still: brandUrl("cat-jump-still.png"),
+  canvas: 480,
+  box: { x: 106, y: 52, w: 310, h: 393 },
+  stillBox: { x: 0, y: 0, w: 480, h: 480 },
   playMs: 5840,
 } as const;
 
-/** 720 x 720 canvas, 73 frames x 80 ms; cat box 350 x 429 at (160, 137). The still is the full frame 0. */
+/** 480 x 480 canvas, 73 frames x 80 ms; cat box 232 x 287 at (108, 91). The still is the full frame 0. */
 export const CAT_EAT = {
-  gif: "/brand/cat-eat.gif",
-  still: "/brand/cat-eat-still.png",
-  canvas: 720,
-  box: { x: 160, y: 137, w: 350, h: 429 },
-  stillBox: { x: 0, y: 0, w: 720, h: 720 },
+  gif: brandUrl("cat-eat.gif"),
+  still: brandUrl("cat-eat-still.png"),
+  canvas: 480,
+  box: { x: 108, y: 91, w: 232, h: 287 },
+  stillBox: { x: 0, y: 0, w: 480, h: 480 },
   playMs: 5840,
 } as const;
 
 /*
- * read, sleep and code: 480 x 480 canvas, 73 frames x 80 ms; the still is the full frame 0. Boxes
+ * read, sleep (480 x 480 canvas) and code (320 x 320), 73 frames x 80 ms; the still is the full frame 0. Boxes
  * are the union of the coalesced frames (`magick X.gif -coalesce -format "%@\n" info:` -> min/max).
  * - read: downscaled from the owner's 720 px file (gifsicle, 32 grays): box 301 x 286 at (78, 94).
  * - sleep: the owner's fill is cream, which a luminance mask turns translucent, so the file is
  *   levelled to pure white (grays 0..88% -> 0..100%): the cat renders solid accent, lines stay cut out.
  *   Box 341 x 296 at (99, 65) (includes the "z z Z").
- * - code: quantized to 16 grays (1.3 MB -> 770 kB, same mask); the black laptop screen is a
- *   cut-out. Box 437 x 262 at (0, 115): the tail swings to the left edge.
+ * - code: 16 grays, downscaled to 320 px; the black laptop screen is a cut-out. Box 292 x 176 at
+ *   (0, 76): the tail swings to the left edge.
  */
-const cat480 = (name: string, box: { x: number; y: number; w: number; h: number }) =>
+const catSquare = <C extends number>(name: string, canvas: C, box: { x: number; y: number; w: number; h: number }) =>
   ({
-    gif: `/brand/cat-${name}.gif`,
-    still: `/brand/cat-${name}-still.png`,
-    canvas: 480,
+    gif: brandUrl(`cat-${name}.gif`),
+    still: brandUrl(`cat-${name}-still.png`),
+    canvas,
     box,
-    stillBox: { x: 0, y: 0, w: 480, h: 480 },
+    stillBox: { x: 0, y: 0, w: canvas, h: canvas },
     playMs: 5840,
   }) as const;
 
-export const CAT_READ = cat480("read", { x: 78, y: 94, w: 301, h: 286 });
-export const CAT_SLEEP = cat480("sleep", { x: 99, y: 65, w: 341, h: 296 });
-export const CAT_CODE = cat480("code", { x: 0, y: 115, w: 437, h: 262 });
+export const CAT_READ = catSquare("read", 480, { x: 78, y: 94, w: 301, h: 286 });
+export const CAT_SLEEP = catSquare("sleep", 480, { x: 99, y: 65, w: 341, h: 296 });
+export const CAT_CODE = catSquare("code", 320, { x: 0, y: 76, w: 292, h: 176 });
 
 export const CAT_ASSETS = {
   lift: CAT_LIFT,

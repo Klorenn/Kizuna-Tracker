@@ -25,8 +25,10 @@ import {
   toPublicProfileView,
   type PublicProfileRow,
 } from "@/lib/public-profile";
+import { friendshipPairFilter } from "@/lib/friendship-filter";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 // Hidden from search engines until the legal review is done.
 export const metadata: Metadata = { title: "Perfil", robots: { index: false, follow: false } };
@@ -65,9 +67,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return <Unavailable />;
 
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const viewer = await getSessionUser();
 
   // Viewer state: anonymous and strangers get the public view; friends the rich one; self → Perfil.
   let timezone = "UTC";
@@ -76,14 +76,13 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   // name, @handle and avatar from public_profiles: enough to show who is asking even when the
   // public_profile RPC has nothing (no public habits)
   let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null } | null = null;
-  if (user) {
-    const { data: viewer } = await supabase
-      .from("profiles")
-      .select("id,timezone,username")
-      .eq("id", user.id)
-      .maybeSingle();
-    if (viewer) timezone = viewer.timezone;
-    if (viewer?.username === username) redirect("/perfil");
+  if (viewer) {
+    // the one profile read the page always made for a signed-in viewer
+    try {
+      timezone = (await getViewerProfile())?.timezone ?? timezone;
+    } catch {
+      // a failed read of the visitor's own profile must not take the public page down: UTC dates
+    }
     const { data: found } = await supabase
       .from("public_profiles")
       .select("id,username,display_name,avatar_path,avatar_preset")
@@ -94,16 +93,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       const { data: f } = await supabase
         .from("friendships")
         .select("id,requester_id,addressee_id,status")
-        .or(
-          `and(requester_id.eq.${user.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${user.id})`,
-        )
+        .or(friendshipPairFilter(viewer.id, target.id))
         .maybeSingle();
-      state = viewerState(user.id, target.id, f);
+      state = viewerState(viewer.id, target.id, f);
       friendshipId = f?.id ?? null;
       if (state === "self") redirect("/perfil");
       if (state === "friend") {
         const today = localDate(new Date(), timezone);
-        const data = await loadFriendProfile(supabase, user.id, target.id, today, timezone);
+        const data = await loadFriendProfile(supabase, viewer.id, target.id, today, timezone);
         return (
           <InAppShell>
             <FriendProfileView
@@ -231,12 +228,12 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         <Lock size={16} weight="light" className="shrink-0" aria-hidden />
         Las fotos de prueba nunca son públicas. Solo las ven sus amigos.
       </p>
-      {user ? null : (
+      {viewer ? null : (
         <Link href="/bienvenida" className="text-small text-accent">
           Conoce Kizuna
         </Link>
       )}
     </main>
   );
-  return user ? <InAppShell>{page}</InAppShell> : page;
+  return viewer ? <InAppShell>{page}</InAppShell> : page;
 }

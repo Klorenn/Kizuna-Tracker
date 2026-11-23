@@ -8,6 +8,7 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { avatarUrl } from "@/lib/avatar";
 import { INVITE_ERRORS, INVITE_GENERIC } from "@/lib/invites";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Invitación", robots: { index: false, follow: false } };
 
@@ -24,12 +25,10 @@ export default async function InvitePage({
 }) {
   const { code } = await params;
   const { error } = (await searchParams) ?? {};
-  const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  if (!user) redirect(`/login?next=${encodeURIComponent(`/invite/${code}`)}`);
+  const viewer = await getSessionUser();
+  if (!viewer) redirect(`/login?next=${encodeURIComponent(`/invite/${code}`)}`);
 
+  const supabase = await createServerClient();
   const { data: preview } = await supabase.rpc("invite_preview", { p_code: code });
   const inviter = preview as {
     username: string;
