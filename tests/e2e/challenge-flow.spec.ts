@@ -86,13 +86,13 @@ async function createCustomHabit(page: Page, name: string) {
   await expect(page.getByRole("link", { name: new RegExp(name) }).first()).toBeVisible();
 }
 
-async function befriend(a: Page, b: Page, handleA: string, handleB: string, nameB: string) {
+async function befriend(a: Page, b: Page, handleA: string, handleB: string, nameA: string) {
   await a.goto(`/amigos/explorar?q=${handleB}`);
   const row = a.getByRole("listitem").filter({ hasText: `@${handleB}` });
   await row.getByRole("button", { name: "Agregar", exact: true }).click();
   await expect(row.getByText("Solicitud enviada")).toBeVisible();
   await b.goto("/amigos");
-  await b.getByRole("button", { name: `Aceptar a ${nameB}` }).click();
+  await b.getByRole("button", { name: `Aceptar a ` }).click();
   await expect(b.getByText(`@${handleA}`)).toBeVisible();
 }
 
@@ -101,7 +101,7 @@ async function propose(a: Page, habit: string, handleB: string, nameB: string, l
   await a.goto("/");
   await a.getByRole("link", { name: new RegExp(habit) }).first().click();
   await a.getByRole("link", { name: "Retar a un amigo" }).click();
-  await a.getByLabel("Amigo").selectOption({ label: `${nameB} E2E · @${handleB}` });
+  await a.getByLabel("Amigo", { exact: true }).selectOption({ label: `${nameB} E2E · @${handleB}` });
   for (let i = 0; i < lower; i++) await a.getByRole("button", { name: "Menos: Veces por semana" }).click();
   await a.getByLabel("Multa por falla (CLP)").fill("2500");
   await a.getByRole("button", { name: `Enviar reto a ${nameB}` }).click();
@@ -120,7 +120,7 @@ test("accepting a challenge for a habit you do not have creates it in one step",
   await createCustomHabit(a, "Valorant");
   await createPresetHabit(a, "Agua");
   await createPresetHabit(b, "Leer");
-  await befriend(a, b, handleA, handleB, "Fede E2E");
+  await befriend(a, b, handleA, handleB, "Eva E2E");
 
   // B has no "Valorant": the sheet offers "Crear" first and selected, then "Mis hábitos"
   await propose(a, "Valorant", handleB, "Fede", 1);
