@@ -1244,6 +1244,13 @@ export type Database = {
           day_completed: boolean
         }[]
       }
+      checkin_dates: {
+        Args: { p_from: string; p_habit_ids: string[] }
+        Returns: {
+          dates: string[]
+          habit_id: string
+        }[]
+      }
       complete_day_from_items: {
         Args: { p_date: string; p_habit_id: string; p_user_id: string }
         Returns: boolean
@@ -1263,6 +1270,30 @@ export type Database = {
       }
       delete_workout: { Args: { p_checkin_id: string }; Returns: undefined }
       email_for_username: { Args: { p_username: string }; Returns: string }
+      friend_feed: {
+        Args: {
+          p_cursor_at?: string
+          p_cursor_day?: string
+          p_cursor_id?: string
+          p_limit: number
+          p_owner?: string
+          p_photos_only?: boolean
+        }
+        Returns: {
+          created_at: string
+          habit_color: string
+          habit_frequency_type: string
+          habit_id: string
+          habit_name: string
+          habit_target_per_week: number
+          id: string
+          local_date: string
+          photo_path: string
+          rejected_at: string
+          rejected_by: string
+          user_id: string
+        }[]
+      }
       habit_preset_color: { Args: { p_preset: string }; Returns: string }
       invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
