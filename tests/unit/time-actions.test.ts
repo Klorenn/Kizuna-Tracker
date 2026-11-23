@@ -101,13 +101,15 @@ describe('setTimeEntry / deleteTimeEntry', () => {
   })
 })
 
+const ENDED = Date.UTC(2026, 10, 23, 15, 30, 0)
+
 describe('sendPomodoroBlock', () => {
   it('sends the block with its id and reports a credited block', async () => {
     rpc.mockResolvedValue({
       data: [{ checkin_id: 'c1', total_minutes: 50, credited: true, checkin_created: true }],
       error: null,
     })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toEqual({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toEqual({
       ok: true,
       credited: true,
       totalMinutes: 50,
@@ -117,15 +119,45 @@ describe('sendPomodoroBlock', () => {
       p_block_id: 'b1',
       p_minutes: 25,
       p_topic: null,
+      p_ended_at: '2026-11-23T15:30:00.000Z',
     })
   })
+
+  it('sends the end instant of the block as an ISO string', async () => {
+    rpc.mockResolvedValue({
+      data: [{ checkin_id: 'c1', total_minutes: 25, credited: true, checkin_created: true }],
+      error: null,
+    })
+    const endedAt = Date.UTC(2026, 10, 23, 15, 30, 0)
+    await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt }, null)
+    expect(rpc).toHaveBeenCalledWith('add_pomodoro_block', {
+      p_habit_id: 'h1',
+      p_block_id: 'b1',
+      p_minutes: 25,
+      p_topic: null,
+      p_ended_at: '2026-11-23T15:30:00.000Z',
+    })
+  })
+
+  it.each([[Number.NaN], [Number.POSITIVE_INFINITY], [8.64e15 + 1], [undefined as unknown as number]])(
+    'refuses a block whose endedAt is not a valid date (%s) without calling the RPC',
+    async (endedAt) => {
+      rpc.mockClear()
+      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt }, null)).toMatchObject({
+        ok: false,
+        retry: false,
+        code: 'invalid_block',
+      })
+      expect(rpc).not.toHaveBeenCalled()
+    },
+  )
 
   it('treats a retry (credited false) as success', async () => {
     rpc.mockResolvedValue({
       data: [{ checkin_id: null, total_minutes: 140, credited: false, checkin_created: false }],
       error: null,
     })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, 'Álgebra')).toEqual({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, 'Álgebra')).toEqual({
       ok: true,
       credited: false,
       totalMinutes: 140,
@@ -141,7 +173,7 @@ describe('sendPomodoroBlock', () => {
     ['block_expired', 'Un bloque terminó ayer y ya no se puede sumar.'],
   ])('%s is final (retry false)', async (code, copy) => {
     rpc.mockResolvedValue({ data: null, error: { message: code } })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toEqual({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toEqual({
       ok: false,
       error: copy,
       retry: false,
@@ -151,7 +183,7 @@ describe('sendPomodoroBlock', () => {
 
   it('habit_has_items is final too', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'habit_has_items' } })
-    const r = await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)
+    const r = await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)
     expect(r).toMatchObject({ ok: false, retry: false })
   })
 
@@ -159,7 +191,7 @@ describe('sendPomodoroBlock', () => {
     rpc.mockImplementation(() => {
       throw new TypeError('fetch failed')
     })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({
       ok: false,
       retry: true,
     })
@@ -167,27 +199,27 @@ describe('sendPomodoroBlock', () => {
 
   it('network and 5xx errors from the client are retryable', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'TypeError: fetch failed' } })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
     rpc.mockResolvedValue({ data: null, error: { message: 'Bad gateway' }, status: 502 })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
   })
 
   it('a missing session keeps the block pending', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'not_authenticated' } })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
   })
 
   it('retries what it does not recognise (deploy skew, server trouble)', async () => {
     for (const message of ['Could not find the function public.add_pomodoro_block', 'internal error']) {
       rpc.mockResolvedValue({ data: null, error: { message } })
-      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
     }
   })
 
   it('a lost session keeps the block and says to sign in', async () => {
     for (const message of ['JWT expired', 'not_authenticated']) {
       rpc.mockResolvedValue({ data: null, error: { message } })
-      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toEqual({
+      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toEqual({
         ok: false,
         error: 'Inicia sesión para guardar tus bloques.',
         retry: true,
@@ -198,7 +230,7 @@ describe('sendPomodoroBlock', () => {
 
   it('a block id that is not a uuid can never be sent', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'invalid input syntax for type uuid: "b1"' } })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({
       ok: false,
       retry: false,
       code: 'invalid_block',
@@ -206,12 +238,12 @@ describe('sendPomodoroBlock', () => {
   })
 
   it('validates minutes and topic before the RPC', async () => {
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 91 }, null)).toMatchObject({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 91, endedAt: ENDED }, null)).toMatchObject({
       ok: false,
       retry: false,
       code: 'invalid_minutes',
     })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, 'x'.repeat(61))).toMatchObject({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, 'x'.repeat(61))).toMatchObject({
       ok: false,
       retry: false,
       code: 'invalid_topic',
@@ -221,7 +253,7 @@ describe('sendPomodoroBlock', () => {
 
   it('an empty answer without an error is retried', async () => {
     rpc.mockResolvedValue({ data: [], error: null })
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25, endedAt: ENDED }, null)).toMatchObject({ ok: false, retry: true })
   })
 })
 
@@ -233,7 +265,7 @@ describe('every action authenticates first', () => {
     expect(await checkInWithoutTime('h1')).toEqual(signIn)
     expect(await setTimeEntry('c1', 10, null)).toEqual(signIn)
     expect(await deleteTimeEntry('c1')).toEqual(signIn)
-    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 5 }, null)).toMatchObject({
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 5, endedAt: ENDED }, null)).toMatchObject({
       ok: false,
       retry: true,
       code: 'not_authenticated',

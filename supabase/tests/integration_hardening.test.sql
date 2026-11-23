@@ -35,7 +35,7 @@ select ok(not has_function_privilege('anon', 'public.workout_day_types_valid(tex
   'anon still cannot run workout_day_types_valid');
 select ok(pg_get_functiondef('public.accept_invite(text)'::regprocedure) ~* 'for update',
   'accept_invite locks the invite row');
-select ok(pg_get_functiondef('public.create_invite()'::regprocedure) ~* 'for update',
+select ok(pg_get_functiondef('public.create_invite()'::regprocedure) ~* 'for no key update',
   'create_invite locks the inviter before counting');
 
 -- ============================================================ books.finished_on lower bound
