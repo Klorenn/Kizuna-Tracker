@@ -9,6 +9,7 @@ import {
   parseTypedAmount,
   parseTypedAmountResult,
   refusalText,
+  goalIssue,
   doneAfterSync,
   resetSharedQuantityQueue,
   resolveTarget,
@@ -560,5 +561,22 @@ describe('resolveTarget (locked goal)', () => {
     expect(resolveTarget('5000', c, null)).toBe(5000)
     expect(resolveTarget('abc', c, 8000)).toBeNaN()
     expect(validateQuantityConfig({ ...c, target: resolveTarget('5000', c, 8000) }).ok).toBe(false)
+  })
+})
+
+describe('goalIssue (locked goal)', () => {
+  const water: QuantityConfig = { unit: 'ml', label: null, target: 2000, step: 250, display: 'base', glassMl: 250 }
+  it('empty or non-numeric text is "invalid", never the lock', () => {
+    expect(goalIssue('', water, 2000)).toEqual({ kind: 'invalid', error: 'Revisa la cantidad.' })
+    expect(goalIssue('abc', water, 2000)).toEqual({ kind: 'invalid', error: 'Revisa la cantidad.' })
+    expect(goalIssue('1.5', water, 2000)).toMatchObject({ kind: 'invalid' })
+  })
+  it('a valid number below the locked value is "below"', () => {
+    expect(goalIssue('1500', water, 2000)).toEqual({ kind: 'below' })
+  })
+  it('a valid number at or above the lock is fine; without a lock any valid number is', () => {
+    expect(goalIssue('2000', water, 2000)).toBeNull()
+    expect(goalIssue('3000', water, 2000)).toBeNull()
+    expect(goalIssue('100', water, null)).toBeNull()
   })
 })

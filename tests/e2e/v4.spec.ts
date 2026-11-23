@@ -144,6 +144,11 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await expect(alert).toBeVisible();
   await expect(page.getByText("La meta debe ser mayor que 0.")).toHaveCount(0);
   await expect(page).toHaveURL(/\/editar$/);
+  // an empty or non-numeric goal is an invalid number, not a lowered goal
+  await goal.fill("");
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(page.getByRole("alert").filter({ hasText: "Revisa la cantidad." }).last()).toBeVisible();
+  await expect(page.getByRole("alert").filter({ hasText: lock })).toHaveCount(0);
   await goal.fill("10");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page).toHaveURL(new RegExp(`/habitos/${habitId}$`));

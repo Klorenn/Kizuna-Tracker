@@ -382,6 +382,19 @@ export function parseTypedAmount(raw: string, c: QuantityConfig): number | null 
   return r.ok ? r.amount : null;
 }
 
+export type GoalIssue = { kind: "invalid"; error: string } | { kind: "below" } | null;
+
+/**
+ * What is wrong with the typed goal, when `resolveTarget` gives NaN: text that is not a number
+ * ("invalid", with the parser's own message) or a valid number below the locked value ("below", the
+ * only case that shows the lock reason). Null when the goal is fine.
+ */
+export function goalIssue(raw: string, c: QuantityConfig, lockedMin: number | null): GoalIssue {
+  const parsed = parseTypedAmountResult(raw, c);
+  if (!parsed.ok) return { kind: "invalid", error: parsed.error };
+  return lockedMin !== null && parsed.amount < lockedMin ? { kind: "below" } : null;
+}
+
 /** The server's "done" flag only outlives a refresh while the confirmed total still reaches the goal. */
 export const doneAfterSync = (serverDone: boolean, confirmedTotal: number, target: number): boolean =>
   confirmedTotal >= target ? serverDone : false;
