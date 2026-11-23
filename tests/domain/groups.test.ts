@@ -3,6 +3,8 @@ import {
   commitmentLine,
   compliedLabel,
   dateLabel,
+  isInviteCodeShape,
+  isLocalDate,
   isUuid,
   myProgressLabel,
   pendingCommitmentLabel,
@@ -105,6 +107,19 @@ describe('validateGroupFields and validateCommitment', () => {
   })
   it('commitment shares the target rule', () => {
     expect(validateCommitment(commit({ targetPerWeek: 9 }))).toEqual({ ok: false, error: 'Elige entre 1 y 7 veces por semana.' })
+  })
+})
+
+describe('isLocalDate and isInviteCodeShape', () => {
+  it('accepts only real dates', () => {
+    expect(isLocalDate('2026-11-23')).toBe(true)
+    expect(isLocalDate('2028-02-29')).toBe(true)
+    for (const v of ['2026-02-30', '2026-13-01', '2026-1-1', '', 'hoy', 5, null]) expect(isLocalDate(v)).toBe(false)
+  })
+  it('invitation codes: URL-safe and 16 to 128 characters', () => {
+    expect(isInviteCodeShape('AbCdEfGhIjKlMnOp')).toBe(true)
+    expect(isInviteCodeShape('a_b-c'.repeat(5))).toBe(true)
+    for (const v of ['short', 'has space has space', 'x'.repeat(129), 'ñ'.repeat(20), '', null, 7]) expect(isInviteCodeShape(v)).toBe(false)
   })
 })
 

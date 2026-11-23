@@ -17,6 +17,18 @@ export function isUuid(v: unknown): v is string {
   return typeof v === 'string' && UUID.test(v)
 }
 
+/** A real calendar date written "YYYY-MM-DD" (so "2026-02-30" is not one). */
+export function isLocalDate(v: unknown): v is string {
+  if (typeof v !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v)) return false
+  const d = new Date(`${v}T00:00:00Z`)
+  return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v
+}
+
+/** The shape of an invitation code: URL-safe, long enough to carry at least 100 bits. Checked before any database call. */
+export function isInviteCodeShape(v: unknown): v is string {
+  return typeof v === 'string' && /^[A-Za-z0-9_-]{16,128}$/.test(v)
+}
+
 /** Length in characters as a person counts them (an emoji is one). */
 function len(s: string): number {
   return Array.from(s).length
