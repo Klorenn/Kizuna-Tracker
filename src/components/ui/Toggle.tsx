@@ -17,7 +17,7 @@ function Knob({ checked }: { checked: boolean }) {
 }
 
 /**
- * 51 x 31 switch. `touch` wraps it in a 44 px target (the switch itself stays 51 x 31), for rows
+ * 51 x 31 switch. `touch` wraps it in a target at least 44 px high and as wide as the 51 px switch (the switch itself stays 51 x 31), for rows
  * where the switch is the only control.
  */
 export function Toggle({
@@ -46,7 +46,7 @@ export function Toggle({
       onClick={() => onChange(!checked)}
       className={
         touch
-          ? "flex size-11 shrink-0 items-center justify-center disabled:opacity-40"
+          ? "flex h-11 min-w-11 shrink-0 items-center justify-center disabled:opacity-40"
           : `${track(checked)} disabled:opacity-40`
       }
     >

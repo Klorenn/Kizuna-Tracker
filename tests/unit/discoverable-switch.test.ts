@@ -20,7 +20,7 @@ describe('DiscoverableSwitch', () => {
   })
 
   it('has a 44 px target', () => {
-    expect(html(true)).toMatch(/size-11/)
+    expect(html(true)).toMatch(/h-11/)
   })
 
   it('reuses ui/Toggle: no copy of its knob markup or arbitrary values', () => {
