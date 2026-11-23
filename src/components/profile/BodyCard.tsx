@@ -45,7 +45,7 @@ export function BodyCard({
             <p className="text-small text-muted">Peso</p>
             {latest ? (
               <>
-                <p className="font-mono text-[28px] font-semibold leading-none tracking-[-0.02em] text-ink">
+                <p className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none tracking-[-0.02em] text-ink">
                   {formatKg1(latest.kg)}
                 </p>
                 <p className="text-small text-muted">{entryDateLabel(latest.date, today)}</p>
@@ -56,7 +56,7 @@ export function BodyCard({
           </div>
           <div className="flex min-w-0 flex-col gap-1.5 p-4">
             <p className="text-small text-muted">Altura</p>
-            <p className="font-mono text-[28px] font-semibold leading-none tracking-[-0.02em] text-ink">
+            <p className="whitespace-nowrap font-mono text-[24px] font-semibold leading-none tracking-[-0.02em] text-ink">
               {height === null ? "—" : formatCm(height)}
             </p>
             <button

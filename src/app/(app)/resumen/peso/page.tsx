@@ -126,13 +126,15 @@ export default async function PesoPage({ searchParams }: { searchParams: Promise
             <Card>
               <ul className="divide-y divide-line">
                 {summary.map((m) => (
-                  <li key={m.month} className="flex min-h-[52px] items-center gap-3 px-4">
-                    <span className="flex-1 text-body text-ink">{monthRowLabel(m.month)}</span>
-                    <span className="font-mono text-[17px] font-semibold text-ink">
-                      {m.last === null ? "—" : formatKg1(m.last)}
-                    </span>
-                    <span className="w-[84px] text-right font-mono text-small text-muted">
-                      {m.change === null ? "—" : formatSignedKg1(m.change)}
+                  <li key={m.month} className="flex min-h-[60px] items-center gap-3 px-4 py-2">
+                    <span className="min-w-0 flex-1 text-body text-ink">{monthRowLabel(m.month)}</span>
+                    <span className="flex flex-col items-end gap-0.5">
+                      <span className="font-mono text-[17px] font-semibold leading-tight text-ink">
+                        {m.last === null ? "—" : formatKg1(m.last)}
+                      </span>
+                      <span className="font-mono text-small leading-tight text-muted">
+                        {m.change === null ? "—" : formatSignedKg1(m.change)}
+                      </span>
                     </span>
                   </li>
                 ))}
