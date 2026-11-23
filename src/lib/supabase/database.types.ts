@@ -2172,6 +2172,16 @@ export type Database = {
           week_start: string
         }[]
       }
+      group_invite_lookup: {
+        Args: {
+          p_code: string
+          p_key: string
+          p_limit?: number
+          p_viewer: string
+          p_window_seconds?: number
+        }
+        Returns: Json
+      }
       group_invite_preview: { Args: { p_code: string }; Returns: Json }
       group_invite_preview_for: {
         Args: { p_code: string; p_viewer?: string }

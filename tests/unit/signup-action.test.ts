@@ -282,3 +282,48 @@ describe("signUp without a service key", () => {
     });
   });
 });
+
+describe("sign-up from an invitation keeps the invitation (the return path is validated server-side)", () => {
+  const INVITE = "/g/K7QM4PXD";
+  async function runNext(next: unknown) {
+    try {
+      return await signUpAction(INPUT, next as string | null);
+    } catch (e) {
+      if (e instanceof Redirect) return { redirect: e.to };
+      throw e;
+    }
+  }
+  it("a created account with a session ends back on the invitation, not on /listo", async () => {
+    expect(await runNext(INVITE)).toEqual({ redirect: INVITE });
+  });
+  it("no return path (null, undefined): /listo as today", async () => {
+    expect(await runNext(null)).toEqual({ redirect: "/listo" });
+    expect(await signUpAction(INPUT).catch((e) => ({ redirect: (e as Redirect).to }))).toEqual({ redirect: "/listo" });
+  });
+  it.each(["https://evil.com", "//evil.com", "//evil.com/g/K7QM4PXD", "/\\evil.com", "/hoy", "/g/k7qm4pxd", "javascript:alert(1)", 42, {}, ""])(
+    "a hostile or rejected return path (%j) ends on /listo",
+    async (hostile) => {
+      expect(await runNext(hostile)).toEqual({ redirect: "/listo" });
+    },
+  );
+  it("the lost-response recovery (owner signs in) also returns to the invitation", async () => {
+    let calls = 0;
+    adminRpc.mockImplementation(async (name: string) => (name === "username_available" ? { data: ++calls === 1, error: null } : { data: true, error: null }));
+    createUser.mockResolvedValue({ data: { user: null }, error: { message: "timeout" } });
+    signInWithPassword.mockResolvedValue({ data: { user: { id: "u-me" } }, error: null });
+    profileUsername.mockReturnValue({ username: "caro_m" });
+    expect(await runNext(INVITE)).toEqual({ redirect: INVITE });
+  });
+  it("account created but the session did not open: login keeps the invitation", async () => {
+    signInWithPassword.mockResolvedValue({ error: { message: "x" } });
+    expect(await runNext(INVITE)).toEqual({ redirect: "/login?notice=cuenta-lista&next=%2Fg%2FK7QM4PXD" });
+    signInWithPassword.mockRejectedValue(new TypeError("fetch failed"));
+    expect(await runNext(INVITE)).toEqual({ redirect: "/login?notice=cuenta-lista&next=%2Fg%2FK7QM4PXD" });
+    expect(await runNext("https://evil.com")).toEqual({ redirect: "/login?notice=cuenta-lista" });
+  });
+  it("without a service key the auth.signUp path returns to the invitation too", async () => {
+    serviceKey.mockReturnValue(null);
+    signUp.mockResolvedValue({ data: { session: {} }, error: null });
+    expect(await runNext(INVITE)).toEqual({ redirect: INVITE });
+  });
+});

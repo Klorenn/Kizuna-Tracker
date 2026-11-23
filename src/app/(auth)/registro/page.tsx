@@ -223,8 +223,10 @@ export default function RegistroPage() {
       return;
     }
     startTransition(async () => {
-      // On success the action redirects to /listo; safeAction rethrows that redirect.
-      const out = await safeAction(() => signUp(full));
+      // On success the action redirects to /listo (or back to the invitation); safeAction rethrows that redirect.
+      // the return path (an invitation) rides in the address; the server validates it again
+      const returnTo = new URLSearchParams(window.location.search).get("next");
+      const out = await safeAction(() => signUp(full, returnTo));
       if (!out.ok) setSubmitError(out.error);
       else if (out.value && !out.value.ok) setSubmitError(out.value.error);
     });

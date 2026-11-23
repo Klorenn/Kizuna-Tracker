@@ -134,6 +134,20 @@ describe('invitation code helpers', () => {
     expect(normalizeInviteCode('\u{FB00}'.repeat(4))).toBeNull()
     expect(normalizeInviteCode('x'.repeat(65))).toBeNull()
   })
+  it.each([['NBSP', '\u00A0'], ['U+202F', '\u202F'], ['U+2007', '\u2007'], ['U+FEFF', '\uFEFF']])(
+    'normalise: %s inside a code is not whitespace (the database strips ASCII whitespace only)',
+    (_n, ch) => {
+      expect(normalizeInviteCode(`K7QM${ch}4PXD`)).toBeNull()
+      expect(normalizeInviteCode(`${ch}K7QM4PXD`)).toBeNull()
+    },
+  )
+  it('normalise: strips exactly the ASCII whitespace (space, tab, LF, VT, FF, CR)', () => {
+    expect(normalizeInviteCode('K7QM \t\n\v\f\r4PXD')).toBe('K7QM4PXD')
+  })
+  it('normalise: 64 characters is the longest accepted input, 65 is refused', () => {
+    expect(normalizeInviteCode('K7QM4PXD' + ' '.repeat(56))).toBe('K7QM4PXD')
+    expect(normalizeInviteCode('K7QM4PXD' + ' '.repeat(57))).toBeNull()
+  })
   it('normalise: refuses everything else', () => {
     for (const v of ['K7QM--4PXD', 'K7QM-4PX-D', 'K7QM4PX', 'K7QM4PXDD', 'K7QM-4PXDD', 'K7QM4PX0', 'K7QM4PX1', 'K7QMIPXD', 'K7QMOPXD', 'K7QM_4PXD', 'ﬀ7QM4PXD', 'ſ7QM4PXD', 'Ｋ7QM4PXD', 'K7QM4PXD'.padEnd(65, ' ') + 'x', '../K7QM4PXD', 'K7QM%2D4PXD', '', null, undefined, 7]) expect(normalizeInviteCode(v)).toBeNull()
   })

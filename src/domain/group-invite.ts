@@ -27,35 +27,22 @@ export type InviteOutcome<T> =
   | { kind: 'failed' }
 
 /**
- * An invitation lookup behind an attempt limiter. `blocked` is a check-only call (true = over the limit): when it blocks,
- * nothing is looked up. A code that works is never recorded; one that does not (null) is recorded, so only wrong
- * guesses count. If the limiter itself fails the lookup still runs (a valid code keeps working), but an unknown code is then
- * the generic failure, not "gone" (fail closed), and nothing is recorded. Never throws.
+ * An invitation lookup whose limiter and lookup are ONE database call (`group_invite_lookup`), so parallel requests cannot
+ * all pass a check before any of them is counted. `limited` means the key already has its failed lookups in the window (no
+ * lookup was done); a null preview is a code that is not a valid invitation (the database counted it); a preview is a valid
+ * one (nothing counted). If the call fails, throws or answers something unreadable the outcome is `failed` for ANY code:
+ * there is never a preview, and never "gone", without the limiter's answer. Never throws.
  */
 export async function limitedInviteLookup<T>(deps: {
-  blocked: () => Promise<boolean>
-  lookup: () => Promise<{ ok: true; data: T | null } | { ok: false }>
-  record: () => Promise<void>
+  lookup: () => Promise<{ ok: true; limited: boolean; data: T | null } | { ok: false }>
 }): Promise<InviteOutcome<T>> {
-  let limiterWorks = true
-  try {
-    if (await deps.blocked()) return { kind: 'blocked' }
-  } catch {
-    limiterWorks = false
-  }
-  let result: { ok: true; data: T | null } | { ok: false }
+  let result: { ok: true; limited: boolean; data: T | null } | { ok: false }
   try {
     result = await deps.lookup()
   } catch {
     return { kind: 'failed' }
   }
   if (!result.ok) return { kind: 'failed' }
-  if (result.data !== null) return { kind: 'found', data: result.data }
-  if (!limiterWorks) return { kind: 'failed' }
-  try {
-    await deps.record()
-  } catch {
-    // a failed count must not change what the person sees
-  }
-  return { kind: 'gone' }
+  if (result.limited) return { kind: 'blocked' }
+  return result.data !== null ? { kind: 'found', data: result.data } : { kind: 'gone' }
 }
