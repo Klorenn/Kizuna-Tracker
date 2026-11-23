@@ -9,7 +9,7 @@ const pad2 = (n: number) => String(n).padStart(2, '0')
 
 /** 45 -> "45 min", 60 -> "1 h", 85 -> "1 h 25 min", 0 -> "0 min". */
 export function formatDuration(min: number): string {
-  const total = Math.max(0, Math.round(min))
+  const total = Number.isFinite(min) ? Math.max(0, Math.round(min)) : 0
   const h = Math.floor(total / 60)
   const m = total % 60
   if (h === 0) return `${m} min`
@@ -18,14 +18,14 @@ export function formatDuration(min: number): string {
 
 /** "+2 h 10 min", "−45 min" (a real minus sign), "0 min". */
 export function formatSignedDuration(min: number): string {
-  const r = Math.round(min)
+  const r = Number.isFinite(min) ? Math.round(min) : 0
   if (r === 0) return '0 min'
   return `${r > 0 ? '+' : '−'}${formatDuration(Math.abs(r))}`
 }
 
 /** Seconds as "29:40" or "1:01:40" (hours only when there are some). */
 export function formatHms(sec: number): string {
-  const total = Math.max(0, Math.round(sec))
+  const total = Number.isFinite(sec) ? Math.max(0, Math.round(sec)) : 0
   const h = Math.floor(total / 3600)
   const m = Math.floor((total % 3600) / 60)
   const s = total % 60
@@ -34,7 +34,7 @@ export function formatHms(sec: number): string {
 
 /** Timer readout "25:00": remaining milliseconds rounded up to the next second, minutes unbounded. */
 export function formatClock(ms: number): string {
-  const total = Math.max(0, Math.ceil(ms / 1000))
+  const total = Number.isFinite(ms) ? Math.max(0, Math.ceil(ms / 1000)) : 0
   return `${pad2(Math.floor(total / 60))}:${pad2(total % 60)}`
 }
 

@@ -51,6 +51,17 @@ describe('time formatting', () => {
   })
 })
 
+describe('time formatting with bad input', () => {
+  it('never prints NaN', () => {
+    for (const bad of [Number.NaN, Infinity, -Infinity, -5]) {
+      expect(formatDuration(bad)).toBe('0 min')
+      expect(formatSignedDuration(bad)).not.toContain('NaN')
+      expect(formatHms(bad)).toBe('0:00')
+      expect(formatClock(bad)).toBe('00:00')
+    }
+  })
+})
+
 describe('parseDuration', () => {
   it('accepts hours and minutes up to a day', () => {
     expect(parseDuration('1', '25')).toBe(85)

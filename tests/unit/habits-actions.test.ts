@@ -125,13 +125,13 @@ describe('habit actions', () => {
     await createHabit(presetDraft('read'))
     expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ preset: 'read', log_type: 'reading' })
     calls.length = 0
-    await createHabit(presetDraft('sleep'))
+    await createHabit({ ...presetDraft('walk'), logType: 'none' })
     expect(calls.find((c) => c.table === 'habits')!.payload).toMatchObject({ log_type: 'none' })
   })
 
   it('updateHabit writes the chosen log type', async () => {
     reads['habit_items.select'] = { data: [], error: null }
-    await updateHabit('h1', { ...presetDraft('sleep'), logType: 'workout' })
+    await updateHabit('h1', { ...presetDraft('walk'), logType: 'workout' })
     expect(calls.find((c) => c.table === 'habits' && c.op === 'update')!.payload).toMatchObject({ log_type: 'workout' })
   })
 

@@ -102,6 +102,43 @@ describe('pomodoro state machine', () => {
   })
 })
 
+describe('pomodoro fix round 1', () => {
+  it('does not end a paused-and-resumed break early', () => {
+    let s = pomodoroReducer(initialPomodoro('h1', cfg), { type: 'start', at: T, blockId: 'b1' })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 25 * M })
+    expect(s.phase).toBe('break')
+    s = pomodoroReducer(s, { type: 'pause', at: T + 27 * M })
+    s = pomodoroReducer(s, { type: 'resume', at: T + 30 * M })
+    s = pomodoroReducer(s, { type: 'tick', at: T + 31 * M })
+    expect(s.phase).toBe('break')
+    expect(pomodoroView(s, T + 31 * M).elapsedMs).toBe(3 * M)
+    s = pomodoroReducer(s, { type: 'tick', at: T + 33 * M })
+    expect(s.phase).toBe('ready')
+  })
+
+  it('returns the very same state for a tick that changes nothing', () => {
+    expect(pomodoroReducer(open, { type: 'tick', at: T + 1000 })).toBe(open)
+    const later = pomodoroReducer(open, { type: 'tick', at: T + 2000 })
+    expect(later).toBe(open)
+  })
+
+  it('rejects corrupted stored states', () => {
+    const bad = (patch: Record<string, unknown>) => parsePomodoroState(JSON.stringify({ ...open, ...patch }))
+    expect(bad({})).not.toBeNull()
+    expect(bad({ pausedMs: -1 })).toBeNull()
+    expect(bad({ cycle: -1 })).toBeNull()
+    expect(bad({ cycle: 1.5 })).toBeNull()
+    expect(bad({ credited: -2 })).toBeNull()
+    expect(bad({ rev: -1 })).toBeNull()
+    expect(bad({ phaseStartedAt: -5 })).toBeNull()
+    expect(bad({ pausedAt: T - 1000 })).toBeNull()
+    expect(bad({ phase: 'idle', pausedAt: T + 1000 })).toBeNull()
+    expect(bad({ pending: [{ blockId: 'x', minutes: 0, endedAt: T }] })).toBeNull()
+    expect(bad({ pending: [{ blockId: 'x', minutes: 91, endedAt: T }] })).toBeNull()
+    expect(bad({ pending: [{ blockId: 'x', minutes: 25, endedAt: -1 }] })).toBeNull()
+  })
+})
+
 describe('pomodoro config and persistence', () => {
   it('validates the configuration', () => {
     expect(validatePomodoroConfig({ focusMin: 4, breakMin: 5, cycles: null })).toEqual({

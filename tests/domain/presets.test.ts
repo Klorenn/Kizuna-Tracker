@@ -3,6 +3,7 @@ import {
   HABIT_ICONS,
   PRESETS,
   customDraft,
+  normalizeHabitDraft,
   dayComplete,
   presetDraft,
   validateHabitDraft,
@@ -100,6 +101,20 @@ describe('presets: detailed log type', () => {
   })
 })
 
+describe('normalizeHabitDraft', () => {
+  it('clears quantity when the log type is not quantity', () => {
+    const d = { ...presetDraft('water'), logType: 'none' as const }
+    expect(validateHabitDraft(d)).toEqual({ ok: true })
+    expect(normalizeHabitDraft(d).quantity).toBeNull()
+    expect(normalizeHabitDraft({ ...presetDraft('walk'), logType: 'workout' }).quantity).toBeNull()
+  })
+  it('keeps quantity for quantity habits and still errors on a missing or invalid one', () => {
+    const d = presetDraft('water')
+    expect(normalizeHabitDraft(d)).toEqual(d)
+    expect(validateHabitDraft({ ...d, quantity: null })).toEqual({ ok: false, error: 'Configura la meta diaria.' })
+  })
+})
+
 describe('presets (v4)', () => {
   it('ships the new presets and log types', () => {
     expect(PRESETS.study.logType).toBe('time')
@@ -128,6 +143,8 @@ describe('presets (v4)', () => {
       ok: false,
       error: 'Configura la meta diaria.',
     })
+    // photo rule goes by log type: a stale quantity on a "none" habit is just normalised away
+    expect(validateHabitDraft({ ...presetDraft('water'), logType: 'none', requiresPhoto: true })).toEqual({ ok: true })
     const bad = { ...(PRESETS.water.quantity as NonNullable<typeof PRESETS.water.quantity>), target: 0 }
     expect(validateHabitDraft({ ...presetDraft('water'), quantity: bad })).toEqual({
       ok: false,

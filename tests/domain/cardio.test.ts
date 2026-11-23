@@ -47,6 +47,23 @@ describe('cardio formatting', () => {
   })
 })
 
+describe('cardio fix round 1', () => {
+  it('has no pace for a zero or non-finite distance', () => {
+    expect(paceSeconds(0, 600)).toBeNull()
+    expect(paceSeconds(Number.NaN, 600)).toBeNull()
+    expect(paceSeconds(1000, 0)).toBeNull()
+    expect(formatPace(null)).toBe('—')
+    expect(formatPace(Number.NaN)).toBe('—')
+    expect(formatPace(Infinity)).toBe('—')
+    expect(speedKmh(0, 0)).toBe(0)
+  })
+  it('best pace only considers runs, like the pace trend', () => {
+    const withBike = [...outs, r('8', '2026-11-21', 'bike', 20000, 1800)]
+    expect(monthlyCardio(withBike, '2026-11').bestPace).toBe(330)
+    expect(monthlyCardio([r('9', '2026-11-02', 'walk', 3000, 1800)], '2026-11').bestPace).toBeNull()
+  })
+})
+
 describe('cardio input', () => {
   it('parses distance', () => {
     expect(parseDistance('5,2', 'run')).toBe(5200)

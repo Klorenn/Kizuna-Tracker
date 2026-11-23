@@ -32,18 +32,24 @@ const MIN_PACE_DISTANCE_M = 1000
 
 export type CardioEntry = { id: string; date: LocalDate; kind: CardioKind; distanceM: number; durationS: number }
 
-/** Seconds per kilometre, rounded. */
-export const paceSeconds = (distanceM: number, durationS: number): number => Math.round((durationS * 1000) / distanceM)
+/** Seconds per kilometre, rounded; null when it cannot be computed (no distance or time, or not finite). */
+export function paceSeconds(distanceM: number, durationS: number): number | null {
+  if (!Number.isFinite(distanceM) || !Number.isFinite(durationS) || distanceM <= 0 || durationS <= 0) return null
+  return Math.round((durationS * 1000) / distanceM)
+}
 
-/** "5:42 /km". */
-export function formatPace(sec: number): string {
+/** "5:42 /km"; "—" when there is no pace. */
+export function formatPace(sec: number | null): string {
+  if (sec === null || !Number.isFinite(sec) || sec < 0) return '—'
   const total = Math.round(sec)
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, '0')} /km`
 }
 
-/** km/h with one decimal. */
-export const speedKmh = (distanceM: number, durationS: number): number =>
-  Math.round((distanceM / durationS) * 3.6 * 10) / 10
+/** km/h with one decimal; 0 when it cannot be computed. */
+export function speedKmh(distanceM: number, durationS: number): number {
+  if (!Number.isFinite(distanceM) || !Number.isFinite(durationS) || distanceM <= 0 || durationS <= 0) return 0
+  return Math.round((distanceM / durationS) * 3.6 * 10) / 10
+}
 
 /** 1.500 / 5,2: es-CL separators without ICU, at most `decimals` decimals. */
 function num(n: number, decimals: number): string {
@@ -109,7 +115,11 @@ export function monthlyCardio(
 } {
   const inMonth = entries.filter((e) => monthOf(e.date) === month)
   const distanceM = inMonth.reduce((sum, e) => sum + e.distanceM, 0)
-  const paces = inMonth.filter((e) => e.distanceM >= MIN_PACE_DISTANCE_M).map((e) => paceSeconds(e.distanceM, e.durationS))
+  // Runs only, like the pace trend: a bike or a swim would always "beat" a run per km.
+  const paces = inMonth
+    .filter((e) => e.kind === 'run' && e.distanceM >= MIN_PACE_DISTANCE_M)
+    .map((e) => paceSeconds(e.distanceM, e.durationS))
+    .filter((p): p is number => p !== null)
   return {
     month,
     distanceM,
@@ -130,6 +140,7 @@ export function paceTrend(entries: CardioEntry[]): { date: LocalDate; pace: numb
   return entries
     .filter((e) => e.kind === 'run' && e.distanceM >= MIN_PACE_DISTANCE_M)
     .map((e, i) => ({ date: e.date, pace: paceSeconds(e.distanceM, e.durationS), i }))
+    .filter((p): p is { date: LocalDate; pace: number; i: number } => p.pace !== null)
     .sort((a, b) => a.date.localeCompare(b.date) || a.i - b.i)
     .map(({ date, pace }) => ({ date, pace }))
 }

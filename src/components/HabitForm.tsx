@@ -268,6 +268,7 @@ export function HabitForm({
             }}
           >
             {LOG_TYPE_OPTIONS.map((o) => {
+              const anySelected = LOG_TYPE_OPTIONS.some((x) => x.value === draft.logType);
               const selected = o.value === draft.logType;
               return (
                 <button
@@ -275,7 +276,8 @@ export function HabitForm({
                   type="button"
                   role="radio"
                   aria-checked={selected}
-                  tabIndex={selected ? 0 : -1}
+                  // a log type outside the offered options leaves nothing selected: the first radio stays reachable
+                  tabIndex={selected || (!anySelected && o === LOG_TYPE_OPTIONS[0]) ? 0 : -1}
                   onClick={() => patch({ logType: o.value })}
                   className={`h-11 flex-auto rounded-md px-2 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] ${
                     selected ? "bg-raised text-ink shadow-card" : "text-muted"

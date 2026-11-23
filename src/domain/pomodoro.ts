@@ -5,6 +5,8 @@
 type Result = { ok: true } | { ok: false; error: string }
 
 const MIN_MS = 60_000
+/** How far a tick may lag before `lastTickAt` is rewritten (a backwards clock jump smaller than this goes unnoticed). */
+const TICK_PERSIST_MS = 15_000
 
 export type PomodoroConfig = { focusMin: number; breakMin: number; cycles: number | null }
 
@@ -128,7 +130,11 @@ function tick(s: PomodoroState, at: number): PomodoroState {
   if (cur.pausedAt === null && cur.lastTickAt !== null && at < cur.lastTickAt && cur.phaseStartedAt !== null) {
     cur = { ...cur, phaseStartedAt: cur.phaseStartedAt + (at - cur.lastTickAt) }
   }
-  cur = { ...cur, lastTickAt: at }
+  // `lastTickAt` only advances every TICK_PERSIST_MS (or when something else changes), so a
+  // per-second tick that changes nothing returns the very same state and cannot re-render.
+  if (cur.lastTickAt === null || at - cur.lastTickAt >= TICK_PERSIST_MS || cur !== s) {
+    cur = { ...cur, lastTickAt: at }
+  }
   // Catch up: a focus may expire, then its break; a break never starts another focus by itself.
   while (cur.pausedAt === null && cur.phaseStartedAt !== null) {
     if (cur.phase === 'focus') {
@@ -137,13 +143,15 @@ function tick(s: PomodoroState, at: number): PomodoroState {
       cur = closeFocus(cur, cur.config.focusMin, end)
       if (cur.phase === 'done') break
     } else if (cur.phase === 'break') {
-      const end = cur.phaseStartedAt + cur.config.breakMin * MIN_MS
+      const end = cur.phaseStartedAt + cur.pausedMs + cur.config.breakMin * MIN_MS
       if (at < end) break
       cur = { ...cur, phase: 'ready', phaseStartedAt: end, pausedMs: 0 }
       break
     } else break
   }
-  return { ...cur, rev: s.rev + 1 }
+  if (cur === s) return s
+  // A phase change inside the catch-up loop pins lastTickAt to `at` so stored timestamps stay ordered.
+  return { ...cur, lastTickAt: cur.phase !== s.phase ? at : cur.lastTickAt, rev: s.rev + 1 }
 }
 
 export function pomodoroReducer(s: PomodoroState, e: PomodoroEvent): PomodoroState {
@@ -251,7 +259,13 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
   if (!validatePomodoroConfig(config).ok) return null
   if (typeof d.phase !== 'string' || !(PHASES as readonly string[]).includes(d.phase)) return null
   if (!isNum(d.cycle) || !isNum(d.pausedMs) || !isNum(d.credited) || !isNum(d.rev)) return null
+  if (!Number.isInteger(d.cycle) || d.cycle < 0 || d.cycle > 1000) return null
+  if (!Number.isInteger(d.credited) || d.credited < 0 || !Number.isInteger(d.rev) || d.rev < 0) return null
+  if (d.pausedMs < 0) return null
   if (!isNumOrNull(d.phaseStartedAt) || !isNumOrNull(d.pausedAt) || !isNumOrNull(d.lastTickAt)) return null
+  if ((d.phaseStartedAt ?? 0) < 0 || (d.pausedAt ?? 0) < 0 || (d.lastTickAt ?? 0) < 0) return null
+  if (d.pausedAt !== null && (d.phaseStartedAt === null || d.pausedAt < d.phaseStartedAt)) return null
+  if (d.pausedAt !== null && d.phase !== 'focus' && d.phase !== 'break') return null
   if (d.blockId !== null && typeof d.blockId !== 'string') return null
   if (!Array.isArray(d.pending)) return null
   const pending: PendingBlock[] = []
@@ -259,6 +273,7 @@ export function parsePomodoroState(raw: string | null): PomodoroState | null {
     const b = p as Record<string, unknown> | null
     if (typeof b !== 'object' || b === null) return null
     if (typeof b.blockId !== 'string' || !isNum(b.minutes) || !isNum(b.endedAt)) return null
+    if (!Number.isInteger(b.minutes) || b.minutes < 1 || b.minutes > 90 || b.endedAt < 0) return null
     pending.push({ blockId: b.blockId, minutes: b.minutes, endedAt: b.endedAt })
   }
   const phase = d.phase as PomodoroPhase

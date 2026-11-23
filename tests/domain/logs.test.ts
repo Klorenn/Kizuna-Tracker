@@ -356,6 +356,11 @@ describe('bookProgress', () => {
     expect(bookProgress(0, 412)).toBe('412 páginas')
     expect(bookProgress(null, null)).toBeNull()
   })
+  it('survives a zero total and a page past the total', () => {
+    expect(bookProgress(40, 0)).toBe('página 40')
+    expect(bookProgress(0, 0)).toBeNull()
+    expect(bookProgress(500, 412)).toBe('página 500 de 412 · 100 %')
+  })
 })
 
 describe('logSubtitle (v4)', () => {

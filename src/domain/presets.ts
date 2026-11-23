@@ -167,6 +167,11 @@ export function customDraft(): HabitDraft {
   }
 }
 
+/** The database pairs `log_type = 'quantity'` with the quantity columns: any other type carries none. */
+export function normalizeHabitDraft(d: HabitDraft): HabitDraft {
+  return d.logType !== 'quantity' && d.quantity !== null ? { ...d, quantity: null } : d
+}
+
 export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; error: string } {
   const fail = (error: string) => ({ ok: false as const, error })
   const name = d.name.trim()
@@ -189,15 +194,14 @@ export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; e
   if (d.items.length > 0 && d.logType !== 'none') {
     return fail('Un hábito con pasos no lleva registro detallado.')
   }
-  if (d.requiresPhoto && (d.logType === 'time' || d.logType === 'quantity' || d.quantity !== null)) {
+  if (d.requiresPhoto && (d.logType === 'time' || d.logType === 'quantity')) {
     return fail('Un hábito con foto no lleva tiempo ni cantidad.')
   }
+  // A draft with another log type carries no goal (see normalizeHabitDraft); only quantity needs one.
   if (d.logType === 'quantity') {
     if (d.quantity === null) return fail('Configura la meta diaria.')
     const q = validateQuantityConfig(d.quantity)
     if (!q.ok) return q
-  } else if (d.quantity !== null) {
-    return fail('La meta diaria solo va con el registro de cantidad.')
   }
   const seen = new Set<string>()
   for (const item of d.items) {

@@ -422,6 +422,7 @@ const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one :
  * "412 páginas" (nothing read yet). Never rounds up to 100 % before the last page.
  */
 export function bookProgress(page: number | null, total: number | null): string | null {
+  if (total !== null && !(total > 0)) total = null
   if (page !== null && page > 0) {
     if (total === null) return `página ${page}`
     const pct = page >= total ? 100 : Math.min(99, Math.round((page / total) * 100))

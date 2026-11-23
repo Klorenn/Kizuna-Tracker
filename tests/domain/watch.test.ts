@@ -89,6 +89,20 @@ describe('validation', () => {
     expect(validateWatchInput('movie', { ...blank, completed: true }, media[1])).toEqual({ ok: true })
     expect(validateWatchInput('movie', { ...blank, episodes: 1, completed: true }, media[1]).ok).toBe(false)
   })
+  it('rejects episode counts and ranges beyond the known total', () => {
+    expect(validateWatchInput('series', { ...blank, episodes: 2, episodeTo: 30 }, media[0])).toEqual({
+      ok: false,
+      error: 'Dark tiene 26 episodios.',
+    })
+    expect(validateWatchInput('series', { ...blank, episodes: 30 }, media[0])).toEqual({
+      ok: false,
+      error: 'Dark tiene 26 episodios.',
+    })
+    expect(validateWatchInput('series', { ...blank, episodes: 30 }, media[3])).toEqual({ ok: true })
+  })
+  it('rejects a completed series (the RPC raises invalid_watch too)', () => {
+    expect(validateWatchInput('series', { ...blank, episodes: 1, completed: true }, media[0]).ok).toBe(false)
+  })
   it('validates a title', () => {
     expect(validateMedia({ title: ' ', kind: 'movie', totalSeasons: null, totalEpisodes: null, runtimeMin: null })).toEqual({
       ok: false,

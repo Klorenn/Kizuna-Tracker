@@ -65,6 +65,9 @@ export function validateWatchInput(kind: MediaKind, i: Omit<WatchEntry, 'date' |
   if (i.completed) return fail('Una serie no se marca completa: marca que la terminaste.')
   if (i.episodes === null) return fail('Indica cuántos episodios viste.')
   if (!inRange(i.episodes, 1, 200)) return fail('Los episodios van de 1 a 200.')
+  if (media.totalEpisodes !== null && i.episodes > media.totalEpisodes) {
+    return fail(`${media.title} tiene ${plural(media.totalEpisodes, 'episodio', 'episodios')}.`)
+  }
   if (i.season !== null) {
     if (!inRange(i.season, 1, 100)) return fail('Las temporadas van de 1 a 100.')
     if (media.totalSeasons !== null && i.season > media.totalSeasons) {
