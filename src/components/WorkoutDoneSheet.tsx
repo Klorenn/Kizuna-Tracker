@@ -1,10 +1,12 @@
 "use client";
 
 import { Flame } from "@phosphor-icons/react/dist/ssr";
+import { useRouter } from "next/navigation";
 import { useId, useRef } from "react";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
 import { CatLift } from "@/components/brand/CatLift";
+import type { LogType } from "@/domain/logs";
 import { useCelebrationAutoClose } from "@/components/useCelebrationAutoClose";
 
 /**
@@ -17,13 +19,18 @@ export function WorkoutDoneSheet({
   open,
   streakLabel,
   note,
+  habitId,
+  logType,
   onClose,
 }: {
   open: boolean;
   streakLabel: string | null;
   note: string;
+  habitId: string;
+  logType: LogType;
   onClose: () => void;
 }) {
+  const router = useRouter();
   const doneRef = useRef<HTMLButtonElement>(null);
   const bodyId = useId();
   const auto = useCelebrationAutoClose(open, onClose, "lift");
@@ -51,6 +58,18 @@ export function WorkoutDoneSheet({
         <Button ref={doneRef} onClick={onClose}>
           Listo
         </Button>
+        {logType === "workout" ? (
+          <Button
+            variant="secondary"
+            onClick={() => {
+              // moving to the logger: the sheet must not close by itself (nor go back to Hoy) meanwhile
+              auto.cancel();
+              router.push(`/habitos/${habitId}/entrenamiento`);
+            }}
+          >
+            Registrar entrenamiento
+          </Button>
+        ) : null}
       </div>
     </Sheet>
   );

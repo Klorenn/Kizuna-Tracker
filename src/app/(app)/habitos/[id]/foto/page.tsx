@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { notFound, redirect } from "next/navigation";
 import { PhotoCheckinFlow } from "@/components/PhotoCheckinFlow";
+import type { LogType } from "@/domain/logs";
 import type { PresetKey } from "@/domain/presets";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -29,7 +30,7 @@ export default async function FotoPage({
 
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,preset,requires_photo")
+    .select("id,name,preset,requires_photo,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
@@ -57,6 +58,7 @@ export default async function FotoPage({
       itemId={itemId}
       title={habit.name}
       preset={habit.preset as PresetKey | null}
+      logType={habit.log_type as LogType}
       timeZone={profile.timezone}
     />
   );
