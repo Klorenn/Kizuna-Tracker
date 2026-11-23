@@ -6,14 +6,14 @@ vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: () => {} }) }))
 vi.mock('@/app/theme-actions', () => ({ setColor: async () => ({ ok: true }) }))
 
 import { ColorRow, commitColor } from '@/components/ColorRow'
-import { COLORS, type Color } from '@/lib/theme'
+import { COLORS, COLOR_COLUMNS, nextColor, type Color } from '@/lib/theme'
 
 const html = (initial: Color) => renderToStaticMarkup(createElement(ColorRow, { initial }))
 const radios = (h: string) => [...h.matchAll(/<button[^>]*role="radio"[^>]*>/g)].map((m) => m[0])
 const attr = (tag: string, name: string) => tag.match(new RegExp(`${name}="([^"]*)"`))?.[1]
 
 describe('ColorRow markup', () => {
-  it('is a radiogroup named Color with seven radios and their accessible names', () => {
+  it('is a radiogroup named Color with seventeen radios in grid order and their accessible names', () => {
     const h = html('indigo')
     expect(h).toContain('role="radiogroup"')
     expect(h).toContain('aria-label="Color"')
@@ -25,6 +25,16 @@ describe('ColorRow markup', () => {
       'Umi, turquesa',
       'Ume, ciruela',
       'Sumi, grafito',
+      'Sora, azul',
+      'Kon, azul marino',
+      'Fuji, lavanda',
+      'Budō, uva',
+      'Mori, bosque',
+      'Wakaba, lima',
+      'Kin, oliva dorado',
+      'Cha, café',
+      'Nezu, pizarra',
+      'Suna, arena',
     ])
   })
 
@@ -34,10 +44,28 @@ describe('ColorRow markup', () => {
     expect(checked).toHaveLength(1)
     expect(attr(checked[0], 'data-color-option')).toBe(c)
     expect(rs.filter((r) => attr(r, 'tabindex') === '0')).toEqual(checked)
-    expect(rs.filter((r) => attr(r, 'tabindex') === '-1')).toHaveLength(6)
+    expect(rs.filter((r) => attr(r, 'tabindex') === '-1')).toHaveLength(16)
+  })
+
+  it('lays the swatches out as a six-column grid and keys use the same column count', () => {
+    const h = html('indigo')
+    expect(COLOR_COLUMNS).toBe(6)
+    expect(h).toMatch(/role="radiogroup"[^>]*class="[^"]*\bgrid-cols-6\b/)
+    expect(radios(h)).toHaveLength(17)
+  })
+
+  it('keyboard: Up/Down move a row, Home/End jump, Left/Right walk the order (what the row calls)', () => {
+    expect(nextColor('indigo', 'ArrowDown')).toBe('sumi')
+    expect(nextColor('sumi', 'ArrowUp')).toBe('indigo')
+    expect(nextColor('kon', 'ArrowDown')).toBe('cha')
+    expect(nextColor('kon', 'Home')).toBe('indigo')
+    expect(nextColor('kon', 'End')).toBe('suna')
+    expect(nextColor('ume', 'ArrowRight')).toBe('sumi')
+    expect(nextColor('sumi', 'ArrowLeft')).toBe('ume')
   })
 
   it('shows the name of the selected color as text', () => {
+    expect(html('budo')).toContain('>Budō<')
     expect(html('matcha')).toContain('>Matcha<')
     expect(html('indigo')).toContain('>Índigo<')
   })

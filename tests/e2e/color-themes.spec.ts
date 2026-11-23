@@ -6,6 +6,7 @@ import { expectNoHorizontalScroll, randomHandle, signUp } from "./helpers";
 const INDIGO = "rgb(90, 90, 194)";
 const SAKURA = "rgb(185, 63, 120)";
 const MATCHA = "rgb(58, 122, 75)";
+const KON = "rgb(35, 64, 122)";
 const CAT_LIGHT = "rgb(90, 90, 194)";
 const CAT_DARK = "rgb(140, 140, 240)";
 
@@ -49,8 +50,8 @@ test.describe("Ajustes > Color", () => {
 
     const group = page.getByRole("radiogroup", { name: "Color" });
     await expect(group).toBeVisible();
-    await expect(group.getByRole("radio")).toHaveCount(7);
-    for (const name of ["Índigo", "Sakura, rosa", "Matcha, verde", "Yuzu, ámbar", "Umi, turquesa", "Ume, ciruela", "Sumi, grafito"]) {
+    await expect(group.getByRole("radio")).toHaveCount(17);
+    for (const name of ["Índigo", "Sakura, rosa", "Matcha, verde", "Yuzu, ámbar", "Umi, turquesa", "Ume, ciruela", "Sumi, grafito", "Sora, azul", "Kon, azul marino", "Fuji, lavanda", "Budō, uva", "Mori, bosque", "Wakaba, lima", "Kin, oliva dorado", "Cha, café", "Nezu, pizarra", "Suna, arena"]) {
       const radio = group.getByRole("radio", { name, exact: true });
       await expect(radio).toBeVisible();
       const box = (await radio.boundingBox())!;
@@ -59,10 +60,11 @@ test.describe("Ajustes > Color", () => {
     }
     expect(await dataColor(page)).toBe("indigo");
     await expect(group.getByRole("radio", { name: "Índigo", exact: true })).toBeChecked();
-    // at 375 px the seven swatches fit on one line
+    // at 375 px the seventeen swatches wrap in a grid of six per row (6 + 6 + 5)
     await page.setViewportSize({ width: 375, height: 812 });
     const ys = await group.getByRole("radio").evaluateAll((els) => els.map((e) => Math.round(e.getBoundingClientRect().top)));
-    expect(new Set(ys).size).toBe(1);
+    const perRow = [...new Set(ys)].map((y) => ys.filter((v) => v === y).length);
+    expect(perRow).toEqual([6, 6, 5]);
     await page.setViewportSize({ width: 390, height: 844 });
 
     // each swatch paints its own colour, scoped by data-color (no hex in the component)
@@ -115,10 +117,27 @@ test.describe("Ajustes > Color", () => {
     await expect(group.getByRole("radio", { name: "Sakura, rosa", exact: true })).toBeFocused();
     await page.keyboard.press("ArrowLeft");
     await page.keyboard.press("ArrowLeft");
-    await expect(page.locator("html")).toHaveAttribute("data-color", "sumi"); // wraps around
+    await expect(page.locator("html")).toHaveAttribute("data-color", "suna"); // wraps around
     await page.keyboard.press("Home");
     await expect(page.locator("html")).toHaveAttribute("data-color", "indigo");
+    await page.keyboard.press("ArrowDown"); // one row down (six per row)
+    await expect(page.locator("html")).toHaveAttribute("data-color", "sumi");
+    await page.keyboard.press("End");
+    await expect(page.locator("html")).toHaveAttribute("data-color", "suna");
 
+    // a new colour end to end: Kon, azul marino
+    await group.getByRole("radio", { name: "Kon, azul marino", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("data-color", "kon");
+    await expectCookie(context, "kon");
+    await page.reload();
+    expect(await dataColor(page)).toBe("kon");
+    await expect(group.getByRole("radio", { name: "Kon, azul marino", exact: true })).toBeChecked();
+    await page.goto("/habitos/nuevo");
+    await page.getByRole("button", { name: "Agua", exact: true }).click();
+    expect(await page.getByRole("button", { name: "Crear hábito" }).evaluate((el) => getComputedStyle(el).backgroundColor)).toBe(KON);
+
+    await expectNoHorizontalScroll(page, ["/perfil/ajustes"]);
+    await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
     await expectNoHorizontalScroll(page, ["/perfil/ajustes"]);
   });
 

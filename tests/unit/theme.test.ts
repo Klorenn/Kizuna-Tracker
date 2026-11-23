@@ -10,6 +10,7 @@ import {
   themeColorFor,
   themeCookieOptions,
   COLORS,
+  COLOR_COLUMNS,
   COLOR_COOKIE,
   COLOR_LABEL,
   COLOR_NAME,
@@ -69,8 +70,12 @@ describe('theme preference', () => {
 })
 
 describe('color preference', () => {
-  it('offers the seven colors, Índigo first, stored in the "color" cookie', () => {
-    expect(COLORS).toEqual(['indigo', 'sakura', 'matcha', 'yuzu', 'umi', 'ume', 'sumi'])
+  it('offers the seventeen colors in grid order, Índigo first, stored in the "color" cookie', () => {
+    expect(COLORS).toEqual([
+      'indigo', 'sakura', 'matcha', 'yuzu', 'umi', 'ume', 'sumi',
+      'sora', 'kon', 'fuji', 'budo', 'mori', 'wakaba', 'kin', 'cha', 'nezu', 'suna',
+    ])
+    expect(COLOR_COLUMNS).toBe(6)
     expect(COLOR_COOKIE).toBe('color')
   })
 
@@ -83,6 +88,16 @@ describe('color preference', () => {
       umi: 'Umi',
       ume: 'Ume',
       sumi: 'Sumi',
+      sora: 'Sora',
+      kon: 'Kon',
+      fuji: 'Fuji',
+      budo: 'Budō',
+      mori: 'Mori',
+      wakaba: 'Wakaba',
+      kin: 'Kin',
+      cha: 'Cha',
+      nezu: 'Nezu',
+      suna: 'Suna',
     })
     expect(COLOR_NAME).toEqual({
       indigo: 'Índigo',
@@ -92,12 +107,23 @@ describe('color preference', () => {
       umi: 'Umi, turquesa',
       ume: 'Ume, ciruela',
       sumi: 'Sumi, grafito',
+      sora: 'Sora, azul',
+      kon: 'Kon, azul marino',
+      fuji: 'Fuji, lavanda',
+      budo: 'Budō, uva',
+      mori: 'Mori, bosque',
+      wakaba: 'Wakaba, lima',
+      kin: 'Kin, oliva dorado',
+      cha: 'Cha, café',
+      nezu: 'Nezu, pizarra',
+      suna: 'Suna, arena',
     })
   })
 
   it('parses the cookie strictly and defaults to indigo', () => {
     for (const c of COLORS) expect(parseColor(c)).toBe(c)
-    for (const bad of ['SAKURA', 'Sakura', 'rojo', '', ' sakura', 'sakura; path=/', undefined, null]) {
+    expect(parseColor('budo')).toBe('budo')
+    for (const bad of ['budō', 'BUDO', 'Budo', 'SAKURA', 'Sakura', 'rojo', '', ' sakura', 'sakura; path=/', undefined, null]) {
       expect(parseColor(bad)).toBe('indigo')
     }
   })
@@ -113,14 +139,32 @@ describe('color preference', () => {
     })
   })
 
-  it('arrow keys move the selection and wrap around; other keys do nothing', () => {
-    expect(nextColor('indigo', 'ArrowRight')).toBe('sakura')
-    expect(nextColor('indigo', 'ArrowDown')).toBe('sakura')
-    expect(nextColor('sumi', 'ArrowRight')).toBe('indigo')
-    expect(nextColor('indigo', 'ArrowLeft')).toBe('sumi')
-    expect(nextColor('yuzu', 'ArrowUp')).toBe('matcha')
+  it('Left/Right walk all seventeen in order and wrap; Home/End jump; other keys do nothing', () => {
+    let c = 'indigo' as (typeof COLORS)[number]
+    const seen = [c]
+    for (let i = 0; i < COLORS.length - 1; i++) {
+      c = nextColor(c, 'ArrowRight')!
+      seen.push(c)
+    }
+    expect(seen).toEqual([...COLORS])
+    expect(nextColor('suna', 'ArrowRight')).toBe('indigo')
+    expect(nextColor('indigo', 'ArrowLeft')).toBe('suna')
+    expect(nextColor('sumi', 'ArrowRight')).toBe('sora')
     expect(nextColor('yuzu', 'Home')).toBe('indigo')
-    expect(nextColor('yuzu', 'End')).toBe('sumi')
+    expect(nextColor('yuzu', 'End')).toBe('suna')
     expect(nextColor('yuzu', 'a')).toBeNull()
+  })
+
+  it('Up/Down move by a row of six and stop at the first and last row', () => {
+    expect(nextColor('indigo', 'ArrowDown')).toBe('sumi')
+    expect(nextColor('sakura', 'ArrowDown')).toBe('sora')
+    expect(nextColor('sumi', 'ArrowDown')).toBe('wakaba') // second row to third
+    expect(nextColor('mori', 'ArrowDown')).toBe('suna') // no cell below the sixth column: the last one
+    expect(nextColor('wakaba', 'ArrowUp')).toBe('sumi')
+    expect(nextColor('sora', 'ArrowUp')).toBe('sakura')
+    expect(nextColor('indigo', 'ArrowUp')).toBe('indigo') // first row: stays
+    expect(nextColor('suna', 'ArrowDown')).toBe('suna') // last row: stays
+    expect(nextColor('nezu', 'ArrowDown')).toBe('nezu')
+    expect(nextColor('kon', 'ArrowDown')).toBe('cha')
   })
 })

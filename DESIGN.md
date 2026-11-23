@@ -20,7 +20,7 @@ Shadow (single effect): `0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04)`.
 Borders: buttons, cards, chips 1px solid #E6E6E6; inputs 1px solid #8D8D8D.
 
 ## Color themes
-Colour is a second setting next to Sistema / Claro / Oscuro (Ajustes › Preferencias › Color): `<html data-color>`, from the httpOnly cookie `color`, per device. Seven colours: **Índigo** (default, the accent above, unchanged), Sakura (rosa), Matcha (verde), Yuzu (ámbar), Umi (turquesa), Ume (ciruela), Sumi (grafito).
+Colour is a second setting next to Sistema / Claro / Oscuro (Ajustes › Preferencias › Color): `<html data-color>`, from the httpOnly cookie `color`, per device. Seventeen colours: **Índigo** (default, the accent above, unchanged), Sakura (rosa), Matcha (verde), Yuzu (ámbar), Umi (turquesa), Ume (ciruela), Sumi (grafito), Sora (azul), Kon (azul marino), Fuji (lavanda), Budō (uva), Mori (bosque), Wakaba (lima), Kin (oliva dorado), Cha (café), Nezu (pizarra), Suna (arena). The setting is a six-column grid of 44 px swatches.
 
 A colour changes ONLY the accent family: accent, accent-hover, accent2, accent2-hover, accent-soft and heat-1…4. Neutrals, alert red, habit colours, cream, shadows and `theme-color` never change. The mascot keeps indigo (tokens `--color-cat`, `--color-cat2`), the seal stays shu, and icons, Open Graph images and the manifest are untouched.
 
@@ -35,6 +35,16 @@ Accent, light / dark (accent-soft in light / dark). Contrast and distance rules 
 | Umi | #0E7785 | #5CC4D1 | #E9F5F6 | #183034 |
 | Ume | #8B3F86 | #D08BCB | #F7EEF6 | #332232 |
 | Sumi | #3D3D45 | #C9C9D1 | #EFEFF1 | #2A2A2F |
+| Sora | #2B6CAF | #76B0F2 | #F1F8FF | #141F2B |
+| Kon | #23407A | #6B89C3 | #F3F7FE | #181E29 |
+| Fuji | #8256C6 | #B8A9FF | #F8F5FE | #1E1C2B |
+| Budō | #5B2E73 | #A277BB | #F9F5FD | #231A27 |
+| Mori | #1F5A3D | #669A7D | #F3F8F5 | #17211B |
+| Wakaba | #478000 | #B4D37F | #F4F9F1 | #1B2111 |
+| Kin | #7A7400 | #B1AB5A | #F8F7EF | #201F10 |
+| Cha | #6F4A2F | #B08B71 | #FAF6F3 | #241C17 |
+| Nezu | #4A5D73 | #8B9EB4 | #F5F7FA | #1B1E23 |
+| Suna | #7D6B55 | #BFAE98 | #F8F6F4 | #211E19 |
 
 Source of truth is `src/styles/tokens.css`: each colour writes its values once per mode as `--pal-*` / `--pal-dark-*` on `[data-color="x"]`; three shared rules map them onto the tokens. Any element with `data-color="x"` scopes the accent to that colour (the swatches use it, no hex in components). The selected swatch is marked by a check and an ink ring, never colour alone.
 

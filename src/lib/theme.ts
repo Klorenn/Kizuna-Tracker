@@ -53,7 +53,27 @@ export function themeCookieOptions(production: boolean) {
  * swaps the accent family (see tokens.css) and lives in its own httpOnly cookie, read on the server
  * like the theme, so <html data-color> is right on the first paint. Per device, no account needed.
  */
-export const COLORS = ['indigo', 'sakura', 'matcha', 'yuzu', 'umi', 'ume', 'sumi'] as const
+export const COLORS = [
+  'indigo',
+  'sakura',
+  'matcha',
+  'yuzu',
+  'umi',
+  'ume',
+  'sumi',
+  'sora',
+  'kon',
+  'fuji',
+  'budo',
+  'mori',
+  'wakaba',
+  'kin',
+  'cha',
+  'nezu',
+  'suna',
+] as const
+/** Swatches per row of the setting's grid (375 px): Up/Down move by this many. */
+export const COLOR_COLUMNS = 6
 export type Color = (typeof COLORS)[number]
 
 export const COLOR_COOKIE = 'color'
@@ -67,6 +87,16 @@ export const COLOR_LABEL: Readonly<Record<Color, string>> = {
   umi: 'Umi',
   ume: 'Ume',
   sumi: 'Sumi',
+  sora: 'Sora',
+  kon: 'Kon',
+  fuji: 'Fuji',
+  budo: 'Budō',
+  mori: 'Mori',
+  wakaba: 'Wakaba',
+  kin: 'Kin',
+  cha: 'Cha',
+  nezu: 'Nezu',
+  suna: 'Suna',
 }
 
 /** Accessible name of each swatch: the name plus what the colour is, for people who cannot see it. */
@@ -78,6 +108,16 @@ export const COLOR_NAME: Readonly<Record<Color, string>> = {
   umi: 'Umi, turquesa',
   ume: 'Ume, ciruela',
   sumi: 'Sumi, grafito',
+  sora: 'Sora, azul',
+  kon: 'Kon, azul marino',
+  fuji: 'Fuji, lavanda',
+  budo: 'Budō, uva',
+  mori: 'Mori, bosque',
+  wakaba: 'Wakaba, lima',
+  kin: 'Kin, oliva dorado',
+  cha: 'Cha, café',
+  nezu: 'Nezu, pizarra',
+  suna: 'Suna, arena',
 }
 
 export function parseColor(raw: string | undefined | null): Color {
@@ -87,12 +127,23 @@ export function parseColor(raw: string | undefined | null): Color {
 /** Same options as the theme cookie: one year, site-wide, lax, httpOnly, secure in production. */
 export const colorCookieOptions = themeCookieOptions
 
-/** Radio-group keyboard model: arrows move (and wrap), Home/End jump. Null for any other key. */
+/**
+ * Radio-group keyboard model for the grid: Left/Right walk the order and wrap, Up/Down move one row
+ * (the last item when the row below is shorter; they stay put on the first and last row), Home/End
+ * jump. Null for any other key.
+ */
 export function nextColor(current: Color, key: string): Color | null {
+  const n = COLORS.length
   const i = COLORS.indexOf(current)
-  if (key === 'ArrowRight' || key === 'ArrowDown') return COLORS[(i + 1) % COLORS.length]
-  if (key === 'ArrowLeft' || key === 'ArrowUp') return COLORS[(i - 1 + COLORS.length) % COLORS.length]
+  if (key === 'ArrowRight') return COLORS[(i + 1) % n]
+  if (key === 'ArrowLeft') return COLORS[(i - 1 + n) % n]
+  if (key === 'ArrowDown') {
+    if (i + COLOR_COLUMNS < n) return COLORS[i + COLOR_COLUMNS]
+    const inLastRow = Math.floor(i / COLOR_COLUMNS) === Math.floor((n - 1) / COLOR_COLUMNS)
+    return inLastRow ? current : COLORS[n - 1]
+  }
+  if (key === 'ArrowUp') return i - COLOR_COLUMNS >= 0 ? COLORS[i - COLOR_COLUMNS] : current
   if (key === 'Home') return COLORS[0]
-  if (key === 'End') return COLORS[COLORS.length - 1]
+  if (key === 'End') return COLORS[n - 1]
   return null
 }

@@ -32,7 +32,7 @@ export async function commitColor(
 }
 
 /**
- * Ajustes > Preferencias > Color. Seven swatches in a radio group. Each swatch carries `data-color`,
+ * Ajustes > Preferencias > Color. Seventeen swatches in a six-column grid (a radio group). Each swatch carries `data-color`,
  * which scopes the accent tokens (tokens.css), so it paints its colour as it looks in the current
  * mode with no hex here. The selected one is marked by a check and an ink ring, never colour alone.
  */
@@ -70,7 +70,7 @@ export function ColorRow({ initial }: { initial: Color }) {
           {COLOR_LABEL[color]}
         </span>
       </div>
-      <div role="radiogroup" aria-label="Color" className="-mx-1.5 flex flex-wrap justify-between gap-y-1">
+      <div role="radiogroup" aria-label="Color" className="-mx-1.5 grid grid-cols-6 justify-items-center gap-y-1">
         {COLORS.map((c, i) => {
           const selected = c === color;
           return (
