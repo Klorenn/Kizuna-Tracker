@@ -3,8 +3,8 @@
 -- create_invite lock, the cron secret verified in the database and an unread-notifications index.
 
 -- ============================================================ H1 add_pomodoro_block(p_ended_at)
--- 0018's function plus an optional end instant. Null behaves as before; a given instant must not be
--- more than two minutes in the future and must fall on the caller's current local date.
+-- 0018's function plus an optional end instant. Null behaves as before; a given instant is clamped to
+-- now() and must not fall on an earlier local date than the caller's today (profile zone).
 drop function public.add_pomodoro_block(uuid, uuid, int, text);
 
 -- Idempotent by block id: the receipt is written first; a block that already has one credits
@@ -47,15 +47,15 @@ begin
   if p_minutes is null or p_minutes < 1 or p_minutes > 90 then
     raise exception 'invalid_minutes';
   end if;
-  -- a block that ended before today (profile zone) or later than two minutes from now is not credited.
-  -- A block this caller already has a receipt for keeps its idempotent answer (credited = false) on a
-  -- retry, whatever day it is by then, so the rule only applies to blocks not credited yet.
+  -- A block is credited to today only. An end instant later than now() (a phone clock that runs fast)
+  -- is clamped to now(); the one refusal is a (clamped) instant whose local date in the caller's zone is
+  -- before their current local date: block_expired, before any write. A block this caller already has a
+  -- receipt for keeps its idempotent answer (credited = false) on a retry, whatever day it is by then.
   if p_ended_at is not null and not exists (
     select 1 from public.pomodoro_blocks b where b.block_id = p_block_id and b.user_id = v_uid
   ) then
     select p.timezone into v_tz from public.profiles p where p.id = v_uid;
-    if p_ended_at > pg_catalog.now() + interval '2 minutes'
-       or (p_ended_at at time zone v_tz)::date <> v_today then
+    if (least(p_ended_at, pg_catalog.now()) at time zone v_tz)::date < v_today then
       raise exception 'block_expired';
     end if;
   end if;

@@ -43,15 +43,15 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
     expect((await post(`Bearer ${HEX}`)).status).toBe(401)
   })
 
-  it('valid env secret -> not 401', async () => {
-    expect((await post('Bearer env-secret')).status).not.toBe(401)
+  it('valid env secret -> 200', async () => {
+    expect((await post('Bearer env-secret')).status).toBe(200)
     expect(rpc).not.toHaveBeenCalled()
   })
 
-  it('valid database secret -> not 401', async () => {
+  it('valid database secret -> 200', async () => {
     delete process.env.CRON_SECRET
     rpc.mockResolvedValue({ data: true, error: null })
-    expect((await post(`Bearer ${HEX}`)).status).not.toBe(401)
+    expect((await post(`Bearer ${HEX}`)).status).toBe(200)
     expect(rpc).toHaveBeenCalledWith('cron_secret_valid', { p_secret: HEX })
   })
 

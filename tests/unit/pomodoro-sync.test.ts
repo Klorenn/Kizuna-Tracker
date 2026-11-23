@@ -48,17 +48,17 @@ describe('flushPending', () => {
     expect(send).toHaveBeenNthCalledWith(2, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
   })
 
-  it('a block restored without endedAt (older stored shape) is sent without it', async () => {
+  it('a block restored without endedAt (older stored shape) is dropped as expired, never sent', async () => {
     const send = vi.fn<Send>(async () => ok)
     const legacy = {
       ...initialPomodoro('h1', config),
       pending: [{ blockId: 'old', minutes: 25 }],
     } as unknown as PomodoroState
-    expect(await flushPending(legacy, send, null)).toEqual([{ type: 'confirm', blockId: 'old' }])
-    expect(send).toHaveBeenCalledWith('h1', { blockId: 'old', minutes: 25 }, null)
-    expect(send.mock.calls[0][1]).not.toHaveProperty('endedAt')
+    const report = await flushPendingDetailed(legacy, send, null)
+    expect(report.events).toEqual([{ type: 'drop', blockId: 'old' }])
+    expect(report.expired).toBe(1)
+    expect(send).not.toHaveBeenCalled()
   })
-
   it('a retryable failure stays pending (no event)', async () => {
     const send = vi.fn<Send>(async (_h, b) => (b.blockId === 'b1' ? { ok: false, error: 'red', retry: true } : ok))
     expect(await flushPending(withPending('b1', 'b2'), send, null)).toEqual([{ type: 'confirm', blockId: 'b2' }])

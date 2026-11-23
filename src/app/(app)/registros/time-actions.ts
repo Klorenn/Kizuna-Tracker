@@ -145,10 +145,15 @@ export type PomodoroSendResult =
  */
 export async function sendPomodoroBlock(
   habitId: string,
-  block: { blockId: string; minutes: number; endedAt?: number },
+  block: { blockId: string; minutes: number; endedAt: number },
   topic: string | null,
 ): Promise<PomodoroSendResult> {
   const t = cleanTopic(topic);
+  // the end instant is required: the server needs it to refuse a block of an earlier day
+  const ended = typeof block.endedAt === "number" ? new Date(block.endedAt) : null;
+  if (ended === null || !Number.isFinite(ended.getTime())) {
+    return { ok: false, error: ERRORS.invalid_block, retry: false, code: "invalid_block" };
+  }
   if (!Number.isInteger(block.minutes) || block.minutes < 1 || block.minutes > 90) {
     return { ok: false, error: INVALID_MINUTES, retry: false, code: "invalid_minutes" };
   }
@@ -162,7 +167,7 @@ export async function sendPomodoroBlock(
       p_minutes: block.minutes,
       p_topic: t as string | undefined,
       // the server refuses a block that ended before today (block_expired)
-      p_ended_at: block.endedAt === undefined ? undefined : new Date(block.endedAt).toISOString(),
+      p_ended_at: ended.toISOString(),
     });
     const row = data?.[0];
     if (error || !row) {

@@ -134,7 +134,8 @@ export async function flushPendingDetailed(
   };
   const waiting = s.pending.filter((p) => !inFlight.has(p.blockId));
   const mine = waiting.filter((p) => {
-    if (day && blockIsExpired(p.endedAt, day.now, day.timeZone)) {
+    // a block without its end instant (older stored shape) cannot be placed on a day: expired
+    if (!Number.isFinite(p.endedAt) || (day && blockIsExpired(p.endedAt, day.now, day.timeZone))) {
       report.events.push({ type: "drop", blockId: p.blockId });
       report.expired += 1;
       return false;
@@ -146,12 +147,7 @@ export async function flushPendingDetailed(
   const attempt = async (p: (typeof mine)[number]): Promise<{ answer: Answer; topicRejected: boolean }> => {
     const call = async (t: string | null): Promise<Answer> => {
       try {
-        // the end instant lets the server refuse a block that ended on an earlier day; an older stored
-        // block without one is sent as before
-        const block = Number.isFinite(p.endedAt)
-          ? { blockId: p.blockId, minutes: p.minutes, endedAt: p.endedAt }
-          : { blockId: p.blockId, minutes: p.minutes };
-        return await send(s.habitId, block, t);
+        return await send(s.habitId, { blockId: p.blockId, minutes: p.minutes, endedAt: p.endedAt }, t);
       } catch {
         return { ok: false, error: "", retry: true };
       }

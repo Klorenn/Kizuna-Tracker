@@ -4,7 +4,7 @@ begin;
 -- on un-archive, create_invite takes the lighter lock, the cron secret lives in the database and
 -- the unread-notification index exists.
 create extension if not exists pgtap with schema extensions;
-select plan(122);
+select plan(124);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -91,15 +91,20 @@ select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-00
 reset role;
 select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000001'), 50, 'and credits nothing twice');
 
--- a zone where it is about noon: the two-minute rule is tested without crossing local midnight
+-- a zone where it is about noon: future instants stay on today's local date (a phone clock that is
+-- fast is clamped to now(), not refused)
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-000000000008","role":"authenticated"}', true);
-select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 25, null,
-  now() + interval '3 minutes') $$, 'P0001', 'block_expired', 'a block ending more than two minutes in the future is refused');
+select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 25, null,
+  now() + interval '10 minutes')), true, 'an instant 10 minutes in the future is accepted and credits today');
 select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000005', 25, null,
-  now() + interval '1 minute')), true, 'clock skew of one minute is tolerated');
+  now() + interval '3 hours')), true, 'so is one 3 hours in the future');
+select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000004', 25, null,
+  now() + interval '10 minutes')), false, 'a retry of the future-instant block credits once only');
+select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000006', 25, null,
+  tests.sod(tests.noon_tz()) - interval '1 minute') $$, 'P0001', 'block_expired', 'yesterday is still refused in the noon zone');
 -- a credited block retried with an end instant that has since expired (after midnight) still answers
--- the idempotent way, and the refused one left nothing
+-- the idempotent way
 select is((select credited from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000004', '92000000-0000-0000-0000-000000000005', 25, null,
   tests.sod(tests.noon_tz()) - interval '1 minute')), false, 'retry of a credited block with an expired instant: credited = false, no error');
 -- someone else's block id with an expired instant is just expired (no receipt of the caller's)
@@ -107,8 +112,8 @@ select set_config('request.jwt.claims', '{"sub":"a2000000-0000-0000-0000-0000000
 select throws_ok($$ select * from public.add_pomodoro_block('b2000000-0000-0000-0000-000000000001', '92000000-0000-0000-0000-000000000005', 25, null,
   tests.sod('America/Santiago') - interval '1 minute') $$, 'P0001', 'block_expired', 'another user''s receipt does not exempt an expired instant');
 reset role;
-select is((select count(*)::int from public.pomodoro_blocks where block_id = '92000000-0000-0000-0000-000000000004'), 0, 'the refused future block left no receipt');
-select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000004'), 25, 'and the retry credited nothing twice');
+select is((select count(*)::int from public.pomodoro_blocks where block_id = '92000000-0000-0000-0000-000000000006'), 0, 'the refused block left no receipt');
+select is((select minutes from public.time_entries where habit_id = 'b2000000-0000-0000-0000-000000000004'), 50, 'the two future-instant blocks credited 50 minutes, once each');
 
 -- west of UTC (Honolulu): refused first, so nothing at all may have been written for the user
 set local role authenticated;
