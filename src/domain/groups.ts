@@ -35,15 +35,16 @@ export function isInviteCodeShape(v: unknown): v is string {
 }
 
 /**
- * What a person may type or paste -> the canonical code, or null. Identical to the database's rule: trim, drop inner
- * spaces and at most one hyphen, then the rest must already be 8 ASCII characters of the alphabet in either case
- * (checked BEFORE upper-casing, so a ligature or full-width letters never become letters); longer than 64 is invalid at once.
+ * What a person may type or paste -> the canonical code, or null. Exactly the database's `groups_normalize_code`: longer than
+ * 64 characters is invalid at once; every whitespace character and at most one hyphen are removed; the rest must be 8 ASCII
+ * characters of the alphabet in either case (checked BEFORE upper-casing, so a ligature or full-width letters never become
+ * letters); then upper-case.
  */
 export function normalizeInviteCode(v: unknown): string | null {
-  if (typeof v !== 'string') return null
-  const t = v.trim()
-  if (t.length > 64 || t.split('-').length > 2) return null
-  const joined = t.replace(/ /g, '').replace('-', '')
+  if (typeof v !== 'string' || v.length > 64) return null
+  const noSpace = v.replace(/\s/g, '')
+  if (noSpace.split('-').length > 2) return null
+  const joined = noSpace.replace('-', '')
   return ASCII_CODE.test(joined) ? joined.toUpperCase() : null
 }
 

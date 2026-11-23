@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { expectNotFound, logIn, PASSWORD, randomHandle } from "./helpers";
+import { expectNotFound, logIn, PASSWORD, randomHandle, signUp } from "./helpers";
 
 // Written in phase 1 and NOT run yet: it needs migration 0023 (groups) applied locally.
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1) with migration 0023 applied");
@@ -52,7 +52,7 @@ async function session(browser: Browser, u: U): Promise<{ ctx: BrowserContext; p
 async function createGroup(page: Page, name: string, commitment: string, opts: { photo?: boolean } = {}) {
   await page.goto("/grupos/nuevo");
   await page.getByLabel("Nombre del grupo").fill(name);
-  await page.getByLabel("Compromiso").fill(commitment);
+  await page.getByRole("textbox", { name: "Compromiso" }).fill(commitment);
   if (opts.photo) await page.getByRole("switch", { name: "Pedir foto como prueba" }).click();
   await expect(page.getByRole("radio", { name: new RegExp(`Crear «${commitment}»`) })).toBeChecked();
   await page.getByRole("button", { name: "Crear grupo" }).click();
@@ -227,7 +227,9 @@ test("a check-in made before joining with an existing habit does not appear", as
 
   // the habit is now taken: a second group cannot use it
   await B.page.goto("/grupos/nuevo");
-  await B.page.getByRole("radio", { name: "Usar uno de mis hábitos" }).click();
+  // the only habit B has is linked, so the form offers nothing to pick from: only "Crear"
+  await expect(B.page.getByRole("radio", { name: /Crear «/ })).toBeVisible();
+  await expect(B.page.getByRole("radio", { name: "Usar uno de mis hábitos" })).toHaveCount(0);
   await expect(B.page.getByRole("radio", { name: "Lectura previa" })).toHaveCount(0);
 
   await Promise.all([A.ctx.close(), B.ctx.close()]);
@@ -348,5 +350,71 @@ test("360 px without horizontal overflow on the four pages, light and dark", asy
       }
     }
   }
+  await Promise.all([A.ctx.close(), B.ctx.close()]);
+});
+
+test("signing up from an invitation link, then joining; no member data in the signed-out page source", async ({ browser }) => {
+  const a = await mk("gsa", "Ana");
+  const A = await session(browser, a);
+  const name = `Registro ${tag()}`;
+  const groupId = await createGroup(A.page, name, `Nadar ${tag()}`);
+  const invite = await inviteLink(A.page, groupId);
+
+  const out = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const po = await out.newPage();
+  // the page source a signed-out visitor receives: the group, never a member (name, @usuario or id)
+  const html = await (await out.request.get(invite)).text();
+  expect(html).toContain(name);
+  for (const secret of [a.handle, a.name, a.id, "Ana"]) expect(html, `source mentions ${secret}`).not.toContain(secret);
+
+  // preview, then sign up (the new account has no group yet), then the same link joins
+  await po.goto(invite);
+  await expect(po.getByRole("heading", { name: `Te invitaron a ${name}` })).toBeVisible();
+  const handle = randomHandle("gsb");
+  await signUp(po, handle, "Bruno");
+  await po.goto(invite);
+  await expect(po.getByRole("heading", { name: `Te invitaron a ${name}` })).toBeVisible();
+  await po.getByRole("button", { name: "Unirme" }).click();
+  await expect(po).toHaveURL(new RegExp(`/grupos/${groupId}$`));
+  await expect(board(po)).toHaveCount(2);
+  // a member who opens the link again is told so, with a link to the group and nothing to join
+  await po.goto(invite);
+  await expect(po.getByText("Ya eres parte de este grupo.")).toBeVisible();
+  await expect(po.getByRole("link", { name: "Ver el grupo" })).toHaveAttribute("href", `/grupos/${groupId}`);
+  await expect(po.getByRole("button", { name: "Unirme" })).toHaveCount(0);
+
+  await out.close();
+  await A.ctx.close();
+});
+
+test("leaving shows no 404 on the way out; a wrong code typed by hand shows the link-gone copy", async ({ browser }) => {
+  const [a, b] = await Promise.all([mk("gla", "Ana"), mk("glb", "Beto")]);
+  const A = await session(browser, a);
+  const B = await session(browser, b);
+  const groupId = await createGroup(A.page, `Salida ${tag()}`, `Saltar ${tag()}`);
+  await join(B.page, await inviteLink(A.page, groupId));
+
+  await B.page.goto(`/grupos/${groupId}`);
+  await B.page.evaluate(() => {
+    (window as unknown as { __saw404: boolean }).__saw404 = false;
+    new MutationObserver(() => {
+      if ([...document.querySelectorAll("h1")].some((h) => h.textContent?.trim() === "404")) {
+        (window as unknown as { __saw404: boolean }).__saw404 = true;
+      }
+    }).observe(document, { subtree: true, childList: true, characterData: true });
+  });
+  await showSection(B.page, "Miembros");
+  await B.page.getByRole("button", { name: "Salir del grupo" }).click();
+  await B.page.getByRole("dialog", { name: "Salir del grupo" }).getByRole("button", { name: "Salir del grupo" }).click();
+  await expect(B.page).toHaveURL(/\/grupos$/);
+  expect(await B.page.evaluate(() => (window as unknown as { __saw404: boolean }).__saw404)).toBe(false);
+
+  // a wrong (well-formed) code typed in "Tengo un enlace": the link-gone copy; the limit itself is unit-tested
+  await B.page.getByRole("button", { name: "Tengo un enlace" }).click();
+  await B.page.getByLabel("Enlace o código de invitación").fill("zzzz-zzzz");
+  await B.page.getByRole("button", { name: "Continuar" }).click();
+  await expect(B.page).toHaveURL(/\/g\/ZZZZZZZZ$/);
+  await expect(B.page.getByText("Este enlace ya no sirve. Pide uno nuevo.")).toBeVisible();
+
   await Promise.all([A.ctx.close(), B.ctx.close()]);
 });

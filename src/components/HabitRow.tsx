@@ -209,7 +209,12 @@ function HabitRowView({
         >
           {row.name}
         </Link>
-        {group ? <GroupChip name={group.name} color={group.color} /> : null}
+        {/* the chip gives way first: the habit name keeps its room */}
+        {group ? (
+          <span className="flex min-w-0 shrink-[8]">
+            <GroupChip name={group.name} color={group.color} />
+          </span>
+        ) : null}
       </span>
       {/* fixed height: the mono streak figure must not change this line when a streak starts */}
       <span className="flex h-5 items-center gap-1 text-small text-muted">

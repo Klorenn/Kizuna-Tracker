@@ -2,8 +2,7 @@ import type { GroupCommitment, GroupWallCursor } from '@/lib/groups-contract'
 import type { Database } from '@/lib/supabase/database.types'
 
 /**
- * The single seam over the Grupos RPCs (migration 0023, generated types; the two functions of 0024 are typed by hand
- * at the bottom). Nothing else in the app calls `supabase.rpc` for groups. The function names and argument names are
+ * The single seam over the Grupos RPCs (migrations 0023 and 0024, generated types). Nothing else in the app calls `supabase.rpc` for groups. The function names and argument names are
  * checked against the generated types; the rows are those types with the nullability the database really has
  * (the generator marks every column non-null) and `role` narrowed.
  *
@@ -51,6 +50,7 @@ type Answers = {
   group_week_detail: GroupWeekDetailDbRow[]
   /** NULL (no exception) for an unknown, malformed, expired, used-up, archived or removed-before code (0024). */
   join_group: string | null
+  group_invite_preview_for: InvitePreviewForRow | null
 }
 type Answer<F extends keyof Fns> = F extends keyof Answers ? Answers[F] : Fns[F]['Returns']
 /** The generated argument names and types; any argument may be null (the generator marks them all non-null). */
@@ -184,9 +184,9 @@ export function isMissingFunction(error: { message?: string; code?: string } | n
   return /function .* does not exist|could not find the function/i.test(error.message ?? '')
 }
 
-// 0024 (service role only; not in the generated types yet) ---------------------------------------------------------------
+// 0024 (service role only) ---------------------------------------------------------------------------------------------
 
-/** What `group_invite_preview_for` answers: the nine preview keys, plus `member` and `group_id` only for an active member. */
+/** What `group_invite_preview_for` answers (the generated type says Json): the nine preview keys, plus `member` and `group_id` only for an active member. */
 export type InvitePreviewForRow = {
   name: string
   icon: string
@@ -203,8 +203,8 @@ export type InvitePreviewForRow = {
 
 /** The preview of an invitation. Callable ONLY with the service role. `viewer` is the signed-in person's id from the session, never from the request. Null for a code that does not work. */
 export const groupInvitePreviewFor = (c: GroupsClient, code: string, viewer: string | null) =>
-  callLoose<InvitePreviewForRow | null>(c, 'group_invite_preview_for', { p_code: code, p_viewer: viewer })
+  call(c, 'group_invite_preview_for', { p_code: code, p_viewer: viewer })
 
 /** `true` = blocked. Service role only. `record: false` only checks; `true` also counts this attempt. */
 export const rateLimit = (c: GroupsClient, key: string, limit: number, windowSeconds: number, record: boolean) =>
-  callLoose<boolean>(c, 'rate_limit', { p_key: key, p_limit: limit, p_window_seconds: windowSeconds, p_record: record })
+  call(c, 'rate_limit', { p_key: key, p_limit: limit, p_window_seconds: windowSeconds, p_record: record })
