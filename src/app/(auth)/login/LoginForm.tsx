@@ -12,16 +12,22 @@ import { signIn } from "./actions";
 export function LoginForm({
   next,
   profileMissing,
+  accountReady = false,
 }: {
   next: string | null;
   profileMissing: boolean;
+  accountReady?: boolean;
 }) {
   const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [show, setShow] = useState(false);
   const [error, setError] = useState<string | null>(
-    profileMissing ? "No encontramos tu perfil. Inicia sesión de nuevo o crea una cuenta." : null,
+    profileMissing
+      ? "No encontramos tu perfil. Inicia sesión de nuevo o crea una cuenta."
+      : accountReady
+        ? "Tu cuenta está lista. Inicia sesión."
+        : null,
   );
   const [pending, startTransition] = useTransition();
   const passwordRef = useRef<HTMLInputElement>(null);
@@ -54,7 +60,7 @@ export function LoginForm({
     });
   }
 
-  const flagged = error !== null && !profileMissing;
+  const flagged = error !== null && !profileMissing && !accountReady;
   return (
     <form onSubmit={submit} noValidate className="flex flex-col gap-4">
       <Input

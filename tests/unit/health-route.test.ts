@@ -61,6 +61,22 @@ describe("GET /api/health", () => {
     expect(text).toContain('"schema":false');
     expect(text).not.toMatch(/boom|h\.example/);
   });
+  it.each([
+    ["404 PGRST205 (table missing)", { status: 404, error: { code: "PGRST205" } }, false],
+    ["404 without body", { status: 404, error: { code: "" } }, false],
+    ["42P01 (relation missing)", { status: 400, error: { code: "42P01" } }, false],
+    ["401 42501 (permission denied)", { status: 401, error: { code: "42501" } }, true],
+    ["403 (RLS)", { status: 403, error: { code: "" } }, true],
+    ["2xx", { status: 200, error: null }, true],
+    ["500", { status: 500, error: { code: "XX000" } }, false],
+  ])("%s", async (_n, response, expected) => {
+    setEnv(FULL);
+    head.mockResolvedValue(response);
+    const { GET } = await import("@/app/api/health/route");
+    const body = await (await GET()).json();
+    expect(body.schema).toBe(expected);
+    expect(body.ok).toBe(expected);
+  });
   it("thrown request: schema false, ok false", async () => {
     setEnv(FULL);
     head.mockRejectedValue(new Error("net"));

@@ -7,6 +7,7 @@ import { isAvatarPreset } from "@/lib/avatar-presets";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { skipRateLimit } from "@/lib/rate-limit-mode";
 import { clientIp } from "@/lib/request-ip";
+import { supabaseServiceKey } from "@/lib/supabase/env.server";
 import { createServerClient } from "@/lib/supabase/server";
 import { normalizeUsername, validateSignup, type SignupInput } from "@/lib/signup";
 
@@ -84,20 +85,49 @@ export async function signUp(
   if (free !== true) return { ok: false, error: USERNAME_TAKEN_ERROR };
 
   const supabase = await createServerClient();
+  const metadata = {
+    first_name: clean.firstName,
+    last_name: clean.lastName,
+    birth_date: clean.birthDate,
+    username: clean.username,
+    timezone: clean.timezone,
+    terms_accepted: true,
+    ...(clean.avatarPreset !== undefined ? { avatar_preset: clean.avatarPreset } : {}),
+  };
+
+  if (supabaseServiceKey()) {
+    // Never depend on the dashboard's "Confirm email" setting: create the user already
+    // confirmed, then sign in so the session cookies are set on this request.
+    const admin = createAdminClient();
+    const { error: createError } = await admin.auth.admin.createUser({
+      email: clean.email,
+      password: clean.password,
+      email_confirm: true,
+      user_metadata: metadata,
+    });
+    if (createError) {
+      // A handle taken in between makes the profile trigger fail the creation.
+      const { data: stillFree } = await admin.rpc("username_available", {
+        p_username: clean.username,
+      });
+      return {
+        ok: false,
+        error: stillFree === true ? GENERIC_SIGNUP_ERROR : USERNAME_TAKEN_ERROR,
+      };
+    }
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: clean.email,
+      password: clean.password,
+    });
+    // Account exists: no retry, no deletion; the person signs in by hand.
+    if (signInError) redirect("/login?notice=cuenta-lista");
+    redirect("/listo");
+  }
+
   const { data, error } = await supabase.auth.signUp({
     email: clean.email,
     password: clean.password,
-    options: {
-      data: {
-        first_name: clean.firstName,
-        last_name: clean.lastName,
-        birth_date: clean.birthDate,
-        username: clean.username,
-        timezone: clean.timezone,
-        terms_accepted: true,
-        ...(clean.avatarPreset !== undefined ? { avatar_preset: clean.avatarPreset } : {}),
-      },
-    },
+    options: { data: metadata },
   });
   // Any failure (existing email included) gets the same neutral message.
   if (error || !data.session) return { ok: false, error: GENERIC_SIGNUP_ERROR };

@@ -12,11 +12,15 @@ async function schemaReachable(): Promise<boolean> {
     const client = createClient(config.url, config.key, {
       auth: { persistSession: false, autoRefreshToken: false },
     });
-    const { error } = await client
+    const { error, status } = await client
       .from("profiles")
       .select("id", { head: true, count: "exact" })
       .abortSignal(AbortSignal.timeout(3000));
-    return !error;
+    if (!error) return true;
+    // Table missing: not found / undefined relation.
+    if (error.code === "PGRST205" || error.code === "42P01" || status === 404) return false;
+    // Permission or RLS answer: the table exists, the anon role just cannot read it.
+    return status === 401 || status === 403 || error.code === "42501";
   } catch {
     return false;
   }
