@@ -4,6 +4,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Pill } from "@/components/ChallengeCard";
 import { DebtButton } from "@/components/DebtButton";
+import { GroupFundsSection } from "@/components/debts/GroupFundsSection";
 import { Avatar } from "@/components/ui/Avatar";
 import { avatarUrl } from "@/lib/avatar";
 import { Card } from "@/components/ui/Card";
@@ -14,7 +15,9 @@ import { challengeFrequency, firstName } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { loadMyFundDebts } from "@/lib/groups-fines-data";
 import { getSessionUser } from "@/lib/viewer";
+import { fundDebtsForSection } from "./fund-debts";
 
 export const metadata: Metadata = { title: "Deudas" };
 
@@ -27,14 +30,19 @@ export default async function DeudasPage() {
   if (!user) redirect("/bienvenida");
 
   // balances are summed from every debt: a capped read (1000 rows) would misreport money
-  const debts = await fetchAll((from, to) =>
-    supabase
-      .from("debts")
-      .select("id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at")
-      .order("created_at", { ascending: false })
-      .order("id")
-      .range(from, to),
-  );
+  // The fund read is independent of the pairwise debts: same parallel load. It never touches the balance below.
+  const [debts, fundRes] = await Promise.all([
+    fetchAll((from, to) =>
+      supabase
+        .from("debts")
+        .select("id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at")
+        .order("created_at", { ascending: false })
+        .order("id")
+        .range(from, to),
+    ),
+    loadMyFundDebts(),
+  ]);
+  const fundDebts = fundDebtsForSection(fundRes);
 
   const otherOf = (d: { debtor_id: string; creditor_id: string }) => (d.debtor_id === user.id ? d.creditor_id : d.debtor_id);
   const people = [...new Set(debts.map(otherOf))];
@@ -197,6 +205,8 @@ export default async function DeudasPage() {
           </Card>
         </>
       )}
+
+      <GroupFundsSection data={fundDebts} />
     </main>
   );
 }

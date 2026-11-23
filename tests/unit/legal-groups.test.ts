@@ -45,7 +45,9 @@ describe('legal text: groups', () => {
     for (const t of [text(PrivacyContent()), text(TermsContent())]) {
       expect(t.toLowerCase()).not.toMatch(/apuesta|\bbet\b|pozo/)
     }
-    const section = groupsOnly(text(TermsContent())).slice(0, 700).toLowerCase()
+    // the membership paragraphs only; the fine paragraph that follows is covered in deudas-fund.test.ts
+    const grouped = groupsOnly(text(TermsContent()))
+    const section = grouped.slice(0, grouped.indexOf('La multa de un grupo')).toLowerCase()
     expect(section).not.toMatch(/multa|dinero|deuda|fondo/)
   })
 })
