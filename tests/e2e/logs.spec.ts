@@ -34,9 +34,9 @@ async function makeUser(prefix: string): Promise<{ id: string; handle: string }>
 /** The owner's reading and leg-day history (service role: test setup only; the page is read through the UI). */
 async function seedOwnLogs(u: { id: string }): Promise<{ readId: string; gymId: string }> {
   const db = admin();
-  const ok = <T,>(r: { data: T | null; error: { message: string } | null }): T => {
+  const ok = <T,>(r: { data: T; error: { message: string } | null }): NonNullable<T> => {
     expect(r.error).toBeNull();
-    return r.data as T;
+    return r.data as NonNullable<T>;
   };
   const habit = async (name: string, icon: string, logType: string, preset: string) =>
     ok(

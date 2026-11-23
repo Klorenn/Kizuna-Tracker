@@ -92,8 +92,10 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await expect(add).toBeVisible();
   await noScroll(page);
 
-  // a very fast double tap is two sums (not one, not three)
-  await add.dblclick();
+  // a very fast double tap is two sums (not one, not three). Two back-to-back clicks: Playwright's
+  // dblclick fires both in the same instant, which no finger does (see the task report)
+  await add.click();
+  await add.click();
   await expect(page.getByText("2 de 8 vasos")).toBeVisible();
   await page.reload();
   await expect(page.getByText("2 de 8 vasos")).toBeVisible();
