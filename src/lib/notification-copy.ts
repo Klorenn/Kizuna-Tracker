@@ -1,10 +1,22 @@
 import { formatCLP } from '@/domain/ledger'
 
-export type NotificationType = 'friend_request' | 'challenge_proposed' | 'photo_rejected' | 'new_debt' | 'reminder'
+export type NotificationType =
+  | 'friend_request'
+  | 'challenge_proposed'
+  | 'photo_rejected'
+  | 'new_debt'
+  | 'reminder'
+  | 'group_week_closed'
+  | 'group_member_joined'
 
 export type NotificationView = { title: string; body: string; url: string }
 
 const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? v : null)
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+
+/** `/grupos/<id>` when the payload carries a real id, else the list: a payload is never trusted into a path. */
+const groupUrl = (id: unknown): string => (typeof id === 'string' && UUID.test(id) ? `/grupos/${id}` : '/grupos')
 
 const REASONS: Record<string, string> = {
   not_habit: 'no era el hábito',
@@ -55,6 +67,27 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         body: 'Marca lo que ya hiciste antes de que termine el día.',
         url: '/',
       }
+    case 'group_week_closed': {
+      const group = str(payload.group_name)
+      const counts =
+        typeof payload.members_complied === 'number' && typeof payload.members_counted === 'number'
+          ? ` Cumplieron ${payload.members_complied} de ${payload.members_counted}.`
+          : ''
+      return {
+        title: group ? `${group}: cerró la semana` : 'Cerró la semana de tu grupo',
+        body: `${payload.complied === true ? 'Cumpliste.' : 'Esta vez no llegaste.'}${counts}`,
+        url: groupUrl(payload.group_id),
+      }
+    }
+    case 'group_member_joined': {
+      const name = str(payload.display_name)
+      const group = str(payload.group_name)
+      return {
+        title: `${name ?? 'Alguien'} se unió a ${group ?? 'tu grupo'}`,
+        body: 'Ya es parte del grupo.',
+        url: groupUrl(payload.group_id),
+      }
+    }
     default:
       return { title: 'Kizuna', body: 'Tienes una novedad.', url: '/notificaciones' }
   }
