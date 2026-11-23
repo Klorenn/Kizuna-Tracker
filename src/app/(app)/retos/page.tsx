@@ -9,6 +9,14 @@ import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ButtonLink } from "@/components/ui/Button";
 import { localDate } from "@/domain/dates";
+import { HABIT_ICONS, type IconKey } from "@/domain/presets";
+import {
+  createSubline,
+  habitDraftFromChallenge,
+  habitKindLabel,
+  sourceFromRow,
+  type SourceHabitRow,
+} from "@/lib/challenge-accept";
 import {
   challengeFrequency,
   cancelledLabel,
@@ -68,7 +76,12 @@ export default async function RetosPage() {
         ? supabase.from("public_profiles").select("id,display_name,avatar_path,avatar_preset").in("id", people)
         : Promise.resolve({ data: [] }),
       habitIds.length
-        ? supabase.from("habits").select("id,name").in("id", habitIds)
+        ? supabase
+            .from("habits")
+            .select(
+              "id,name,icon,color,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+            )
+            .in("id", habitIds)
         : Promise.resolve({ data: [] }),
       supabase
         .from("habits")
@@ -100,6 +113,7 @@ export default async function RetosPage() {
   const nameOf = new Map((profiles ?? []).map((p) => [p.id, firstName(p.display_name)]));
   const avatarOf = new Map((profiles ?? []).map((p) => [p.id, p]));
   const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
+  const habitById = new Map((habits ?? []).map((h) => [h.id, h]));
   const eligible = (myHabits ?? []).map((h) => ({ id: h.id, name: h.name, requiresPhoto: h.requires_photo }));
   const datesByHabit = new Map<string, string[]>();
   for (const k of checkins) datesByHabit.set(k.habit_id, [...(datesByHabit.get(k.habit_id) ?? []), k.local_date]);
@@ -125,14 +139,23 @@ export default async function RetosPage() {
     const proposalSummary = [frequencyLabel(f), `${c.weeks} ${c.weeks === 1 ? "semana" : "semanas"}`].join(" · ");
 
     if (c.status === "proposed") {
+      const src = habitById.get(c.creator_habit_id);
+      const source = src ? sourceFromRow(src as SourceHabitRow) : null;
+      const { simpleFallback } = source
+        ? habitDraftFromChallenge(source, { frequency: f, requiresPhoto: c.requires_photo })
+        : { simpleFallback: false };
       return {
         status: c.status,
         data: {
           ...base,
           kind: mine ? "outgoing" : "incoming",
           habitName: creatorHabit,
-          summary: mine ? proposalSummary : `${creatorHabit} · ${proposalSummary}`,
+          summary: proposalSummary,
           habits: eligible,
+          habitIcon: src && (HABIT_ICONS as readonly string[]).includes(src.icon) ? (src.icon as IconKey) : "target",
+          habitKind: habitKindLabel(src?.log_type ?? "none"),
+          createSubline: createSubline(f, c.requires_photo),
+          createSimple: simpleFallback,
         },
       };
     }

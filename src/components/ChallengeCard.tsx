@@ -4,7 +4,10 @@ import { CaretRight, Check, Clock, Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { requestCancel, respondChallenge } from "@/app/(app)/retos/actions";
+import { acceptChallengeWithNewHabit, requestCancel, respondChallenge } from "@/app/(app)/retos/actions";
+import { AcceptOptions, ProposalHabitLines } from "@/components/AcceptOptions";
+import type { IconKey } from "@/domain/presets";
+import { CREATE_NEW, defaultAcceptSelection } from "@/lib/challenge-accept";
 import { formatCLP } from "@/domain/ledger";
 import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
@@ -88,6 +91,12 @@ export type ChallengeCardData = {
   /** Finished: outcome label ("Ganaste", "Perdiste", "Empate", "Cancelado"). */
   outcome?: string;
   habits?: HabitChoice[];
+  /** Proposals: the proposer habit as it is shown (icon, kind of record) and the "Crear" option. */
+  habitIcon?: IconKey;
+  habitKind?: string;
+  createSubline?: string;
+  /** The new habit cannot keep the proposer log type: it is created as "Solo marcar". */
+  createSimple?: boolean;
 };
 
 export function ChallengeCard({ data }: { data: ChallengeCardData }) {
@@ -148,7 +157,8 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
   const router = useRouter();
 
   const choices = (data.habits ?? []).filter((h) => !data.requiresPhoto || h.requiresPhoto);
-  const [habitId, setHabitId] = useState<string>(choices[0]?.id ?? "");
+  const initial = defaultAcceptSelection(data.habitName, choices);
+  const [choice, setChoice] = useState<string>(initial.selected);
 
   function decline() {
     start(async () => {
@@ -161,7 +171,10 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
   function accept() {
     start(async () => {
       setError(null);
-      const r = await respondChallenge(data.id, true, habitId);
+      const r =
+        choice === CREATE_NEW && initial.canCreate
+          ? await acceptChallengeWithNewHabit(data.id)
+          : await respondChallenge(data.id, true, choice);
       if (r.ok) {
         setSheet(false);
         router.refresh();
@@ -175,7 +188,7 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
         <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <p className="text-body font-medium text-ink">{data.otherName} te propone un reto</p>
-          <p className="text-small text-muted">{data.summary}</p>
+          <ProposalSummary data={data} />
         </div>
       </div>
       <div className="flex items-center gap-2 text-small">
@@ -192,53 +205,38 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
         </Button>
       </div>
       <Sheet open={sheet} title="Elige tu hábito" onClose={() => setSheet(false)}>
-        {choices.length === 0 ? (
-          <p className="text-body text-muted">
-            {data.requiresPhoto
-              ? "Este reto exige foto en vivo. Crea un hábito con foto (Amigos o Público) para aceptarlo."
-              : "Necesitas un hábito visible para tus amigos (Amigos o Público) para aceptar."}
-          </p>
-        ) : (
-          <>
-            <p className="text-body text-muted">
-              {data.otherName} compite con {data.habitName}. Tú eliges con cuál participar.
-            </p>
-            <div role="radiogroup" aria-label="Tu hábito" className="flex flex-col divide-y divide-line rounded-lg border border-line px-4">
-              {choices.map((h) => {
-                const selected = h.id === habitId;
-                return (
-                  <button
-                    key={h.id}
-                    type="button"
-                    role="radio"
-                    aria-checked={selected}
-                    onClick={() => setHabitId(h.id)}
-                    className="flex min-h-[52px] items-center gap-3 text-left"
-                  >
-                    <span
-                      aria-hidden
-                      className={`flex size-[22px] shrink-0 items-center justify-center rounded-full border-[1.5px] ${
-                        selected ? "border-accent" : "border-outline-strong"
-                      }`}
-                    >
-                      {selected ? <span className="size-[10px] rounded-full bg-accent" /> : null}
-                    </span>
-                    <span className={`flex-1 text-body text-ink ${selected ? "font-medium" : ""}`}>{h.name}</span>
-                  </button>
-                );
-              })}
-            </div>
-            {error ? <ErrorLine message={error} /> : null}
-            <Button disabled={busy || !habitId} onClick={accept}>
-              Aceptar reto
-            </Button>
-          </>
-        )}
+        <AcceptOptions
+          otherName={data.otherName}
+          proposedName={data.habitName}
+          createSubline={data.createSubline ?? ""}
+          createSimple={data.createSimple ?? false}
+          habits={choices}
+          canCreate={initial.canCreate}
+          selected={choice}
+          onSelect={setChoice}
+        />
+        {error ? <ErrorLine message={error} /> : null}
+        <Button disabled={busy || !choice} onClick={accept}>
+          Aceptar reto
+        </Button>
         <Button variant="ghost" onClick={() => setSheet(false)}>
           Cancelar
         </Button>
       </Sheet>
     </Card>
+  );
+}
+
+/** Proposal lines: icon + habit · frequency · weeks, then the kind of record (and "Con foto"). */
+function ProposalSummary({ data }: { data: ChallengeCardData }) {
+  return (
+    <ProposalHabitLines
+      icon={data.habitIcon ?? "target"}
+      name={data.habitName}
+      summary={data.summary}
+      kind={data.habitKind ?? "Solo marcar"}
+      requiresPhoto={data.requiresPhoto}
+    />
   );
 }
 
@@ -252,9 +250,7 @@ function OutgoingCard({ data }: { data: ChallengeCardData }) {
         <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <p className="text-body font-medium text-ink">Esperando a {data.otherName}</p>
-          <p className="text-small text-muted">
-            {data.habitName} · {data.summary}
-          </p>
+          <ProposalSummary data={data} />
         </div>
       </div>
       {error ? <ErrorLine message={error} /> : null}

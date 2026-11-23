@@ -1,4 +1,4 @@
-import { expect, test } from "@playwright/test";
+import { expect, test, type Page } from "@playwright/test";
 import { createPresetHabit, expectNoHorizontalScroll, randomHandle, signUp } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1)");
@@ -72,6 +72,90 @@ test("signup, habit from a preset, invite link, challenge proposal and acceptanc
   await expect(a.getByText("Aún no tienes deudas.")).toBeVisible();
   await expectNoHorizontalScroll(a, ["/", "/amigos", "/retos", "/resumen", "/perfil", "/deudas", "/habitos/nuevo", "/retos/nuevo"]);
 
+  await ctxA.close();
+  await ctxB.close();
+});
+
+/** Custom habit by name (the "Otro" chip), landing on Hoy. */
+async function createCustomHabit(page: Page, name: string) {
+  await page.goto("/habitos/nuevo");
+  await page.getByRole("button", { name: "Otro", exact: true }).click();
+  await page.getByLabel("Nombre").fill(name);
+  await page.getByRole("button", { name: "Crear hábito" }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.getByRole("link", { name: new RegExp(name) }).first()).toBeVisible();
+}
+
+async function befriend(a: Page, b: Page, handleA: string, handleB: string, nameB: string) {
+  await a.goto(`/amigos/explorar?q=${handleB}`);
+  const row = a.getByRole("listitem").filter({ hasText: `@${handleB}` });
+  await row.getByRole("button", { name: "Agregar", exact: true }).click();
+  await expect(row.getByText("Solicitud enviada")).toBeVisible();
+  await b.goto("/amigos");
+  await b.getByRole("button", { name: `Aceptar a ${nameB}` }).click();
+  await expect(b.getByText(`@${handleA}`)).toBeVisible();
+}
+
+/** A proposes the habit `habit` to B from its page: weekly, 4 per week minus `lower`. */
+async function propose(a: Page, habit: string, handleB: string, nameB: string, lower = 0) {
+  await a.goto("/");
+  await a.getByRole("link", { name: new RegExp(habit) }).first().click();
+  await a.getByRole("link", { name: "Retar a un amigo" }).click();
+  await a.getByLabel("Amigo").selectOption({ label: `${nameB} E2E · @${handleB}` });
+  for (let i = 0; i < lower; i++) await a.getByRole("button", { name: "Menos: Veces por semana" }).click();
+  await a.getByLabel("Multa por falla (CLP)").fill("2500");
+  await a.getByRole("button", { name: `Enviar reto a ${nameB}` }).click();
+  await expect(a).toHaveURL(/\/retos$/);
+}
+
+test("accepting a challenge for a habit you do not have creates it in one step", async ({ browser }) => {
+  const ctxA = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const ctxB = await browser.newContext({ viewport: { width: 375, height: 812 } });
+  const a = await ctxA.newPage();
+  const b = await ctxB.newPage();
+  const handleA = randomHandle("eva");
+  const handleB = randomHandle("fede");
+  await signUp(a, handleA, "Eva");
+  await signUp(b, handleB, "Fede");
+  await createCustomHabit(a, "Valorant");
+  await createPresetHabit(a, "Agua");
+  await createPresetHabit(b, "Leer");
+  await befriend(a, b, handleA, handleB, "Fede E2E");
+
+  // B has no "Valorant": the sheet offers "Crear" first and selected, then "Mis hábitos"
+  await propose(a, "Valorant", handleB, "Fede", 1);
+  await b.goto("/retos");
+  await expect(b.getByText("Eva te propone un reto")).toBeVisible();
+  await expect(b.getByText("3 por semana · 4 semanas")).toBeVisible();
+  await expect(b.getByText("Solo marcar")).toBeVisible();
+  await b.getByRole("button", { name: "Aceptar", exact: true }).click();
+  const create = b.getByRole("radio", { name: /Crear «Valorant»/ });
+  await expect(create).toHaveAttribute("aria-checked", "true");
+  await expect(b.getByText("Hábito nuevo · 3 por semana")).toBeVisible();
+  await expect(b.getByText("Mis hábitos", { exact: true })).toBeVisible();
+  await expect(b.getByRole("radio", { name: /Leer/ })).toHaveAttribute("aria-checked", "false");
+  await b.getByRole("button", { name: "Aceptar reto" }).click();
+  await expect(b.getByText("Activos", { exact: true })).toBeVisible();
+
+  // B's Hoy has exactly one "Valorant", with the challenge's weekly target
+  await b.goto("/");
+  await expect(b.getByRole("link", { name: /Valorant/ })).toHaveCount(1);
+  await expect(b.getByText("0 de 3 esta semana")).toBeVisible();
+  await a.goto("/retos");
+  await expect(a.getByText("Activos", { exact: true })).toBeVisible();
+
+  // another challenge, accepted with B's existing habit: the unchanged flow
+  await propose(a, "Agua", handleB, "Fede");
+  await b.goto("/retos");
+  await b.getByRole("button", { name: "Aceptar", exact: true }).click();
+  await expect(b.getByRole("radio", { name: /Crear «Agua»/ })).toHaveAttribute("aria-checked", "true");
+  await b.getByRole("radio", { name: /Leer/ }).click();
+  await b.getByRole("button", { name: "Aceptar reto" }).click();
+  await expect(b.getByText("Propuestos", { exact: true })).toHaveCount(0);
+  await b.goto("/");
+  await expect(b.getByRole("link", { name: /Agua/ })).toHaveCount(0);
+
+  await expectNoHorizontalScroll(b, ["/retos", "/"]);
   await ctxA.close();
   await ctxB.close();
 });
