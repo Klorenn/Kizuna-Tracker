@@ -38,8 +38,8 @@ const supabaseEnv = localSupabaseEnv();
 if (supabaseEnv.NEXT_PUBLIC_SUPABASE_URL && !process.env.E2E_SUPABASE) process.env.E2E_SUPABASE = "1";
 Object.assign(process.env, Object.fromEntries(Object.entries(supabaseEnv).filter(([k]) => !process.env[k])));
 
-const e2ePort = Number(process.env.E2E_PORT ?? 3000);
-const e2eOrigin = "http://localhost:" + e2ePort;
+// E2E_PORT lets a second checkout (worktree) run its own dev server next to the main one.
+const PORT = Number(process.env.E2E_PORT) || 3000;
 
 export default defineConfig({
   testDir: "tests/e2e",
@@ -48,13 +48,13 @@ export default defineConfig({
   timeout: 90_000,
   expect: { timeout: 10_000 },
   use: {
-    baseURL: e2eOrigin,
+    baseURL: `http://localhost:${PORT}`,
     ...devices["Desktop Chrome"],
     viewport: { width: 390, height: 844 },
   },
   webServer: {
-    command: "pnpm dev --port " + e2ePort,
-    url: e2eOrigin + "/bienvenida",
+    command: PORT === 3000 ? "pnpm dev" : `pnpm dev --port ${PORT}`,
+    url: `http://localhost:${PORT}/bienvenida`,
     reuseExistingServer: !process.env.CI,
     timeout: 120_000,
     env: {

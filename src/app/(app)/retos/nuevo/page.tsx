@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ChallengeForm } from "@/components/ChallengeForm";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
-import { parseNewChallengeParams } from "@/lib/challenge-form";
+import { parseNewChallengeParams, parseRivalParam } from "@/lib/challenge-form";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Nuevo reto" };
@@ -13,9 +13,10 @@ export const metadata: Metadata = { title: "Nuevo reto" };
 export default async function NuevoRetoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ habito?: string }>;
+  searchParams: Promise<{ habito?: string; amigo?: string }>;
 }) {
-  const { habito } = await searchParams;
+  const { habito, amigo } = await searchParams;
+  const rivalParam = parseRivalParam(amigo);
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -46,9 +47,12 @@ export default async function NuevoRetoPage({
   const all = habits ?? [];
   const params = parseNewChallengeParams(new URLSearchParams(habito ? { habito } : {}));
   const fromHabit = params.habitId ? all.find((h) => h.id === params.habitId) : undefined;
+  const fromFriend = rivalParam ? friends.find((f) => f.id === rivalParam) : undefined;
   const back = fromHabit
     ? { href: `/habitos/${fromHabit.id}`, label: fromHabit.name }
-    : { href: "/retos", label: "Retos" };
+    : fromFriend
+      ? { href: `/@${fromFriend.username}`, label: fromFriend.name.split(" ")[0] }
+      : { href: "/retos", label: "Retos" };
   const options = all
     .filter((h) => h.visibility !== "private")
     .map((h) => ({ id: h.id, name: h.name, icon: h.icon, requiresPhoto: h.requires_photo }));
@@ -59,7 +63,9 @@ export default async function NuevoRetoPage({
         <CaretLeft size={20} weight="light" aria-hidden />
         {back.label}
       </Link>
-      <h1 className="text-display font-semibold text-ink">{fromHabit ? "Retar a un amigo" : "Nuevo reto"}</h1>
+      <h1 className="text-display font-semibold text-ink">
+        {fromFriend ? `Retar a ${fromFriend.name.split(" ")[0]}` : fromHabit ? "Retar a un amigo" : "Nuevo reto"}
+      </h1>
 
       {fromHabit?.visibility === "private" ? (
         <Card className="flex flex-col gap-3 p-4">
@@ -92,6 +98,7 @@ export default async function NuevoRetoPage({
           habits={options}
           initialHabitId={fromHabit?.id ?? null}
           habitLocked={Boolean(fromHabit)}
+          initialRivalId={fromFriend?.id ?? null}
         />
       )}
     </main>

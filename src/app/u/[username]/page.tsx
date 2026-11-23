@@ -2,7 +2,12 @@ import { Lock } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { BottomNav } from "@/components/BottomNav";
 import { AddFriendButton } from "@/components/FriendActions";
+import { FriendProfileView } from "@/components/friends/FriendProfileView";
+import { RequestButtons } from "@/components/friends/RequestButtons";
 import { HabitIcon } from "@/components/habit-icon";
 import { ShareProfileButton } from "@/components/ShareProfileButton";
 import { Avatar } from "@/components/ui/Avatar";
@@ -13,6 +18,8 @@ import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate } from "@/domain/dates";
 import { avatarUrl } from "@/lib/avatar";
 import type { IconKey } from "@/domain/presets";
+import { loadFriendProfile } from "@/lib/friend-profile-data";
+import { viewerState, type ViewerState } from "@/lib/friend-view";
 import {
   profileShareUrl,
   toPublicProfileView,
@@ -23,6 +30,16 @@ import { createServerClient } from "@/lib/supabase/server";
 
 // Hidden from search engines until the legal review is done.
 export const metadata: Metadata = { title: "Perfil", robots: { index: false, follow: false } };
+
+/** Signed-in viewers keep the app's bottom navigation (this route lives outside the (app) group). */
+function InAppShell({ children }: { children: ReactNode }) {
+  return (
+    <>
+      <div className="pb-[calc(3.5rem+env(safe-area-inset-bottom))]">{children}</div>
+      <BottomNav />
+    </>
+  );
+}
 
 function Unavailable() {
   return (
@@ -48,16 +65,14 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   if (!/^[a-z0-9_]{3,20}$/.test(username)) return <Unavailable />;
 
   const supabase = await createServerClient();
-  const { data } = await supabase.rpc("public_profile", { p_username: username });
-  if (!data) return <Unavailable />;
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
+
+  // Viewer state: anonymous and strangers get the public view; friends the rich one; self → Perfil.
   let timezone = "UTC";
-  let initial: "idle" | "pending" | "accepted" = "idle";
-  let incoming = false;
-  let isMe = false;
+  let state: ViewerState = "anon";
+  let friendshipId: string | null = null;
   if (user) {
     const { data: viewer } = await supabase
       .from("profiles")
@@ -65,53 +80,76 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       .eq("id", user.id)
       .maybeSingle();
     if (viewer) timezone = viewer.timezone;
-    isMe = viewer?.username === username;
-    if (!isMe) {
-      const { data: target } = await supabase
-        .from("public_profiles")
-        .select("id")
-        .eq("username", username)
+    if (viewer?.username === username) redirect("/perfil");
+    const { data: target } = await supabase
+      .from("public_profiles")
+      .select("id,username,display_name,avatar_path")
+      .eq("username", username)
+      .maybeSingle();
+    if (target?.id) {
+      const { data: f } = await supabase
+        .from("friendships")
+        .select("id,requester_id,addressee_id,status")
+        .or(
+          `and(requester_id.eq.${user.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${user.id})`,
+        )
         .maybeSingle();
-      if (target?.id) {
-        const { data: f } = await supabase
-          .from("friendships")
-          .select("status,addressee_id")
-          .or(
-            `and(requester_id.eq.${user.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${user.id})`,
-          )
-          .maybeSingle();
-        if (f?.status === "accepted") initial = "accepted";
-        else if (f) {
-          incoming = f.addressee_id === user.id;
-          initial = incoming ? "idle" : "pending";
-        }
+      state = viewerState(user.id, target.id, f);
+      friendshipId = f?.id ?? null;
+      if (state === "self") redirect("/perfil");
+      if (state === "friend") {
+        const today = localDate(new Date(), timezone);
+        const data = await loadFriendProfile(supabase, user.id, target.id, today, timezone);
+        return (
+          <InAppShell>
+            <FriendProfileView
+              friend={{
+                id: target.id,
+                username: target.username ?? username,
+                name: target.display_name ?? "Tu amigo",
+                avatar: avatarUrl(target.avatar_path),
+              }}
+              data={data}
+              today={today}
+            />
+          </InAppShell>
+        );
       }
+    } else {
+      state = "stranger";
     }
   }
 
+  const { data } = await supabase.rpc("public_profile", { p_username: username });
+  if (!data) return <Unavailable />;
   const view = toPublicProfileView(data as unknown as PublicProfileRow, localDate(new Date(), timezone));
   const shareUrl = profileShareUrl(siteOrigin(await headers()), view.username);
 
-  return (
+  const page = (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-8 pt-8">
       <header className="flex items-center gap-4">
         <Avatar name={view.displayName} size="L" src={avatarUrl(view.avatarPath, view.avatarUpdatedAt)} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
           <h1 className="truncate text-title font-semibold text-ink">{view.displayName}</h1>
-          <p className="truncate text-small text-muted">@{view.username}</p>
+          <p className="truncate font-mono text-[14px] text-muted">@{view.username}</p>
         </div>
       </header>
 
+      {state === "incoming" && friendshipId ? (
+        <RequestButtons friendshipId={friendshipId} name={view.displayName.split(" ")[0]} />
+      ) : null}
       <div className="flex gap-3">
-        <div className="flex-1">
-          {isMe ? null : user ? (
-            <AddFriendButton username={view.username} initial={initial} incoming={incoming} />
-          ) : (
-            <ButtonLink href={`/login?next=${encodeURIComponent(`/@${view.username}`)}`}>
-              Agregar amigo
-            </ButtonLink>
-          )}
-        </div>
+        {state === "incoming" ? null : (
+          <div className="flex-1">
+            {state === "anon" ? (
+              <ButtonLink href={`/login?next=${encodeURIComponent(`/@${view.username}`)}`}>
+                Agregar amigo
+              </ButtonLink>
+            ) : (
+              <AddFriendButton username={view.username} initial={state === "outgoing" ? "pending" : "idle"} />
+            )}
+          </div>
+        )}
         <div className="flex-1">
           <ShareProfileButton kind="profile" url={shareUrl} label="Copiar link" icon="link" />
         </div>
@@ -184,4 +222,5 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       )}
     </main>
   );
+  return user ? <InAppShell>{page}</InAppShell> : page;
 }

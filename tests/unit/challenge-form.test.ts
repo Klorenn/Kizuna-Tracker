@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { parseNewChallengeParams, validateChallengeInput } from '@/lib/challenge-form'
+import { parseNewChallengeParams, parseRivalParam, validateChallengeInput } from '@/lib/challenge-form'
 
 const base = {
   rivalId: 'r',
@@ -47,5 +47,16 @@ describe('parseNewChallengeParams', () => {
 
   it('is open without a habit', () => {
     expect(parseNewChallengeParams(new URLSearchParams(''))).toEqual({ habitId: null, habitLocked: false })
+  })
+})
+
+describe('parseRivalParam', () => {
+  it('preselects a friend from ?amigo=<id> (uuid only)', () => {
+    expect(parseRivalParam('a0000000-0000-0000-0000-00000000000b')).toBe('a0000000-0000-0000-0000-00000000000b')
+  })
+  it('ignores anything else', () => {
+    expect(parseRivalParam(undefined)).toBeNull()
+    expect(parseRivalParam('user_b')).toBeNull()
+    expect(parseRivalParam(['a0000000-0000-0000-0000-00000000000b'])).toBeNull()
   })
 })

@@ -54,13 +54,18 @@ export function ChallengeForm({
   habits,
   initialHabitId,
   habitLocked,
+  initialRivalId = null,
 }: {
   friends: FriendOption[];
   habits: HabitOption[];
   initialHabitId: string | null;
   habitLocked: boolean;
+  /** From a friend's profile ("Retar"): preselected, still changeable. */
+  initialRivalId?: string | null;
 }) {
-  const [rivalId, setRivalId] = useState("");
+  const [rivalId, setRivalId] = useState(
+    initialRivalId && friends.some((f) => f.id === initialRivalId) ? initialRivalId : "",
+  );
   const [habitId, setHabitId] = useState(initialHabitId ?? "");
   const [type, setType] = useState<"daily" | "weekly">("weekly");
   const [target, setTarget] = useState(4);
