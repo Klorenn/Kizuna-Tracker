@@ -50,6 +50,25 @@ function ipv6Groups(v: string): number[] | null {
   return [...head, ...zeros, ...rest].map((g) => parseInt(g, 16))
 }
 
+const PORT = /^\d{1,5}$/
+const validPort = (p: string) => PORT.test(p) && Number(p) <= 65535
+
+/** The address inside `[v6]`, `[v6]:port` or `v4:port`; other text unchanged; null for a malformed bracket or port. */
+function hostOf(ip: string): string | null {
+  if (ip.startsWith('[')) {
+    const m = /^\[([^[\]]+)\](?::(.*))?$/.exec(ip)
+    if (!m || !m[1].includes(':')) return null
+    if (m[2] !== undefined && !validPort(m[2])) return null
+    return m[1]
+  }
+  if (ip.includes(']')) return null
+  const colon = ip.indexOf(':')
+  if (colon !== -1 && colon === ip.lastIndexOf(':') && ip.includes('.')) {
+    return validPort(ip.slice(colon + 1)) ? ip.slice(0, colon) : null
+  }
+  return ip
+}
+
 /**
  * The part of a rate-limit key that identifies a client address. IPv4 is kept as is; IPv6 is reduced to its /64 prefix
  * (one subscriber owns the whole /64, so the full address would give an attacker unlimited keys); IPv4-mapped IPv6
@@ -58,7 +77,9 @@ function ipv6Groups(v: string): number[] | null {
  */
 export function ipBucket(ip: string | null): string {
   if (!ip) return 'unknown'
-  const raw = ip.split('%')[0]
+  const host = hostOf(ip)
+  if (host === null) return 'unknown'
+  const raw = host.split('%')[0]
   const four = ipv4(raw)
   if (four !== null) return four
   if (!raw.includes(':')) return 'unknown'

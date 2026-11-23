@@ -211,7 +211,7 @@ function HabitRowView({
         </Link>
       </span>
       {/* fixed height: the mono streak figure (and the group chip) must not change this line; with a chip the text stays on one line and the chip alone truncates, so the habit name never loses width to it */}
-      <span className={`flex h-5 items-center gap-1 text-small text-muted${group ? " whitespace-nowrap" : ""}`}>
+      <span className={`flex h-5 items-center gap-1 text-small text-muted${group ? " min-w-0 overflow-hidden whitespace-nowrap" : ""}`}>
         <VisibilityIcon value={row.visibility} />
         {quantity ? baseSubtitle(row) : habitSubtitle(row)}
         {row.streak > 0 ? (

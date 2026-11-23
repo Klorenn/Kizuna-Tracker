@@ -53,3 +53,27 @@ describe('ipBucket (rate-limit key part)', () => {
     (v) => expect(ipBucket(v)).toBe('unknown'),
   )
 })
+
+describe('ipBucket: bracketed and port forms (proxies that send ip:port)', () => {
+  it('v4:port is the v4 address', () => {
+    expect(ipBucket('203.0.113.7:51234')).toBe('203.0.113.7')
+    expect(ipBucket('203.0.113.7:80')).toBe(ipBucket('203.0.113.7'))
+  })
+  it('[v6] and [v6]:port are the /64 of the address', () => {
+    expect(ipBucket('[2001:db8:1:2::9]')).toBe('v6:2001:db8:1:2')
+    expect(ipBucket('[2001:db8:1:2::9]:443')).toBe('v6:2001:db8:1:2')
+    expect(ipBucket('[::1]:8080')).toBe('v6:0:0:0:0')
+  })
+  it('a bracketed IPv4-mapped address is the IPv4 address', () => {
+    expect(ipBucket('[::ffff:203.0.113.7]:9')).toBe('203.0.113.7')
+  })
+  it('a zone id is dropped, bracketed or not', () => {
+    expect(ipBucket('[fe80::1%eth0]')).toBe('v6:fe80:0:0:0')
+    expect(ipBucket('[fe80::1%eth0]:5')).toBe('v6:fe80:0:0:0')
+    expect(ipBucket('fe80::1%eth0')).toBe('v6:fe80:0:0:0')
+  })
+  it.each(['[2001:db8::1', '2001:db8::1]', '[]', '[2001:db8::1]:', '[2001:db8::1]:abc', '[2001:db8::1]:123456', '[2001:db8::1]x', '203.0.113.7:', '203.0.113.7:abc', '203.0.113.7:123456', '999.0.0.1:80', '203.0.113.7:80:90', '[[::1]]', '[1.2.3.4]:80'])(
+    '%j still falls back to the fixed key',
+    (v) => expect(ipBucket(v)).toBe('unknown'),
+  )
+})

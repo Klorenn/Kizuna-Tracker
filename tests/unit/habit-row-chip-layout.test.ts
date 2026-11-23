@@ -63,5 +63,11 @@ describe('HabitRow: the group chip sits on the progress line, never beside the n
     expect(without).toContain('min-h-[60px]')
   })
 
+  it('a chip row clips inside its column instead of running under the right-hand action (min-w-0 overflow-hidden whitespace-nowrap)', () => {
+    const open = tag(withChip, /<span class="flex h-5 items-center[^"]*">/)
+    for (const c of ['min-w-0', 'overflow-hidden', 'whitespace-nowrap']) expect(open.split(/[\s"]+/)).toContain(c)
+    expect(without).not.toContain('whitespace-nowrap')
+  })
+
   it('no leftover shrink-[8] anywhere', () => expect(withChip).not.toContain('shrink-[8]'))
 })
