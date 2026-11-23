@@ -52,6 +52,7 @@ import {
   deleteReading,
   saveReading,
   setBookFinished,
+  setBookTotalPages,
   updateBook,
 } from '@/app/(app)/registros/actions'
 
@@ -198,6 +199,26 @@ describe('books', () => {
       payload: { title: 'Rayuela', author: null, total_pages: 600 },
       filters: [['id', 'b1']],
     })
+  })
+
+  it('updateBook sets the total pages of a book that had none', async () => {
+    await expect(updateBook('b1', { title: 'Dune', author: null, totalPages: 412 })).resolves.toEqual({ ok: true })
+    expect(calls[0]).toMatchObject({
+      table: 'books',
+      op: 'update',
+      payload: { title: 'Dune', author: null, total_pages: 412 },
+      filters: [['id', 'b1']],
+    })
+  })
+
+  it('setBookTotalPages changes only total_pages (title and author stay)', async () => {
+    await expect(setBookTotalPages('b1', 412)).resolves.toEqual({ ok: true })
+    expect(calls[0]).toMatchObject({ table: 'books', op: 'update', payload: { total_pages: 412 }, filters: [['id', 'b1']] })
+    expect(Object.keys(calls[0].payload as object)).toEqual(['total_pages'])
+    calls.length = 0
+    await expect(setBookTotalPages('b1', 0)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
+    await expect(setBookTotalPages('b1', 1.5)).resolves.toEqual({ ok: false, error: 'Las páginas del libro van de 1 a 20000.' })
+    expect(calls).toEqual([])
   })
 
   it('setBookFinished refuses a date after today in the profile timezone', async () => {

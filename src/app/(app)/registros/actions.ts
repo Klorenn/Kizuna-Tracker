@@ -139,6 +139,20 @@ export async function updateBook(id: string, input: BookInput): Promise<Result> 
   return { ok: true };
 }
 
+/**
+ * "Añadir páginas totales" in the reading sheet: sets only `total_pages` (the sheet does not know
+ * the author, and updateBook would overwrite it).
+ */
+export async function setBookTotalPages(id: string, totalPages: number): Promise<Result> {
+  const valid = validateBook({ title: "x", author: null, totalPages });
+  if (!valid.ok) return valid;
+  const supabase = await createServerClient();
+  const { error } = await supabase.from("books").update({ total_pages: totalPages }).eq("id", id);
+  if (error) return { ok: false, error: messageFor(error.message) };
+  refresh();
+  return { ok: true };
+}
+
 /** Finished on a local date (never after today in the profile's zone), or back to "reading" with null. */
 export async function setBookFinished(id: string, finishedOn: LocalDate | null): Promise<Result> {
   const supabase = await createServerClient();
