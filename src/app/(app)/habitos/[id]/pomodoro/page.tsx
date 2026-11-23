@@ -3,6 +3,7 @@ import { notFound, redirect } from "next/navigation";
 import { PomodoroScreen } from "@/components/logs/PomodoroScreen";
 import { localDate } from "@/domain/dates";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Pomodoro" };
 
@@ -10,12 +11,10 @@ export const metadata: Metadata = { title: "Pomodoro" };
 export default async function PomodoroPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, { data: habit }] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select("id,name,preset")

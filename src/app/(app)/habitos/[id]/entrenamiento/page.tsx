@@ -12,6 +12,7 @@ import { localDate } from "@/domain/dates";
 import { type DayType, type MuscleGroup, type WorkoutDraft } from "@/domain/logs";
 import { logDateParam } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { exercisesFromRows } from "@/lib/workout-form";
 
 export const metadata: Metadata = { title: "Entrenamiento" };
@@ -39,15 +40,9 @@ export default async function EntrenamientoPage({
   const { id } = await params;
   const { fecha } = await searchParams;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("timezone")
-    .eq("id", user.id)
-    .maybeSingle();
+  const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
   const { data: habit } = await supabase

@@ -6,17 +6,16 @@ import { formatDuration } from "@/domain/time";
 import { entryMinutes, episodeLabel, seriesProgress, type MediaItem, type WatchEntry } from "@/domain/watch";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { SeriesView, type MediaView } from "./SeriesView";
 
 export const metadata: Metadata = { title: "Series y películas" };
 
 export default async function SeriesPage() {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
+  const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
   const [media, rows] = await Promise.all([

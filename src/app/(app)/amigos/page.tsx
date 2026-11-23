@@ -17,6 +17,7 @@ import type { FeedPage } from "@/lib/feed";
 import { friendStatusText } from "@/lib/friend-view";
 import { friendStreaks } from "@/lib/friends-data";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { searchUsers } from "./actions";
 
 export const metadata: Metadata = { title: "Amigos" };
@@ -70,16 +71,14 @@ export default async function AmigosPage({
   const { q = "", amigo } = await searchParams;
   const justAdded = amigo && /^[a-z0-9_]{3,20}$/.test(amigo) ? amigo : null;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  // getUser is the only read everything else waits on: profile, friendships, search and the feed
+  // the session check is the only read everything else waits on: profile, friendships, search and the feed
   // start together. The feed needs the timezone just to format times, so it gets the promise.
-  const meRead = Promise.resolve(supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle());
+  const meRead = getViewerProfile();
   // never rejects: nobody may be awaiting it (an empty feed returns before formatting times)
-  const timezone = meRead.then(({ data }) => data?.timezone ?? "UTC").catch(() => "UTC");
-  const [{ data: me }, { data: friendships }, hits, feed] = await Promise.all([
+  const timezone = meRead.then((p) => p?.timezone ?? "UTC").catch(() => "UTC");
+  const [me, { data: friendships }, hits, feed] = await Promise.all([
     meRead,
     supabase
       .from("friendships")

@@ -52,6 +52,7 @@ import {
   weeklyCounts,
 } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Resumen" };
 
@@ -169,12 +170,10 @@ export default async function ResumenPage({
 }) {
   const { h, mes, vista } = await searchParams;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habitRows }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, { data: habitRows }] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select(

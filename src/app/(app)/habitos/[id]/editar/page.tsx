@@ -6,6 +6,7 @@ import { toHabitColor } from "@/domain/habit-colors";
 import { quantityConfigOf } from "@/domain/today";
 import type { HabitDraft, IconKey, PresetKey, Visibility } from "@/domain/presets";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/viewer";
 
 const QUANTITY_LOCKED =
   "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
@@ -15,9 +16,7 @@ export const metadata: Metadata = { title: "Editar hábito" };
 export default async function EditarHabitoPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
   const { data: habit } = await supabase
     .from("habits")

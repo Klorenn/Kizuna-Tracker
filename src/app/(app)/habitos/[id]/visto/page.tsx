@@ -9,6 +9,7 @@ import { dayHeading } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { logDateParam } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { VistoEditor } from "./VistoEditor";
 
 export const metadata: Metadata = { title: "Series y películas" };
@@ -27,12 +28,10 @@ export default async function VistoPage({
 }) {
   const [{ id }, { fecha }] = await Promise.all([params, searchParams]);
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, { data: habit }] = await Promise.all([
+    getViewerProfile(),
     supabase.from("habits").select("id,name,log_type").eq("id", id).eq("user_id", user.id).maybeSingle(),
   ]);
   if (!profile) redirect("/login?error=perfil");

@@ -13,6 +13,7 @@ import { formatCLP, formatSignedCLP, netBalances } from "@/domain/ledger";
 import { challengeFrequency, firstName } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Deudas" };
 
@@ -21,9 +22,7 @@ const HISTORY_LIMIT = 30;
 
 export default async function DeudasPage() {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
 
   // balances are summed from every debt: a capped read (1000 rows) would misreport money

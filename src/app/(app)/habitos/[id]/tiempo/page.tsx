@@ -7,6 +7,7 @@ import { dayHeading } from "@/domain/calendar";
 import { localDate } from "@/domain/dates";
 import { logDateParam } from "@/lib/log-date";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { TiempoEditor } from "./TiempoEditor";
 
 export const metadata: Metadata = { title: "Tiempo" };
@@ -25,12 +26,10 @@ export default async function TiempoPage({
 }) {
   const [{ id }, { fecha }] = await Promise.all([params, searchParams]);
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const [{ data: profile }, { data: habit }] = await Promise.all([
-    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+  const [profile, { data: habit }] = await Promise.all([
+    getViewerProfile(),
     supabase
       .from("habits")
       .select("id,name,preset,log_type")

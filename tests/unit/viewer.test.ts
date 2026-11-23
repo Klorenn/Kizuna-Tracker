@@ -24,6 +24,8 @@ const row = (over: Row = {}): Row => ({
   avatar_preset: 3,
   timezone_changed_at: null,
   reminder_time: '21:00:00',
+  created_at: '2026-01-05T12:00:00Z',
+  height_cm: 172,
   ...over,
 })
 
@@ -119,6 +121,8 @@ describe('getViewerProfile', () => {
       avatarPreset: 3,
       timezoneChangedAt: null,
       reminderTime: '21:00:00',
+      createdAt: '2026-01-05T12:00:00Z',
+      heightCm: 172,
     })
     expect(state.getClaims).toHaveBeenCalledTimes(1)
     expect(state.from).toHaveBeenCalledTimes(1)

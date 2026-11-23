@@ -5,17 +5,16 @@ import { localDate } from "@/domain/dates";
 import { nextFromPage, pagesRead } from "@/domain/logs";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
+import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { LibrosView, type BookView } from "./LibrosView";
 
 export const metadata: Metadata = { title: "Libros" };
 
 export default async function LibrosPage() {
   const supabase = await createServerClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
+  const profile = await getViewerProfile();
   if (!profile) redirect("/login?error=perfil");
 
   const [books, entries] = await Promise.all([
