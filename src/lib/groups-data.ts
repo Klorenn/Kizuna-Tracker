@@ -41,25 +41,25 @@ const COPY = {
   invite: 'No pudimos cargar la invitación. Inténtalo de nuevo.',
 } as const
 
-const notFound = (): { ok: false; error: string; notFound: true } => ({ ok: false, error: NOT_FOUND_COPY, notFound: true })
+export const notFound = (): { ok: false; error: string; notFound: true } => ({ ok: false, error: NOT_FOUND_COPY, notFound: true })
 
 // strict readers: a field of the wrong type means the answer cannot be trusted ----------------------------------------
 
-class Malformed extends Error {}
+export class Malformed extends Error {}
 class Missing extends Error {}
 
-type Row = Record<string, unknown>
+export type Row = Record<string, unknown>
 
-function row(v: unknown): Row {
+export function row(v: unknown): Row {
   if (!v || typeof v !== 'object' || Array.isArray(v)) throw new Malformed('row')
   return v as Row
 }
-function str(o: Row, k: string): string {
+export function str(o: Row, k: string): string {
   const v = o[k]
   if (typeof v !== 'string') throw new Malformed(k)
   return v
 }
-function strOrNull(o: Row, k: string): string | null {
+export function strOrNull(o: Row, k: string): string | null {
   const v = o[k]
   if (v === null || v === undefined) return null
   if (typeof v !== 'string') throw new Malformed(k)
@@ -76,12 +76,12 @@ function numOrNull(o: Row, k: string): number | null {
   if (typeof v !== 'number' || !Number.isFinite(v)) throw new Malformed(k)
   return v
 }
-function bool(o: Row, k: string): boolean {
+export function bool(o: Row, k: string): boolean {
   const v = o[k]
   if (typeof v !== 'boolean') throw new Malformed(k)
   return v
 }
-function boolOrNull(o: Row, k: string): boolean | null {
+export function boolOrNull(o: Row, k: string): boolean | null {
   const v = o[k]
   if (v === null || v === undefined) return null
   if (typeof v !== 'boolean') throw new Malformed(k)
@@ -92,7 +92,7 @@ function role(o: Row, k: string): GroupRole {
   if (v !== 'admin' && v !== 'member') throw new Malformed(k)
   return v
 }
-function list(v: unknown): Row[] {
+export function list(v: unknown): Row[] {
   if (!Array.isArray(v)) throw new Malformed('list')
   return v.map(row)
 }
@@ -106,7 +106,7 @@ function commitmentOf(o: Row): GroupCommitment {
   }
 }
 
-function personOf(o: Row): GroupPerson {
+export function personOf(o: Row): GroupPerson {
   return {
     userId: str(o, 'user_id'),
     username: str(o, 'username'),
@@ -118,7 +118,7 @@ function personOf(o: Row): GroupPerson {
 
 // the shared runner ----------------------------------------------------------------------------------------------------
 
-async function run<T>(
+export async function run<T>(
   client: GroupsClient | undefined,
   errorCopy: string,
   call: (c: GroupsClient) => Promise<RpcAnswer<unknown>>,
