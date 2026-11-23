@@ -407,3 +407,75 @@ describe('InviteJoinForm', () => {
     expect(form()).toContain('data-form-error')
   })
 })
+
+const { nextRadioIndex } = await import('@/components/groups/create/HabitChoice')
+const habitsTwo = [{ id: 'h1', name: 'Correr' }, { id: 'h2', name: 'Leer' }]
+const radiogroups = (h: string) => tags(h, /<div[^>]*role="radiogroup"[^>]*>/g)
+const radiosIn = (h: string) => tags(h, /<button[^>]*role="radio"[^>]*>/g)
+
+describe('accessibility of the group form (fix round 1)', () => {
+  it('each icon picker sits in a group labelled by its own visible text', () => {
+    const h = body()
+    const groups = tags(h, /<div[^>]*role="group"[^>]*aria-labelledby="[^"]*"[^>]*>/g)
+    const ids = groups.map((g) => attr(g, 'aria-labelledby') as string)
+    expect(new Set(ids).size).toBe(2)
+    const labels = ids.map((id) => text(h.match(new RegExp(`<p[^>]*id="${id}"[^>]*>.*?</p>`))?.[0] ?? ''))
+    expect(labels).toEqual(['Ícono del grupo', 'Ícono del compromiso'])
+  })
+  it('the habit error is tied to the radiogroup', () => {
+    const h = body({ habits: habitsTwo, draft: draft({ habit: { kind: 'habit', habitId: '' } }), errors: { habit: 'Elige uno de tus hábitos.' } })
+    const group = radiogroups(h).find((g) => g.includes('Tu hábito para este grupo')) as string
+    const id = attr(group, 'aria-describedby') as string
+    expect(id).toBeTruthy()
+    expect(group).toContain('aria-invalid="true"')
+    expect(h).toMatch(new RegExp(`id="${id}"[^>]*role="alert"|role="alert"[^>]*id="${id}"`))
+  })
+  it('the target error is tied to the stepper group', () => {
+    const h = body({ errors: { target: 'Elige entre 1 y 7 veces por semana.' } })
+    const group = tags(h, /<div[^>]*role="group"[^>]*aria-label="Veces por semana"[^>]*>/g)[0]
+    const id = attr(group, 'aria-describedby') as string
+    expect(id).toBeTruthy()
+    expect(h).toMatch(new RegExp(`id="${id}"[^>]*role="alert"|role="alert"[^>]*id="${id}"`))
+  })
+  it('no describedby when there is no error', () => {
+    expect(radiogroups(body({ habits: habitsTwo })).join('')).not.toContain('aria-describedby')
+  })
+  it('the join form ties its error to the radiogroup too', () => {
+    const h = renderToStaticMarkup(
+      createElement(InviteJoinForm, { commitmentName: 'x', habits: habitsTwo, choice: { kind: 'habit', habitId: '' }, onChoice: () => {}, busy: false, error: 'Elige uno de tus hábitos.', onSubmit: () => {} }),
+    )
+    const group = radiogroups(h).find((g) => g.includes('Tu hábito para este grupo')) as string
+    expect(group).toContain('aria-invalid="true"')
+    expect(attr(group, 'aria-describedby')).toBeTruthy()
+  })
+})
+
+describe('HabitChoice radio semantics (fix round 1)', () => {
+  const choice = (value: Parameters<typeof InviteJoinForm>[0]['choice']) =>
+    renderToStaticMarkup(createElement(InviteJoinForm, { commitmentName: 'x', habits: habitsTwo, choice: value, onChoice: () => {}, busy: false, error: null, onSubmit: () => {} }))
+  it('own habit chosen: the mode group and the list group each have one checked radio and one tab stop', () => {
+    const h = choice({ kind: 'habit', habitId: 'h2' })
+    expect(radiogroups(h)).toHaveLength(2)
+    const rs = radiosIn(h)
+    expect(rs.filter((r) => r.includes('aria-checked="true"'))).toHaveLength(2)
+    expect(rs.filter((r) => r.includes('tabindex="0"'))).toHaveLength(2)
+    expect(rs.filter((r) => r.includes('tabindex="-1"')).length).toBe(rs.length - 2)
+  })
+  it('own habit chosen but none picked yet: the list still has a tab stop', () => {
+    const rs = radiosIn(choice({ kind: 'habit', habitId: '' }))
+    expect(rs.filter((r) => r.includes('aria-checked="true"'))).toHaveLength(1)
+    expect(rs.filter((r) => r.includes('tabindex="0"'))).toHaveLength(2)
+  })
+  it('create chosen: one radiogroup, one checked, one tab stop', () => {
+    const rs = radiosIn(choice({ kind: 'create' }))
+    expect(rs.filter((r) => r.includes('aria-checked="true"'))).toHaveLength(1)
+    expect(rs.filter((r) => r.includes('tabindex="0"'))).toHaveLength(1)
+  })
+  it('arrow keys move through the options and wrap', () => {
+    expect(nextRadioIndex('ArrowDown', 0, 3)).toBe(1)
+    expect(nextRadioIndex('ArrowRight', 2, 3)).toBe(0)
+    expect(nextRadioIndex('ArrowUp', 0, 3)).toBe(2)
+    expect(nextRadioIndex('ArrowLeft', 1, 3)).toBe(0)
+    expect(nextRadioIndex('Tab', 1, 3)).toBeNull()
+  })
+})

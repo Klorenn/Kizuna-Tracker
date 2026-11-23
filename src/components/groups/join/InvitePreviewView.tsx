@@ -7,7 +7,7 @@ import type { GroupActions, GroupHabitChoice, GroupInvitePreview } from "@/lib/g
 import { HabitChoice } from "../create/HabitChoice";
 import { commitmentLine, memberCountLabel } from "../list/format";
 import { ErrorLine, GroupIconTile, NumText } from "../list/parts";
-import { submitJoin } from "./logic";
+import { JOIN_ERRORS, runJoin } from "./logic";
 
 export const CONSENT_LINE = "Los miembros verán tus registros y fotos de este hábito.";
 
@@ -42,11 +42,17 @@ export function InviteJoinForm({
     >
       <div className="flex flex-col gap-2">
         <p className="text-small text-ink">Tu hábito para este grupo</p>
-        <HabitChoice commitmentName={commitmentName} habits={habits} value={choice} onChange={onChoice} />
+        <HabitChoice
+          commitmentName={commitmentName}
+          habits={habits}
+          value={choice}
+          onChange={onChoice}
+          errorId={error === JOIN_ERRORS.habit ? "join-habit-error" : undefined}
+        />
       </div>
       <p className="text-small text-muted">{CONSENT_LINE}</p>
       <div data-form-error className="min-h-10">
-        {error ? <ErrorLine message={error} /> : null}
+        {error ? <ErrorLine id={error === JOIN_ERRORS.habit ? "join-habit-error" : undefined} message={error} /> : null}
       </div>
       <Button type="submit" disabled={busy}>
         {busy ? "Uniéndote…" : "Unirme"}
@@ -94,17 +100,20 @@ export function InvitePreviewView({
 
   function join() {
     if (inflight.current) return;
-    inflight.current = true;
     setError(null);
     start(async () => {
-      const r = await submitJoin(code, choice, actions.join);
-      if (r.ok) {
-        // stays pending until the page navigates away
-        setDone(true);
-        return onJoined(r.id);
-      }
-      inflight.current = false;
-      setError(r.error);
+      // runJoin holds the guard; on success it stays locked until the page navigates away
+      const r = await runJoin({
+        guard: inflight,
+        code,
+        habit: choice,
+        join: actions.join,
+        onJoined: (id) => {
+          setDone(true);
+          onJoined(id);
+        },
+      });
+      if (r && !r.ok) setError(r.error);
     });
   }
 

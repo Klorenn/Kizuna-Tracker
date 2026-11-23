@@ -4,7 +4,8 @@ const IN_LINK = /\/grupos\/unirse\/([^/?#\s]+)/;
 
 /** A pasted link or bare code -> the code, or null when it does not have the shape of one. */
 export function parseInviteInput(raw: string): string | null {
-  const text = raw.trim();
+  // a link pasted from a sentence often ends in whitespace or one of . , ; : ! ? ) ] "
+  const text = raw.trim().replace(/[\s.,;:!?)\]"]+$/, "");
   const candidate = IN_LINK.exec(text)?.[1] ?? text;
   return CODE.test(candidate) ? candidate : null;
 }

@@ -21,9 +21,9 @@ export function NumText({ children }: { children: string }) {
 }
 
 /** Error text in ink with the alert icon (the app's error line). */
-export function ErrorLine({ message }: { message: string }) {
+export function ErrorLine({ message, id }: { message: string; id?: string }) {
   return (
-    <p role="alert" className="flex items-start gap-1.5 text-small text-ink">
+    <p id={id} role="alert" className="flex items-start gap-1.5 text-small text-ink">
       <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
       {message}
     </p>

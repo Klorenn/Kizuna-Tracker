@@ -9,7 +9,10 @@ export function Stepper({
   min,
   max,
   onChange,
+  errorId,
 }: {
+  /** Id of the error line shown for this control (sets aria-describedby and aria-invalid). */
+  errorId?: string;
   label: string;
   value: number;
   min: number;
@@ -19,7 +22,7 @@ export function Stepper({
   const btn =
     "inline-flex size-11 items-center justify-center rounded-full border border-outline-strong bg-surface text-ink disabled:opacity-40";
   return (
-    <div className="flex items-center gap-3" role="group" aria-label={label}>
+    <div className="flex items-center gap-3" role="group" aria-label={label} aria-describedby={errorId}>
       <p className="flex-1 text-body text-ink">{label}</p>
       <button type="button" className={btn} aria-label={`Menos: ${label}`} disabled={value <= min} onClick={() => onChange(value - 1)}>
         <Minus size={20} weight="light" aria-hidden />

@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { ColorPicker } from "@/components/ColorPicker";
 import { IconPicker } from "@/components/IconPicker";
 import { Button } from "@/components/ui/Button";
@@ -11,7 +11,7 @@ import { GROUP_LIMITS, type GroupActions, type GroupDraft } from "@/lib/groups-c
 import { toGroupIcon } from "../list/format";
 import { ErrorLine } from "../list/parts";
 import { HabitChoice } from "./HabitChoice";
-import { GROUP_FORM_ERRORS, submitGroup, validateGroupDraft, type GroupDraftErrors } from "./logic";
+import { runCreate, validateGroupDraft, type GroupDraftErrors } from "./logic";
 import { Stepper } from "./Stepper";
 
 /**
@@ -39,6 +39,7 @@ export function GroupFormBody({
   onChange: (draft: GroupDraft) => void;
   onSubmit: () => void;
 }) {
+  const uid = useId();
   const set = (patch: Partial<GroupDraft>) => onChange({ ...draft, ...patch });
   const setCommitment = (patch: Partial<GroupDraft["commitment"]>) =>
     onChange({ ...draft, commitment: { ...draft.commitment, ...patch } });
@@ -70,8 +71,8 @@ export function GroupFormBody({
         helper={`Hasta ${GROUP_LIMITS.descriptionMax} letras.`}
       />
 
-      <div className="flex flex-col gap-2">
-        <p className="text-small text-ink">Ícono del grupo</p>
+      <div role="group" aria-labelledby={`${uid}-group-icon`} className="flex flex-col gap-2">
+        <p id={`${uid}-group-icon`} className="text-small text-ink">Ícono del grupo</p>
         <IconPicker value={toGroupIcon(draft.icon)} onChange={(icon) => set({ icon })} />
       </div>
       <ColorPicker value={toHabitColor(draft.color || DEFAULT_HABIT_COLOR)} onChange={(color) => set({ color })} />
@@ -86,19 +87,20 @@ export function GroupFormBody({
         error={errors.commitment}
         helper={`Hasta ${GROUP_LIMITS.commitmentMax} letras.`}
       />
-      <div className="flex flex-col gap-2">
-        <p className="text-small text-ink">Ícono del compromiso</p>
+      <div role="group" aria-labelledby={`${uid}-commitment-icon`} className="flex flex-col gap-2">
+        <p id={`${uid}-commitment-icon`} className="text-small text-ink">Ícono del compromiso</p>
         <IconPicker value={toGroupIcon(draft.commitment.icon)} onChange={(icon) => setCommitment({ icon })} />
       </div>
       <div className="flex flex-col gap-2">
         <Stepper
+          errorId={errors.target ? `${uid}-target-error` : undefined}
           label="Veces por semana"
           value={draft.commitment.targetPerWeek}
           min={GROUP_LIMITS.targetMin}
           max={GROUP_LIMITS.targetMax}
           onChange={(targetPerWeek) => setCommitment({ targetPerWeek })}
         />
-        {errors.target ? <ErrorLine message={errors.target} /> : null}
+        {errors.target ? <ErrorLine id={`${uid}-target-error`} message={errors.target} /> : null}
       </div>
       <div className="flex items-center gap-3">
         <p id="group-photo-label" className="flex-1 text-body text-ink">
@@ -115,12 +117,13 @@ export function GroupFormBody({
       <div className="flex flex-col gap-2">
         <p className="text-small text-ink">Tu hábito para este grupo</p>
         <HabitChoice
+          errorId={errors.habit ? `${uid}-habit-error` : undefined}
           commitmentName={draft.commitment.name}
           habits={habits}
           value={draft.habit}
           onChange={(habit) => set({ habit })}
         />
-        {errors.habit ? <ErrorLine message={errors.habit} /> : null}
+        {errors.habit ? <ErrorLine id={`${uid}-habit-error`} message={errors.habit} /> : null}
       </div>
 
       <div data-form-error className="min-h-10">
@@ -165,17 +168,18 @@ export function GroupForm({
     if (inflight.current) return;
     setAttempted(true);
     setServerError(null);
-    if (Object.keys(validateGroupDraft(draft)).length > 0) return;
-    inflight.current = true;
     start(async () => {
-      const r = await submitGroup(draft, actions.create);
-      if (r.ok) {
-        // stays pending until the page navigates away: no second group from a second tap
-        setDone(true);
-        return onCreated(r.id);
-      }
-      inflight.current = false;
-      setServerError("error" in r ? r.error : GROUP_FORM_ERRORS.generic);
+      // runCreate holds the guard; on success it stays locked until the page navigates away
+      const r = await runCreate({
+        guard: inflight,
+        draft,
+        create: actions.create,
+        onCreated: (id) => {
+          setDone(true);
+          onCreated(id);
+        },
+      });
+      if (r && !r.ok && "error" in r) setServerError(r.error);
     });
   }
 

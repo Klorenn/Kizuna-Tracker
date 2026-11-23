@@ -45,6 +45,31 @@ export type SubmitGroupResult =
   | { ok: false; errors: GroupDraftErrors }
   | { ok: false; error: string };
 
+/**
+ * The form's submit, with the double-submit guard. null: a submit is already under way, nothing
+ * happened. Invalid: field errors, action not called. Success: `onCreated(id)` once and the guard
+ * stays locked (the page navigates away). Failure: the message, guard released.
+ */
+export async function runCreate({
+  guard,
+  draft,
+  create,
+  onCreated,
+}: {
+  guard: { current: boolean };
+  draft: GroupDraft;
+  create: GroupActions["create"];
+  onCreated: (id: string) => void;
+}): Promise<SubmitGroupResult | null> {
+  if (guard.current) return null;
+  if (Object.keys(validateGroupDraft(draft)).length > 0) return submitGroup(draft, create);
+  guard.current = true;
+  const r = await submitGroup(draft, create);
+  if (r.ok) onCreated(r.id);
+  else guard.current = false;
+  return r;
+}
+
 /** Validates, then calls the action. Never throws: a failed call is an error message. */
 export async function submitGroup(draft: GroupDraft, create: GroupActions["create"]): Promise<SubmitGroupResult> {
   const errors = validateGroupDraft(draft);

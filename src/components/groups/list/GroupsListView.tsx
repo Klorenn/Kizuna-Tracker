@@ -3,7 +3,7 @@
 import { CaretRight, Plus } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { CatMark } from "@/components/brand/CatMark";
 import { LoadFailed } from "@/components/LoadFailed";
 import { Button, ButtonLink } from "@/components/ui/Button";
@@ -14,7 +14,7 @@ import { toHabitColor } from "@/domain/habit-colors";
 import { GROUP_LIMITS, type GroupSummary } from "@/lib/groups-contract";
 import { cardLines, commitmentLine } from "./format";
 import { JoinLinkForm } from "./JoinLinkForm";
-import { resolveJoinLink } from "./parse-invite";
+import { openJoinLink } from "./open-link";
 import { GroupIconTile, NumText } from "./parts";
 
 /**
@@ -96,15 +96,21 @@ export function GroupsListView({
   const [value, setValue] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const guard = useRef(false);
 
   function open() {
-    if (busy) return;
-    const r = resolveJoinLink(value, hrefs.join);
-    if (!r.ok) return setError(r.error);
-    setError(null);
-    setBusy(true);
-    if (navigate) navigate(r.href);
-    else router.push(r.href);
+    const r = openJoinLink({
+      guard,
+      value,
+      joinHref: hrefs.join,
+      navigate: (href) => {
+        setBusy(true);
+        if (navigate) navigate(href);
+        else router.push(href);
+      },
+    });
+    if (r && !r.ok) setError(r.error);
+    else setError(null);
   }
 
   const active = (groups ?? []).filter((g) => !g.archived);
@@ -163,6 +169,7 @@ export function GroupsListView({
         onClose={() => {
           setSheet(false);
           setBusy(false);
+          guard.current = false;
         }}
       >
         <JoinLinkForm

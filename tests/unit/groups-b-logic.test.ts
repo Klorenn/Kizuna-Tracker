@@ -79,7 +79,7 @@ describe('parseInviteInput', () => {
     expect(parseInviteInput(`/grupos/unirse/${code}`)).toBe(code)
   })
   it('rejects anything that is not the shape of a code', () => {
-    const bad = ['', '   ', 'hola', 'corto', 'https://kizuna.app/amigos', `${code}!!`, 'a b c d e f g h i j k l m n o p q', 'x'.repeat(200)]
+    const bad = ['', '   ', 'hola', 'corto', 'https://kizuna.app/amigos', `${code}#`, 'a b c d e f g h i j k l m n o p q', 'x'.repeat(200)]
     for (const b of bad) expect(parseInviteInput(b)).toBeNull()
   })
 })
