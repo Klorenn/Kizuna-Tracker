@@ -2,7 +2,7 @@ begin;
 -- Habit switch guards (0021): a habit in a proposed or active challenge cannot switch TO quantity, and a
 -- habit with a check-in today cannot switch to or from quantity or change a quantity unit.
 create extension if not exists pgtap with schema extensions;
-select plan(29);
+select plan(33);
 
 create schema tests;
 create function tests.today() returns date language sql stable as $f$
@@ -108,6 +108,22 @@ select throws_ok($$ update public.habits set quantity_target = 1000 where id = '
 select throws_ok($$ update public.habits set log_type = 'none', quantity_unit = null, quantity_target = null, quantity_step = null
   where id = 'b2100000-0000-0000-0000-000000000008' $$, 'P0001', 'habit_in_challenge', 'nor leave quantity');
 select lives_ok($$ update public.habits set quantity_target = 2500 where id = 'b2100000-0000-0000-0000-000000000008' $$, 'but can raise it');
+
+-- the app's full-row update: every column sent, log_type and quantity_unit unchanged, plus a rename
+select lives_ok($$ update public.habits set name = name || ' 2', log_type = log_type, quantity_unit = quantity_unit,
+  quantity_label = quantity_label, quantity_target = quantity_target, quantity_step = quantity_step
+  where id = 'b2100000-0000-0000-0000-000000000008' $$, 'full-row update of a quantity habit in a challenge passes');
+select lives_ok($$ update public.habits set name = name || ' 2', log_type = log_type, quantity_unit = quantity_unit,
+  quantity_label = quantity_label, quantity_target = quantity_target, quantity_step = quantity_step
+  where id = 'b2100000-0000-0000-0000-000000000007' $$, 'full-row update of a quantity habit with a check-in today passes');
+select lives_ok($$ update public.habits set name = name || ' 2', log_type = log_type, quantity_unit = quantity_unit,
+  quantity_label = quantity_label, quantity_target = quantity_target, quantity_step = quantity_step
+  where id = 'b2100000-0000-0000-0000-000000000002' $$, 'full-row update of a plain habit in a challenge passes');
+
+-- the rival_habit_id side: B owns the rival habit of the active challenge
+select set_config('request.jwt.claims', '{"sub":"a2100000-0000-0000-0000-000000000002","role":"authenticated"}', true);
+select throws_ok($$ update public.habits set log_type = 'quantity', quantity_unit = 'ml', quantity_target = 2000, quantity_step = 250
+  where id = 'b2100000-0000-0000-0000-000000000012' $$, 'P0001', 'habit_in_challenge', 'the rival''s habit cannot switch to quantity either');
 reset role;
 
 -- ---- the service role is not subject to the new checks
