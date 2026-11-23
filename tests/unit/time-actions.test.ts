@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 const rpc = vi.fn()
-const client: { rpc: unknown } = { rpc }
+let user: { id: string } | null = { id: 'u1' }
+const client: { rpc: unknown; auth: unknown } = { rpc, auth: { getUser: async () => ({ data: { user } }) } }
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
@@ -14,6 +15,7 @@ import {
 } from '@/app/(app)/registros/time-actions'
 
 beforeEach(() => {
+  user = { id: 'u1' }
   client.rpc = rpc
   rpc.mockReset()
 })
@@ -57,8 +59,10 @@ describe('addTime', () => {
 
   it('falls back to a generic message for unknown errors', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'boom' } })
-    const r = await addTime('h1', 10, null)
-    expect(r.ok).toBe(false)
+    expect(await addTime('h1', 10, null)).toEqual({
+      ok: false,
+      error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+    })
   })
 })
 
@@ -133,12 +137,15 @@ describe('sendPomodoroBlock', () => {
     ['habit_not_found', 'Este hábito ya no está activo.'],
     ['photo_required', 'Este hábito pide foto: registra el tiempo después de subirla.'],
     ['minutes_over_day', 'Un día tiene 24 horas: revisa el tiempo.'],
+    ['invalid_block', 'No pudimos guardar este bloque.'],
+    ['block_expired', 'Un bloque terminó ayer y ya no se puede sumar.'],
   ])('%s is final (retry false)', async (code, copy) => {
     rpc.mockResolvedValue({ data: null, error: { message: code } })
     expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toEqual({
       ok: false,
       error: copy,
       retry: false,
+      code,
     })
   })
 
@@ -168,5 +175,69 @@ describe('sendPomodoroBlock', () => {
   it('a missing session keeps the block pending', async () => {
     rpc.mockResolvedValue({ data: null, error: { message: 'not_authenticated' } })
     expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+  })
+
+  it('retries what it does not recognise (deploy skew, server trouble)', async () => {
+    for (const message of ['Could not find the function public.add_pomodoro_block', 'internal error']) {
+      rpc.mockResolvedValue({ data: null, error: { message } })
+      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+    }
+  })
+
+  it('a lost session keeps the block and says to sign in', async () => {
+    for (const message of ['JWT expired', 'not_authenticated']) {
+      rpc.mockResolvedValue({ data: null, error: { message } })
+      expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toEqual({
+        ok: false,
+        error: 'Inicia sesión para guardar tus bloques.',
+        retry: true,
+        code: 'not_authenticated',
+      })
+    }
+  })
+
+  it('a block id that is not a uuid can never be sent', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'invalid input syntax for type uuid: "b1"' } })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({
+      ok: false,
+      retry: false,
+      code: 'invalid_block',
+    })
+  })
+
+  it('validates minutes and topic before the RPC', async () => {
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 91 }, null)).toMatchObject({
+      ok: false,
+      retry: false,
+      code: 'invalid_minutes',
+    })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, 'x'.repeat(61))).toMatchObject({
+      ok: false,
+      retry: false,
+      code: 'invalid_topic',
+    })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('an empty answer without an error is retried', async () => {
+    rpc.mockResolvedValue({ data: [], error: null })
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 25 }, null)).toMatchObject({ ok: false, retry: true })
+  })
+})
+
+describe('every action authenticates first', () => {
+  it('answers sign-in copy without calling the RPC', async () => {
+    user = null
+    const signIn = { ok: false, error: 'Inicia sesión para continuar.' }
+    expect(await addTime('h1', 10, null)).toEqual(signIn)
+    expect(await checkInWithoutTime('h1')).toEqual(signIn)
+    expect(await setTimeEntry('c1', 10, null)).toEqual(signIn)
+    expect(await deleteTimeEntry('c1')).toEqual(signIn)
+    expect(await sendPomodoroBlock('h1', { blockId: 'b1', minutes: 5 }, null)).toMatchObject({
+      ok: false,
+      retry: true,
+      code: 'not_authenticated',
+    })
+    expect(rpc).not.toHaveBeenCalled()
   })
 })

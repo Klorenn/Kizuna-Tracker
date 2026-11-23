@@ -116,6 +116,26 @@ test("a block whose first answer is lost is credited once", async ({ page }) => 
   await expect(page.getByText("5 min", { exact: true })).toBeVisible();
 });
 
+test("a block that ended on an earlier day is never added to today", async ({ page }) => {
+  test.setTimeout(180_000);
+  const id = await studyHabit(page, "pday");
+  await page.clock.install();
+  await page.goto(`/habitos/${id}/pomodoro`);
+  await page.getByRole("button", { name: "Personalizado" }).click();
+  await page.getByLabel("Foco (min)").fill("5");
+  await page.getByText("Sin límite", { exact: true }).click();
+  await page.getByRole("button", { name: "Empezar foco" }).click();
+  await expect(page.getByRole("timer")).toHaveText("05:00");
+
+  // the laptop sleeps through the end of the focus and the night: 26 h later, another local day
+  await page.clock.fastForward(26 * 60 * MIN);
+  await expect(page.getByText("Un bloque terminó ayer y ya no se puede sumar.")).toBeVisible();
+
+  await page.goto(`/habitos/${id}/tiempo`);
+  await expect(page.getByRole("heading", { name: "Tiempo" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Borrar registro" })).toHaveCount(0);
+});
+
 test("the time page edits and deletes the day", async ({ page }) => {
   test.setTimeout(120_000);
   const id = await studyHabit(page, "ptime");

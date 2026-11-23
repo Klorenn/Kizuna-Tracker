@@ -85,7 +85,7 @@ export function blockEndAlert(end: BlockEnd, silent: boolean): void {
   const title = end.kind === "focus" ? "Terminó el foco" : "Terminó el descanso";
   const body =
     end.kind === "focus"
-      ? `Sumamos ${end.minutes} min a ${end.habitName}.${end.lastRound ? "" : " Toma un descanso."}`
+      ? `${end.minutes} min de foco en ${end.habitName}.${end.lastRound ? "" : " Toma un descanso."}`
       : "Listo para otra ronda.";
   const options = { body, tag: `pomodoro-${end.habitId}` };
   const fallback = () => {

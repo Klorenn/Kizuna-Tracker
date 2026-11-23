@@ -39,6 +39,23 @@ const QUICK = [
   { label: "1 h", minutes: 60 },
 ] as const;
 
+/** What to tell the user when Horas / Minutos do not make a valid time; null when they do. */
+export function timeInputError(h: string, m: string): string | null {
+  if (parseDuration(h, m) !== null) return null;
+  const hs = h.trim();
+  const ms = m.trim();
+  if (/[.,]/.test(hs) || /[.,]/.test(ms)) return "Usa números enteros: 1 h 30 min en lugar de 1,5 h.";
+  if ((hs !== "" && !/^\d+$/.test(hs)) || (ms !== "" && !/^\d+$/.test(ms))) return "Escribe solo números.";
+  const minutes = Number(ms === "" ? 0 : ms);
+  if (minutes > 59) {
+    const hh = Math.floor(minutes / 60);
+    const mm = minutes % 60;
+    const suggestion = mm === 0 ? `${hh} h` : `${hh} h ${mm} min`;
+    return `Los minutos van de 0 a 59. Para ${minutes} min escribe ${suggestion}.`;
+  }
+  return "El tiempo va de 1 minuto a 24 horas.";
+}
+
 export function timeTitle(mode: TimeSheetMode): string {
   if (mode.kind === "checkin") return "¿Cuánto rato?";
   if (mode.kind === "add") return "Sumar tiempo";
@@ -102,7 +119,7 @@ export function TimeForm({
   }
 
   function save() {
-    if (total === null) return setError("El tiempo va de 1 minuto a 24 horas.");
+    if (total === null) return setError(timeInputError(h, m));
     setError(null);
     start(async () => {
       const res =

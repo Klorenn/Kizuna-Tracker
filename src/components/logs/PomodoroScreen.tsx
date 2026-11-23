@@ -39,14 +39,16 @@ import {
 } from "@/lib/pomodoro-alerts";
 import {
   loadPrefs,
+  openPomodoroStorage,
   savePrefs,
   useNow,
   usePomodoro,
   type PhaseEnd,
   type PomodoroPrefs,
+  type PomodoroStorage,
   type PomodoroPresetKey,
 } from "@/lib/pomodoro-store";
-import { flushPendingDetailed } from "@/lib/pomodoro-sync";
+import { createRetryScheduler, expiredMessage, flushPendingDetailed } from "@/lib/pomodoro-sync";
 
 /*
  * PomodoroScreen: the timer of one habit (`/habitos/<id>/pomodoro`).
@@ -62,17 +64,31 @@ import { flushPendingDetailed } from "@/lib/pomodoro-sync";
 
 const topicLabel = (preset: string | null) => (preset === "study" ? "Qué estudiaste (opcional)" : "Tema (opcional)");
 
-export function PomodoroScreen(props: { habitId: string; habitName: string; preset: string | null; todayMinutes: number }) {
+export function PomodoroScreen(props: {
+  habitId: string;
+  habitName: string;
+  preset: string | null;
+  todayMinutes: number;
+  /** The signed-in user: every stored key is namespaced by it. */
+  userId: string;
+  /** The profile time zone: decides which local day a block belongs to. */
+  timeZone: string;
+}) {
   // the stored preferences only exist in the browser: read them after mount
-  const [prefs, setPrefs] = useState<PomodoroPrefs | null>(null);
+  const [boot, setBoot] = useState<{ storage: PomodoroStorage; prefs: PomodoroPrefs } | null>(null);
   useEffect(() => {
-    setPrefs(loadPrefs(props.habitId, window.localStorage));
-  }, [props.habitId]);
+    const storage = openPomodoroStorage(props.userId);
+    setBoot({ storage, prefs: loadPrefs(props.habitId, storage) });
+  }, [props.habitId, props.userId]);
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-4">
       <TopBar backHref={`/habitos/${props.habitId}`} />
       <h1 className="text-title font-semibold text-ink">Pomodoro · {props.habitName}</h1>
-      {prefs ? <Timer {...props} initialPrefs={prefs} /> : <div className="min-h-[420px]" aria-busy="true" />}
+      {boot ? (
+        <Timer {...props} storage={boot.storage} initialPrefs={boot.prefs} />
+      ) : (
+        <div className="min-h-96" aria-busy="true" />
+      )}
     </main>
   );
 }
@@ -82,21 +98,26 @@ function Timer({
   habitName,
   preset,
   todayMinutes,
+  timeZone,
+  storage,
   initialPrefs,
 }: {
   habitId: string;
   habitName: string;
   preset: string | null;
   todayMinutes: number;
+  timeZone: string;
+  storage: PomodoroStorage;
   initialPrefs: PomodoroPrefs;
 }) {
-  const [prefs, setPrefs] = useState(initialPrefs);
+  const [prefs, setPrefs] = useState({ ...initialPrefs, habitName });
   const [notice, setNotice] = useState<string | null>(null);
   const [today, setToday] = useState(todayMinutes);
   const [env, setEnv] = useState<NotificationEnv | null>(null);
   const [fresh, setFresh] = useState(0);
   const topicRef = useRef(prefs.topic);
   const mutedRef = useRef(prefs.muted);
+  const controlsRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     topicRef.current = prefs.topic;
     mutedRef.current = prefs.muted;
@@ -115,48 +136,79 @@ function Timer({
     },
     [habitId, habitName],
   );
-  const { state, session, hydrated, act, getState } = usePomodoro(habitId, prefs.config, onEnd);
+  const { state, session, hydrated, storageProblem, act, getState } = usePomodoro(habitId, prefs.config, {
+    storage,
+    onPhaseEnd: onEnd,
+  });
 
   const running = state.phase === "focus" || state.phase === "break";
   useWakeLock(running && state.pausedAt === null);
 
   // Send what is pending: when a block closes, on mount, when the network or the tab returns, and
-  // every 15 s while something is still waiting.
-  const flush = useCallback(async () => {
+  // with a capped exponential backoff (1 s ... 30 s) while sends keep failing. A block that ended on
+  // an earlier local day is never sent: it leaves the queue with a message.
+  const runFlush = useCallback(async (): Promise<boolean> => {
     const s = getState();
-    if (s.pending.length === 0) return;
-    const report = await flushPendingDetailed(s, sendPomodoroBlock, topicRef.current.trim() || null);
+    if (s.pending.length === 0) return false;
+    const report = await flushPendingDetailed(s, sendPomodoroBlock, topicRef.current.trim() || null, {
+      timeZone,
+      now: Date.now(),
+    });
     if (report.events.length > 0) act.apply(report.events);
     if (report.totalMinutes !== null) setToday(report.totalMinutes);
-    if (report.dropped.length > 0) setNotice(report.dropped.map((d) => d.message).join(" "));
-  }, [act, getState]);
-  const pendingCount = state.pending.length;
+    const lines = [
+      report.expired > 0 ? expiredMessage(report.expired) : null,
+      ...report.dropped.map((d) => d.message),
+      report.topicRejected ? "No guardamos el tema, pero sí los minutos." : null,
+      report.signedOut ? "Inicia sesión para guardar tus bloques." : null,
+    ].filter((l): l is string => l !== null);
+    if (lines.length > 0) setNotice(lines.join(" "));
+    return report.retryable > 0;
+  }, [act, getState, timeZone]);
+  const runRef = useRef(runFlush);
+  const schedulerRef = useRef<ReturnType<typeof createRetryScheduler> | null>(null);
   useEffect(() => {
-    if (!hydrated || pendingCount === 0) return;
-    void flush();
-    const id = window.setInterval(() => void flush(), 15_000);
-    return () => window.clearInterval(id);
-  }, [hydrated, pendingCount, flush]);
+    runRef.current = runFlush;
+  });
   useEffect(() => {
+    const scheduler = createRetryScheduler({ run: () => runRef.current() });
+    schedulerRef.current = scheduler;
+    const kick = () => scheduler.kick();
     const onVisible = () => {
-      if (document.visibilityState === "visible") void flush();
+      if (document.visibilityState === "visible") scheduler.kick();
     };
-    window.addEventListener("online", flush);
+    window.addEventListener("online", kick);
     document.addEventListener("visibilitychange", onVisible);
     return () => {
-      window.removeEventListener("online", flush);
+      scheduler.stop();
+      window.removeEventListener("online", kick);
       document.removeEventListener("visibilitychange", onVisible);
     };
-  }, [flush]);
+  }, []);
+  const pendingCount = state.pending.length;
+  useEffect(() => {
+    if (hydrated && pendingCount > 0) schedulerRef.current?.kick();
+  }, [hydrated, pendingCount]);
+
+  // when the phase changes the focused button unmounts: keep focus on the controls
+  const phase = state.phase;
+  const lastPhase = useRef(phase);
+  useEffect(() => {
+    if (lastPhase.current === phase) return;
+    lastPhase.current = phase;
+    if (document.activeElement === document.body || document.activeElement === null) {
+      controlsRef.current?.focus({ preventScroll: true });
+    }
+  }, [phase]);
 
   function update(next: PomodoroPrefs) {
     setPrefs(next);
-    savePrefs(habitId, next, window.localStorage);
+    savePrefs(habitId, next, storage);
   }
 
   function start(config: PomodoroConfig, presetKey: PomodoroPresetKey, topic: string) {
     primeAudio();
-    update({ ...prefs, preset: presetKey, config, topic });
+    update({ ...prefs, preset: presetKey, config, topic, habitName });
     topicRef.current = topic;
     setNotice(null);
     act.configure(config);
@@ -171,15 +223,18 @@ function Timer({
     }
   }
 
-  if (!hydrated) return <div className="min-h-[420px]" aria-busy="true" />;
+  if (!hydrated) return <div className="min-h-96" aria-busy="true" />;
 
   const view = pomodoroView(state, 0);
   const pausedNote = state.pausedAt !== null ? "En pausa." : null;
+  const waiting = state.pending.length > 0 ? "Pendiente de sumar." : null;
   const status =
     state.phase === "break"
-      ? session.last > 0
+      ? session.lastStatus === "confirmed"
         ? `Sumamos ${session.last} min a ${habitName}.`
-        : null
+        : session.lastStatus === "pending"
+          ? `Pendiente de sumar: ${session.last} min.`
+          : null
       : state.phase === "ready"
         ? "Descanso terminado."
         : state.phase === "done"
@@ -192,7 +247,7 @@ function Timer({
     <div className="flex flex-col gap-4">
       <div className="flex items-center justify-end">
         <IconButton
-          label={prefs.muted ? "Activar sonido" : "Silenciar aviso"}
+          label="Silenciar avisos"
           aria-pressed={prefs.muted}
           onClick={() => update({ ...prefs, muted: !prefs.muted })}
         >
@@ -235,6 +290,13 @@ function Timer({
         {pausedNote || status ? (
           <p className="text-small text-pretty text-ink">{[pausedNote, status].filter(Boolean).join(" ")}</p>
         ) : null}
+        {waiting && state.phase !== "break" ? <p className="text-small text-muted">{waiting}</p> : null}
+        {storageProblem ? (
+          <p className="flex items-start justify-center gap-1 text-small text-pretty text-ink">
+            <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
+            No pudimos guardar el temporizador en este dispositivo.
+          </p>
+        ) : null}
         {notice ? (
           <p className="flex items-start justify-center gap-1 text-small text-pretty text-ink">
             <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
@@ -244,7 +306,7 @@ function Timer({
       </div>
 
       {state.phase === "focus" || state.phase === "break" ? (
-        <div className="flex flex-col gap-3">
+        <div ref={controlsRef} tabIndex={-1} className="flex flex-col gap-3 outline-none">
           <div className="grid grid-cols-2 gap-3">
             {state.pausedAt === null ? (
               <Button onClick={act.pause}>
@@ -350,7 +412,7 @@ function Clock({ state }: { state: PomodoroState }) {
           className="stroke-accent"
         />
       </svg>
-      <p role="timer" className="font-mono text-[56px] font-medium leading-none tracking-tight text-ink">
+      <p role="timer" className="font-mono text-6xl font-medium leading-none tracking-tight text-ink">
         {formatClock(v.remainingMs)}
       </p>
     </div>

@@ -20,8 +20,26 @@ const PREFIX = "kizuna:pomodoro:";
 const KEY_RE = /^kizuna:pomodoro:([^:]+)$/;
 /** Resting states untouched for this long start over as idle. */
 const STALE_MS = 24 * 60 * 60 * 1000;
-/** A block that ended longer ago than this (tab asleep) updates the screen but does not beep. */
-const FRESH_MS = 10_000;
+/**
+ * A user action (pause, skip, start...) outranks any number of tick refreshes another tab can
+ * write meanwhile: both start at the same `rev`, the action lands this much higher, so the
+ * `rev` comparison (adopt only a higher one) keeps the pause instead of losing it.
+ */
+export const ACTION_REV_BUMP = 1000;
+/**
+ * The page counts as alive while its ticks are at most this far apart. Background tabs are
+ * throttled to about one tick a minute; a sleeping laptop leaves hours.
+ */
+const LIVE_GAP_MS = 2 * 60_000;
+
+/**
+ * Did the page witness this phase end? True when its previous tick came before the end and no
+ * more than `LIVE_GAP_MS` ago, so a block that ended in a throttled background tab still beeps
+ * and notifies, while one found after sleep or a closed tab only updates the screen.
+ */
+export function isFreshEnd(prevTickAt: number | null, endedAt: number, at: number): boolean {
+  return prevTickAt !== null && prevTickAt <= endedAt && at - prevTickAt <= LIVE_GAP_MS;
+}
 
 export const stateKey = (habitId: string) => `${PREFIX}${habitId}`;
 const prefsKey = (habitId: string) => `${PREFIX}config:${habitId}`;
@@ -55,11 +73,159 @@ export function loadPomodoro(habitId: string, storage: Storage, now: number = Da
   return settleStale(s, now);
 }
 
-export function savePomodoro(s: PomodoroState, storage: Storage): void {
+/** False when the device refused the write (the timer keeps working in memory). */
+export function savePomodoro(s: PomodoroState, storage: Storage): boolean {
   try {
     storage.setItem(stateKey(s.habitId), JSON.stringify(s));
+    return true;
   } catch {
-    // storage full or blocked: the timer keeps working in memory
+    return false;
+  }
+}
+
+/**
+ * Re-reads before writing: a state that another tab already outranked (higher `rev`) is not
+ * written and comes back as `remote` so the caller adopts it instead of clobbering it.
+ */
+export function savePomodoroIfNewer(
+  s: PomodoroState,
+  storage: Storage,
+): { status: "saved" | "failed" } | { status: "stale"; remote: PomodoroState } {
+  let remote: PomodoroState | null = null;
+  try {
+    remote = parsePomodoroState(storage.getItem(stateKey(s.habitId)));
+  } catch {
+    // unreadable: write anyway
+  }
+  if (remote && remote.rev > s.rev) return { status: "stale", remote };
+  return { status: savePomodoro(s, storage) ? "saved" : "failed" };
+}
+
+/** Pending blocks of a habit the timer can no longer serve (archived, deleted, other log type): drop them. */
+export function discardPending(habitId: string, storage: Storage, now: number = Date.now()): number {
+  const s = loadPomodoro(habitId, storage, now);
+  if (!s || s.pending.length === 0) return 0;
+  let next = s;
+  for (const p of s.pending) next = pomodoroReducer(next, { type: "drop", blockId: p.blockId });
+  savePomodoro({ ...next, rev: next.rev + ACTION_REV_BUMP }, storage);
+  return s.pending.length;
+}
+
+// ---------------------------------------------------------------- guarded, per-user storage
+
+const USER_NS = (userId: string) => `kizuna:user:${userId}:`;
+/** Writes a device refused (quota) or everything when storage is blocked: kept here, per user. */
+const overlays = new Map<string, Map<string, string>>();
+
+/** A `Storage` scoped to one signed-in user that never throws and falls back to memory. */
+export type PomodoroStorage = Storage & {
+  /** True once storage was blocked or a write failed: the timer still runs, but not across reloads. */
+  readonly degraded: boolean;
+  /** The key the browser really uses (what a `storage` event reports). */
+  physicalKey(key: string): string;
+};
+
+/**
+ * Every key is namespaced by the user id, so one account's timer and pending blocks are never
+ * read or sent under another account. Reading `window.localStorage` can itself throw (blocked
+ * site data): then, and when a write fails, the data lives in memory and `degraded` is true.
+ */
+export function openPomodoroStorage(userId: string, getBase: () => Storage = () => window.localStorage): PomodoroStorage {
+  const ns = USER_NS(userId);
+  let overlay = overlays.get(userId);
+  if (!overlay) overlays.set(userId, (overlay = new Map()));
+  const mem = overlay;
+  let degraded = false;
+  const base = (): Storage | null => {
+    try {
+      return getBase();
+    } catch {
+      degraded = true;
+      return null;
+    }
+  };
+  const own = (): string[] => {
+    const keys = new Set(mem.keys());
+    const b = base();
+    if (b) {
+      try {
+        for (let i = 0; i < b.length; i++) {
+          const k = b.key(i);
+          if (k !== null && k.startsWith(ns)) keys.add(k.slice(ns.length));
+        }
+      } catch {
+        degraded = true;
+      }
+    }
+    return [...keys];
+  };
+  if (base() === null) degraded = true;
+  const store = {
+    get length() {
+      return own().length;
+    },
+    get degraded() {
+      return degraded;
+    },
+    key: (i: number) => own()[i] ?? null,
+    getItem(k: string) {
+      if (mem.has(k)) return mem.get(k) ?? null;
+      try {
+        return base()?.getItem(ns + k) ?? null;
+      } catch {
+        degraded = true;
+        return null;
+      }
+    },
+    setItem(k: string, v: string) {
+      const b = base();
+      try {
+        if (!b) throw new Error("blocked");
+        b.setItem(ns + k, v);
+        mem.delete(k);
+      } catch {
+        degraded = true;
+        mem.set(k, v);
+      }
+    },
+    removeItem(k: string) {
+      mem.delete(k);
+      try {
+        base()?.removeItem(ns + k);
+      } catch {
+        degraded = true;
+      }
+    },
+    clear() {
+      for (const k of own()) store.removeItem(k);
+    },
+    physicalKey: (k: string) => ns + k,
+  };
+  return store as unknown as PomodoroStorage;
+}
+
+/**
+ * Sign-out: removes this user's timers, preferences, session tallies and pending blocks (and the
+ * un-namespaced keys of the first version). Another task wires the call into the sign-out flow.
+ */
+export function clearPomodoroStorage(userId: string, getBase: () => Storage = () => window.localStorage): void {
+  overlays.delete(userId);
+  let b: Storage;
+  try {
+    b = getBase();
+  } catch {
+    return;
+  }
+  const prefix = `${USER_NS(userId)}${PREFIX}`;
+  const doomed: string[] = [];
+  try {
+    for (let i = 0; i < b.length; i++) {
+      const k = b.key(i);
+      if (k !== null && (k.startsWith(prefix) || k.startsWith(PREFIX))) doomed.push(k);
+    }
+    for (const k of doomed) b.removeItem(k);
+  } catch {
+    // nothing else to do
   }
 }
 
@@ -92,11 +258,15 @@ export function adoptRemote(currentRev: number, raw: string | null): PomodoroSta
 }
 
 /** Calls `onChange` with the state another tab wrote (a higher `rev` than anything seen so far). */
-export function subscribePomodoro(habitId: string, onChange: (s: PomodoroState | null) => void): () => void {
-  const key = stateKey(habitId);
+export function subscribePomodoro(
+  habitId: string,
+  onChange: (s: PomodoroState | null) => void,
+  storage?: PomodoroStorage,
+): () => void {
+  const key = storage ? storage.physicalKey(stateKey(habitId)) : stateKey(habitId);
   let seen = -1;
   try {
-    seen = loadPomodoro(habitId, window.localStorage)?.rev ?? -1;
+    seen = loadPomodoro(habitId, storage ?? window.localStorage)?.rev ?? -1;
   } catch {
     // ignore
   }
@@ -114,13 +284,21 @@ export function subscribePomodoro(habitId: string, onChange: (s: PomodoroState |
 // ---------------------------------------------------------------- preferences and session tally
 
 export type PomodoroPresetKey = (typeof POMODORO_PRESETS)[number]["key"] | "custom";
-export type PomodoroPrefs = { preset: PomodoroPresetKey; config: PomodoroConfig; topic: string; muted: boolean };
+export type PomodoroPrefs = {
+  preset: PomodoroPresetKey;
+  config: PomodoroConfig;
+  topic: string;
+  muted: boolean;
+  /** Remembered so Hoy can name a habit whose blocks are stuck even after it was archived. */
+  habitName: string;
+};
 
 export const DEFAULT_POMODORO_PREFS: PomodoroPrefs = {
   preset: "25-5",
   config: { focusMin: 25, breakMin: 5, cycles: 4 },
   topic: "",
   muted: false,
+  habitName: "",
 };
 
 export function loadPrefs(habitId: string, storage: Storage): PomodoroPrefs {
@@ -136,6 +314,7 @@ export function loadPrefs(habitId: string, storage: Storage): PomodoroPrefs {
       config: { focusMin: d.config.focusMin, breakMin: d.config.breakMin, cycles: d.config.cycles },
       topic: typeof d.topic === "string" ? d.topic.slice(0, 60) : "",
       muted: d.muted === true,
+      habitName: typeof d.habitName === "string" ? d.habitName.slice(0, 80) : "",
     };
   } catch {
     return DEFAULT_POMODORO_PREFS;
@@ -150,29 +329,67 @@ export function savePrefs(habitId: string, prefs: PomodoroPrefs, storage: Storag
   }
 }
 
-/** What this session has produced so far: blocks that closed, their minutes and the last one. */
-export type PomodoroSession = { blocks: number; minutes: number; last: number };
-export const EMPTY_SESSION: PomodoroSession = { blocks: 0, minutes: 0, last: 0 };
+/**
+ * What this session has produced: blocks that closed, their minutes, and the last block with what
+ * the server said about it (so "Sumamos N min" shows only after a confirmation).
+ */
+export type PomodoroSession = {
+  blocks: number;
+  minutes: number;
+  last: number;
+  lastId: string | null;
+  lastStatus: "pending" | "confirmed" | "dropped" | null;
+};
+export const EMPTY_SESSION: PomodoroSession = { blocks: 0, minutes: 0, last: 0, lastId: null, lastStatus: null };
 
 /** Updates the tally across one reducer step. A new session (idle/done -> focus) starts from zero. */
 export function sessionAfter(prev: PomodoroState, next: PomodoroState, session: PomodoroSession): PomodoroSession {
   if ((prev.phase === "idle" || prev.phase === "done") && next.phase === "focus") return EMPTY_SESSION;
   if (next === prev) return session;
+  let out = session;
+  const nextIds = new Set(next.pending.map((p) => p.blockId));
+  for (const gone of prev.pending.filter((p) => !nextIds.has(p.blockId))) {
+    if (gone.blockId === out.lastId) {
+      out = { ...out, lastStatus: next.credited > prev.credited ? "confirmed" : "dropped" };
+    }
+  }
   const known = new Set(prev.pending.map((p) => p.blockId));
   const fresh = next.pending.filter((p) => !known.has(p.blockId));
-  if (fresh.length === 0) return session;
-  return {
-    blocks: session.blocks + fresh.length,
-    minutes: session.minutes + fresh.reduce((sum, p) => sum + p.minutes, 0),
-    last: fresh[fresh.length - 1].minutes,
-  };
+  if (fresh.length > 0) {
+    const last = fresh[fresh.length - 1];
+    out = {
+      blocks: out.blocks + fresh.length,
+      minutes: out.minutes + fresh.reduce((sum, p) => sum + p.minutes, 0),
+      last: last.minutes,
+      lastId: last.blockId,
+      lastStatus: "pending",
+    };
+  }
+  return out;
+}
+
+/**
+ * Hoy's banner can confirm or drop a block while the screen is closed. When the screen comes back
+ * and the last block is no longer pending, settle its status from what the state says.
+ */
+export function reconcileSession(s: PomodoroState, session: PomodoroSession): PomodoroSession {
+  if (session.lastStatus !== "pending" || session.lastId === null) return session;
+  if (s.pending.some((p) => p.blockId === session.lastId)) return session;
+  return { ...session, lastStatus: s.credited > 0 ? "confirmed" : "dropped" };
 }
 
 function loadSession(habitId: string, storage: Storage): PomodoroSession {
   try {
     const d = JSON.parse(storage.getItem(sessionKey(habitId)) ?? "null") as Partial<PomodoroSession> | null;
     if (d && Number.isInteger(d.blocks) && Number.isInteger(d.minutes) && Number.isInteger(d.last)) {
-      return { blocks: d.blocks as number, minutes: d.minutes as number, last: d.last as number };
+      const status = d.lastStatus === "pending" || d.lastStatus === "confirmed" || d.lastStatus === "dropped" ? d.lastStatus : null;
+      return {
+        blocks: d.blocks as number,
+        minutes: d.minutes as number,
+        last: d.last as number,
+        lastId: typeof d.lastId === "string" ? d.lastId : null,
+        lastStatus: status,
+      };
     }
   } catch {
     // ignore
@@ -180,11 +397,12 @@ function loadSession(habitId: string, storage: Storage): PomodoroSession {
   return EMPTY_SESSION;
 }
 
-function saveSession(habitId: string, session: PomodoroSession, storage: Storage): void {
+function saveSession(habitId: string, session: PomodoroSession, storage: Storage): boolean {
   try {
     storage.setItem(sessionKey(habitId), JSON.stringify(session));
+    return true;
   } catch {
-    // ignore
+    return false;
   }
 }
 
@@ -199,14 +417,21 @@ export function newBlockId(): string {
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
-type Box = { s: PomodoroState; session: PomodoroSession };
-type Action =
+export type PomodoroBox = { s: PomodoroState; session: PomodoroSession };
+type Box = PomodoroBox;
+export type PomodoroAction =
   | PomodoroEvent
   | { type: "hydrate"; box: Box }
   | { type: "adopt"; state: PomodoroState }
   | { type: "configure"; config: PomodoroConfig };
+type Action = PomodoroAction;
 
-function boxReducer(box: Box, a: Action): Box {
+/**
+ * The hook's reducer. Ticks keep the domain's `rev + 1`; every other change (a user action, a
+ * server answer, a new configuration) lands `ACTION_REV_BUMP` higher, so when two tabs write at the
+ * same `rev` the user's pause outranks the other tab's tick refresh.
+ */
+export function pomodoroBoxReducer(box: Box, a: Action): Box {
   switch (a.type) {
     case "hydrate":
       return a.box;
@@ -217,43 +442,48 @@ function boxReducer(box: Box, a: Action): Box {
       const s: PomodoroState = {
         ...initialPomodoro(box.s.habitId, a.config),
         pending: box.s.pending,
-        rev: box.s.rev + 1,
+        rev: box.s.rev + ACTION_REV_BUMP,
       };
       return { s, session: box.session };
     }
     default: {
-      const s = pomodoroReducer(box.s, a);
-      if (s === box.s) return box;
+      const stepped = pomodoroReducer(box.s, a);
+      if (stepped === box.s) return box;
+      const s = a.type === "tick" ? stepped : { ...stepped, rev: stepped.rev + ACTION_REV_BUMP };
       return { s, session: sessionAfter(box.s, s, box.session) };
     }
   }
 }
 
-/** A block of focus or a rest that just ended on a live tick (not a catch-up after a long sleep). */
+/** A block of focus or a rest that ended while this page was alive (see `isFreshEnd`). */
 export type PhaseEnd =
   | { kind: "focus"; minutes: number; lastRound: boolean }
   | { kind: "break" };
 
 /**
- * Drives the timer of one habit: reducer + localStorage + a 1 s tick (and on visibilitychange,
+ * Drives the timer of one habit: reducer + storage + a 1 s tick (and on visibilitychange,
  * pageshow, focus). `tick` returns the same state while nothing expires, so the screen re-renders
  * only on real changes; the per-second readout lives in its own component (`useNow`).
- * `hydrated` is false until the stored state was read (the server render never has it).
+ * `hydrated` is false until the stored state was read (the server render never has it);
+ * `storageProblem` is true when the device would not keep the timer (blocked or full storage).
  */
 export function usePomodoro(
   habitId: string,
   config: PomodoroConfig,
-  onPhaseEnd?: (end: PhaseEnd) => void,
+  opts: { storage: PomodoroStorage; onPhaseEnd?: (end: PhaseEnd) => void },
 ) {
-  const [box, dispatch] = useReducer(boxReducer, undefined, (): Box => ({
+  const { storage, onPhaseEnd } = opts;
+  const [box, dispatch] = useReducer(pomodoroBoxReducer, undefined, (): Box => ({
     s: initialPomodoro(habitId, config),
     session: EMPTY_SESSION,
   }));
   const [hydrated, setHydrated] = useState(false);
+  const [storageProblem, setStorageProblem] = useState(false);
   const boxRef = useRef(box);
   const endRef = useRef(onPhaseEnd);
   const savedRev = useRef(0);
   const savedSession = useRef(EMPTY_SESSION);
+  const lastLiveTick = useRef<number | null>(null);
   useEffect(() => {
     boxRef.current = box;
     endRef.current = onPhaseEnd;
@@ -261,43 +491,60 @@ export function usePomodoro(
 
   // read what is stored, settling whatever expired while the page was away
   useEffect(() => {
-    const stored = loadPomodoro(habitId, window.localStorage);
-    const session = loadSession(habitId, window.localStorage);
+    const now = Date.now();
+    const stored = loadPomodoro(habitId, storage, now);
+    const session = stored ? reconcileSession(stored, loadSession(habitId, storage)) : loadSession(habitId, storage);
     if (stored) {
-      const s = pomodoroReducer(stored, { type: "tick", at: Date.now() });
+      const s = pomodoroReducer(stored, { type: "tick", at: now });
       savedRev.current = stored.rev;
       savedSession.current = session;
       dispatch({ type: "hydrate", box: { s, session: sessionAfter(stored, s, session) } });
     }
+    lastLiveTick.current = now;
+    setStorageProblem(storage.degraded);
     setHydrated(true);
-  }, [habitId]);
+  }, [habitId, storage]);
 
-  // persist every real change (phase changes, pause, the 15 s `lastTickAt` refresh)
+  // persist every real change; re-read first so another tab's newer state is adopted, not clobbered
   useEffect(() => {
     if (!hydrated) return;
+    let failed = false;
     if (box.s.rev > savedRev.current) {
-      savedRev.current = box.s.rev;
-      savePomodoro(box.s, window.localStorage);
+      const r = savePomodoroIfNewer(box.s, storage);
+      if (r.status === "stale") {
+        savedRev.current = r.remote.rev;
+        dispatch({ type: "adopt", state: r.remote });
+      } else {
+        savedRev.current = box.s.rev;
+        failed = r.status === "failed";
+      }
     }
     if (box.session !== savedSession.current) {
       savedSession.current = box.session;
-      saveSession(habitId, box.session, window.localStorage);
+      if (!saveSession(habitId, box.session, storage)) failed = true;
     }
-  }, [box, hydrated, habitId]);
+    if (failed || storage.degraded) setStorageProblem(true);
+  }, [box, hydrated, habitId, storage]);
 
   useEffect(() => {
     if (!hydrated) return;
-    return subscribePomodoro(habitId, (s) => {
-      if (s) dispatch({ type: "adopt", state: s });
-    });
-  }, [habitId, hydrated]);
+    return subscribePomodoro(
+      habitId,
+      (s) => {
+        if (s) dispatch({ type: "adopt", state: s });
+      },
+      storage,
+    );
+  }, [habitId, hydrated, storage]);
 
   useEffect(() => {
     if (!hydrated) return;
     const tickNow = () => {
       const cur = boxRef.current.s;
-      if (cur.phase !== "focus" && cur.phase !== "break") return;
       const at = Date.now();
+      const prevTick = lastLiveTick.current;
+      lastLiveTick.current = at;
+      if (cur.phase !== "focus" && cur.phase !== "break") return;
       const next = pomodoroReducer(cur, { type: "tick", at });
       if (next === cur) return;
       dispatch({ type: "tick", at });
@@ -305,11 +552,11 @@ export function usePomodoro(
       const fresh = next.pending.filter((p) => !known.has(p.blockId));
       if (cur.phase === "focus" && fresh.length > 0) {
         const block = fresh[fresh.length - 1];
-        if (at - block.endedAt <= FRESH_MS) {
+        if (isFreshEnd(prevTick, block.endedAt, at)) {
           endRef.current?.({ kind: "focus", minutes: block.minutes, lastRound: next.phase === "done" });
         }
       } else if (cur.phase === "break" && next.phase === "ready") {
-        if (next.phaseStartedAt !== null && at - next.phaseStartedAt <= FRESH_MS) endRef.current?.({ kind: "break" });
+        if (next.phaseStartedAt !== null && isFreshEnd(prevTick, next.phaseStartedAt, at)) endRef.current?.({ kind: "break" });
       }
     };
     const id = window.setInterval(tickNow, 1000);
@@ -343,7 +590,7 @@ export function usePomodoro(
     [],
   );
 
-  return { state: box.s, session: box.session, hydrated, act, getState };
+  return { state: box.s, session: box.session, hydrated, storageProblem, act, getState };
 }
 
 /** `Date.now()` re-read every `ms` while `active`: only the component calling it re-renders. */

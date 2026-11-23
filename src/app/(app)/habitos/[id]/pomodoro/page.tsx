@@ -37,5 +37,14 @@ export default async function PomodoroPage({ params }: { params: Promise<{ id: s
     .eq("local_date", today)
     .maybeSingle();
 
-  return <PomodoroScreen habitId={habit.id} habitName={habit.name} preset={habit.preset} todayMinutes={entry?.minutes ?? 0} />;
+  return (
+    <PomodoroScreen
+      habitId={habit.id}
+      habitName={habit.name}
+      preset={habit.preset}
+      todayMinutes={entry?.minutes ?? 0}
+      userId={user.id}
+      timeZone={profile.timezone}
+    />
+  );
 }
