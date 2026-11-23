@@ -39,10 +39,10 @@ select (now() at time zone 'America/Santiago')::date as today,
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000b', 'accepted');
 
-insert into public.habits (id, user_id, name, icon, frequency_type, target_per_week, requires_photo, visibility, preset) values
-  ('b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', 'Leer', 'book', 'daily', null, false, 'public', 'read'),
-  ('b0000000-0000-0000-0000-0000000000a2', 'a0000000-0000-0000-0000-00000000000a', 'Gimnasio', 'barbell', 'weekly', 4, true, 'friends', 'gym'),
-  ('b0000000-0000-0000-0000-00000000000b', 'a0000000-0000-0000-0000-00000000000b', 'Correr', 'sneaker-move', 'daily', null, false, 'friends', null);
+insert into public.habits (id, user_id, name, icon, frequency_type, target_per_week, requires_photo, visibility, preset, color) values
+  ('b0000000-0000-0000-0000-00000000000a', 'a0000000-0000-0000-0000-00000000000a', 'Leer', 'book', 'daily', null, false, 'public', 'read', 'arena'),
+  ('b0000000-0000-0000-0000-0000000000a2', 'a0000000-0000-0000-0000-00000000000a', 'Gimnasio', 'barbell', 'weekly', 4, true, 'friends', 'gym', 'durazno'),
+  ('b0000000-0000-0000-0000-00000000000b', 'a0000000-0000-0000-0000-00000000000b', 'Correr', 'sneaker-move', 'daily', null, false, 'friends', null, 'salvia');
 
 -- Leer: a daily streak. Gimnasio: photo check-ins (the proof objects are not seeded, so
 -- the feed shows them without an image).
