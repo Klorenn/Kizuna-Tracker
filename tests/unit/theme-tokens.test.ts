@@ -118,6 +118,8 @@ describe('dark theme tokens', () => {
     expect(c('--color-on-accent', '--color-accent-hover')).toBeGreaterThanOrEqual(4.5)
     expect(c('--color-outline-strong', '--color-surface')).toBeGreaterThanOrEqual(3) // input borders
     expect(c('--color-alert', '--color-surface')).toBeGreaterThanOrEqual(3) // alert icons
+    expect(c('--color-alert-text', '--color-surface')).toBeGreaterThanOrEqual(4.5) // "Borrar cuenta"
+    expect(c('--color-alert-text', '--color-paper')).toBeGreaterThanOrEqual(4.5)
     expect(c('--color-accent2', '--color-paper')).toBeGreaterThanOrEqual(3) // cat details
     expect(c('--color-on-media', '--color-media')).toBeGreaterThanOrEqual(7)
   })

@@ -1,0 +1,43 @@
+import { describe, expect, test } from 'vitest'
+import { PUSH_STATUS_COPY, pushStatus, type PushEnv } from '@/lib/push-status'
+
+const base: PushEnv = {
+  hasPush: true,
+  vapid: true,
+  standalone: false,
+  ios: false,
+  permission: 'default',
+  subscribed: false,
+}
+
+describe('pushStatus', () => {
+  test('en iPhone fuera de la app instalada pide instalar primero', () => {
+    expect(pushStatus({ ...base, ios: true, hasPush: false })).toBe('install')
+    expect(pushStatus({ ...base, ios: true })).toBe('install')
+  })
+  test('en iPhone con la app instalada sigue el permiso', () => {
+    expect(pushStatus({ ...base, ios: true, standalone: true })).toBe('off')
+  })
+  test('sin Push API o sin llave pública no está disponible', () => {
+    expect(pushStatus({ ...base, hasPush: false })).toBe('unsupported')
+    expect(pushStatus({ ...base, vapid: false })).toBe('unsupported')
+  })
+  test('permiso bloqueado', () => {
+    expect(pushStatus({ ...base, permission: 'denied' })).toBe('blocked')
+  })
+  test('activadas solo con permiso y suscripción en este dispositivo', () => {
+    expect(pushStatus({ ...base, permission: 'granted', subscribed: true })).toBe('on')
+    expect(pushStatus({ ...base, permission: 'granted', subscribed: false })).toBe('off')
+    expect(pushStatus({ ...base, permission: 'default' })).toBe('off')
+  })
+})
+
+describe('PUSH_STATUS_COPY', () => {
+  test('cada estado tiene etiqueta y explicación', () => {
+    expect(PUSH_STATUS_COPY.on.label).toBe('Activadas')
+    expect(PUSH_STATUS_COPY.off.label).toBe('Desactivadas')
+    expect(PUSH_STATUS_COPY.unsupported.label).toBe('No disponible en este navegador')
+    expect(PUSH_STATUS_COPY.install.label).toBe('Instala la app primero')
+    for (const s of Object.values(PUSH_STATUS_COPY)) expect(s.hint.length).toBeGreaterThan(0)
+  })
+})
