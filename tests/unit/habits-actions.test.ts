@@ -482,6 +482,23 @@ describe('copy of the database rules', () => {
       error: 'Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.',
     })
   })
+  it('switching to quantity inside a challenge says to change the type when it ends', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    reads['checkins.select'] = { data: null, error: null }
+    updateError = { message: 'habit_in_challenge' }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
+      ok: false,
+      error: 'Este hábito está en un reto. Cambia el tipo de registro cuando el reto termine.',
+    })
+  })
+  it('a visibility change in a challenge keeps the visibility message', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    updateError = { message: 'habit_in_challenge' }
+    await expect(updateHabit('h1', { ...presetDraft('walk'), logType: 'none', visibility: 'private' })).resolves.toEqual({
+      ok: false,
+      error: 'Este hábito tiene un reto activo. No puede ser solo tuyo.',
+    })
+  })
   it('habit_in_challenge stays mapped', async () => {
     reads['habit_items.select'] = { data: [], error: null }
     updateError = { message: 'habit_in_challenge' }

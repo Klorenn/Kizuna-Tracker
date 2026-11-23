@@ -30,13 +30,16 @@ const ERRORS: Record<string, string> = {
 
 const QUANTITY_IN_CHALLENGE =
   "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
+const QUANTITY_SWITCH_IN_CHALLENGE =
+  "Este hábito está en un reto. Cambia el tipo de registro cuando el reto termine.";
 const PHOTO_WITH_LOG = "Un hábito con foto no lleva tiempo ni cantidad.";
 const QUANTITY_UNDO = "Un hábito de cantidad se deshace quitando sumas.";
 
 /** `context` picks the copy of a code several rules share (photo_conflict, habit_in_challenge). */
-function messageFor(raw: string | undefined, context: { logType?: string; quantityInChallenge?: boolean } = {}): string {
+function messageFor(raw: string | undefined, context: { logType?: string; quantityInChallenge?: boolean; switchToQuantityInChallenge?: boolean } = {}): string {
   if (!raw) return GENERIC;
   const key = Object.keys(ERRORS).find((k) => raw.includes(k));
+  if (key === "habit_in_challenge" && context.switchToQuantityInChallenge) return QUANTITY_SWITCH_IN_CHALLENGE;
   if (key === "habit_in_challenge" && context.quantityInChallenge) return QUANTITY_IN_CHALLENGE;
   if (key === "photo_conflict" && (context.logType === "time" || context.logType === "quantity")) {
     return PHOTO_WITH_LOG;
@@ -218,7 +221,13 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
       error.message?.includes("habit_in_challenge") &&
       own.log_type === "quantity" &&
       !(draft.visibility === "private" && own.visibility !== "private");
-    return { ok: false, error: messageFor(error.message, { logType: draft.logType, quantityInChallenge }) };
+    // switching TO quantity while in a challenge is refused too: it is not about visibility either
+    const switchToQuantityInChallenge =
+      error.message?.includes("habit_in_challenge") && draft.logType === "quantity" && own.log_type !== "quantity";
+    return {
+      ok: false,
+      error: messageFor(error.message, { logType: draft.logType, quantityInChallenge, switchToQuantityInChallenge }),
+    };
   }
 
   for (const [position, item] of draft.items.entries()) {
