@@ -1725,6 +1725,7 @@ export type Database = {
       delete_time_entry: { Args: { p_checkin_id: string }; Returns: undefined }
       delete_watch_entry: { Args: { p_checkin_id: string }; Returns: undefined }
       delete_workout: { Args: { p_checkin_id: string }; Returns: undefined }
+      discover_fold: { Args: { p_text: string }; Returns: string }
       discover_people: {
         Args: { p_limit?: number; p_offset?: number; p_query?: string }
         Returns: {
