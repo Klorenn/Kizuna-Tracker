@@ -7,6 +7,7 @@ import { localDate } from "@/domain/dates";
 import { DEFAULT_HABIT_COLOR, toHabitColor, type HabitColor } from "@/domain/habit-colors";
 import type { LocalDate } from "@/domain/types";
 import { createServerClient } from "@/lib/supabase/server";
+import { VALUE_BASE, valueSizeClass } from "@/lib/value-size";
 
 // Shared by the REGISTROS detail views (lectura, gimnasio, grupo, ejercicio). Owner only:
 // everything is read with the user's own session.
@@ -109,7 +110,9 @@ export function Stat({ label, value, caption }: { label: string; value: ReactNod
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
       <p className="truncate text-small text-muted">{label}</p>
-      <p className="truncate font-mono text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">{value}</p>
+      <p data-value className={`${VALUE_BASE} ${typeof value === "string" ? valueSizeClass(value) : "text-[28px]"}`}>
+        {value}
+      </p>
       {caption ? <p className="truncate text-small text-muted">{caption}</p> : null}
     </div>
   );

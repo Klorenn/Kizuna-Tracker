@@ -1,6 +1,7 @@
 import { Lock } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import type { LogCard } from "@/lib/log-cards";
+import { VALUE_BASE, valueSizeClass } from "@/lib/value-size";
 
 /** Tappable month cards of the REGISTROS section: each opens its detail view. */
 export function LogMonthCards({ cards }: { cards: LogCard[] }) {
@@ -17,7 +18,7 @@ export function LogMonthCards({ cards }: { cards: LogCard[] }) {
               {c.private ? <Lock size={14} weight="light" aria-hidden className="shrink-0" /> : null}
               <span className="truncate">{c.label}</span>
             </span>
-            <span className="truncate font-mono text-[28px] font-semibold leading-tight tracking-[-0.02em] text-ink">
+            <span data-value className={`${VALUE_BASE} ${valueSizeClass(c.value)}`}>
               {c.value}
             </span>
             <span className="truncate text-small text-muted">{c.caption}</span>
