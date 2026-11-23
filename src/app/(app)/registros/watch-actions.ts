@@ -5,7 +5,8 @@ import { localDate } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
 import { validateMedia, validateWatchInput, type MediaInput } from "@/domain/watch";
 import { isLocalDate } from "@/lib/log-date";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
+import type { createServerClient } from "@/lib/supabase/server";
 import { loggedCoverage } from "@/lib/watch-coverage";
 import type { Database } from "@/lib/supabase/database.types";
 
@@ -128,7 +129,9 @@ export async function checkInWithWatch(
   habitId: string,
   entry: WatchInput | null,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string; checkedIn: boolean }> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error, checkedIn: false };
+  const { supabase } = auth;
   if (entry) {
     const valid = await checkAgainstTitle(supabase, entry);
     if (!valid.ok) return { ok: false, error: valid.error, checkedIn: false };
@@ -149,7 +152,9 @@ export async function checkInWithWatch(
 
 /** Adds or replaces the watch entry of an existing check-in (edit mode, any day). Never touches the check-in. */
 export async function saveWatch(checkinId: string, entry: WatchInput): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const valid = await checkAgainstTitle(supabase, entry);
   if (!valid.ok) return valid;
   const { error } = await supabase.rpc("save_watch_entry", watchArgs(checkinId, entry));
@@ -159,7 +164,9 @@ export async function saveWatch(checkinId: string, entry: WatchInput): Promise<R
 }
 
 export async function deleteWatch(checkinId: string): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { error } = await supabase.rpc("delete_watch_entry", { p_checkin_id: checkinId });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -167,12 +174,11 @@ export async function deleteWatch(checkinId: string): Promise<Result> {
 }
 
 export async function createMedia(input: MediaInput): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   const valid = validateMedia(input);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: NOT_AUTHENTICATED };
   const { data, error } = await supabase
     .from("media_items")
     .insert({
@@ -192,7 +198,9 @@ export async function createMedia(input: MediaInput): Promise<{ ok: true; id: st
 
 /** The kind never changes: it is read from the row so the right shape is validated. */
 export async function updateMedia(id: string, input: Omit<MediaInput, "kind">): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { data: current } = await supabase.from("media_items").select("kind").eq("id", id).maybeSingle();
   if (!current) return { ok: false, error: ERRORS.media_not_found };
   const kind = current.kind === "movie" ? "movie" : "series";
@@ -212,7 +220,7 @@ export async function updateMedia(id: string, input: Omit<MediaInput, "kind">): 
       return { ok: false, error: `Ya registraste la temporada ${season}: el total no puede ser menor.` };
     }
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("media_items")
     .update({
       title: input.title.trim(),
@@ -220,39 +228,44 @@ export async function updateMedia(id: string, input: Omit<MediaInput, "kind">): 
       total_episodes: input.totalEpisodes,
       runtime_min: input.runtimeMin,
     })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.media_not_found };
   refresh();
   return { ok: true };
 }
 
 /** Finished on a local date (never after today in the profile's zone), or back to "watching" with null. */
 export async function setMediaFinished(id: string, finishedOn: LocalDate | null): Promise<Result> {
-  const supabase = await createServerClient();
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   if (finishedOn !== null) {
     if (!isLocalDate(finishedOn)) return { ok: false, error: "Elige una fecha válida." };
-    const { data: auth } = await supabase.auth.getUser();
-    const uid = auth.user?.id;
-    if (!uid) return { ok: false, error: NOT_AUTHENTICATED };
-    // own row only: friends' profiles are readable too, so never rely on .single() alone
+    // the profiles SELECT policy is owner-only (public data lives in public_profiles); the explicit id filter keeps the read to the caller's own row
     const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
     if (!profile) return { ok: false, error: NOT_AUTHENTICATED };
     if (finishedOn > localDate(new Date(), profile.timezone)) return { ok: false, error: FUTURE };
   }
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("media_items")
     .update({ status: finishedOn ? "finished" : "watching", finished_on: finishedOn })
-    .eq("id", id);
+    .eq("id", id)
+    .select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.media_not_found };
   refresh();
   return { ok: true };
 }
 
 /** Deletes the title; its watch entries go with it (cascade). Check-ins never change. */
 export async function deleteMedia(id: string): Promise<Result> {
-  const supabase = await createServerClient();
-  const { error } = await supabase.from("media_items").delete().eq("id", id);
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { data, error } = await auth.supabase.from("media_items").delete().eq("id", id).select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: ERRORS.media_not_found };
   refresh();
   return { ok: true };
 }

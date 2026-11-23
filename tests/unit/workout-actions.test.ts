@@ -203,3 +203,19 @@ describe('renameExercise / archiveExercise', () => {
     expect(calls[0].filters).toContainEqual(['user_id', 'u1'])
   })
 })
+
+describe('every action verifies the session first', () => {
+  const SIGN_IN = { ok: false, error: 'Inicia sesión para continuar.' }
+  it.each([
+    ['saveWorkout', () => saveWorkout('c1', { dayTypes: ['legs'], exercises: [{ exerciseId: 'sq', sets: [{ reps: 5, kg: 80 }] }] })],
+    ['deleteWorkout', () => deleteWorkout('c1')],
+    ['createExercise', () => createExercise({ name: 'Remo', group: 'back' })],
+    ['renameExercise', () => renameExercise('e1', 'Remo')],
+    ['archiveExercise', () => archiveExercise('e1')],
+  ])('%s: sign-in copy, no rpc and no write', async (_name, call) => {
+    user = null
+    expect(await call()).toEqual(SIGN_IN)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+})

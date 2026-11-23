@@ -3,8 +3,9 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 const rpc = vi.fn()
 const revalidatePath = vi.fn()
 vi.mock('next/cache', () => ({ revalidatePath: (...a: unknown[]) => revalidatePath(...a) }))
+let authAnswer: unknown
 vi.mock('@/lib/supabase/server', () => ({
-  createServerClient: async () => ({ rpc }),
+  createServerClient: async () => ({ rpc, auth: { getUser: async () => authAnswer } }),
 }))
 
 import { addQuantity, refreshQuantity, removeQuantity } from '@/app/(app)/registros/quantity-actions'
@@ -12,6 +13,31 @@ import { addQuantity, refreshQuantity, removeQuantity } from '@/app/(app)/regist
 beforeEach(() => {
   rpc.mockReset()
   revalidatePath.mockReset()
+  authAnswer = { data: { user: { id: 'u1' } }, error: null }
+})
+
+describe('every action verifies the session first', () => {
+  const signedOut = { data: { user: null }, error: null }
+  it('addQuantity: sign-in copy, no retry, no rpc', async () => {
+    authAnswer = signedOut
+    await expect(addQuantity('h1', 'q1', 250)).resolves.toEqual({ ok: false, error: 'Inicia sesión para continuar.', retry: false })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+  it('addQuantity: a failed session check keeps the tap for a retry', async () => {
+    authAnswer = { data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0 } }
+    await expect(addQuantity('h1', 'q1', 250)).resolves.toMatchObject({ ok: false, retry: true })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+  it('removeQuantity: sign-in copy, no rpc', async () => {
+    authAnswer = signedOut
+    await expect(removeQuantity('q1')).resolves.toEqual({ ok: false, error: 'Inicia sesión para continuar.' })
+    expect(rpc).not.toHaveBeenCalled()
+  })
+  it('refreshQuantity: revalidates nothing without a session', async () => {
+    authAnswer = signedOut
+    await refreshQuantity()
+    expect(revalidatePath).not.toHaveBeenCalled()
+  })
 })
 
 describe('addQuantity', () => {

@@ -60,7 +60,10 @@ beforeEach(() => {
   calls.length = 0
   rpc.mockReset()
   // an update that touched the book (zero rows is the failure case, set per test)
-  results = { 'books.update': { data: [{ id: 'b1' }], error: null } }
+  results = {
+    'books.update': { data: [{ id: 'b1' }], error: null },
+    'books.delete': { data: [{ id: 'b1' }], error: null },
+  }
   user = { id: 'u1' }
 })
 
@@ -306,4 +309,38 @@ describe('books', () => {
       error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
     })
   })
+})
+
+describe('every action verifies the session first', () => {
+  const SIGN_IN = 'Inicia sesión para continuar.'
+  const entry = { bookId: 'b1', fromPage: 1, toPage: 20, finished: false }
+  it.each([
+    ['checkInWithReading', () => checkInWithReading('h1', entry), { ok: false, checkedIn: false, error: SIGN_IN }],
+    ['checkInWithReading (no entry)', () => checkInWithReading('h1', null), { ok: false, checkedIn: false, error: SIGN_IN }],
+    ['saveReading', () => saveReading('c1', entry), { ok: false, error: SIGN_IN }],
+    ['deleteReading', () => deleteReading('c1'), { ok: false, error: SIGN_IN }],
+    ['createBook', () => createBook({ title: 'Dune', author: null, totalPages: 412 }), { ok: false, error: SIGN_IN }],
+    ['updateBook', () => updateBook('b1', { title: 'Dune', author: null, totalPages: 412 }), { ok: false, error: SIGN_IN }],
+    ['setBookTotalPages', () => setBookTotalPages('b1', 412), { ok: false, error: SIGN_IN }],
+    ['setBookFinished (no date)', () => setBookFinished('b1', null), { ok: false, error: SIGN_IN }],
+    ['deleteBook', () => deleteBook('b1'), { ok: false, error: SIGN_IN }],
+  ])('%s: sign-in copy, no rpc and no write', async (_name, call, expected) => {
+    user = null
+    expect(await call()).toEqual(expected)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+})
+
+describe('direct writes that change no row are "not found"', () => {
+  it.each([['empty rows', { data: [], error: null }], ['no rows', { data: null, error: null }]])(
+    'setBookFinished and deleteBook with %s',
+    async (_name, none) => {
+      results['books.update'] = none
+      results['books.delete'] = none
+      results['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+      await expect(setBookFinished('b9', '2026-11-02')).resolves.toEqual({ ok: false, error: 'No encontramos ese libro.' })
+      await expect(deleteBook('b9')).resolves.toEqual({ ok: false, error: 'No encontramos ese libro.' })
+    },
+  )
 })

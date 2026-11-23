@@ -4,17 +4,21 @@ import { revalidatePath } from "next/cache";
 import { localDate } from "@/domain/dates";
 import { normalizeHabitDraft, validateHabitDraft, type HabitDraft, type Visibility } from "@/domain/presets";
 import { draftExtraError } from "@/lib/habit-draft-checks";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
+import type { createServerClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
 
 const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
+const TODAY_LOCKED = "Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.";
 const ERRORS: Record<string, string> = {
   habit_in_challenge: "Este hábito tiene un reto activo. No puede ser solo tuyo.",
   photo_conflict: "Un hábito con pasos pide la foto en cada paso, no en el hábito.",
   items_with_log: "Un hábito con pasos no lleva registro detallado.",
   period_closed: "Este día ya cerró en un reto: no puedes deshacerlo.",
-  quantity_habit: "Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.",
+  quantity_habit: "Este hábito se completa sumando cantidad desde Hoy.",
+  // the database repeats the app-level lock on switching to or from quantity (or changing its unit)
+  checkin_today: TODAY_LOCKED,
   quantity_checkin_managed: "Un hábito de cantidad se deshace quitando sumas.",
   habit_has_items: "Este hábito se completa marcando sus pasos.",
   photo_required: "Este hábito pide una foto de prueba.",
@@ -45,7 +49,6 @@ function undoMessage(raw: string | undefined): string {
   return raw?.includes("quantity_habit") || raw?.includes("quantity_checkin_managed") ? QUANTITY_UNDO : messageFor(raw);
 }
 
-const TODAY_LOCKED = "Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.";
 const NOT_FOUND = ERRORS.habit_not_found;
 
 type Supabase = Awaited<ReturnType<typeof createServerClient>>;
@@ -91,15 +94,14 @@ function habitRow(draft: HabitDraft) {
 export async function createHabit(
   input: HabitDraft,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   const draft = normalizeHabitDraft(input);
   const extra = draftExtraError(draft);
   if (extra) return { ok: false, error: extra };
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
 
   const { data: habit, error } = await supabase
     .from("habits")
@@ -128,15 +130,14 @@ export async function createHabit(
 }
 
 export async function updateHabit(id: string, input: HabitDraft): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   const draft = normalizeHabitDraft(input);
   const extra = draftExtraError(draft);
   if (extra) return { ok: false, error: extra };
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
   const own = await ownHabit(supabase, uid, id);
   if (!own) return { ok: false, error: NOT_FOUND };
 
@@ -147,13 +148,20 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
     (wasQuantity || draft.logType === "quantity") &&
     (wasQuantity !== (draft.logType === "quantity") || own.quantity_unit !== (draft.quantity?.unit ?? null));
   if (switches) {
-    const { data: profile } = await supabase.from("profiles").select("timezone").single();
-    const { data: today } = await supabase
+    // a failed read must not let the change through: refuse with the generic retry copy
+    const { data: profile, error: profileError } = await supabase
+      .from("profiles")
+      .select("timezone")
+      .eq("id", uid)
+      .maybeSingle();
+    if (profileError || !profile) return { ok: false, error: GENERIC };
+    const { data: today, error: todayError } = await supabase
       .from("checkins")
       .select("id")
       .eq("habit_id", id)
-      .eq("local_date", localDate(new Date(), profile?.timezone ?? "UTC"))
+      .eq("local_date", localDate(new Date(), profile.timezone))
       .maybeSingle();
+    if (todayError) return { ok: false, error: GENERIC };
     if (today) return { ok: false, error: TODAY_LOCKED };
   }
 
@@ -178,15 +186,33 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
   const dropped = (current ?? [])
     .filter((i) => !wanted.has(i.label.trim().toLocaleLowerCase("es")))
     .map((i) => i.id);
+  // if the habit update is refused after the steps were archived, they come back: a failed save must
+  // not leave a habit whose day now completes with one tap
+  const restoreDropped = async () => {
+    if (dropped.length > 0) await supabase.from("habit_items").update({ archived_at: null }).in("id", dropped);
+  };
   if (dropped.length > 0) {
     const { error: archiveError } = await supabase
       .from("habit_items")
       .update({ archived_at: new Date().toISOString() })
       .in("id", dropped);
-    if (archiveError) return { ok: false, error: messageFor(archiveError.message, { logType: draft.logType }) };
+    if (archiveError) {
+      await restoreDropped();
+      return { ok: false, error: messageFor(archiveError.message, { logType: draft.logType }) };
+    }
   }
-  const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id).eq("user_id", uid);
+  const { data: updated, error } = await supabase
+    .from("habits")
+    .update(habitRow(draft))
+    .eq("id", id)
+    .eq("user_id", uid)
+    .select("id");
+  if (!error && (!updated || updated.length === 0)) {
+    await restoreDropped();
+    return { ok: false, error: NOT_FOUND };
+  }
   if (error) {
+    await restoreDropped();
     // habit_in_challenge also guards visibility and photos: tell which rule a quantity habit broke
     const quantityInChallenge =
       error.message?.includes("habit_in_challenge") &&
@@ -199,11 +225,13 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
     const label = item.label.trim();
     const existingId = byLabel.get(label.toLocaleLowerCase("es"));
     if (existingId) {
-      const { error: itemError } = await supabase
+      const { data: kept, error: itemError } = await supabase
         .from("habit_items")
         .update({ label, position, requires_photo: item.requiresPhoto })
-        .eq("id", existingId);
+        .eq("id", existingId)
+        .select("id");
       if (itemError) return { ok: false, error: messageFor(itemError.message) };
+      if (!kept || kept.length === 0) return { ok: false, error: GENERIC };
     } else {
       inserts.push({ habit_id: id, user_id: uid, label, position, requires_photo: item.requiresPhoto });
     }
@@ -217,30 +245,36 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
 }
 
 export async function setHabitVisibility(id: string, v: Visibility): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   if (!["private", "friends", "public"].includes(v)) return { ok: false, error: GENERIC };
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
   if (!(await ownHabit(supabase, uid, id))) return { ok: false, error: NOT_FOUND };
-  const { error } = await supabase.from("habits").update({ visibility: v }).eq("id", id).eq("user_id", uid);
+  const { data, error } = await supabase
+    .from("habits")
+    .update({ visibility: v })
+    .eq("id", id)
+    .eq("user_id", uid)
+    .select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: NOT_FOUND };
   refresh();
   return { ok: true };
 }
 
 export async function archiveHabit(id: string): Promise<Result> {
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   if (!(await ownHabit(supabase, uid, id))) return { ok: false, error: NOT_FOUND };
-  const { error } = await supabase
+  const { data, error } = await supabase
     .from("habits")
     .update({ archived_at: new Date().toISOString() })
     .eq("id", id)
-    .eq("user_id", uid);
+    .eq("user_id", uid)
+    .select("id");
   if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: NOT_FOUND };
   refresh();
   return { ok: true };
 }
@@ -248,8 +282,9 @@ export async function archiveHabit(id: string): Promise<Result> {
 export async function checkIn(
   habitId: string,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string }> {
-  const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { data, error } = await auth.supabase.rpc("create_checkin", { p_habit_id: habitId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message) };
   refresh();
@@ -257,15 +292,15 @@ export async function checkIn(
 }
 
 const CANNOT_UNDO = "No puedes deshacer este registro.";
+const NO_CHECKIN_TODAY = "Hoy no hay un registro que deshacer.";
 
 /** Removes today's photo-less check-in (the date comes from the profile timezone). */
 export async function undoCheckIn(habitId: string): Promise<Result> {
-  const supabase = await createServerClient();
-  const { data: auth } = await supabase.auth.getUser();
-  const uid = auth.user?.id;
-  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
   if (!(await ownHabit(supabase, uid, habitId))) return { ok: false, error: NOT_FOUND };
-  const { data: profile } = await supabase.from("profiles").select("timezone").single();
+  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", uid).maybeSingle();
   if (!profile) return { ok: false, error: ERRORS.not_authenticated };
   const date = localDate(new Date(), profile.timezone);
 
@@ -285,12 +320,14 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
     .maybeSingle();
   if (today?.photo_path) return { ok: false, error: CANNOT_UNDO };
 
-  const { error } = await supabase
+  const { data: removed, error } = await supabase
     .from("checkins")
     .delete()
     .eq("habit_id", habitId)
-    .eq("local_date", date);
+    .eq("local_date", date)
+    .select("id");
   if (error) return { ok: false, error: undoMessage(error.message) };
+  if (!removed || removed.length === 0) return { ok: false, error: NO_CHECKIN_TODAY };
   refresh();
   return { ok: true };
 }
@@ -298,8 +335,9 @@ export async function undoCheckIn(habitId: string): Promise<Result> {
 export async function checkItem(
   itemId: string,
 ): Promise<{ ok: true; created: boolean; dayCompleted: boolean } | { ok: false; error: string }> {
-  const supabase = await createServerClient();
-  const { data, error } = await supabase.rpc("check_item", { p_item_id: itemId });
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { data, error } = await auth.supabase.rpc("check_item", { p_item_id: itemId });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message) };
   refresh();
@@ -307,8 +345,9 @@ export async function checkItem(
 }
 
 export async function uncheckItem(itemId: string): Promise<Result> {
-  const supabase = await createServerClient();
-  const { error } = await supabase.rpc("uncheck_item", { p_item_id: itemId });
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { error } = await auth.supabase.rpc("uncheck_item", { p_item_id: itemId });
   if (error) return { ok: false, error: undoMessage(error.message) };
   refresh();
   return { ok: true };

@@ -64,7 +64,12 @@ beforeEach(() => {
   calls.length = 0
   rpc.mockReset()
   // the caller's own title row (RLS owner-only): Dark, 3 seasons, 26 episodes
-  results = { 'media_items.select': { data: DARK, error: null } }
+  results = {
+    'media_items.select': { data: DARK, error: null },
+    // direct writes ask for the affected rows: one row changed by default
+    'media_items.update': { data: [{ id: 'm1' }], error: null },
+    'media_items.delete': { data: [{ id: 'm1' }], error: null },
+  }
   user = { id: 'u1' }
 })
 
@@ -377,4 +382,39 @@ describe('media titles', () => {
       error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
     })
   })
+})
+
+describe('every action verifies the session first', () => {
+  const SIGN_IN = 'Inicia sesión para continuar.'
+  it.each([
+    ['checkInWithWatch', () => checkInWithWatch('h1', series), { ok: false, checkedIn: false, error: SIGN_IN }],
+    ['checkInWithWatch (no entry)', () => checkInWithWatch('h1', null), { ok: false, checkedIn: false, error: SIGN_IN }],
+    ['saveWatch', () => saveWatch('c1', series), { ok: false, error: SIGN_IN }],
+    ['deleteWatch', () => deleteWatch('c1'), { ok: false, error: SIGN_IN }],
+    ['createMedia', () => createMedia({ title: 'Dark', kind: 'series', totalSeasons: 3, totalEpisodes: 26, runtimeMin: null }), { ok: false, error: SIGN_IN }],
+    ['updateMedia', () => updateMedia('m1', { title: 'Dark', totalSeasons: 3, totalEpisodes: 26, runtimeMin: null }), { ok: false, error: SIGN_IN }],
+    ['setMediaFinished', () => setMediaFinished('m1', null), { ok: false, error: SIGN_IN }],
+    ['deleteMedia', () => deleteMedia('m1'), { ok: false, error: SIGN_IN }],
+  ])('%s: sign-in copy, no rpc and no write', async (_name, call, expected) => {
+    user = null
+    expect(await call()).toEqual(expected)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+})
+
+describe('direct writes that change no row are "not found"', () => {
+  const NOT_FOUND = 'No encontramos ese título.'
+  it.each([['empty rows', { data: [], error: null }], ['no rows', { data: null, error: null }]])(
+    'updateMedia, setMediaFinished and deleteMedia with %s',
+    async (_name, none) => {
+      results['media_items.select'] = { data: { kind: 'series' }, error: null }
+      results['media_items.update'] = none
+      results['media_items.delete'] = none
+      results['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+      await expect(updateMedia('m9', { title: 'Dark', totalSeasons: 3, totalEpisodes: 26, runtimeMin: null })).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(setMediaFinished('m9', '2026-11-02')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(deleteMedia('m9')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+    },
+  )
 })

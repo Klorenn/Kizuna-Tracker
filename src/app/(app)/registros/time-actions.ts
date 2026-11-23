@@ -1,7 +1,8 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
+import type { createServerClient } from "@/lib/supabase/server";
 
 // Time logs and the Pomodoro block receipt. Every write goes through the 0018 RPCs; time never
 // changes a streak, challenge or goal (it is the detail of a check-in).
@@ -78,32 +79,17 @@ type Client = Awaited<ReturnType<typeof createServerClient>>;
 
 /** The signed-in client, or null: every action authenticates before touching the RPCs. */
 async function authed(): Promise<Client | null> {
-  const supabase = await createServerClient();
-  const { data } = await supabase.auth.getUser();
-  return data?.user ? supabase : null;
+  const auth = await requireUser();
+  return auth.ok ? auth.supabase : null;
 }
 
-/** An Auth answer that means "there is no valid session" (the user must sign in), not "could not ask". */
-function isSignedOutError(e: { name?: string; status?: number; message?: string }): boolean {
-  if (e.name === "AuthSessionMissingError") return true;
-  return typeof e.status === "number" && e.status >= 400 && e.status < 500;
-}
-
-/**
- * Like `authed`, but a failed check (network, server trouble) is its own answer: only the Pomodoro
- * block receipt needs to tell "sign in again" from "could not reach the server".
- */
+/** Like `authed`, but a failed check (network, server trouble) is its own answer for the block receipt. */
 async function sessionCheck(): Promise<
   { state: "ok"; supabase: Client } | { state: "signed_out" } | { state: "unavailable" }
 > {
-  const supabase = await createServerClient();
-  try {
-    const { data, error } = await supabase.auth.getUser();
-    if (data?.user) return { state: "ok", supabase };
-    return error && !isSignedOutError(error) ? { state: "unavailable" } : { state: "signed_out" };
-  } catch {
-    return { state: "unavailable" };
-  }
+  const auth = await requireUser();
+  if (auth.ok) return { state: "ok", supabase: auth.supabase };
+  return { state: auth.unavailable ? "unavailable" : "signed_out" };
 }
 
 /** Adds minutes to today's time for the habit. Creates the check-in when there was none (`checkedIn`). */

@@ -6,6 +6,9 @@ const calls: Call[] = []
 const rpc = vi.fn()
 let insertHabitResult: { data: { id: string } | null; error: { message: string } | null }
 let updateError: { message: string } | null = null
+// rows a direct write reports as changed (the writes ask for them: zero rows is "not found")
+let updateData: unknown = [{ id: 'x' }]
+let user: { id: string } | null = { id: 'u1' }
 // results of plain reads/deletes, keyed by "table.op"
 let reads: Record<string, unknown> = {}
 
@@ -27,18 +30,18 @@ function builder(table: string) {
     },
     update: (payload: unknown) => {
       calls.push({ table, op: 'update', payload })
-      return chain(() => ({ error: updateError }))
+      return chain(() => ({ data: updateData, error: updateError }))
     },
     delete: () => {
       calls.push({ table, op: 'delete' })
-      return chain(() => reads[`${table}.delete`] ?? { error: null })
+      return chain(() => reads[`${table}.delete`] ?? { data: [{ id: 'x' }], error: null })
     },
     select: () => chain(() => reads[`${table}.select`] ?? { data: null, error: null }),
   }
 }
 
 const client = {
-  auth: { getUser: async () => ({ data: { user: { id: 'u1' } } }) },
+  auth: { getUser: async () => ({ data: { user }, error: null }) },
   rpc,
   from: (t: string) => builder(t),
 }
@@ -62,9 +65,13 @@ beforeEach(() => {
   rpc.mockReset()
   insertHabitResult = { data: { id: 'h1' }, error: null }
   updateError = null
+  updateData = [{ id: 'x' }]
+  user = { id: 'u1' }
   reads = {}
   // the caller owns habit h1 (a plain habit); tests override it
   reads['habits.select'] = { data: OWN, error: null }
+  // the caller's own profile (the lock on switching to or from quantity reads the zone)
+  reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
 })
 
 const OWN = { id: 'h1', log_type: 'none', quantity_unit: null, visibility: 'friends' }
@@ -223,7 +230,7 @@ describe('habit actions', () => {
     updateError = { message: 'quantity_habit' }
     await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
       ok: false,
-      error: 'Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.',
+      error: 'Este hábito se completa sumando cantidad desde Hoy.',
     })
   })
 
@@ -395,5 +402,118 @@ describe('habit actions', () => {
       expect(calls).toHaveLength(0)
       expect((await createHabit({ ...presetDraft('walk'), logType: 'quantity', quantity: { ...km, target: 5.12 } })).ok).toBe(true)
     })
+  })
+})
+
+describe('every action verifies the session first', () => {
+  const SIGN_IN = { ok: false, error: 'Inicia sesión para continuar.' }
+  it.each([
+    ['createHabit', () => createHabit(presetDraft('walk'))],
+    ['updateHabit', () => updateHabit('h1', presetDraft('walk'))],
+    ['setHabitVisibility', () => setHabitVisibility('h1', 'private')],
+    ['archiveHabit', () => archiveHabit('h1')],
+    ['checkIn', () => checkIn('h1')],
+    ['undoCheckIn', () => undoCheckIn('h1')],
+    ['checkItem', () => checkItem('i1')],
+    ['uncheckItem', () => uncheckItem('i1')],
+  ])('%s: sign-in copy, no rpc and no write', async (_name, call) => {
+    user = null
+    expect(await call()).toEqual(SIGN_IN)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+})
+
+describe('direct writes that change no row are "not found"', () => {
+  const NOT_FOUND = 'No encontramos ese hábito.'
+  beforeEach(() => {
+    reads['habit_items.select'] = { data: [], error: null }
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+  })
+  it.each([['empty rows', []], ['no rows', null]])('with %s', async (_name, none) => {
+    updateData = none
+    await expect(setHabitVisibility('h1', 'private')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+    await expect(archiveHabit('h1')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+    await expect(updateHabit('h1', presetDraft('walk'))).resolves.toEqual({ ok: false, error: NOT_FOUND })
+    reads['checkins.select'] = { data: { photo_path: null }, error: null }
+    reads['checkins.delete'] = { data: none, error: null }
+    await expect(undoCheckIn('h1')).resolves.toEqual({ ok: false, error: 'Hoy no hay un registro que deshacer.' })
+  })
+})
+
+describe('updateHabit refuses when the lock cannot be checked', () => {
+  const GENERIC = 'No pudimos guardar los cambios. Inténtalo de nuevo.'
+  const written = () => calls.some((c) => c.table === 'habits' && c.op === 'update')
+  beforeEach(() => {
+    reads['habit_items.select'] = { data: [], error: null }
+    // a switch to quantity is what needs today's check-in and the zone
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    reads['checkins.select'] = { data: null, error: null }
+  })
+  it('a failed read of today\'s check-in does not let the change through', async () => {
+    reads['checkins.select'] = { data: null, error: { message: 'connection reset' } }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(written()).toBe(false)
+  })
+  it('a failed profile read does not fall back to UTC', async () => {
+    reads['profiles.select'] = { data: null, error: { message: 'timeout' } }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(written()).toBe(false)
+  })
+  it('a missing profile row is refused too', async () => {
+    reads['profiles.select'] = { data: null, error: null }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({ ok: false, error: GENERIC })
+    expect(written()).toBe(false)
+  })
+})
+
+describe('copy of the database rules', () => {
+  it('checkIn on a habit that became quantity says to add from Hoy', async () => {
+    rpc.mockResolvedValue({ data: null, error: { message: 'quantity_habit' } })
+    await expect(checkIn('h1')).resolves.toEqual({ ok: false, error: 'Este hábito se completa sumando cantidad desde Hoy.' })
+  })
+  it('updateHabit maps checkin_today to the same copy as the app-level lock', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    reads['checkins.select'] = { data: null, error: null }
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    updateError = { message: 'checkin_today' }
+    await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({
+      ok: false,
+      error: 'Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.',
+    })
+  })
+  it('habit_in_challenge stays mapped', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    updateError = { message: 'habit_in_challenge' }
+    await expect(updateHabit('h1', presetDraft('walk'))).resolves.toMatchObject({ ok: false })
+  })
+})
+
+describe('updateHabit keeps the steps when the habit update is refused', () => {
+  const steps = { ...presetDraft('gym') }
+  it('restores the archived steps (never leaves the habit stepless)', async () => {
+    // two steps today; the draft keeps none of them, so both are archived before the update
+    reads['habit_items.select'] = { data: [{ id: 'i1', label: 'Pecho' }, { id: 'i2', label: 'Espalda' }], error: null }
+    updateError = null
+    // the habit update is the first update after the archive; make only it fail
+    let n = 0
+    const original = client.from
+    client.from = (t: string) => {
+      const b = original(t)
+      if (t !== 'habits') return b
+      return { ...b, update: (payload: unknown) => { n++; calls.push({ table: t, op: 'update', payload }); return chain(() => ({ data: null, error: { message: 'photo_conflict' } })) } }
+    }
+    try {
+      const r = await updateHabit('h1', { ...steps, items: [] })
+      expect(r.ok).toBe(false)
+    } finally {
+      client.from = original
+    }
+    expect(n).toBe(1)
+    const itemUpdates = calls.filter((c) => c.table === 'habit_items' && c.op === 'update').map((c) => c.payload as { archived_at: string | null })
+    // archived first, restored after the refusal
+    expect(itemUpdates).toHaveLength(2)
+    expect(itemUpdates[0].archived_at).not.toBeNull()
+    expect(itemUpdates[1]).toEqual({ archived_at: null })
   })
 })

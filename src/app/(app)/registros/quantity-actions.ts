@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { QUANTITY_MESSAGES } from "@/lib/quantity-queue";
-import { createServerClient } from "@/lib/supabase/server";
+import { requireUser } from "@/lib/require-user";
 
 type Totals = { total: number; target: number; done: boolean };
 
@@ -54,6 +54,7 @@ function totalsOf(data: unknown): Totals | null {
  * its sheet closes, never per tap (a burst of taps would re-render all of Hoy each time).
  */
 export async function refreshQuantity(): Promise<void> {
+  if (!(await requireUser()).ok) return;
   revalidatePath("/");
   revalidatePath("/habitos/[id]", "page");
   revalidatePath("/resumen");
@@ -66,7 +67,14 @@ export async function refreshQuantity(): Promise<void> {
 export async function addQuantity(habitId: string, entryId: string, amount: number): Promise<AddQuantityResult> {
   if (!Number.isFinite(amount) || amount <= 0) return { ok: false, error: ERRORS.invalid_amount, retry: false };
   try {
-    const supabase = await createServerClient();
+    const auth = await requireUser();
+    // a failed session check is a network problem: the tap stays queued and is retried
+    if (!auth.ok) {
+      return auth.unavailable
+        ? { ok: false, error: QUANTITY_MESSAGES.offlineAdd, retry: true }
+        : { ok: false, error: auth.error, retry: false };
+    }
+    const { supabase } = auth;
     const { data, error } = await supabase.rpc("add_quantity_entry", {
       p_habit_id: habitId,
       p_entry_id: entryId,
@@ -88,7 +96,9 @@ export async function addQuantity(habitId: string, entryId: string, amount: numb
 /** Removes one of today's sums; the check-in goes away when the total drops under the goal. */
 export async function removeQuantity(entryId: string): Promise<RemoveQuantityResult> {
   try {
-    const supabase = await createServerClient();
+    const auth = await requireUser();
+    if (!auth.ok) return { ok: false, error: auth.unavailable ? QUANTITY_MESSAGES.offlineRemove : auth.error };
+    const { supabase } = auth;
     const { data, error } = await supabase.rpc("remove_quantity_entry", { p_entry_id: entryId });
     if (error) return { ok: false, error: isNetwork(error) ? QUANTITY_MESSAGES.offlineRemove : messageFor(error) };
     const totals = totalsOf(data);

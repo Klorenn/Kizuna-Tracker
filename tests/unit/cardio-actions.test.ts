@@ -15,7 +15,9 @@ function chain(call: Call) {
   return c
 }
 
+let user: { id: string } | null = { id: 'u1' }
 const client = {
+  auth: { getUser: async () => ({ data: { user }, error: null }) },
   rpc,
   from: (table: string) => ({
     select: (cols: string) => {
@@ -48,6 +50,7 @@ const rpcArgs = {
 }
 
 beforeEach(() => {
+  user = { id: 'u1' }
   calls.length = 0
   rpc.mockReset()
   selectResult = { data: null, error: null }
@@ -242,5 +245,26 @@ describe('not_authenticated on the other writes', () => {
       checkedIn: false,
       error: 'Inicia sesión para continuar.',
     })
+  })
+})
+
+describe('every action verifies the session first', () => {
+  const SIGN_IN = 'Inicia sesión para continuar.'
+  it.each([
+    ['checkInWithCardio', () => checkInWithCardio('h1', run), { ok: false, checkedIn: false, error: SIGN_IN }],
+    ['addCardio', () => addCardio('c1', run), { ok: false, error: SIGN_IN }],
+    ['updateCardio', () => updateCardio('e1', run), { ok: false, error: SIGN_IN }],
+    ['deleteCardio', () => deleteCardio('e1'), { ok: false, error: SIGN_IN }],
+  ])('%s: sign-in copy, no rpc and no write', async (_name, call, expected) => {
+    user = null
+    expect(await call()).toEqual(expected)
+    expect(rpc).not.toHaveBeenCalled()
+    expect(calls).toEqual([])
+  })
+
+  it('lastCardio degrades to null without a session and reads nothing', async () => {
+    user = null
+    expect(await lastCardio('h1')).toBeNull()
+    expect(calls).toEqual([])
   })
 })
