@@ -110,10 +110,31 @@ export async function signUp(
       const { data: stillFree } = await admin.rpc("username_available", {
         p_username: clean.username,
       });
-      return {
-        ok: false,
-        error: stillFree === true ? GENERIC_SIGNUP_ERROR : USERNAME_TAKEN_ERROR,
-      };
+      if (stillFree === true) return { ok: false, error: GENERIC_SIGNUP_ERROR };
+      // The handle reads as taken. If the createUser response was only lost, the account is this
+      // person's own: signing in with the submitted e-mail AND password proves it (nobody else
+      // can pass this), and the handle must be that account's. Anything else: the plain message.
+      let owner = false;
+      try {
+        const { data: signedIn, error: signInError } = await supabase.auth.signInWithPassword({
+          email: clean.email,
+          password: clean.password,
+        });
+        const userId = signedIn?.user?.id;
+        if (!signInError && userId) {
+          const { data: profile } = await admin
+            .from("profiles")
+            .select("username")
+            .eq("id", userId)
+            .maybeSingle();
+          owner = profile?.username === clean.username;
+          if (!owner) await supabase.auth.signOut(); // another handle: leave no session behind
+        }
+      } catch {
+        // a failing sign-in is the same as a wrong password
+      }
+      if (owner) redirect("/listo");
+      return { ok: false, error: USERNAME_TAKEN_ERROR };
     }
     let signedIn = false;
     try {

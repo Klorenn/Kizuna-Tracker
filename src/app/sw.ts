@@ -1,6 +1,6 @@
 /// <reference lib="webworker" />
-import { CacheFirst, NetworkOnly, Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
-import { isStaticAsset, STATIC_CACHE_NAME } from '../lib/sw-cache'
+import { CacheFirst, ExpirationPlugin, NetworkOnly, Serwist, type PrecacheEntry, type SerwistGlobalConfig } from 'serwist'
+import { BRAND_CACHE_LIMITS, BRAND_CACHE_NAME, isBrandAsset, isStaticAsset, STATIC_CACHE_NAME } from '../lib/sw-cache'
 
 declare global {
   interface WorkerGlobalScope extends SerwistGlobalConfig {
@@ -15,6 +15,15 @@ new Serwist({
   clientsClaim: true,
   navigationPreload: true,
   runtimeCaching: [
+    // brand art: its own bounded cache (entries and age), so superseded versions are evicted
+    {
+      matcher: isBrandAsset,
+      handler: new CacheFirst({
+        cacheName: BRAND_CACHE_NAME,
+        matchOptions: { ignoreSearch: false },
+        plugins: [new ExpirationPlugin({ ...BRAND_CACHE_LIMITS, purgeOnQuotaError: true })],
+      }),
+    },
     // the query is part of the cache key: /brand/x.gif?v=2 is a different entry from ?v=1
     { matcher: isStaticAsset, handler: new CacheFirst({ cacheName: STATIC_CACHE_NAME, matchOptions: { ignoreSearch: false } }) },
     // pages, RSC, /api, Supabase: never cached

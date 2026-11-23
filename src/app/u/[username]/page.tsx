@@ -25,6 +25,7 @@ import {
   toPublicProfileView,
   type PublicProfileRow,
 } from "@/lib/public-profile";
+import { friendshipPairFilter } from "@/lib/friendship-filter";
 import { siteOrigin } from "@/lib/site-url";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
@@ -77,7 +78,11 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   let target: { id: string | null; username: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null } | null = null;
   if (viewer) {
     // the one profile read the page always made for a signed-in viewer
-    timezone = (await getViewerProfile())?.timezone ?? timezone;
+    try {
+      timezone = (await getViewerProfile())?.timezone ?? timezone;
+    } catch {
+      // a failed read of the visitor's own profile must not take the public page down: UTC dates
+    }
     const { data: found } = await supabase
       .from("public_profiles")
       .select("id,username,display_name,avatar_path,avatar_preset")
@@ -88,9 +93,7 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
       const { data: f } = await supabase
         .from("friendships")
         .select("id,requester_id,addressee_id,status")
-        .or(
-          `and(requester_id.eq.${viewer.id},addressee_id.eq.${target.id}),and(requester_id.eq.${target.id},addressee_id.eq.${viewer.id})`,
-        )
+        .or(friendshipPairFilter(viewer.id, target.id))
         .maybeSingle();
       state = viewerState(viewer.id, target.id, f);
       friendshipId = f?.id ?? null;

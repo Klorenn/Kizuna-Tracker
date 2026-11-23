@@ -7,6 +7,8 @@ const signUp = vi.fn();
 const signInWithPassword = vi.fn();
 const serviceKey = vi.fn();
 const skip = vi.fn();
+const profileUsername = vi.fn();
+const serverSignOut = vi.fn();
 
 class Redirect extends Error {
   constructor(public to: string) {
@@ -23,10 +25,21 @@ vi.mock("next/navigation", () => ({
 vi.mock("@/lib/rate-limit-mode", () => ({ skipRateLimit: () => skip() }));
 vi.mock("@/lib/supabase/env.server", () => ({ supabaseServiceKey: () => serviceKey() }));
 vi.mock("@/lib/supabase/admin", () => ({
-  createAdminClient: () => ({ rpc: adminRpc, auth: { admin: { createUser } } }),
+  createAdminClient: () => ({
+    rpc: adminRpc,
+    auth: { admin: { createUser } },
+    from: () => {
+      const q = {
+        select: () => q,
+        eq: () => q,
+        maybeSingle: async () => ({ data: profileUsername(), error: null }),
+      };
+      return q;
+    },
+  }),
 }));
 vi.mock("@/lib/supabase/server", () => ({
-  createServerClient: async () => ({ auth: { signUp, signInWithPassword } }),
+  createServerClient: async () => ({ auth: { signUp, signInWithPassword, signOut: serverSignOut } }),
 }));
 
 import { signUp as signUpAction } from "@/app/(auth)/registro/actions";
@@ -64,7 +77,7 @@ async function run() {
 }
 
 beforeEach(() => {
-  for (const m of [adminRpc, createUser, signUp, signInWithPassword, serviceKey, skip]) m.mockReset();
+  for (const m of [adminRpc, createUser, signUp, signInWithPassword, serviceKey, skip, profileUsername, serverSignOut]) m.mockReset();
   order.length = 0;
   skip.mockReturnValue(false);
   serviceKey.mockReturnValue("svc");
@@ -117,6 +130,41 @@ describe("signUp with a service key", () => {
     });
     createUser.mockResolvedValue({ data: { user: null }, error: { message: "Database error creating new user" } });
     expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+  });
+
+  describe("a lost createUser response (the account exists but the handle now reads as taken)", () => {
+    const lostResponse = () => {
+      let calls = 0;
+      adminRpc.mockImplementation(async (name: string) => {
+        if (name === "username_available") return { data: ++calls === 1, error: null };
+        return { data: true, error: null };
+      });
+      createUser.mockResolvedValue({ data: { user: null }, error: { message: "timeout" } });
+    };
+    it("signing in with the submitted e-mail and password as the owner of that handle goes on to /listo", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-me" } }, error: null });
+      profileUsername.mockReturnValue({ username: "caro_m" });
+      expect(await run()).toEqual({ redirect: "/listo" });
+      expect(signInWithPassword).toHaveBeenCalledWith({ email: "caro@example.com", password: "kizuna-2026" });
+    });
+    it("a wrong password for that e-mail keeps the taken message and reveals nothing", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: null }, error: { message: "Invalid login credentials" } });
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+    });
+    it("an account of this e-mail that owns a different handle keeps the taken message and is signed out", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-other" } }, error: null });
+      profileUsername.mockReturnValue({ username: "someone_else" });
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+      expect(serverSignOut).toHaveBeenCalledTimes(1);
+    });
+    it("a sign-in that throws keeps the taken message", async () => {
+      lostResponse();
+      signInWithPassword.mockRejectedValue(new TypeError("fetch failed"));
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+    });
   });
 
   it("password rejected by policy gives the generic line", async () => {

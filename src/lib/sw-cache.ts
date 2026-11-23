@@ -11,6 +11,15 @@ export function isStaticAsset({ url, sameOrigin, request }: CacheMatch): boolean
   return p.startsWith('/_next/static/') || p.startsWith('/icons/') || p.startsWith('/brand/') || p.startsWith('/avatars/') || request.destination === 'font'
 }
 
+/** Brand art (cat GIFs and stills): same-origin /brand/ files. Cached apart so it can be bounded. */
+export function isBrandAsset({ url, sameOrigin }: CacheMatch): boolean {
+  return sameOrigin && url.pathname.startsWith('/brand/')
+}
+
+/** Brand files change name with a ?v= query on every re-encode: old versions must age out. */
+export const BRAND_CACHE_NAME = 'kizuna-brand'
+export const BRAND_CACHE_LIMITS = { maxEntries: 30, maxAgeSeconds: 60 * 60 * 24 * 30 } as const
+
 /** Names of the runtime caches (not the precache) the page clears on sign-out. */
 export const STATIC_CACHE_NAME = 'kizuna-static'
 
