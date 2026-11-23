@@ -26,7 +26,7 @@ import {
   formatReadout,
   POMODORO_PRESETS,
   pomodoroView,
-  sessionSummary,
+  measureStatusLines,
   STOPWATCH_BLOCK_MIN,
   STOPWATCH_CAP_MIN,
   TIMER_CHIPS,
@@ -75,8 +75,6 @@ import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/p
 const topicLabel = (preset: string | null) => (preset === "study" ? "Qué estudiaste (opcional)" : "Tema (opcional)");
 
 const MIN_MS = 60_000;
-const CAP_MESSAGE = "El cronómetro se detuvo a las 4 horas. Si seguiste, agrega el resto a mano.";
-const SHORT_MESSAGE = "Menos de un minuto no se suma.";
 const RANGE_MESSAGE = "Elige entre 1 y 90 minutos.";
 
 /** The configuration a mode starts with: the timer takes its minutes from the prefs, the others keep theirs. */
@@ -290,22 +288,8 @@ function Timer({
   const locked = running || state.phase === "ready";
   const pausedNote = state.pausedAt !== null ? "En pausa." : null;
   const waiting = state.pending.length > 0 ? "Pendiente de sumar." : null;
-  const summary = sessionSummary(state);
-  // timer and stopwatch: what the server has said about this session's blocks so far
-  const measureStatus =
-    state.endReason === "cap"
-      ? CAP_MESSAGE
-      : state.tooShort && state.phase === "idle"
-        ? SHORT_MESSAGE
-        : state.phase === "idle"
-          ? null
-          : summary.status === "pending"
-            ? `Pendiente de sumar: ${summary.pendingMin} min.`
-            : summary.status === "confirmed"
-              ? `Sumamos ${summary.confirmedMin} min a ${habitName}.`
-              : null;
   const status = measuring
-    ? measureStatus
+    ? measureStatusLines(state, habitName).join(" ") || null
     : state.phase === "break"
       ? session.lastStatus === "confirmed"
         ? `Sumamos ${session.last} min a ${habitName}.`

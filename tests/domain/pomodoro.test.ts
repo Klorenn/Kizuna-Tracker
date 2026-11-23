@@ -6,6 +6,7 @@ import {
   pomodoroReducer,
   pomodoroView,
   formatReadout,
+  measureStatusLines,
   sessionSummary,
   STOPWATCH_BLOCK_MIN,
   STOPWATCH_LATE_SETTLE_MS,
@@ -403,6 +404,24 @@ describe('stopwatch chunks settled late end at the settle instant', () => {
     expect(on.pending[0].endedAt).toBe(T + 90 * M)
     const over = pomodoroReducer(watchAt(), { type: 'tick', at: T + 90 * M + MS + 1 })
     expect(over.pending[0].endedAt).toBe(T + 90 * M + MS + 1)
+  })
+})
+
+describe('measureStatusLines', () => {
+  it('a capped session shows the cap copy and then the sync status, pending then confirmed', () => {
+    const CAP = 'El cronómetro se detuvo a las 4 horas. Si seguiste, agrega el resto a mano.'
+    let s = pomodoroReducer(watchAt(), { type: 'tick', at: T + 241 * M })
+    expect(s.endReason).toBe('cap')
+    expect(measureStatusLines(s, 'Estudiar')).toEqual([CAP, 'Pendiente de sumar: 240 min.'])
+    for (const id of ids) s = pomodoroReducer(s, { type: 'confirm', blockId: id })
+    expect(measureStatusLines(s, 'Estudiar')).toEqual([CAP, 'Sumamos 240 min a Estudiar.'])
+  })
+  it('other cases: nothing while idle, the short copy after a too-short finish, the plain sync line', () => {
+    expect(measureStatusLines(initialPomodoro('h1', cfg, 'timer'), 'X')).toEqual([])
+    const short = pomodoroReducer(watchAt(), { type: 'finish', at: T + 10_000 })
+    expect(measureStatusLines(short, 'X')).toEqual(['Menos de un minuto no se suma.'])
+    const done = pomodoroReducer(timerAt(25), { type: 'finish', at: T + 10 * M })
+    expect(measureStatusLines(done, 'X')).toEqual(['Pendiente de sumar: 10 min.'])
   })
 })
 

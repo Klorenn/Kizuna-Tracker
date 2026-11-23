@@ -301,6 +301,21 @@ export function sessionSummary(s: PomodoroState): {
   return { status, pendingMin: sum('pending'), confirmedMin: sum('confirmed') }
 }
 
+export const STOPWATCH_CAP_MESSAGE = 'El cronómetro se detuvo a las 4 horas. Si seguiste, agrega el resto a mano.'
+export const TOO_SHORT_MESSAGE = 'Menos de un minuto no se suma.'
+
+/** Timer and stopwatch status lines under the readout: the cap or too-short copy, then what the server said. */
+export function measureStatusLines(s: PomodoroState, habitName: string): string[] {
+  const lines: string[] = []
+  if (s.endReason === 'cap') lines.push(STOPWATCH_CAP_MESSAGE)
+  if (s.tooShort && s.phase === 'idle') lines.push(TOO_SHORT_MESSAGE)
+  if (s.phase === 'idle') return lines
+  const sum = sessionSummary(s)
+  if (sum.status === 'pending') lines.push(`Pendiente de sumar: ${sum.pendingMin} min.`)
+  else if (sum.status === 'confirmed') lines.push(`Sumamos ${sum.confirmedMin} min a ${habitName}.`)
+  return lines
+}
+
 function reduce(s: PomodoroState, e: PomodoroEvent): PomodoroState {
   switch (e.type) {
     case 'start': {
