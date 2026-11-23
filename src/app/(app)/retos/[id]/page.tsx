@@ -18,6 +18,7 @@ import {
   cancelledLabel,
   dayMonthLabel,
   endsOn,
+  failureHistory,
   firstName,
   frequencyLabel,
   periodStatus,
@@ -61,7 +62,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const theirHabitId = mine ? c.rival_habit_id : c.creator_habit_id;
   const habitIds = [myHabitId, theirHabitId].filter((x): x is string => !!x);
 
-  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }] =
+  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }] =
     await Promise.all([
       supabase.from("public_profiles").select("display_name").eq("id", otherId).maybeSingle(),
       supabase.from("habits").select("id,name").in("id", habitIds),
@@ -76,6 +77,8 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         : Promise.resolve({ data: [] }),
       supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at,period_start").eq("challenge_id", c.id),
       supabase.from("challenge_periods").select("period_start").eq("challenge_id", c.id).not("closed_at", "is", null),
+      // the rival's check-ins are only readable while we are friends
+      supabase.rpc("is_friend", { a: user.id, b: otherId }),
     ]);
 
   const other = firstName(profile?.display_name);
@@ -86,7 +89,8 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const today = localDate(now, c.timezone);
   const st = periodStatus(c, today);
   const rows = checkins ?? [];
-  const valid = rows.filter((k) => !k.rejected_at);
+  // same rule as the close-periods cron: a photo challenge only counts photo check-ins
+  const valid = rows.filter((k) => !k.rejected_at && (!c.requires_photo || k.photo_path));
   const datesOf = (habitId: string | null) => valid.filter((k) => k.habit_id === habitId).map((k) => k.local_date);
   const myDates = datesOf(myHabitId);
   const theirDates = datesOf(theirHabitId);
@@ -145,23 +149,17 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   const balance = netBalances(ledger, user.id).get(otherId) ?? 0;
   const balanceCaption = balance > 0 ? `${other} te debe` : balance < 0 ? `Le debes a ${other}` : "Sin deudas";
 
-  // failure history
-  const closedStarts = new Set((closed ?? []).map((p) => p.period_start));
-  const periods = c.starts_on ? periodsFor(c.starts_on, c.weeks, f) : [];
-  const history = periods
-    .map((p, i) => ({ p, n: i + 1 }))
-    .filter(({ p }) => closedStarts.has(p.start))
-    .reverse()
-    .slice(0, 12)
-    .map(({ p, n }) => {
-      const mineDone = countDone(p, myDates);
-      const theirDone = countDone(p, theirDates);
-      const need = f.type === "weekly" ? f.target : 1;
-      const iFailed = mineDone < need;
-      const theyFailed = theirDone < need;
-      const debt = (debts ?? []).find((d) => d.period_start === p.start && d.debtor_id === (iFailed && !theyFailed ? user.id : otherId));
-      return { p, n, iFailed, theyFailed, mineDone, theirDone, need, debt };
-    });
+  // failure history: from the ledger, which both players can always read (check-ins cannot)
+  const history = failureHistory({
+    periods: c.starts_on ? periodsFor(c.starts_on, c.weeks, f) : [],
+    closedStarts: (closed ?? []).map((p) => p.period_start),
+    debts: debts ?? [],
+    myId: user.id,
+    otherName: other,
+    frequency: f,
+    myDates,
+    theirDates: friends === true ? theirDates : null,
+  });
   const label = f.type === "weekly" ? "Semana" : "Día";
 
   const closesLabel = st.state === "running" ? (f.type === "weekly" ? `Cierra ${weekdayLabel(st.period.end).split(" ")[0]} 23:59` : "Cierra hoy 23:59") : undefined;
@@ -296,46 +294,32 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         {history.length === 0 ? (
           <p className="py-3 text-body text-muted">Aún no hay períodos cerrados.</p>
         ) : (
-          history.map(({ p, n, iFailed, theyFailed, mineDone, theirDone, need, debt }) => {
-            const who = iFailed ? "Tú" : other;
-            const done = iFailed ? mineDone : theirDone;
-            return (
-              <div key={p.start} className="flex items-center gap-3 py-3">
-                <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-                  <p className="text-body font-medium text-ink">
-                    {label} {n}
-                  </p>
-                  <p className="text-small text-muted">
-                    {!iFailed && !theyFailed
-                      ? "Los dos cumplieron"
-                      : iFailed && theyFailed
-                        ? "Fallaron los dos · se compensa"
-                        : f.type === "weekly"
-                          ? `${who} hizo ${done} de ${need}`
-                          : `${who} no cumplió`}
-                  </p>
-                </div>
-                {iFailed !== theyFailed ? (
-                  <>
-                    <p className="font-mono text-[15px] font-medium text-ink">
-                      {formatCLP(debt?.amount ?? c.fine_amount)}
-                    </p>
-                    <Pill
-                      icon={
-                        debt?.paid_at ? (
-                          <CheckCircle size={14} weight="light" aria-hidden />
-                        ) : (
-                          <Clock size={14} weight="light" aria-hidden />
-                        )
-                      }
-                    >
-                      {debt?.paid_at ? "Pagada" : "Pendiente"}
-                    </Pill>
-                  </>
-                ) : null}
+          history.map(({ start, n, summary, debt }) => (
+            <div key={start} className="flex items-center gap-3 py-3">
+              <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
+                <p className="text-body font-medium text-ink">
+                  {label} {n}
+                </p>
+                <p className="text-small text-muted">{summary}</p>
               </div>
-            );
-          })
+              {debt ? (
+                <>
+                  <p className="font-mono text-[15px] font-medium text-ink">{formatCLP(debt.amount)}</p>
+                  <Pill
+                    icon={
+                      debt.paid ? (
+                        <CheckCircle size={14} weight="light" aria-hidden />
+                      ) : (
+                        <Clock size={14} weight="light" aria-hidden />
+                      )
+                    }
+                  >
+                    {debt.paid ? "Pagada" : "Pendiente"}
+                  </Pill>
+                </>
+              ) : null}
+            </div>
+          ))
         )}
       </Card>
 

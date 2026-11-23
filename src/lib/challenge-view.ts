@@ -60,6 +60,67 @@ export function endsOn(c: ScheduleRow): LocalDate | null {
 export const firstName = (displayName: string | null | undefined, fallback = 'Tu amigo') =>
   displayName?.trim().split(/\s+/)[0] || fallback
 
+export type HistoryDebt = { period_start: string; debtor_id: string; amount: number; paid_at: string | null }
+
+export type FailureRow = {
+  start: LocalDate
+  /** 1-based position in the schedule */
+  n: number
+  summary: string
+  /** Only when exactly one player failed: what is owed for this period. */
+  debt: { amount: number; paid: boolean } | null
+}
+
+/**
+ * "Historial de fallas" for closed periods, built from the ledger: a debt row for a player means
+ * that player failed the period, none means both met it. Debts are readable by both players for
+ * good, while the rival's check-ins disappear with the friendship (unfriend, account deletion),
+ * so counts are decoration only: shown while visible (`theirDates` is null when hidden) and
+ * consistent with the debt. Periods with a debt but no closed row (a crash in between) are kept.
+ */
+export function failureHistory(args: {
+  periods: Period[]
+  closedStarts: Iterable<LocalDate>
+  debts: HistoryDebt[]
+  myId: string
+  otherName: string
+  frequency: Frequency
+  myDates: LocalDate[]
+  theirDates: LocalDate[] | null
+  limit?: number
+}): FailureRow[] {
+  const { periods, debts, myId, otherName, frequency, myDates, theirDates, limit = 12 } = args
+  const shown = new Set([...args.closedStarts, ...debts.map((d) => d.period_start)])
+  const need = frequency.type === 'weekly' ? frequency.target : 1
+  const counted = (p: Period, dates: LocalDate[] | null) => {
+    if (frequency.type !== 'weekly' || dates === null) return null
+    const done = countDone(p, dates)
+    return done < need ? done : null
+  }
+
+  return periods
+    .map((p, i) => ({ p, n: i + 1 }))
+    .filter(({ p }) => shown.has(p.start))
+    .reverse()
+    .slice(0, limit)
+    .map(({ p, n }): FailureRow => {
+      const mine = debts.find((d) => d.period_start === p.start && d.debtor_id === myId)
+      const theirs = debts.find((d) => d.period_start === p.start && d.debtor_id !== myId)
+      const owed = mine ?? theirs
+      if (!owed) return { start: p.start, n, summary: 'Los dos cumplieron', debt: null }
+      if (mine && theirs) return { start: p.start, n, summary: 'Fallaron los dos · se compensa', debt: null }
+      const done = counted(p, mine ? myDates : theirDates)
+      const summary = mine
+        ? done === null
+          ? 'No cumpliste'
+          : `Hiciste ${done} de ${need}`
+        : done === null
+          ? `${otherName} no cumplió`
+          : `${otherName} hizo ${done} de ${need}`
+      return { start: p.start, n, summary, debt: { amount: owed.amount, paid: owed.paid_at !== null } }
+    })
+}
+
 /** Why a challenge was cancelled, when the data says so. */
 export function cancelledLabel(c: { starts_on: string | null; cancel_requested_by: string | null }): string {
   if (c.cancel_requested_by) return 'Cancelado entre los dos'
