@@ -715,6 +715,300 @@ export type Database = {
           },
         ]
       }
+      group_invites: {
+        Row: {
+          code: string
+          created_at: string
+          created_by: string
+          expires_at: string
+          group_id: string
+          max_uses: number
+          uses: number
+        }
+        Insert: {
+          code?: string
+          created_at?: string
+          created_by: string
+          expires_at?: string
+          group_id: string
+          max_uses: number
+          uses?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          created_by?: string
+          expires_at?: string
+          group_id?: string
+          max_uses?: number
+          uses?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_invites_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_invites_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_members: {
+        Row: {
+          counts_from: string
+          group_id: string
+          habit_id: string | null
+          id: string
+          is_live: boolean
+          joined_at: string
+          joined_on: string
+          left_at: string | null
+          left_reason: string | null
+          role: string
+          user_id: string
+        }
+        Insert: {
+          counts_from: string
+          group_id: string
+          habit_id?: string | null
+          id?: string
+          is_live?: boolean
+          joined_at?: string
+          joined_on: string
+          left_at?: string | null
+          left_reason?: string | null
+          role?: string
+          user_id: string
+        }
+        Update: {
+          counts_from?: string
+          group_id?: string
+          habit_id?: string | null
+          id?: string
+          is_live?: boolean
+          joined_at?: string
+          joined_on?: string
+          left_at?: string | null
+          left_reason?: string | null
+          role?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_week_results: {
+        Row: {
+          complied: boolean
+          counted: boolean
+          done: number
+          group_id: string
+          target: number
+          user_id: string
+          week_start: string
+        }
+        Insert: {
+          complied: boolean
+          counted?: boolean
+          done: number
+          group_id: string
+          target: number
+          user_id: string
+          week_start: string
+        }
+        Update: {
+          complied?: boolean
+          counted?: boolean
+          done?: number
+          group_id?: string
+          target?: number
+          user_id?: string
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_week_results_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_week_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_week_results_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_weeks: {
+        Row: {
+          closed_at: string
+          commitment_name: string
+          group_id: string
+          members_complied: number
+          members_counted: number
+          requires_photo: boolean
+          target_per_week: number
+          week_start: string
+        }
+        Insert: {
+          closed_at: string
+          commitment_name: string
+          group_id: string
+          members_complied: number
+          members_counted: number
+          requires_photo: boolean
+          target_per_week: number
+          week_start: string
+        }
+        Update: {
+          closed_at?: string
+          commitment_name?: string
+          group_id?: string
+          members_complied?: number
+          members_counted?: number
+          requires_photo?: boolean
+          target_per_week?: number
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_weeks_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      groups: {
+        Row: {
+          archived_at: string | null
+          color: string
+          commitment_icon: string
+          commitment_name: string
+          created_at: string
+          created_by: string
+          description: string | null
+          icon: string
+          id: string
+          name: string
+          next_commitment_icon: string | null
+          next_commitment_name: string | null
+          next_effective_from: string | null
+          next_requires_photo: boolean | null
+          next_target_per_week: number | null
+          requires_photo: boolean
+          target_per_week: number
+          timezone: string
+        }
+        Insert: {
+          archived_at?: string | null
+          color: string
+          commitment_icon: string
+          commitment_name: string
+          created_at?: string
+          created_by: string
+          description?: string | null
+          icon: string
+          id?: string
+          name: string
+          next_commitment_icon?: string | null
+          next_commitment_name?: string | null
+          next_effective_from?: string | null
+          next_requires_photo?: boolean | null
+          next_target_per_week?: number | null
+          requires_photo?: boolean
+          target_per_week: number
+          timezone: string
+        }
+        Update: {
+          archived_at?: string | null
+          color?: string
+          commitment_icon?: string
+          commitment_name?: string
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          icon?: string
+          id?: string
+          name?: string
+          next_commitment_icon?: string | null
+          next_commitment_name?: string | null
+          next_effective_from?: string | null
+          next_requires_photo?: boolean | null
+          next_target_per_week?: number | null
+          requires_photo?: boolean
+          target_per_week?: number
+          timezone?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "groups_created_by_fkey"
+            columns: ["created_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       habit_items: {
         Row: {
           archived_at: string | null
@@ -1683,6 +1977,7 @@ export type Database = {
           total_minutes: number
         }[]
       }
+      archive_group: { Args: { p_group_id: string }; Returns: undefined }
       call_cron_endpoints: { Args: never; Returns: undefined }
       cancel_challenges_between: {
         Args: { p_other: string }
@@ -1703,6 +1998,7 @@ export type Database = {
           habit_id: string
         }[]
       }
+      close_due_group_weeks: { Args: { p_now?: string }; Returns: number }
       complete_day_from_items: {
         Args: { p_date: string; p_habit_id: string; p_user_id: string }
         Returns: boolean
@@ -1714,6 +2010,21 @@ export type Database = {
           created: boolean
         }[]
       }
+      create_group: {
+        Args: {
+          p_color: string
+          p_commitment_icon: string
+          p_commitment_name: string
+          p_description: string
+          p_habit_id: string
+          p_icon: string
+          p_name: string
+          p_requires_photo: boolean
+          p_target_per_week: number
+        }
+        Returns: string
+      }
+      create_group_invite: { Args: { p_group_id: string }; Returns: string }
       create_invite: { Args: never; Returns: string }
       cron_secret_valid: { Args: { p_secret: string }; Returns: boolean }
       delete_body_weight: { Args: { p_id: string }; Returns: boolean }
@@ -1765,16 +2076,182 @@ export type Database = {
           user_id: string
         }[]
       }
+      group_board: {
+        Args: { p_group_id: string }
+        Returns: {
+          avatar_path: string
+          avatar_preset: number
+          counts: boolean
+          display_name: string
+          done: number
+          joined_on: string
+          role: string
+          target: number
+          user_id: string
+          username: string
+        }[]
+      }
+      group_detail: {
+        Args: { p_group_id: string }
+        Returns: {
+          archived_at: string
+          color: string
+          commitment_icon: string
+          commitment_name: string
+          description: string
+          icon: string
+          id: string
+          member_count: number
+          my_habit_id: string | null
+          my_role: string
+          name: string
+          next_commitment_icon: string
+          next_commitment_name: string
+          next_effective_from: string
+          next_requires_photo: boolean
+          next_target_per_week: number
+          requires_photo: boolean
+          streak: number
+          target_per_week: number
+          timezone: string
+        }[]
+      }
+      group_history: {
+        Args: { p_group_id: string; p_limit?: number }
+        Returns: {
+          members_complied: number
+          members_counted: number
+          my_complied: boolean
+          requires_photo: boolean
+          target_per_week: number
+          week_start: string
+        }[]
+      }
+      group_invite_preview: { Args: { p_code: string }; Returns: Json }
+      group_proof_readable: { Args: { p_name: string }; Returns: boolean }
+      group_wall: {
+        Args: {
+          p_before?: string
+          p_before_id?: string
+          p_group_id: string
+          p_limit?: number
+        }
+        Returns: {
+          avatar_path: string
+          avatar_preset: number
+          checkin_id: string
+          created_at: string
+          display_name: string
+          local_date: string
+          photo_path: string
+          user_id: string
+          username: string
+        }[]
+      }
+      group_week_detail: {
+        Args: { p_group_id: string; p_week_start: string }
+        Returns: {
+          avatar_path: string
+          avatar_preset: number
+          complied: boolean
+          display_name: string
+          done: number
+          target: number
+          user_id: string
+          username: string
+        }[]
+      }
+      groups_actor: { Args: never; Returns: string }
+      groups_apply_pending: {
+        Args: { p_group_id: string; p_now: string }
+        Returns: undefined
+      }
+      groups_check_habit: {
+        Args: { p_habit_id: string; p_requires_photo: boolean; p_uid: string }
+        Returns: undefined
+      }
+      groups_close_group: {
+        Args: { p_group_id: string; p_now: string }
+        Returns: number
+      }
+      groups_close_week: {
+        Args: { p_group_id: string; p_now: string; p_week: string }
+        Returns: undefined
+      }
+      groups_counts_from: { Args: { p_joined_on: string }; Returns: string }
+      groups_lock_admin: {
+        Args: { p_group_id: string; p_uid: string }
+        Returns: Database["public"]["Tables"]["groups"]["Row"]
+      }
+      groups_member_role: {
+        Args: { p_group_id: string; p_uid: string }
+        Returns: string
+      }
+      groups_next_monday: { Args: { p_date: string }; Returns: string }
+      groups_streak: { Args: { p_group_id: string }; Returns: number }
+      groups_validate_commitment: {
+        Args: {
+          p_icon: string
+          p_name: string
+          p_requires_photo: boolean
+          p_target: number
+        }
+        Returns: undefined
+      }
+      groups_validate_info: {
+        Args: {
+          p_color: string
+          p_description: string
+          p_icon: string
+          p_name: string
+        }
+        Returns: undefined
+      }
+      groups_week_start: { Args: { p_date: string }; Returns: string }
       habit_date_period_closed: {
         Args: { p_date: string; p_habit_id: string }
         Returns: boolean
       }
+      habit_group_link: {
+        Args: { p_habit_id: string }
+        Returns: {
+          linked: boolean
+          requires_photo: boolean
+        }[]
+      }
       habit_preset_color: { Args: { p_preset: string }; Returns: string }
       invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
+      join_group: {
+        Args: { p_code: string; p_habit_id: string }
+        Returns: string
+      }
+      leave_group: { Args: { p_group_id: string }; Returns: undefined }
       log_body_weight: {
         Args: { p_date?: string; p_kg: number }
         Returns: string
+      }
+      my_groups: {
+        Args: never
+        Returns: {
+          archived: boolean
+          color: string
+          commitment_icon: string
+          commitment_name: string
+          complied_count: number
+          counted_count: number
+          icon: string
+          id: string
+          member_count: number
+          my_counts: boolean
+          my_done: number
+          my_habit_id: string | null
+          name: string
+          requires_photo: boolean
+          role: string
+          streak: number
+          target_per_week: number
+        }[]
       }
       public_profile: { Args: { p_username: string }; Returns: Json }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
@@ -1792,6 +2269,10 @@ export type Database = {
         }[]
       }
       remove_friend: { Args: { p_other: string }; Returns: boolean }
+      remove_group_member: {
+        Args: { p_group_id: string; p_user_id: string }
+        Returns: undefined
+      }
       remove_quantity_entry: {
         Args: { p_entry_id: string }
         Returns: {
@@ -1805,6 +2286,7 @@ export type Database = {
         Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
         Returns: undefined
       }
+      revoke_group_invites: { Args: { p_group_id: string }; Returns: number }
       save_reading_entry: {
         Args: {
           p_book_id: string
@@ -1833,6 +2315,20 @@ export type Database = {
         Returns: string
       }
       set_avatar_preset: { Args: { p_preset: number }; Returns: undefined }
+      set_group_admin: {
+        Args: { p_admin: boolean; p_group_id: string; p_user_id: string }
+        Returns: undefined
+      }
+      set_group_commitment: {
+        Args: {
+          p_commitment_icon: string
+          p_commitment_name: string
+          p_group_id: string
+          p_requires_photo: boolean
+          p_target_per_week: number
+        }
+        Returns: string
+      }
       set_height: { Args: { p_cm: number }; Returns: undefined }
       set_time_entry: {
         Args: { p_checkin_id: string; p_minutes: number; p_topic: string }
@@ -1848,6 +2344,16 @@ export type Database = {
           p_entry_id: string
           p_kind: string
           p_note?: string
+        }
+        Returns: undefined
+      }
+      update_group: {
+        Args: {
+          p_color: string
+          p_description: string
+          p_group_id: string
+          p_icon: string
+          p_name: string
         }
         Returns: undefined
       }
