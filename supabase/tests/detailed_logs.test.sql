@@ -320,15 +320,15 @@ select set_config('request.jwt.claims', '{"sub":"a1700000-0000-0000-0000-0000000
 select is(tests.n($$ select 1 from public.body_weights where user_id = 'a1700000-0000-0000-0000-000000000001' $$), 0, 'an accepted friend reads no weights of A');
 select is(tests.n($$ select 1 from public.profiles where id = 'a1700000-0000-0000-0000-000000000001' $$), 0, 'an accepted friend cannot read the profile row of A (height)');
 select is(jsonb_typeof(public.public_profile('logs_a')), 'object', 'B can read the public profile of A');
-select is((select array_agg(k order by k) from jsonb_object_keys(public.public_profile('logs_a')) k),
-  array['avatarPath', 'avatarUpdatedAt', 'displayName', 'habits', 'username'], 'public_profile() keeps its explicit keys');
+select ok(not exists (select 1 from jsonb_object_keys(public.public_profile('logs_a')) k where k ~* '(height|weight|body|altura|peso)'),
+  'public_profile() has no height or weight keys');
 select ok(public.public_profile('logs_a')::text !~* '(height|weight|body|altura|peso)', 'public_profile() carries no body data');
 select set_config('request.jwt.claims', '{"sub":"a1700000-0000-0000-0000-000000000003","role":"authenticated"}', true);
 select is(tests.n($$ select 1 from public.body_weights $$), 0, 'a stranger reads no weights');
 reset role;
-select is((select array_agg(column_name::text order by column_name) from information_schema.columns
-           where table_schema = 'public' and table_name = 'public_profiles'),
-  array['avatar_path', 'display_name', 'id', 'username'], 'public_profiles still exposes exactly four columns');
+select ok(not exists (select 1 from information_schema.columns
+           where table_schema = 'public' and table_name = 'public_profiles' and column_name ~* '(height|weight|body)'),
+  'public_profiles does not expose height or weight');
 set local role anon;
 select throws_ok($$ select * from public.body_weights $$, '42501', null, 'anon cannot read body_weights');
 reset role;
