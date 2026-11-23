@@ -1,4 +1,4 @@
-import { CaretLeft, FileText, GlobeSimple, LockSimple, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
+import { CaretLeft, FileText, GlobeSimple, LockSimple, Scales, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -71,6 +71,10 @@ export default async function AjustesPage() {
           icon={<LockSimple size={20} weight="light" />}
           label="Tus fotos solo las ven tus amigos"
           hint="Las fotos de prueba nunca son públicas. Tu perfil público solo muestra tus hábitos públicos."
+        />
+        <ListRow
+          icon={<Scales size={20} weight="light" />}
+          label="Tu peso y tu altura son privados. Nadie más puede verlos."
         />
         <ListRow
           href={`/@${profile.username}`}

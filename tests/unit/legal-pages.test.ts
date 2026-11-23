@@ -55,6 +55,14 @@ describe('legal pages', () => {
     expect(t).toContain('cuenta eliminada')
     expect(t).toContain('Ley 21.719')
   })
+
+  it('privacy: weight and height are stored only for the owner and deleted with the account', () => {
+    const t = text(PrivacidadPage())
+    expect(t).toContain('Datos sensibles: peso y altura')
+    expect(t).toContain('se guardan solo para ti')
+    expect(t).toContain('nadie más puede verlos')
+    expect(t).toContain('se eliminan al borrar tu cuenta')
+  })
 })
 
 describe('shared legal content', () => {
