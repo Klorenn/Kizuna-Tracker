@@ -6,25 +6,10 @@ export const LEGAL_DRAFT_NOTICE = "Borrador pendiente de revisión legal";
 
 export type LegalSection = { title: string; body: ReactNode[] };
 
-/** Shared shell for /legal/*: draft notice, title, numbered sections and a link to the sibling page. */
-export function LegalPage({
-  title,
-  updated,
-  sections,
-  other,
-}: {
-  title: string;
-  updated: string;
-  sections: LegalSection[];
-  other: { href: string; label: string };
-}) {
+/** Draft notice, last-updated line and numbered sections. Used by the /legal/* pages and the in-app sheet. */
+export function LegalBody({ updated, sections }: { updated: string; sections: LegalSection[] }) {
   return (
-    <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-10 pt-1">
-      <Link href="/" className="flex h-11 items-center gap-1 text-[17px] text-accent">
-        <CaretLeft size={20} weight="light" aria-hidden />
-        Kizuna
-      </Link>
-      <h1 className="text-display font-semibold text-ink">{title}</h1>
+    <div className="flex flex-col gap-4">
       <p
         role="note"
         className="flex items-start gap-2 rounded-md bg-accent-soft px-4 py-3 text-small text-ink"
@@ -48,6 +33,28 @@ export function LegalPage({
           ))}
         </section>
       ))}
+    </div>
+  );
+}
+
+/** Shell for /legal/*: back link, title, content and a link to the sibling page. */
+export function LegalPage({
+  title,
+  children,
+  other,
+}: {
+  title: string;
+  children: ReactNode;
+  other: { href: string; label: string };
+}) {
+  return (
+    <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-10 pt-1">
+      <Link href="/" className="flex h-11 items-center gap-1 text-[17px] text-accent">
+        <CaretLeft size={20} weight="light" aria-hidden />
+        Kizuna
+      </Link>
+      <h1 className="text-display font-semibold text-ink">{title}</h1>
+      {children}
       <Link href={other.href} className="text-small text-accent">
         {other.label}
       </Link>

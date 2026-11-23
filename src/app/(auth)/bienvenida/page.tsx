@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { LegalLink } from "@/components/legal/LegalLink";
 import { KanjiWatermark } from "@/components/auth/KanjiWatermark";
 import { CatLift } from "@/components/brand/CatLift";
 import { Lockup } from "@/components/brand/Logo";
@@ -32,15 +32,15 @@ export default function BienvenidaPage() {
         <ButtonLink href="/login" variant="secondary">
           Ya tengo cuenta
         </ButtonLink>
-        <p className="text-center text-small text-balance text-muted">
+        <p className="text-center text-small leading-7 text-balance text-muted">
           Al continuar aceptas los{" "}
-          <Link href="/legal/terminos" className="text-accent underline underline-offset-2">
+          <LegalLink doc="terminos">
             Términos de uso
-          </Link>{" "}
+          </LegalLink>{" "}
           y la{" "}
-          <Link href="/legal/privacidad" className="text-accent underline underline-offset-2">
+          <LegalLink doc="privacidad">
             Política de privacidad
-          </Link>
+          </LegalLink>
           .
         </p>
       </div>
