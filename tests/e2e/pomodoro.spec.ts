@@ -1,5 +1,5 @@
 import { expect, test, type Page } from "@playwright/test";
-import { createPresetHabit, expectNoHorizontalScroll, randomHandle, signUp } from "./helpers";
+import { createPresetHabit, expectNoHorizontalScroll, randomHandle, signUp, expectNotFound } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs the local Supabase stack");
 
@@ -151,7 +151,10 @@ test("the time page edits and deletes the day", async ({ page }) => {
   await page.getByLabel("Horas").fill("1");
   await page.getByLabel("Minutos").fill("25");
   await page.getByLabel("Qué estudiaste").fill("Álgebra");
+  // the first save's toast may still be on screen: wait for the second save itself before reloading
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/habitos/${id}/tiempo`));
   await page.getByRole("button", { name: "Guardar" }).click();
+  await saved;
   await expect(page.getByText("Tiempo guardado")).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Horas")).toHaveValue("1");
@@ -177,10 +180,8 @@ test("non-time and unknown habits are 404; 375 px fits; reduced motion keeps cat
   const water = (await page.getByRole("link", { name: /Leer/ }).first().getAttribute("href"))?.match(/\/habitos\/([0-9a-f-]{36})/)?.[1];
   expect(water).toBeTruthy();
   for (const path of ["pomodoro", "tiempo"]) {
-    const res = await page.goto(`/habitos/${water}/${path}`);
-    expect(res?.status(), `${path} of a non-time habit`).toBe(404);
-    const missing = await page.goto(`/habitos/00000000-0000-4000-8000-000000000000/${path}`);
-    expect(missing?.status()).toBe(404);
+    await expectNotFound(page, `/habitos/${water}/${path}`, `${path} of a non-time habit`);
+    await expectNotFound(page, `/habitos/00000000-0000-4000-8000-000000000000/${path}`);
   }
 
   await expectNoHorizontalScroll(page, [`/habitos/${id}/pomodoro`, `/habitos/${id}/tiempo`]);

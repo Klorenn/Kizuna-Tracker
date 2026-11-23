@@ -56,6 +56,16 @@ export async function createPresetHabit(page: Page, preset: string) {
   await expect(page.getByRole("link", { name: new RegExp(preset) }).first()).toBeVisible();
 }
 
+/**
+ * Opens `path` and expects the not-found page. Under the (app) loading boundary Next streams the
+ * shell first, so the HTTP status is 200 even for notFound(): accept 404 or the rendered 404 page.
+ */
+export async function expectNotFound(page: Page, path: string, label = path) {
+  const res = await page.goto(path);
+  if (res?.status() === 404) return;
+  await expect(page.locator("h1").filter({ hasText: /^404$/ }), `${label} renders the 404 page`).toBeVisible();
+}
+
 /** Asserts the page does not scroll horizontally at 375 px (restores the viewport after). */
 export async function expectNoHorizontalScroll(page: Page, paths: string[]) {
   const previous = page.viewportSize();

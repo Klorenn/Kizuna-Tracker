@@ -31,7 +31,7 @@ function supabaseDeps(): PhotoCheckinDeps {
     async getHabit(habitId) {
       const { data } = await admin
         .from("habits")
-        .select("id,user_id,requires_photo,archived_at")
+        .select("id,user_id,requires_photo,archived_at,log_type")
         .eq("id", habitId)
         .maybeSingle();
       return data;

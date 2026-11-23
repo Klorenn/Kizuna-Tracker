@@ -1,7 +1,11 @@
 import type { PresetKey } from '@/domain/presets'
 import { localDate } from '@/domain/dates'
 
-export const MAX_PHOTO_BYTES = 5 * 1024 * 1024
+/** Vercel rejects request bodies over 4.5 MB: 4 MB for the photo leaves room for the form fields. */
+export const MAX_PHOTO_BYTES = 4 * 1024 * 1024
+/** Client-side compression target (MB), under MAX_PHOTO_BYTES with margin for the multipart envelope. */
+export const PHOTO_TARGET_MB = 3
+const TOO_BIG = 'La foto pesa demasiado. Prueba con otra o toma una nueva.'
 
 export async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf)
@@ -21,7 +25,13 @@ export interface PhotoCheckinDeps {
   getProfile(userId: string): Promise<{ timezone: string; deleted_at: string | null } | null>
   getHabit(
     habitId: string,
-  ): Promise<{ id: string; user_id: string; requires_photo: boolean; archived_at: string | null } | null>
+  ): Promise<{
+    id: string
+    user_id: string
+    requires_photo: boolean
+    archived_at: string | null
+    log_type?: string
+  } | null>
   getItem(itemId: string): Promise<{
     id: string
     habit_id: string
@@ -118,7 +128,7 @@ const SAVE_ERROR = 'No pudimos guardar la foto. Inténtalo de nuevo.'
 export function contentLengthError(header: string | null): PhotoCheckinResult | null {
   if (header === null || !/^\d+$/.test(header)) return fail(411, 'La solicitud no es válida.')
   if (Number(header) > MAX_PHOTO_BYTES + 64 * 1024) {
-    return fail(413, 'La foto pesa demasiado. El máximo es 5 MB.')
+    return fail(413, TOO_BIG)
   }
   return null
 }
@@ -133,7 +143,7 @@ async function run(
   const profile = await deps.getProfile(userId)
   if (!profile || profile.deleted_at) return fail(403, 'No tienes acceso.')
   if (Math.max(file.size, file.bytes.byteLength) > MAX_PHOTO_BYTES) {
-    return fail(413, 'La foto pesa demasiado. El máximo es 5 MB.')
+    return fail(413, TOO_BIG)
   }
   if (file.type !== 'image/jpeg') return fail(415, 'La foto debe ser una imagen JPEG.')
   // never trust the client: drop EXIF/XMP/comments and validate the structure server-side
@@ -146,6 +156,8 @@ async function run(
     const habit = await deps.getHabit(target.habitId)
     if (!habit || habit.archived_at) return fail(404, 'No encontramos ese hábito.')
     if (habit.user_id !== userId) return fail(403, 'No tienes acceso.')
+    // the database refuses it too (`quantity_habit`); answer before storing anything
+    if (habit.log_type === 'quantity') return fail(400, 'Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.')
     if (!habit.requires_photo) return fail(400, 'Este hábito no pide foto.')
     habitId = habit.id
   } else {

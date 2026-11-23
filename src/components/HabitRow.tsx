@@ -1,17 +1,30 @@
 "use client";
 
-import { Camera, Check, Warning } from "@phosphor-icons/react/dist/ssr";
+import { Camera, Check, Timer, Warning } from "@phosphor-icons/react/dist/ssr";
+import dynamic from "next/dynamic";
 import Link from "next/link";
-import { useId, useOptimistic, useState, useTransition } from "react";
+import { memo, useId, useOptimistic, useState, useTransition } from "react";
 import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
-import { habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
+import type { PickerMedia } from "@/app/(app)/series/media-data";
+import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
+import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
 import { ItemChecklist } from "./ItemChecklist";
-import { ReadingSheet, type ReadingSheetMode } from "./logs/ReadingSheet";
+import type { CardioSheetMode } from "./logs/CardioSheet";
+import { QuantityControl } from "./logs/QuantityControl";
+import type { ReadingSheetMode } from "./logs/ReadingSheet";
+import type { TimeSheetMode } from "./logs/TimeSheet";
+import type { WatchSheetMode } from "./logs/WatchSheet";
 import { Button } from "./ui/Button";
 import { Sheet } from "./ui/Sheet";
 import { Toast, useToast } from "./ui/Toast";
 import { VisibilityIcon } from "./habit-icon";
+
+// Sheets are not on screen at first paint: each loads on demand, when its row opens it.
+const ReadingSheet = dynamic(() => import("./logs/ReadingSheet").then((m) => m.ReadingSheet), { ssr: false });
+const TimeSheet = dynamic(() => import("./logs/TimeSheet").then((m) => m.TimeSheet), { ssr: false });
+const WatchSheet = dynamic(() => import("./logs/WatchSheet").then((m) => m.WatchSheet), { ssr: false });
+const CardioSheet = dynamic(() => import("./logs/CardioSheet").then((m) => m.CardioSheet), { ssr: false });
 
 /** What a reading habit's row needs for its sheet: your books and today's check-in and reading. */
 export type RowReading = {
@@ -19,6 +32,12 @@ export type RowReading = {
   checkinId: string | null;
   entry: { bookId: string; fromPage: number; toPage: number } | null;
 };
+
+type OpenSheet =
+  | { type: "reading"; mode: ReadingSheetMode }
+  | { type: "time"; mode: TimeSheetMode }
+  | { type: "watch"; mode: WatchSheetMode }
+  | { type: "cardio"; mode: CardioSheetMode };
 
 function Box({ done }: { done: boolean }) {
   return (
@@ -33,27 +52,60 @@ function Box({ done }: { done: boolean }) {
   );
 }
 
+const ACTION = "inline-flex h-11 shrink-0 items-center text-small font-medium text-accent";
+
 /**
  * List-style row inside a Card. Plain habit: tap to check. Photo: "Foto" chip. Items: checklist
- * below. Reading habit: "Hecho" opens "¿Qué leíste hoy?". Done without a log on a habit with a log
- * type: "Añadir registro". Undoing a check-in that has a log asks first (the log goes with it).
+ * below. Reading, time, watch and cardio habits: "Hecho" opens their sheet ("¿Qué leíste hoy?",
+ * "¿Cuánto rato?", "¿Qué viste hoy?", "¿Cuánto trotaste hoy?"); time also offers "Pomodoro" and,
+ * once done, "+ Tiempo"; cardio offers "+ Salida". Quantity habits show their control (quick add,
+ * running total) instead of "Hecho" and have no undo: you remove sums. Done without a log on a
+ * habit with a log type: "Añadir registro". Undoing a check-in that has a log asks first.
+ *
+ * Memoized by value: a tap on one row refreshes Hoy, and the other rows keep what they rendered.
  */
-export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading }) {
+function HabitRowView({
+  row,
+  today,
+  timeZone,
+  checkinId,
+  reading,
+  media,
+}: {
+  row: TodayRow;
+  /** local date of Hoy (`YYYY-MM-DD`), for the "Añadir registro" link */
+  today: string;
+  timeZone: string;
+  /** today's check-in of this habit, when it exists */
+  checkinId: string | null;
+  reading?: RowReading;
+  media?: PickerMedia[];
+}) {
   const [, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const [done, setDone] = useOptimistic(row.done);
-  const [sheet, setSheet] = useState<ReadingSheetMode | null>(null);
+  const [sheet, setSheet] = useState<OpenSheet | null>(null);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const undoCopy = undoLosesCopy(row);
   const undoBodyId = useId();
   const [toast, showToast] = useToast();
   const hasItems = row.items.length > 0;
   const checkedCount = row.items.filter((i) => i.checked).length;
-  const readingFlow = row.logType === "reading" && reading !== undefined;
+  const plain = !hasItems && !row.requiresPhoto;
+  const readingFlow = plain && row.logType === "reading" && reading !== undefined;
+  const timeFlow = plain && row.logType === "time";
+  const watchFlow = plain && row.logType === "watch" && media !== undefined;
+  const cardioFlow = plain && row.logType === "cardio";
+  const quantity = plain && row.logType === "quantity" ? row.quantity : null;
 
   function toggle() {
     setError(null);
-    if (!row.done && readingFlow) return setSheet({ kind: "checkin", habitId: row.id });
+    if (!row.done) {
+      if (readingFlow) return setSheet({ type: "reading", mode: { kind: "checkin", habitId: row.id } });
+      if (timeFlow) return setSheet({ type: "time", mode: { kind: "checkin", habitId: row.id } });
+      if (watchFlow) return setSheet({ type: "watch", mode: { kind: "checkin", habitId: row.id } });
+      if (cardioFlow) return setSheet({ type: "cardio", mode: { kind: "checkin" } });
+    }
     if (row.done && undoCopy) return setConfirmUndo(true);
     run();
   }
@@ -67,25 +119,79 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
     });
   }
 
-  const addLog =
-    done && row.log === null && row.logType !== "none" ? (
+  const close = () => setSheet(null);
+
+  // what sits at the right edge of the row
+  let action: React.ReactNode = null;
+  if (hasItems) {
+    action = (
+      <span className="font-mono text-small font-medium text-muted">
+        {checkedCount} de {row.items.length}
+      </span>
+    );
+  } else if (quantity) {
+    action = null;
+  } else if (timeFlow && !done) {
+    action = (
+      <Link
+        href={`/habitos/${row.id}/pomodoro`}
+        aria-label={`Pomodoro de ${row.name}`}
+        className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
+      >
+        <Timer size={16} weight="light" aria-hidden />
+        Pomodoro
+      </Link>
+    );
+  } else if (timeFlow && done) {
+    action = (
+      <button
+        type="button"
+        aria-label={`+ Tiempo: ${row.name}`}
+        onClick={() => setSheet({ type: "time", mode: { kind: "add", habitId: row.id } })}
+        className={ACTION}
+      >
+        + Tiempo
+      </button>
+    );
+  } else if (cardioFlow && done && checkinId) {
+    action = (
+      <button
+        type="button"
+        aria-label={`+ Salida: ${row.name}`}
+        onClick={() => setSheet({ type: "cardio", mode: { kind: "add", checkinId } })}
+        className={ACTION}
+      >
+        + Salida
+      </button>
+    );
+  } else if (done && row.log === null && row.logType !== "none" && row.logType !== "quantity") {
+    action =
       row.logType === "reading" && readingFlow && reading.checkinId ? (
         <button
           type="button"
-          onClick={() => setSheet({ kind: "edit", checkinId: reading.checkinId!, entry: reading.entry })}
-          className="inline-flex h-11 shrink-0 items-center text-small font-medium text-accent"
+          onClick={() =>
+            setSheet({ type: "reading", mode: { kind: "edit", checkinId: reading.checkinId!, entry: reading.entry } })
+          }
+          className={ACTION}
         >
           Añadir registro
         </button>
       ) : (
-        <Link
-          href={`/habitos/${row.id}/${row.logType === "reading" ? "lectura" : "entrenamiento"}`}
-          className="inline-flex h-11 shrink-0 items-center text-small font-medium text-accent"
-        >
+        <Link href={logEntryHref(row.id, row.logType, today)} className={ACTION}>
           Añadir registro
         </Link>
-      )
-    ) : null;
+      );
+  } else if (row.requiresPhoto && !done) {
+    action = (
+      <Link
+        href={`/habitos/${row.id}/foto`}
+        className="inline-flex h-11 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
+      >
+        <Camera size={16} weight="light" aria-hidden />
+        Foto
+      </Link>
+    );
+  }
 
   const text = (
     <span className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -101,7 +207,7 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
       </span>
       <span className="flex items-center gap-1 text-small text-muted">
         <VisibilityIcon value={row.visibility} />
-        {habitSubtitle(row)}
+        {quantity ? baseSubtitle(row) : habitSubtitle(row)}
         {row.streak > 0 ? (
           <span className="ml-1 font-mono text-ink">
             {row.streak}
@@ -117,7 +223,7 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
   return (
     <div>
       <div className="flex min-h-[60px] items-center gap-4 py-2.5">
-        {hasItems || row.requiresPhoto ? (
+        {!plain || quantity ? (
           <Box done={done} />
         ) : (
           <button
@@ -132,31 +238,45 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
           </button>
         )}
         {text}
-        {hasItems ? (
-          <span className="font-mono text-small font-medium text-muted">
-            {checkedCount} de {row.items.length}
-          </span>
-        ) : addLog ? (
-          addLog
-        ) : row.requiresPhoto && !done ? (
-          <Link
-            href={`/habitos/${row.id}/foto`}
-            className="inline-flex h-11 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
-          >
-            <Camera size={16} weight="light" aria-hidden />
-            Foto
-          </Link>
-        ) : null}
+        {action}
       </div>
       {hasItems ? <ItemChecklist habitId={row.id} items={row.items} /> : null}
+      {quantity ? (
+        <div className="pb-3 pl-10">
+          <QuantityControl
+            habitId={row.id}
+            config={quantity.config}
+            total={quantity.total}
+            entries={quantity.entries}
+            timeZone={timeZone}
+            color={row.color}
+          />
+        </div>
+      ) : null}
       {error ? (
         <p role="alert" className="flex items-center gap-1 pb-2 text-small text-ink">
           <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
           {error}
         </p>
       ) : null}
-      {sheet && reading ? (
-        <ReadingSheet open mode={sheet} books={reading.books} onClose={() => setSheet(null)} onSaved={showToast} />
+      {sheet?.type === "reading" && reading ? (
+        <ReadingSheet open mode={sheet.mode} books={reading.books} onClose={close} onSaved={showToast} />
+      ) : null}
+      {sheet?.type === "time" ? (
+        <TimeSheet open mode={sheet.mode} preset={row.preset} onClose={close} onSaved={showToast} />
+      ) : null}
+      {sheet?.type === "watch" && media ? (
+        <WatchSheet open mode={sheet.mode} media={media} onClose={close} onSaved={showToast} />
+      ) : null}
+      {sheet?.type === "cardio" ? (
+        <CardioSheet
+          open
+          mode={sheet.mode}
+          habitId={row.id}
+          defaultKind={row.preset === "walk" ? "walk" : "run"}
+          onClose={close}
+          onSaved={showToast}
+        />
       ) : null}
       {undoCopy ? (
         <Sheet
@@ -176,3 +296,19 @@ export function HabitRow({ row, reading }: { row: TodayRow; reading?: RowReading
     </div>
   );
 }
+
+type RowProps = Parameters<typeof HabitRowView>[0];
+
+/** Props compare by value: Hoy re-renders with fresh (equal) objects after every refresh. */
+function same(a: RowProps, b: RowProps): boolean {
+  return (
+    a.today === b.today &&
+    a.timeZone === b.timeZone &&
+    a.checkinId === b.checkinId &&
+    JSON.stringify(a.row) === JSON.stringify(b.row) &&
+    JSON.stringify(a.reading) === JSON.stringify(b.reading) &&
+    JSON.stringify(a.media) === JSON.stringify(b.media)
+  );
+}
+
+export const HabitRow = memo(HabitRowView, same);

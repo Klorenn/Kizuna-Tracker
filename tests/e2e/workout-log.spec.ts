@@ -1,7 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test, type Page } from "@playwright/test";
 import { addDays } from "../../src/domain/dates";
-import { logIn, PASSWORD, randomHandle } from "./helpers";
+import { logIn, PASSWORD, randomHandle, expectNotFound } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1)");
 
@@ -210,8 +210,7 @@ test("entrenamiento: crear un ejercicio propio y el límite de series", async ({
 test("entrenamiento: 404 para hábitos sin registro de gimnasio, archivados o ajenos", async ({ page }) => {
   await logIn(page, `@${data.handle}`, PASSWORD);
   for (const id of [data.plainHabitId, data.archivedHabitId, data.otherHabitId]) {
-    const res = await page.goto(`/habitos/${id}/entrenamiento`);
-    expect(res?.status(), id).toBe(404);
+    await expectNotFound(page, `/habitos/${id}/entrenamiento`, id);
   }
 });
 

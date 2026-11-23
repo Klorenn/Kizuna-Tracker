@@ -104,7 +104,7 @@ describe('checkInWithWatch', () => {
     ])
   })
 
-  it('"Omitir" (no entry) only checks in', async () => {
+  it('"Solo marcar" (no entry) only checks in', async () => {
     rpc.mockResolvedValue({ data: [{ checkin_id: 'c1', created: true }], error: null })
     await expect(checkInWithWatch('h1', null)).resolves.toEqual({ ok: true, checkinId: 'c1', created: true })
     expect(rpc.mock.calls).toEqual([['create_checkin', { p_habit_id: 'h1' }]])

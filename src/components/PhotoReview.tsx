@@ -2,7 +2,7 @@
 
 import { ArrowsClockwise, CaretLeft, Check, Clock, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
-import type { PhotoCheckinResult } from "@/lib/checkins";
+import { PHOTO_TARGET_MB, type PhotoCheckinResult } from "@/lib/checkins";
 
 /** Review screen (Figma 07). Compresses to JPEG (re-encoding drops EXIF) and posts to the server. */
 export function PhotoReview({
@@ -39,6 +39,8 @@ export function PhotoReview({
       const { default: imageCompression } = await import("browser-image-compression");
       const small = await imageCompression(file, {
         maxWidthOrHeight: 1600,
+        // the server accepts 4 MB (Vercel caps bodies at 4.5 MB): aim well under it
+        maxSizeMB: PHOTO_TARGET_MB,
         fileType: "image/jpeg",
         useWebWorker: false,
         initialQuality: 0.85,

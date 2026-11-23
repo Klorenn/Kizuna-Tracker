@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   celebrationFor,
   contentLengthError,
+  MAX_PHOTO_BYTES,
   stripJpegMetadata,
   photoCheckin,
   sha256Hex,
@@ -29,7 +30,7 @@ const file = (over: Partial<{ bytes: ArrayBuffer; type: string; size: number }> 
 
 type Store = {
   profile: { timezone: string; deleted_at: string | null } | null
-  habit: { id: string; user_id: string; requires_photo: boolean; archived_at: string | null } | null
+  habit: { id: string; user_id: string; requires_photo: boolean; archived_at: string | null; log_type?: string } | null
   item: {
     id: string
     habit_id: string
@@ -134,11 +135,27 @@ describe('photoCheckin', () => {
     })
   })
 
+  it('refuses a quantity habit before storing anything', async () => {
+    const { deps } = setup({
+      habit: { id: 'h1', user_id: UID, requires_photo: false, archived_at: null, log_type: 'quantity' },
+    })
+    expect(await photoCheckin(deps, UID, habit, file(), NOW)).toEqual({
+      status: 400,
+      error: 'Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.',
+    })
+    expect(deps.insertCheckin).not.toHaveBeenCalled()
+    expect(deps.upload).not.toHaveBeenCalled()
+  })
+
   it('validates size and type', async () => {
     const { deps } = setup()
-    expect(
-      await photoCheckin(deps, UID, habit, file({ size: 5 * 1024 * 1024 + 1 }), NOW),
-    ).toMatchObject({ status: 413 })
+    // Vercel rejects bodies over 4.5 MB: the accepted photo is 4 MB at most
+    expect(MAX_PHOTO_BYTES).toBe(4 * 1024 * 1024)
+    expect(await photoCheckin(deps, UID, habit, file({ size: 4 * 1024 * 1024 + 1 }), NOW)).toEqual({
+      status: 413,
+      error: 'La foto pesa demasiado. Prueba con otra o toma una nueva.',
+    })
+    expect(await photoCheckin(deps, UID, habit, file({ size: 4 * 1024 * 1024 }), NOW)).toMatchObject({ status: 200 })
     expect(await photoCheckin(deps, UID, habit, file({ type: 'image/png' }), NOW)).toMatchObject({
       status: 415,
     })
@@ -288,7 +305,11 @@ describe('contentLengthError', () => {
   it('requires a valid, bounded Content-Length', () => {
     expect(contentLengthError(null)).toMatchObject({ status: 411 })
     expect(contentLengthError('abc')).toMatchObject({ status: 411 })
-    expect(contentLengthError(String(6 * 1024 * 1024))).toMatchObject({ status: 413 })
+    expect(contentLengthError(String(6 * 1024 * 1024))).toEqual({
+      status: 413,
+      error: 'La foto pesa demasiado. Prueba con otra o toma una nueva.',
+    })
+    expect(contentLengthError(String(4.5 * 1024 * 1024))).toMatchObject({ status: 413 })
     expect(contentLengthError('1000')).toBeNull()
   })
 })

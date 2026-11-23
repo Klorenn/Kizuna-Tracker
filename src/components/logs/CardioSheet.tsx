@@ -36,7 +36,7 @@ import { radioKeyTarget } from "@/lib/radio-keys";
  * - `open`, `onClose`: visibility.
  * - `habitId`: the habit ("Repetir el último" reads its latest outing).
  * - `mode`:
- *   - `{ kind: "checkin" }`: Hoy. "Guardar" checks the habit in and adds the outing; "Omitir" only
+ *   - `{ kind: "checkin" }`: Hoy. "Guardar" checks the habit in and adds the outing; "Solo marcar" only
  *     checks it in.
  *   - `{ kind: "add", checkinId }`: one more outing on a day that already has a check-in ("+ Salida").
  *   - `{ kind: "edit", entryId, entry }`: change one outing.
@@ -110,7 +110,7 @@ const EFFORTS = [1, 2, 3, 4, 5] as const;
 
 /**
  * Activity chips, distance, h/min/s with live pace, effort 1–5, note. Check-in mode: Guardar /
- * Omitir; add and edit: Guardar. `onFinished` runs after a successful save or skip.
+ * Solo marcar; add and edit: Guardar. `onFinished` runs after a successful save or skip.
  */
 export function CardioForm({
   mode,
@@ -316,7 +316,7 @@ export function CardioForm({
       </Button>
       {mode.kind === "checkin" ? (
         <Button variant="secondary" onClick={skip} disabled={pending}>
-          Omitir
+          Solo marcar
         </Button>
       ) : null}
     </div>

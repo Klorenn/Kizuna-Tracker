@@ -3,7 +3,7 @@
 import { Minus, Plus, Warning, X } from "@phosphor-icons/react/dist/ssr";
 import { radioKeyTarget } from "@/lib/radio-keys";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { createHabit, updateHabit } from "@/app/(app)/habitos/actions";
 import {
   MAX_ITEMS,
@@ -15,7 +15,9 @@ import {
   type HabitDraft,
   type PresetKey,
 } from "@/domain/presets";
-import type { LogType } from "@/domain/logs";
+import { LOG_TYPES, LOG_TYPE_LABEL, type LogType } from "@/domain/logs";
+import type { QuantityConfig } from "@/domain/quantity";
+import { draftExtraError } from "@/lib/habit-draft-checks";
 import { ColorPicker } from "./ColorPicker";
 import { IconPicker } from "./IconPicker";
 import { VisibilityPicker } from "./VisibilityPicker";
@@ -25,17 +27,24 @@ import { Chip } from "./ui/Chip";
 import { Input } from "./ui/Input";
 import { Segmented } from "./ui/Segmented";
 import { Toggle } from "./ui/Toggle";
+import { QuantityFields } from "./logs/QuantityFields";
 
 const CHIP_LABEL: Partial<Record<PresetKey, string>> = { gym: "Gym" };
 const FREQUENCY = [
   { value: "daily", label: "Diaria" },
   { value: "weekly", label: "Veces por semana" },
 ] as const;
-const LOG_TYPE_OPTIONS = [
-  { value: "none", label: "Ninguno" },
-  { value: "reading", label: "Lectura" },
-  { value: "workout", label: "Entrenamiento" },
-] as const satisfies readonly { value: LogType; label: string }[];
+const LOG_TYPE_OPTIONS = LOG_TYPES.map((value) => ({ value, label: LOG_TYPE_LABEL[value] }));
+const DEFAULT_QUANTITY: QuantityConfig = {
+  unit: "ml",
+  label: null,
+  target: 2000,
+  step: 250,
+  display: "glasses",
+  glassMl: 250,
+};
+const STEPS_NO_LOG = "Un hábito con pasos no lleva registro detallado.";
+const PHOTO_NO_LOG = "Un hábito con foto no lleva tiempo ni cantidad.";
 const LOG_TYPE_HINT: Record<LogType, string> = {
   none: "Solo marcas si lo hiciste.",
   reading: "Anotas el libro y las páginas de cada día.",
@@ -50,9 +59,12 @@ const LOG_TYPE_HINT: Record<LogType, string> = {
 export function HabitForm({
   initial,
   habitId,
+  quantityLockedReason = null,
 }: {
   initial: HabitDraft;
   habitId?: string;
+  /** Set when the habit is in a proposed or active challenge: the unit is fixed and the goal cannot go down. */
+  quantityLockedReason?: string | null;
 }) {
   const router = useRouter();
   const [draft, setDraft] = useState<HabitDraft>(initial);
@@ -62,6 +74,7 @@ export function HabitForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const editing = habitId !== undefined;
+  const logHintId = useId();
   const hasItems = draft.items.length > 0;
   const weeklyTarget = draft.frequency.type === "weekly" ? draft.frequency.target : 3;
 
@@ -73,13 +86,29 @@ export function HabitForm({
     setDraft(key === "other" ? customDraft() : presetDraft(key));
     setError(null);
   }
+  // a locked quantity habit keeps its type (the database refuses leaving it)
+  const lockedType = quantityLockedReason !== null && initial.logType === "quantity";
+  // what the database refuses: steps with any log; a photo with time or quantity
+  const logTypeOff = (t: LogType) =>
+    (lockedType && t !== "quantity") ||
+    (t !== "none" && (hasItems || (draft.requiresPhoto && (t === "time" || t === "quantity"))));
+  function pickLogType(logType: LogType) {
+    if (logTypeOff(logType)) return;
+    patch({ logType, quantity: logType === "quantity" ? (draft.quantity ?? DEFAULT_QUANTITY) : draft.quantity });
+  }
   function setItem(index: number, label: string) {
     patch({ items: draft.items.map((it, i) => (i === index ? { ...it, label } : it)) });
   }
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // a goal typed below the challenge lock arrives as NaN: say why, not "mayor que 0"
+    if (quantityLockedReason && draft.logType === "quantity" && draft.quantity && !Number.isFinite(draft.quantity.target)) {
+      return setError(quantityLockedReason);
+    }
     const valid = validateHabitDraft(draft);
     if (!valid.ok) return setError(valid.error);
+    const extra = draftExtraError(draft);
+    if (extra) return setError(extra);
     setError(null);
     start(async () => {
       const result = editing ? await updateHabit(habitId, draft) : await createHabit(draft);
@@ -250,47 +279,61 @@ export function HabitForm({
         </div>
       </div>
 
-      {!hasItems ? (
-        <div className="flex flex-col gap-2">
-          <p className="text-small text-ink">Registro detallado</p>
-          {/* Segmented look, but each option sized to its label: "Entrenamiento" does not fit a third of 360 px */}
-          <div
-            role="radiogroup"
-            aria-label="Registro detallado"
-            className="flex gap-1 rounded-md bg-field p-1"
-            onKeyDown={(e) => {
-              const i = LOG_TYPE_OPTIONS.findIndex((o) => o.value === draft.logType);
-              const to = radioKeyTarget(e.key, Math.max(i, 0), LOG_TYPE_OPTIONS.length);
-              if (to === null) return;
-              e.preventDefault();
-              patch({ logType: LOG_TYPE_OPTIONS[to].value });
-              e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[to]?.focus();
-            }}
-          >
-            {LOG_TYPE_OPTIONS.map((o) => {
-              const anySelected = LOG_TYPE_OPTIONS.some((x) => x.value === draft.logType);
-              const selected = o.value === draft.logType;
-              return (
-                <button
-                  key={o.value}
-                  type="button"
-                  role="radio"
-                  aria-checked={selected}
-                  // a log type outside the offered options leaves nothing selected: the first radio stays reachable
-                  tabIndex={selected || (!anySelected && o === LOG_TYPE_OPTIONS[0]) ? 0 : -1}
-                  onClick={() => patch({ logType: o.value })}
-                  className={`h-11 flex-auto rounded-md px-2 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] ${
-                    selected ? "bg-raised text-ink shadow-card" : "text-muted"
-                  }`}
-                >
-                  {o.label}
-                </button>
-              );
-            })}
-          </div>
-          <p className="text-small text-muted">{LOG_TYPE_HINT[draft.logType]}</p>
+      <div className="flex flex-col gap-2">
+        <p className="text-small text-ink">Registro detallado</p>
+        {/* Segmented look, but wrapping: seven options with long labels do not fit one row at 375 px */}
+        <div
+          role="radiogroup"
+          aria-label="Registro detallado"
+          aria-describedby={logHintId}
+          className="flex flex-wrap gap-1 rounded-md bg-field p-1"
+          onKeyDown={(e) => {
+            const enabled = LOG_TYPE_OPTIONS.filter((o) => !logTypeOff(o.value));
+            const at = enabled.findIndex((o) => o.value === draft.logType);
+            const to = radioKeyTarget(e.key, Math.max(at, 0), enabled.length);
+            if (to === null) return;
+            e.preventDefault();
+            pickLogType(enabled[to].value);
+            const index = LOG_TYPE_OPTIONS.findIndex((o) => o.value === enabled[to].value);
+            e.currentTarget.querySelectorAll<HTMLButtonElement>('[role="radio"]')[index]?.focus();
+          }}
+        >
+          {LOG_TYPE_OPTIONS.map((o) => {
+            const selected = o.value === draft.logType;
+            const off = logTypeOff(o.value);
+            // roving tabindex over the enabled options: the selected one, else the first enabled
+            const firstEnabled = LOG_TYPE_OPTIONS.find((x) => !logTypeOff(x.value));
+            const anySelected = LOG_TYPE_OPTIONS.some((x) => x.value === draft.logType && !logTypeOff(x.value));
+            const tab = !off && (selected || (!anySelected && o === firstEnabled));
+            return (
+              <button
+                key={o.value}
+                type="button"
+                role="radio"
+                aria-checked={selected}
+                disabled={off}
+                tabIndex={tab ? 0 : -1}
+                onClick={() => pickLogType(o.value)}
+                className={`h-11 flex-auto rounded-md px-3 text-[14px] font-medium whitespace-nowrap transition-colors duration-[120ms] disabled:opacity-40 ${
+                  selected ? "bg-raised text-ink shadow-card" : "text-muted"
+                }`}
+              >
+                {o.label}
+              </button>
+            );
+          })}
         </div>
-      ) : null}
+        <p id={logHintId} className="text-small text-muted">
+          {hasItems ? STEPS_NO_LOG : draft.requiresPhoto ? `${PHOTO_NO_LOG} ${LOG_TYPE_HINT[draft.logType]}` : LOG_TYPE_HINT[draft.logType]}
+        </p>
+        {draft.logType === "quantity" ? (
+          <QuantityFields
+            value={draft.quantity ?? DEFAULT_QUANTITY}
+            onChange={(quantity) => patch({ quantity })}
+            lockedReason={quantityLockedReason}
+          />
+        ) : null}
+      </div>
 
       <VisibilityPicker value={draft.visibility} onChange={(visibility) => patch({ visibility })} />
 

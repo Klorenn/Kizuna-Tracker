@@ -1,13 +1,14 @@
 import { createClient } from "@supabase/supabase-js";
 import { expect, test } from "@playwright/test";
 import { monthTitle, shiftMonth } from "../../src/domain/calendar";
-import { logIn, PASSWORD, randomHandle, SEED_PASSWORD, signUp } from "./helpers";
+import { logIn, PASSWORD, randomHandle, SEED_PASSWORD, signUp, expectNotFound } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase seeded with supabase/seed.sql (E2E_SUPABASE=1)");
 
-// Seeded numbers (supabase/seed.sql, "detailed logs" block): today Dune 14 -> 40 and a leg day
-// (Sentadilla 5 x 75 / 5 x 80, Prensa 10 x 120, Extensión 12 x 30); last month Sentadilla 60,
-// Prensa 100 and "El nombre del viento" finished; latest weight 71,9 kg today.
+// The first test creates its own user and its own data, dated relative to "today" (never the day the
+// shared database was seeded): today Dune 14 -> 40 and a leg day (Sentadilla 5 x 75 / 5 x 80,
+// Prensa 10 x 120, Extensión 12 x 30); last month Sentadilla 60, Prensa 100 and "El nombre del
+// viento" finished; latest weight 71,9 kg today.
 const TZ = "America/Santiago";
 const today = new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date());
 const m1 = shiftMonth(today.slice(0, 7), -1);
@@ -30,15 +31,91 @@ async function makeUser(prefix: string): Promise<{ id: string; handle: string }>
   return { id: data.user!.id, handle };
 }
 
+/** The owner's reading and leg-day history (service role: test setup only; the page is read through the UI). */
+async function seedOwnLogs(u: { id: string }): Promise<{ readId: string; gymId: string }> {
+  const db = admin();
+  const ok = <T,>(r: { data: T; error: { message: string } | null }): NonNullable<T> => {
+    expect(r.error).toBeNull();
+    return r.data as NonNullable<T>;
+  };
+  const habit = async (name: string, icon: string, logType: string, preset: string) =>
+    ok(
+      await db
+        .from("habits")
+        .insert({ user_id: u.id, name, icon, frequency_type: "daily", color: "salvia", log_type: logType, preset })
+        .select("id")
+        .single(),
+    ).id as string;
+  const readId = await habit("Leer", "book-open", "reading", "read");
+  const gymId = await habit("Gimnasio", "barbell", "workout", "gym");
+
+  const books = ok(
+    await db
+      .from("books")
+      .insert([
+        { user_id: u.id, title: "Dune", author: "Frank Herbert", total_pages: 412, status: "reading" },
+        { user_id: u.id, title: "El nombre del viento", author: "Patrick Rothfuss", total_pages: 662, status: "finished", finished_on: `${m1}-17` },
+      ])
+      .select("id,title"),
+  );
+  const book = (title: string) => books.find((b) => b.title === title)!.id as string;
+
+  const checkin = async (habitId: string, date: string) =>
+    ok(await db.from("checkins").insert({ habit_id: habitId, user_id: u.id, local_date: date }).select("id").single()).id as string;
+  for (const [day, from, to] of [[3, 600, 620], [10, 620, 640], [17, 640, 662]] as const) {
+    const date = `${m1}-${String(day).padStart(2, "0")}`;
+    ok(
+      await db.from("reading_entries").insert({
+        user_id: u.id, habit_id: readId, checkin_id: await checkin(readId, date), book_id: book("El nombre del viento"), local_date: date, from_page: from, to_page: to,
+      }).select("id").single(),
+    );
+  }
+  ok(
+    await db.from("reading_entries").insert({
+      user_id: u.id, habit_id: readId, checkin_id: await checkin(readId, today), book_id: book("Dune"), local_date: today, from_page: 14, to_page: 40,
+    }).select("id").single(),
+  );
+
+  const ex = ok(await db.from("exercises").select("id,key").is("user_id", null).in("key", ["squat", "leg_press", "leg_extension", "romanian_deadlift"]));
+  const exId = (key: string) => ex.find((e) => e.key === key)!.id as string;
+  const session = async (date: string, sets: [string, number, number][]) => {
+    const checkinId = await checkin(gymId, date);
+    const sessionId = ok(
+      await db.from("workout_sessions").insert({ user_id: u.id, habit_id: gymId, checkin_id: checkinId, local_date: date, day_types: ["legs"] }).select("id").single(),
+    ).id as string;
+    ok(
+      await db.from("workout_sets").insert(
+        sets.map(([key, reps, kg], position) => ({ session_id: sessionId, user_id: u.id, local_date: date, exercise_id: exId(key), position, reps, weight_kg: kg })),
+      ).select("id"),
+    );
+  };
+  await session(`${m1}-03`, [["squat", 8, 55], ["squat", 8, 60], ["leg_press", 10, 100]]);
+  await session(`${m1}-10`, [["romanian_deadlift", 10, 50]]);
+  await session(today, [["squat", 5, 75], ["squat", 5, 80], ["leg_press", 10, 120], ["leg_extension", 12, 30]]);
+
+  const day = (back: number) => new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date(Date.now() - back * 86_400_000));
+  ok(
+    await db.from("body_weights").insert([
+      { user_id: u.id, measured_on: day(14), weight_kg: 72.3 },
+      { user_id: u.id, measured_on: day(7), weight_kg: 72.1 },
+      { user_id: u.id, measured_on: today, weight_kg: 71.9 },
+    ]).select("id"),
+  );
+  return { readId, gymId };
+}
+
 async function noHorizontalScroll(page: import("@playwright/test").Page, path: string) {
   await page.goto(path);
   await page.waitForLoadState("networkidle");
   expect(await page.evaluate(() => document.documentElement.scrollWidth), path).toBeLessThanOrEqual(375);
 }
 
-test("user_a sees REGISTROS, the drill-downs, the calendar log and PROGRESO with the seeded numbers", async ({
+test("a user sees REGISTROS, the drill-downs, the calendar log and PROGRESO with their own numbers", async ({
   page,
 }) => {
+  test.setTimeout(180_000);
+  const owner = await makeUser("logs");
+  const { readId, gymId } = await seedOwnLogs(owner);
   // a stranger's own exercise, for the "foreign exercise -> 404" check
   const stranger = await makeUser("extr");
   const { data: foreign, error: fe } = await admin()
@@ -48,9 +125,9 @@ test("user_a sees REGISTROS, the drill-downs, the calendar log and PROGRESO with
     .single();
   expect(fe).toBeNull();
 
-  await logIn(page, "@user_a", SEED_PASSWORD);
+  await logIn(page, `@${owner.handle}`, PASSWORD);
 
-  // Hoy: the seeded reading and leg day are the rows' subtitles
+  // Hoy: the reading and leg day are the rows' subtitles
   await expect(page.getByText("26 páginas · Dune")).toBeVisible();
   await expect(page.getByText("Pierna · 3 ejercicios")).toBeVisible();
 
@@ -100,54 +177,32 @@ test("user_a sees REGISTROS, the drill-downs, the calendar log and PROGRESO with
   await expect(page.getByRole("link", { name: /Pierna.*\+40 kg/ })).toBeVisible();
 
   // habit detail > PROGRESO
-  await page.goto(`/habitos/b0000000-0000-0000-0000-00000000000a`);
+  await page.goto(`/habitos/${readId}`);
   await expect(page.getByText("Progreso", { exact: true })).toBeVisible();
   await expect(page.getByText("40 de 412")).toBeVisible();
-  await page.goto(`/habitos/b0000000-0000-0000-0000-0000000000a2`);
+  await page.goto(`/habitos/${gymId}`);
   await expect(page.getByText("Progreso", { exact: true })).toBeVisible();
   await expect(page.getByRole("link", { name: /Sentadilla.*Mejor 80 kg/ })).toBeVisible();
 
   // unknown group / foreign exercise -> 404
-  const bad = await page.goto("/resumen/gimnasio/cardio");
-  expect(bad?.status()).toBe(404);
-  const foreignRes = await page.goto(`/resumen/ejercicio/${foreign!.id}`);
-  expect(foreignRes?.status()).toBe(404);
+  await expectNotFound(page, "/resumen/gimnasio/cardio");
+  await expectNotFound(page, `/resumen/ejercicio/${foreign!.id}`);
 
   // edit today's workout from the calendar link: Extensión 30 -> 32,5, saved, and the leg group
-  // progress (+40 kg) does not change. The owner's seed is put back in `finally`, through the
-  // database, so a failure halfway can never leave the demo data changed.
-  const editUrl = `/habitos/b0000000-0000-0000-0000-0000000000a2/entrenamiento?fecha=${today}`;
+  // progress (+40 kg) does not change
+  const editUrl = `/habitos/${gymId}/entrenamiento?fecha=${today}`;
   const extension = "Extensión de cuádriceps";
-  try {
-    await page.goto(editUrl);
-    const field = page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`);
-    await expect(field).toHaveValue("30");
-    await field.fill("32,5");
-    await page.getByRole("button", { name: "Guardar" }).click();
-    await expect(page.getByText("Entrenamiento guardado")).toBeVisible();
-    await expect(page).not.toHaveURL(/entrenamiento/, { timeout: 5_000 });
-    await page.goto(editUrl);
-    await expect(page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`)).toHaveValue("32,5");
-    await page.goto("/resumen");
-    await expect(page.getByRole("link", { name: /^Pierna \+40 kg\./ })).toBeVisible();
-  } finally {
-    const db = admin();
-    const { data: session } = await db
-      .from("workout_sessions")
-      .select("id")
-      .eq("habit_id", "b0000000-0000-0000-0000-0000000000a2")
-      .eq("local_date", today)
-      .maybeSingle();
-    const { data: ex } = await db.from("exercises").select("id").is("user_id", null).eq("name", extension).maybeSingle();
-    if (session && ex) {
-      const { error } = await db
-        .from("workout_sets")
-        .update({ weight_kg: 30 })
-        .eq("session_id", session.id)
-        .eq("exercise_id", ex.id);
-      expect(error).toBeNull();
-    }
-  }
+  await page.goto(editUrl);
+  const field = page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`);
+  await expect(field).toHaveValue("30");
+  await field.fill("32,5");
+  await page.getByRole("button", { name: "Guardar" }).click();
+  await expect(page.getByText("Entrenamiento guardado")).toBeVisible();
+  await expect(page).not.toHaveURL(/entrenamiento/, { timeout: 5_000 });
+  await page.goto(editUrl);
+  await expect(page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`)).toHaveValue("32,5");
+  await page.goto("/resumen");
+  await expect(page.getByRole("link", { name: /^Pierna \+40 kg\./ })).toBeVisible();
 
   await page.setViewportSize({ width: 375, height: 812 });
   for (const path of [
@@ -156,8 +211,8 @@ test("user_a sees REGISTROS, the drill-downs, the calendar log and PROGRESO with
     "/resumen/gimnasio",
     "/resumen/gimnasio/legs",
     exercisePath,
-    "/habitos/b0000000-0000-0000-0000-00000000000a",
-    "/habitos/b0000000-0000-0000-0000-0000000000a2",
+    `/habitos/${readId}`,
+    `/habitos/${gymId}`,
   ]) {
     await noHorizontalScroll(page, path);
   }
@@ -244,8 +299,10 @@ test("Hoy: undoing a check-in with a log asks first and names the log (even afte
 
   // done reading habit without a log: "Añadir registro" opens the reading sheet
   await page.getByRole("button", { name: "Añadir registro" }).click();
-  await expect(page.getByRole("dialog", { name: "Añadir lectura" })).toBeVisible();
-  await page.keyboard.press("Escape");
+  const addReading = page.getByRole("dialog", { name: "Añadir lectura" });
+  await expect(addReading).toBeVisible();
+  await addReading.getByRole("button", { name: "Cerrar" }).click();
+  await expect(addReading).toHaveCount(0);
 
   const box = page.getByRole("checkbox", { name: "Pesas" });
   await expect(box).toHaveAttribute("aria-checked", "true");

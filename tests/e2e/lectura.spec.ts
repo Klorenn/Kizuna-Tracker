@@ -34,7 +34,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await page.getByRole("button", { name: "Leer", exact: true }).click();
   await expect(page.getByRole("radio", { name: "Lectura" })).toHaveAttribute("aria-checked", "true");
   await page.getByRole("button", { name: "Comer bien", exact: true }).click();
-  await expect(page.getByRole("radiogroup", { name: "Registro detallado" })).toHaveCount(0);
+  // a habit with steps allows no detailed log: the options stay in view, disabled, with the reason
+  await expect(page.getByRole("radio", { name: "Lectura" })).toBeDisabled();
+  await expect(page.getByText("Un hábito con pasos no lleva registro detallado.")).toBeVisible();
   await page.getByRole("button", { name: "Otro", exact: true }).click();
   await page.getByRole("radiogroup", { name: "Registro detallado" }).scrollIntoViewIfNeeded();
   await shot(page, "01-habit-form");
@@ -45,7 +47,7 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   const sheet = dialog(page, "¿Qué leíste hoy?");
   await expect(sheet).toBeVisible();
   await sheet.getByLabel("Título").fill("Dune");
-  await sheet.getByLabel("Páginas del libro (opcional)").fill("412");
+  await sheet.getByLabel("Páginas totales (opcional)").fill("412");
   await sheet.getByRole("button", { name: "Agregar libro" }).click();
   await expect(sheet.getByRole("button", { name: "Dune" })).toHaveAttribute("aria-pressed", "true");
   await sheet.getByLabel("Desde").fill("14");
@@ -66,7 +68,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await expect(rest).toBeVisible();
   await shot(page, "04-rest-done");
   await rest.getByRole("button", { name: "Listo" }).click();
+  // Estudiar is a time habit now: "Hecho" opens "¿Cuánto rato?" and "Solo marcar" checks in without time
   await page.getByRole("checkbox", { name: "Estudiar" }).click();
+  await dialog(page, "¿Cuánto rato?").getByRole("button", { name: "Solo marcar" }).click();
   const study = dialog(page, "Estudio registrado");
   await expect(study).toBeVisible();
   await shot(page, "05-study-done");
@@ -82,7 +86,8 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await expect(sheet).toBeVisible();
   await sheet.getByLabel("Desde").fill("40");
   await sheet.getByLabel("Hasta").fill("412");
-  await sheet.getByText("Terminé este libro").click();
+  // reaching the last page ticks "Terminé este libro" by itself
+  await expect(sheet.getByRole("checkbox", { name: "Terminé este libro" })).toBeChecked();
   await sheet.getByRole("button", { name: "Guardar" }).click();
   const book = dialog(page, "Terminaste Dune");
   await expect(book).toBeVisible();
@@ -90,7 +95,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await book.getByRole("button", { name: "Listo" }).click();
 
   // last habit → only "Día completo", then the quiet end-of-day state
-  await page.getByRole("checkbox", { name: "Agua" }).click();
+  // Agua is a quantity habit: eight glasses meet the goal, and the goal completes the day
+  const glass = page.getByRole("button", { name: "Sumar 1 vaso" });
+  for (let i = 0; i < 8; i++) await glass.click();
   const day = dialog(page, "Día completo");
   await expect(day).toBeVisible();
   await day.getByRole("button", { name: "Listo" }).click();

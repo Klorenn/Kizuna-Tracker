@@ -65,7 +65,7 @@ describe('checkInWithCardio', () => {
     ])
   })
 
-  it('Omitir only checks in', async () => {
+  it('Solo marcar only checks in', async () => {
     rpc.mockResolvedValue({ data: [{ checkin_id: 'c1', created: false }], error: null })
     expect(await checkInWithCardio('h1', null)).toEqual({ ok: true, checkinId: 'c1', created: false })
     expect(rpc).toHaveBeenCalledTimes(1)

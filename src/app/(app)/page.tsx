@@ -5,9 +5,11 @@ import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import { CatPreload } from "@/components/brand/CatPreload";
+import { loadPickerMedia } from "@/app/(app)/series/media-data";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { PomodoroBannerLazy } from "@/components/PomodoroBannerLazy";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -38,10 +40,13 @@ export default async function Home() {
   const now = new Date();
   const today = localDate(now, profile.timezone);
 
-  const [habits, items, checkins, itemChecks, todayCheckins, todayLogs] = await Promise.all([
+  // titles for the watch sheet ride in the same batch: knowing whether a watch habit exists would cost a hop
+  const [habits, items, checkins, itemChecks, todayCheckins, todayLogs, media] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset,log_type")
+      .select(
+        "id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+      )
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
@@ -69,6 +74,7 @@ export default async function Home() {
       .eq("local_date", today),
     supabase.from("checkins").select("id,habit_id").eq("user_id", user.id).eq("local_date", today),
     loadTodayLogs(supabase, user.id, today),
+    loadPickerMedia(supabase, user.id),
   ]);
 
   const view = buildToday({
@@ -77,6 +83,7 @@ export default async function Home() {
     checkins,
     itemChecks: itemChecks.data ?? [],
     logs: todayLogs.logs,
+    quantity: todayLogs.quantity,
     today,
     timeZone: profile.timezone,
   });
@@ -101,6 +108,11 @@ export default async function Home() {
         <NotificationBell />
       </div>
       <InstallPrompt />
+      <PomodoroBannerLazy
+        userId={user.id}
+        timeZone={profile.timezone}
+        habits={view.rows.filter((r) => r.logType === "time").map((r) => ({ id: r.id, name: r.name }))}
+      />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
       {view.total === 0 ? (
         <>
@@ -149,7 +161,11 @@ export default async function Home() {
                 <HabitRow
                   key={row.id}
                   row={row}
+                  today={today}
+                  timeZone={profile.timezone}
+                  checkinId={checkinByHabit.get(row.id) ?? null}
                   reading={row.logType === "reading" ? readingFor(row.id) : undefined}
+                  media={row.logType === "watch" ? media : undefined}
                 />
               ))}
             </div>

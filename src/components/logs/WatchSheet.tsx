@@ -8,7 +8,7 @@
  * - `onClose`: called by the close button, the backdrop and after a successful save, skip or delete.
  *   The close button never checks anything.
  * - `mode`: `{ kind: "checkin"; habitId }` on Hoy ("Guardar" checks the habit in and saves what you
- *   watched; "Omitir" only checks it in) or `{ kind: "edit"; checkinId; entry }` for any day that
+ *   watched; "Solo marcar" only checks it in) or `{ kind: "edit"; checkinId; entry }` for any day that
  *   has a check-in (add, edit or delete the entry; never touches the check-in).
  * - `media`: the titles you are watching (`loadPickerMedia` in `app/(app)/series/media-data.ts`).
  * - `onSaved?`: edit mode and check-in mode, after a save or delete, with the toast message.
@@ -39,7 +39,7 @@ export type WatchEntryValues = {
 };
 
 export type WatchSheetMode =
-  /** Hoy: "Guardar" checks the habit in and saves the entry; "Omitir" only checks it in. */
+  /** Hoy: "Guardar" checks the habit in and saves the entry; "Solo marcar" only checks it in. */
   | { kind: "checkin"; habitId: string }
   /** Any day with a check-in: add, edit or delete its entry. Never touches the check-in. */
   | { kind: "edit"; checkinId: string; entry: WatchEntryValues | null };
@@ -76,7 +76,7 @@ export function WatchSheet({
 /**
  * Title chips, then by kind: episodes (stepper), season, "hasta el ep." and minutes, with
  * "Terminé la serie"; or "La vi completa" with the runtime, or the minutes watched. Check-in mode:
- * Guardar / Omitir. Edit mode: Guardar / Borrar registro.
+ * Guardar / Solo marcar. Edit mode: Guardar / Borrar registro.
  */
 export function WatchForm({
   mode,
@@ -310,7 +310,7 @@ export function WatchForm({
       </Button>
       {mode.kind === "checkin" ? (
         <Button variant="secondary" onClick={skip} disabled={pending}>
-          Omitir
+          Solo marcar
         </Button>
       ) : existing ? (
         confirmDelete ? (
