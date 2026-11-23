@@ -1,6 +1,7 @@
 import { localDate } from '@/domain/dates'
 import { evaluatePeriod, isPeriodClosable, periodsFor, type Period } from '@/domain/challenges'
 import type { Frequency, LocalDate } from '@/domain/types'
+import { closeDueGroupWeeks, isMissingFunction, type GroupsClient } from '@/lib/groups-rpc'
 
 export type ActiveChallenge = {
   id: string
@@ -161,4 +162,34 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     await repo.finishChallenge(c.id)
   }
   return { closed, debtsCreated }
+}
+
+/** What the group half of the close-periods cron did. Never thrown: a group failure must not touch the challenge half. */
+export type GroupWeeksOutcome = { closed: number } | { skipped: 'not_installed' } | { error: 'failed' }
+
+/**
+ * Closes every due group week through `close_due_group_weeks` (service role, idempotent). Before migration 0023 is in
+ * a database the function does not exist: that is logged as a warning and reported as `not_installed`, not as a failure.
+ * Any other failure (an error answer, a thrown call, an answer that is not a number) is logged and reported as `failed`.
+ */
+export async function closeGroupWeeks(client: GroupsClient): Promise<GroupWeeksOutcome> {
+  try {
+    const { data, error } = await closeDueGroupWeeks(client)
+    if (error) {
+      if (isMissingFunction(error)) {
+        console.warn('close-periods: close_due_group_weeks is not installed yet; skipping group weeks')
+        return { skipped: 'not_installed' }
+      }
+      console.error('close-periods: closing group weeks failed', error.code ?? 'unknown')
+      return { error: 'failed' }
+    }
+    if (typeof data !== 'number' || !Number.isFinite(data)) {
+      console.error('close-periods: close_due_group_weeks returned an unexpected answer')
+      return { error: 'failed' }
+    }
+    return { closed: data }
+  } catch (e) {
+    console.error('close-periods: closing group weeks threw', e instanceof Error ? e.name : 'unknown')
+    return { error: 'failed' }
+  }
 }
