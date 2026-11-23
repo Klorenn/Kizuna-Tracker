@@ -9,6 +9,13 @@ import {
   parseTheme,
   themeColorFor,
   themeCookieOptions,
+  COLORS,
+  COLOR_COOKIE,
+  COLOR_LABEL,
+  COLOR_NAME,
+  colorCookieOptions,
+  nextColor,
+  parseColor,
 } from '@/lib/theme'
 
 describe('theme preference', () => {
@@ -58,5 +65,62 @@ describe('theme preference', () => {
       secure: false,
     })
     expect(themeCookieOptions(true).secure).toBe(true)
+  })
+})
+
+describe('color preference', () => {
+  it('offers the seven colors, Índigo first, stored in the "color" cookie', () => {
+    expect(COLORS).toEqual(['indigo', 'sakura', 'matcha', 'yuzu', 'umi', 'ume', 'sumi'])
+    expect(COLOR_COOKIE).toBe('color')
+  })
+
+  it('has a short label and an accessible name per color', () => {
+    expect(COLOR_LABEL).toEqual({
+      indigo: 'Índigo',
+      sakura: 'Sakura',
+      matcha: 'Matcha',
+      yuzu: 'Yuzu',
+      umi: 'Umi',
+      ume: 'Ume',
+      sumi: 'Sumi',
+    })
+    expect(COLOR_NAME).toEqual({
+      indigo: 'Índigo',
+      sakura: 'Sakura, rosa',
+      matcha: 'Matcha, verde',
+      yuzu: 'Yuzu, ámbar',
+      umi: 'Umi, turquesa',
+      ume: 'Ume, ciruela',
+      sumi: 'Sumi, grafito',
+    })
+  })
+
+  it('parses the cookie strictly and defaults to indigo', () => {
+    for (const c of COLORS) expect(parseColor(c)).toBe(c)
+    for (const bad of ['SAKURA', 'Sakura', 'rojo', '', ' sakura', 'sakura; path=/', undefined, null]) {
+      expect(parseColor(bad)).toBe('indigo')
+    }
+  })
+
+  it('uses the same cookie options as the theme cookie', () => {
+    expect(colorCookieOptions(false)).toEqual(themeCookieOptions(false))
+    expect(colorCookieOptions(true)).toEqual({
+      path: '/',
+      maxAge: 60 * 60 * 24 * 365,
+      sameSite: 'lax',
+      httpOnly: true,
+      secure: true,
+    })
+  })
+
+  it('arrow keys move the selection and wrap around; other keys do nothing', () => {
+    expect(nextColor('indigo', 'ArrowRight')).toBe('sakura')
+    expect(nextColor('indigo', 'ArrowDown')).toBe('sakura')
+    expect(nextColor('sumi', 'ArrowRight')).toBe('indigo')
+    expect(nextColor('indigo', 'ArrowLeft')).toBe('sumi')
+    expect(nextColor('yuzu', 'ArrowUp')).toBe('matcha')
+    expect(nextColor('yuzu', 'Home')).toBe('indigo')
+    expect(nextColor('yuzu', 'End')).toBe('sumi')
+    expect(nextColor('yuzu', 'a')).toBeNull()
   })
 })

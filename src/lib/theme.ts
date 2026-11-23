@@ -47,3 +47,52 @@ export function themeCookieOptions(production: boolean) {
     secure: production,
   }
 }
+
+/**
+ * Color preference (Ajustes > Preferencias > Color): the second setting next to the theme. It only
+ * swaps the accent family (see tokens.css) and lives in its own httpOnly cookie, read on the server
+ * like the theme, so <html data-color> is right on the first paint. Per device, no account needed.
+ */
+export const COLORS = ['indigo', 'sakura', 'matcha', 'yuzu', 'umi', 'ume', 'sumi'] as const
+export type Color = (typeof COLORS)[number]
+
+export const COLOR_COOKIE = 'color'
+
+/** Short name, shown as text next to the swatches. */
+export const COLOR_LABEL: Readonly<Record<Color, string>> = {
+  indigo: 'Índigo',
+  sakura: 'Sakura',
+  matcha: 'Matcha',
+  yuzu: 'Yuzu',
+  umi: 'Umi',
+  ume: 'Ume',
+  sumi: 'Sumi',
+}
+
+/** Accessible name of each swatch: the name plus what the colour is, for people who cannot see it. */
+export const COLOR_NAME: Readonly<Record<Color, string>> = {
+  indigo: 'Índigo',
+  sakura: 'Sakura, rosa',
+  matcha: 'Matcha, verde',
+  yuzu: 'Yuzu, ámbar',
+  umi: 'Umi, turquesa',
+  ume: 'Ume, ciruela',
+  sumi: 'Sumi, grafito',
+}
+
+export function parseColor(raw: string | undefined | null): Color {
+  return (COLORS as readonly string[]).includes(raw ?? '') ? (raw as Color) : 'indigo'
+}
+
+/** Same options as the theme cookie: one year, site-wide, lax, httpOnly, secure in production. */
+export const colorCookieOptions = themeCookieOptions
+
+/** Radio-group keyboard model: arrows move (and wrap), Home/End jump. Null for any other key. */
+export function nextColor(current: Color, key: string): Color | null {
+  const i = COLORS.indexOf(current)
+  if (key === 'ArrowRight' || key === 'ArrowDown') return COLORS[(i + 1) % COLORS.length]
+  if (key === 'ArrowLeft' || key === 'ArrowUp') return COLORS[(i - 1 + COLORS.length) % COLORS.length]
+  if (key === 'Home') return COLORS[0]
+  if (key === 'End') return COLORS[COLORS.length - 1]
+  return null
+}

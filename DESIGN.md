@@ -19,6 +19,25 @@ Radius: sm 5px, md 10px (default), lg 15px (cards), full 9999px. Spacing unit 4p
 Shadow (single effect): `0 1px 2px rgba(0,0,0,.06),0 4px 12px rgba(0,0,0,.04)`.
 Borders: buttons, cards, chips 1px solid #E6E6E6; inputs 1px solid #8D8D8D.
 
+## Color themes
+Colour is a second setting next to Sistema / Claro / Oscuro (Ajustes › Preferencias › Color): `<html data-color>`, from the httpOnly cookie `color`, per device. Seven colours: **Índigo** (default, the accent above, unchanged), Sakura (rosa), Matcha (verde), Yuzu (ámbar), Umi (turquesa), Ume (ciruela), Sumi (grafito).
+
+A colour changes ONLY the accent family: accent, accent-hover, accent2, accent2-hover, accent-soft and heat-1…4. Neutrals, alert red, habit colours, cream, shadows and `theme-color` never change. The mascot keeps indigo (tokens `--color-cat`, `--color-cat2`), the seal stays shu, and icons, Open Graph images and the manifest are untouched.
+
+Accent, light / dark (accent-soft in light / dark). Contrast and distance rules are enforced by `tests/unit/theme-tokens.test.ts`: accent ≥ 4.5:1 on surface, paper and accent-soft; on-accent ≥ 4.5:1 on accent and hover; any two accents ≥ 6 apart and ≥ 10 from alert (OKLab ×100).
+
+| Colour | Accent light | Accent dark | Soft light | Soft dark |
+|---|---|---|---|---|
+| Índigo | #5A5AC2 | #8C8CF0 | #EFEFF9 | #222238 |
+| Sakura | #B93F78 | #F08DB5 | #FBEEF3 | #38222C |
+| Matcha | #3A7A4B | #7CC792 | #EDF5EF | #1F3024 |
+| Yuzu | #9A6200 | #E3B04B | #FAF1E0 | #352B18 |
+| Umi | #0E7785 | #5CC4D1 | #E9F5F6 | #183034 |
+| Ume | #8B3F86 | #D08BCB | #F7EEF6 | #332232 |
+| Sumi | #3D3D45 | #C9C9D1 | #EFEFF1 | #2A2A2F |
+
+Source of truth is `src/styles/tokens.css`: each colour writes its values once per mode as `--pal-*` / `--pal-dark-*` on `[data-color="x"]`; three shared rules map them onto the tokens. Any element with `data-color="x"` scopes the accent to that colour (the swatches use it, no hex in components). The selected swatch is marked by a check and an ink ring, never colour alone.
+
 ## Typography
 - Inter for headings, body and section labels; Geist Mono for numbers, @usuario and chips. Max two families.
 - Headlines weight 600, tracking -0.02em (32px md on mobile). Body 15px/1.5, small 13px/1.45.

@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs'
 import { join } from 'node:path'
 import { describe, expect, it } from 'vitest'
 import { HABIT_COLORS } from '@/domain/habit-colors'
+import { COLORS } from '@/lib/theme'
 
 const tokens = readFileSync(join(process.cwd(), 'src/styles/tokens.css'), 'utf8')
 const globals = readFileSync(join(process.cwd(), 'src/app/globals.css'), 'utf8')
@@ -184,5 +185,193 @@ describe('habit palette tokens', () => {
     expect(variant).toContain('[data-theme="dark"]')
     expect(variant).toContain('@media (prefers-color-scheme: dark)')
     expect(variant).toContain('[data-theme="system"]')
+  })
+})
+
+// ---------- Color themes (Task 33) ----------
+// Each colour writes its values once per mode as palette variables (--pal-* light, --pal-dark-* dark)
+// on [data-color="x"]; three generic rules (light, explicit dark, system dark) map them onto the
+// accent family for <html data-color> and for any element that carries data-color (the swatches).
+const FAMILY = [
+  'accent',
+  'accent-hover',
+  'accent2',
+  'accent2-hover',
+  'accent-soft',
+  'heat-1',
+  'heat-2',
+  'heat-3',
+  'heat-4',
+] as const
+const LIGHT_RULE = ':root[data-color], :root [data-color]'
+const DARK_RULE = ':root[data-theme="dark"][data-color], :root[data-theme="dark"] [data-color]'
+const SYSTEM_RULE = ':root[data-theme="system"][data-color], :root[data-theme="system"] [data-color]'
+
+type Mode = 'light' | 'dark'
+const palette = (c: string) => decls(body(tokens, `[data-color="${c}"]`))
+const modeRule = {
+  light: decls(body(tokens, LIGHT_RULE)),
+  dark: decls(body(tokens, DARK_RULE)),
+  system: decls(body(media, SYSTEM_RULE)),
+}
+
+/** Effective tokens for a colour: the base theme overlaid with the generic rule, palette vars resolved. */
+function resolved(c: string, mode: Mode): Record<string, string> {
+  const pal = palette(c)
+  const out = { ...(mode === 'light' ? light : dark) }
+  for (const [k, v] of Object.entries(modeRule[mode])) {
+    const ref = v.match(/^var\((--[\w-]+)\)$/)
+    out[k] = ref ? pal[ref[1]] : v
+  }
+  return out
+}
+
+// today's indigo, literally (the default must render pixel-identical to before the colour setting)
+const INDIGO_TODAY = {
+  light: {
+    '--color-accent': '#5a5ac2',
+    '--color-accent-hover': '#4c4ca5',
+    '--color-accent2': '#2e3a5e',
+    '--color-accent2-hover': '#273150',
+    '--color-accent-soft': '#efeff9',
+    '--color-heat-1': '#8080d0',
+    '--color-heat-2': '#6363c0',
+    '--color-heat-3': '#4c4cab',
+    '--color-heat-4': '#38388a',
+  },
+  dark: {
+    '--color-accent': '#8c8cf0',
+    '--color-accent-hover': '#a3a3f5',
+    '--color-accent2': '#9ba6d9',
+    '--color-accent2-hover': '#b3bce3',
+    '--color-accent-soft': '#222238',
+    '--color-heat-1': '#6666ab',
+    '--color-heat-2': '#7b7bd2',
+    '--color-heat-3': '#9d9df3',
+    '--color-heat-4': '#cdcdfa',
+  },
+} as const
+
+const modes: Mode[] = ['light', 'dark']
+const colorModes = COLORS.flatMap((c) => modes.map((m) => [c, m] as const))
+
+describe('color theme tokens', () => {
+  it('maps exactly the accent family in every mode rule and nothing else', () => {
+    const family = FAMILY.map((k) => `--color-${k}`).sort()
+    for (const rule of [modeRule.light, modeRule.dark, modeRule.system]) {
+      expect(Object.keys(rule).sort()).toEqual(family)
+    }
+    for (const k of FAMILY) {
+      expect(modeRule.light[`--color-${k}`]).toBe(`var(--pal-${k})`)
+      expect(modeRule.dark[`--color-${k}`]).toBe(`var(--pal-dark-${k})`)
+    }
+  })
+
+  it('the system-dark rule is identical to the explicit dark rule', () => {
+    expect(modeRule.system).toEqual(modeRule.dark)
+  })
+
+  it.each(COLORS)('%s defines every palette variable, light and dark, as #rrggbb', (c) => {
+    const pal = palette(c)
+    const want = FAMILY.flatMap((k) => [`--pal-${k}`, `--pal-dark-${k}`]).sort()
+    expect(Object.keys(pal).sort()).toEqual(want)
+    for (const v of Object.values(pal)) expect(v).toMatch(/^#[0-9a-f]{6}$/)
+  })
+
+  it('every accent-family token is defined in light, explicit dark and system dark for every colour', () => {
+    for (const c of COLORS) {
+      for (const mode of modes) {
+        const t = resolved(c, mode)
+        for (const k of FAMILY) expect(t[`--color-${k}`], `${c} ${mode} ${k}`).toMatch(/^#[0-9a-f]{6}$/)
+      }
+    }
+  })
+
+  it('indigo equals today exactly in light and dark', () => {
+    for (const mode of modes) {
+      const t = resolved('indigo', mode)
+      for (const [k, v] of Object.entries(INDIGO_TODAY[mode])) expect(t[k], `${mode} ${k}`).toBe(v)
+    }
+    // and the base tokens (what renders with no data-color at all) are untouched
+    for (const [k, v] of Object.entries(INDIGO_TODAY.light)) expect(light[k]).toBe(v)
+    for (const [k, v] of Object.entries(INDIGO_TODAY.dark)) expect(darkExplicit[k]).toBe(v)
+  })
+
+  it('only the accent family changes between colours (neutrals, alert, habits, cream stay)', () => {
+    const accentKeys = new Set(FAMILY.map((k) => `--color-${k}`))
+    for (const [c, mode] of colorModes) {
+      const base = resolved('indigo', mode)
+      const t = resolved(c, mode)
+      for (const k of Object.keys(base)) {
+        if (!accentKeys.has(k)) expect(t[k], `${c} ${mode} ${k}`).toBe(base[k])
+      }
+    }
+  })
+
+  it.each(colorModes)('%s %s meets the accent contrast rules', (c, mode) => {
+    const t = resolved(c, mode)
+    const ratio = (a: string, b: string) => contrast(t[a], t[b])
+    expect(ratio('--color-accent', '--color-surface')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio('--color-accent', '--color-paper')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio('--color-accent', '--color-field')).toBeGreaterThanOrEqual(3)
+    expect(ratio('--color-accent', '--color-accent-soft')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio('--color-on-accent', '--color-accent')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio('--color-on-accent', '--color-accent-hover')).toBeGreaterThanOrEqual(4.5)
+    expect(ratio('--color-accent2', '--color-paper')).toBeGreaterThanOrEqual(3)
+    expect(ratio('--color-accent2-hover', '--color-paper')).toBeGreaterThanOrEqual(3)
+  })
+
+  it.each(colorModes)('%s %s hover steps one tone away from the accent in the right direction', (c, mode) => {
+    const t = resolved(c, mode)
+    const [accent, hover] = [luminance(t['--color-accent']), luminance(t['--color-accent-hover'])]
+    if (mode === 'light') expect(hover).toBeLessThan(accent) // darker
+    else expect(hover).toBeGreaterThan(accent) // lighter
+  })
+
+  it.each(colorModes)('%s %s heatmap steps follow the heatmap rules', (c, mode) => {
+    const t = resolved(c, mode)
+    const empty = t['--color-heat-0']
+    const steps = [1, 2, 3, 4].map((i) => t[`--color-heat-${i}`])
+    for (const s of steps) expect(contrast(s, empty)).toBeGreaterThanOrEqual(3)
+    for (let i = 1; i < steps.length; i++) expect(contrast(steps[i], steps[i - 1])).toBeGreaterThanOrEqual(1.3)
+  })
+
+  it.each(modes)('%s: no two colour accents are alike, and none looks like the alert red', (mode) => {
+    const accents = COLORS.map((c) => [c, resolved(c, mode)['--color-accent']] as const)
+    const alert = resolved('indigo', mode)['--color-alert']
+    for (const [a, hex] of accents) {
+      expect(distance(hex, alert), `${a} vs alert`).toBeGreaterThanOrEqual(10)
+      for (const [b, other] of accents) {
+        if (a < b) expect(distance(hex, other), `${a}/${b}`).toBeGreaterThanOrEqual(6)
+      }
+    }
+  })
+
+  it('the mascot keeps indigo: cat tokens equal the indigo accent and accent2, in both modes, and no colour touches them', () => {
+    expect(light['--color-cat']).toBe(INDIGO_TODAY.light['--color-accent'])
+    expect(light['--color-cat2']).toBe(INDIGO_TODAY.light['--color-accent2'])
+    expect(darkExplicit['--color-cat']).toBe(INDIGO_TODAY.dark['--color-accent'])
+    expect(darkExplicit['--color-cat2']).toBe(INDIGO_TODAY.dark['--color-accent2'])
+    expect(darkSystem['--color-cat']).toBe(darkExplicit['--color-cat'])
+    expect(darkSystem['--color-cat2']).toBe(darkExplicit['--color-cat2'])
+    for (const rule of [modeRule.light, modeRule.dark, modeRule.system, ...COLORS.map(palette)]) {
+      expect(Object.keys(rule).filter((k) => k.includes('cat'))).toEqual([])
+    }
+  })
+
+  it('the cat is painted with the cat tokens, never the accent', () => {
+    const src = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
+    const paths = src('src/components/brand/cat-paths.tsx')
+    expect(paths).not.toMatch(/var\(--color-accent2?\)/)
+    expect(paths).toContain('var(--color-cat)')
+    expect(paths).toContain('var(--color-cat2)')
+    const anim = src('src/components/brand/CatAnimation.tsx')
+    expect(anim).not.toMatch(/\bbg-accent\b/)
+    expect(anim).toContain('--color-cat')
+    expect(tokens).toMatch(/--color-cat: var\(--color-accent\)/) // the documented one-line switch (in a comment)
+  })
+
+  it('globals.css and tokens.css carries no raw hex (colours live in tokens.css only)', () => {
+    expect(globals).not.toMatch(/#[0-9a-fA-F]{6}\b/)
   })
 })

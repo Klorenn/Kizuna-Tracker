@@ -1,7 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
-import { THEME_COOKIE, appleStatusBarStyle, parseTheme, themeColorFor } from "@/lib/theme";
+import { COLOR_COOKIE, THEME_COOKIE, appleStatusBarStyle, parseColor, parseTheme, themeColorFor } from "@/lib/theme";
 import { resolveSiteUrl } from "@/lib/site-metadata-url";
 import "./globals.css";
 
@@ -56,8 +56,9 @@ export default async function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   const theme = await currentTheme();
+  const color = parseColor((await cookies()).get(COLOR_COOKIE)?.value);
   return (
-    <html lang="es" data-theme={theme} className={`${inter.variable} ${geistMono.variable}`}>
+    <html lang="es" data-theme={theme} data-color={color} className={`${inter.variable} ${geistMono.variable}`}>
       <body className="antialiased">
         {children}
       </body>
