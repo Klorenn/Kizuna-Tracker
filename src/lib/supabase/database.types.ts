@@ -726,7 +726,7 @@ export type Database = {
           uses: number
         }
         Insert: {
-          code?: string
+          code: string
           created_at?: string
           created_by: string
           expires_at?: string
@@ -2188,6 +2188,8 @@ export type Database = {
         Returns: string
       }
       groups_next_monday: { Args: { p_date: string }; Returns: string }
+      groups_normalize_code: { Args: { p_code: string }; Returns: string }
+      groups_random_invite_code: { Args: never; Returns: string }
       groups_streak: { Args: { p_group_id: string }; Returns: number }
       groups_validate_commitment: {
         Args: {

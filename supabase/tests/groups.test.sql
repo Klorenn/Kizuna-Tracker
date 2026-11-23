@@ -194,7 +194,7 @@ select throws_ok(q, '28000', 'not_authenticated', 'C no session: ' || split_part
   $$ select * from public.group_wall(tests.u(1)) $$,
   $$ select * from public.group_history(tests.u(1)) $$,
   $$ select * from public.group_week_detail(tests.u(1), date '2026-11-02') $$]) q;
-select is(public.group_invite_preview('0123456789abcdef0123456789abcdef'), null, 'C16 the preview needs no session and answers null for an unknown code');
+select is(public.group_invite_preview('ZZZZZZZZ'), null, 'C16 the preview needs no session and answers null for an unknown code');
 
 -- ===================================================== D. create_group
 select tests.login(1);
@@ -305,7 +305,7 @@ select is((select row(next_commitment_name, next_target_per_week, next_requires_
 -- ===================================================== F. invitations and the preview
 select tests.login(1);
 insert into t_codes select 'code1', public.create_group_invite(tests.g('g1'));
-select matches((select code from t_codes where k = 'code1'), '^[0-9a-f]{32}$', 'F1 an invite code is 128 bits of URL-safe randomness');
+select matches((select code from t_codes where k = 'code1'), '^[2-9A-HJ-NP-Z]{8}$', 'F1 an invite code is 8 characters of the short alphabet');
 reset role;
 select is((select max_uses from public.group_invites where code = (select code from t_codes where k = 'code1')), 46,
   'F2 max_uses is the number of free seats when the invite was created (50 - 4 members)');
@@ -325,7 +325,7 @@ select ok(public.group_invite_preview((select code from t_codes where k = 'code1
   'F7 the preview never contains a member name or username');
 select is(public.group_invite_preview('not-a-code'), null, 'F8 a malformed code answers null');
 select is(public.group_invite_preview(null), null, 'F9 a null code answers null');
-select is(public.group_invite_preview('ffffffffffffffffffffffffffffffff'), null, 'F10 an unknown code answers null');
+select is(public.group_invite_preview('ZZZZZZZZ'), null, 'F10 an unknown code answers null');
 reset role;
 update public.group_invites set expires_at = now() - interval '1 minute' where code = (select code from t_codes where k = 'code1');
 select is(public.group_invite_preview((select code from t_codes where k = 'code1')), null, 'F11 an expired code answers null');
@@ -337,7 +337,7 @@ select is((public.group_invite_preview((select code from t_codes where k = 'code
 -- join_group
 set local role authenticated;
 select tests.login(4);
-select throws_ok($$ select public.join_group('ffffffffffffffffffffffffffffffff', tests.h(4, 1)) $$, 'P0001', 'invite_not_found', 'F14 an unknown code is invite_not_found');
+select throws_ok($$ select public.join_group('ZZZZZZZZ', tests.h(4, 1)) $$, 'P0001', 'invite_not_found', 'F14 an unknown code is invite_not_found');
 select throws_ok($$ select public.join_group(null, tests.h(4, 1)) $$, 'P0001', 'invite_not_found', 'F15 a null code is invite_not_found');
 reset role;
 update public.group_invites set expires_at = now() - interval '1 minute' where code = (select code from t_codes where k = 'code1');
@@ -409,11 +409,11 @@ select lives_ok(format($$ select public.join_group(%L, tests.h(70, 1)) $$, (sele
 reset role;
 select is((select count(*)::int from public.group_members where group_id = 'd3600000-0000-0000-0000-000000000003' and left_at is null), 50, 'G3 the group has 50 active members');
 insert into public.group_invites (code, group_id, created_by, expires_at, max_uses) values
-  ('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', 'd3600000-0000-0000-0000-000000000003', tests.u(21), now() + interval '7 days', 5);
-select is((public.group_invite_preview('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa') ->> 'full')::boolean, true, 'G4 the preview reports a full group');
+  ('AAAAAAAA', 'd3600000-0000-0000-0000-000000000003', tests.u(21), now() + interval '7 days', 5);
+select is((public.group_invite_preview('AAAAAAAA') ->> 'full')::boolean, true, 'G4 the preview reports a full group');
 set local role authenticated;
 select tests.login(71);
-select throws_ok($$ select public.join_group('aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa', tests.h(71, 1)) $$, 'P0001', 'group_full', 'G5 the 51st member is refused');
+select throws_ok($$ select public.join_group('AAAAAAAA', tests.h(71, 1)) $$, 'P0001', 'group_full', 'G5 the 51st member is refused');
 select tests.login(21);
 select throws_ok($$ select public.create_group_invite('d3600000-0000-0000-0000-000000000003') $$, 'P0001', 'group_full', 'G6 a full group cannot make more invites');
 -- groups per person: user 20 is in 10 live groups
@@ -436,7 +436,7 @@ reset role;
 select is((select count(*)::int from public.group_invites where group_id = tests.g('g1')), 1, 'G16b and no row was made');
 -- four older invites made before lola's removal five days ago are stale: never reused
 insert into public.group_invites (code, group_id, created_by, expires_at, max_uses, created_at)
-select repeat('b', 31) || g::text, tests.g('g1'), tests.u(1), now() + interval '3 days', 10, now() - interval '10 days' from generate_series(1, 4) g;
+select repeat('B', 7) || (g + 1)::text, tests.g('g1'), tests.u(1), now() + interval '3 days', 10, now() - interval '10 days' from generate_series(1, 4) g;
 update public.group_invites set expires_at = now() - interval '1 second' where code = (select code from t_codes where k = 'code1');
 set local role authenticated;
 select tests.login(1);
@@ -452,7 +452,7 @@ select throws_ok($$ select public.revoke_group_invites(tests.g('g1')) $$, 'P0001
 select tests.login(1);
 select is(public.revoke_group_invites(tests.g('g1')), 5, 'G19 an admin revokes every active invite at once and gets how many');
 select is(public.revoke_group_invites(tests.g('g1')), 0, 'G19b revoking again revokes nothing');
-select is(public.group_invite_preview(repeat('b', 31) || '1'), null, 'G19c a revoked invite previews as null');
+select is(public.group_invite_preview('BBBBBBB2'), null, 'G19c a revoked invite previews as null');
 insert into t_codes select 'code1d', public.create_group_invite(tests.g('g1'));
 reset role;
 update public.group_invites set uses = max_uses where code = (select code from t_codes where k = 'code1d');
