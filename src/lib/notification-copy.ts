@@ -23,7 +23,7 @@ const str = (v: unknown): string | null => (typeof v === 'string' && v.trim() ? 
 /** A whole, positive amount of pesos as the app prints it ("$2.500"); anything else is not printed. */
 const money = (v: unknown): string | null => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? formatCLP(v) : null)
 
-const UUID =/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 
 /**
  * `/grupos/<id>` when the payload carries a real id, else the list: a payload is never trusted into a path. `section`

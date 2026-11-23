@@ -68,7 +68,7 @@ async function call<F extends keyof Fns>(
 }
 
 /** For the functions the generated types do not know yet. */
-async function callLoose<T>(
+export async function callLoose<T>(
   client: GroupsClient,
   fn: string,
   args?: Record<string, unknown>,

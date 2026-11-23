@@ -67,6 +67,9 @@ const FINE_COPY: Record<string, string> = {
   checkin_not_found: 'No encontramos ese registro.',
 }
 
+/** `own_checkin` raised by the undo reads differently from the same code raised by the rejection. */
+export const UNDO_OWN_CHECKIN_COPY = 'No puedes deshacer el rechazo de tu propia foto. Pídeselo a otro admin.'
+
 /** The codes of the fine RPCs. Kept apart from `GROUP_ERROR_CODES` (the core list); the core codes they also raise fall back to it. */
 export const FINE_ERROR_CODES = Object.keys(FINE_COPY)
 
