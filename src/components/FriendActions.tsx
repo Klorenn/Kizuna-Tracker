@@ -41,21 +41,19 @@ const START: Record<Person["relation"], RowState> = { none: "none", outgoing: "s
  * enviada", or accept / reject for a request they sent you (by person, since the list carries no
  * friendship ids). Each row keeps its own state, so appending the next page never resets it.
  */
-export function DiscoverPersonRow({ person, refresh = true }: { person: Person; refresh?: boolean }) {
+export function DiscoverPersonRow({ person }: { person: Person }) {
   const [state, setState] = useState<RowState>(START[person.relation]);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
-  const router = useRouter();
 
   function run(task: () => Promise<{ ok: true; next: RowState } | { ok: false; error: string }>) {
     start(async () => {
       setError(null);
       const r = await task();
       if (r.ok) {
+        // no client-side refresh: the server action already revalidates /amigos (Enviadas updates in
+        // that same response), so the page renders once per action; the row keeps its own state
         setState(r.next);
-        // Explorar passes refresh={false}: a re-render would drop the row (and an emptied list
-        // would replace the page) while the person is still looking at it
-        if (refresh) router.refresh();
       } else setError(r.error);
     });
   }

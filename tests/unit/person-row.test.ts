@@ -107,9 +107,13 @@ describe('PersonRow alone', () => {
   })
 })
 
-describe('Explorar rows', () => {
-  it('do not refresh the page after an action (the row must stay while the person looks at it)', () => {
+describe('rows do not refresh the page themselves', () => {
+  it('Explorar rows take no refresh flag and the discover row never calls router.refresh (the server action already revalidates: one render per action)', () => {
     const src = readFileSync(join(process.cwd(), 'src/app/(app)/amigos/explorar/ExploreList.tsx'), 'utf8')
-    expect(src).toContain('<DiscoverPersonRow person={p} refresh={false} />')
+    expect(src).toContain('<DiscoverPersonRow person={p} />')
+    const row = readFileSync(join(process.cwd(), 'src/components/FriendActions.tsx'), 'utf8')
+    const discover = row.slice(row.indexOf('export function DiscoverPersonRow'), row.indexOf('let action;'))
+    expect(discover).not.toContain('router.refresh')
+    expect(discover).not.toContain('useRouter')
   })
 })

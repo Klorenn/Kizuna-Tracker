@@ -66,7 +66,7 @@ export function ExploreList({
         <ul className="divide-y divide-line">
           {people.map((p) => (
             <li key={p.id}>
-              <DiscoverPersonRow person={p} refresh={false} />
+              <DiscoverPersonRow person={p} />
             </li>
           ))}
         </ul>
