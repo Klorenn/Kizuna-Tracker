@@ -14,6 +14,10 @@ test("public profile shows public habits only and never requests photos", async 
   await expect(page.getByText("Leer", { exact: true })).toBeVisible();
   await expect(page.getByText("Gimnasio")).toHaveCount(0);
   await expect(page.getByText("Las fotos de prueba nunca son públicas.")).toBeVisible();
+  // detailed logs and body weight are private: nothing of them reaches the public profile
+  await expect(page.getByText("Dune")).toHaveCount(0);
+  await expect(page.getByText(/páginas/i)).toHaveCount(0);
+  await expect(page.getByText(/71,9|Peso/)).toHaveCount(0);
   await page.waitForLoadState("networkidle");
   expect(proofRequests).toEqual([]);
 
