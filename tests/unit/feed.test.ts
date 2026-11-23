@@ -99,6 +99,36 @@ describe('milestones and streak context', () => {
   })
 })
 
+describe('streakContext with a bounded history window', () => {
+  const run = (end: string, n: number) =>
+    Array.from({ length: n }, (_, i) => {
+      const d = new Date(`${end}T00:00:00Z`)
+      d.setUTCDate(d.getUTCDate() - i)
+      return d.toISOString().slice(0, 10)
+    })
+  const at = '2026-11-22'
+  test('a streak that reaches the start of the window is shown with "+" and never as a milestone', () => {
+    // 100 loaded days from 2026-08-15: the real streak may be longer
+    const since = '2026-08-15'
+    expect(streakContext(run(at, 100), at, { type: 'daily' }, since)).toEqual({
+      text: 'Racha de 100+ días',
+      milestone: false,
+    })
+  })
+  test('a streak that ends inside the window is exact, milestone included', () => {
+    expect(streakContext(run(at, 100), at, { type: 'daily' }, '2026-06-01')).toEqual({
+      text: 'Racha de 100 días',
+      milestone: true,
+    })
+  })
+  test('weekly streaks that fill the window are capped too', () => {
+    const dates = run(at, 113) // every day from 2026-08-01
+    const out = streakContext(dates, at, { type: 'weekly', target: 1 }, '2026-08-01')
+    expect(out?.text).toMatch(/^Racha de \d+\+ semanas$/)
+    expect(out?.milestone).toBe(false)
+  })
+})
+
 describe('reviewStatus', () => {
   const me = 'me'
   const challenge = {

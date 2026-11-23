@@ -14,11 +14,13 @@ import { loadFeedPage } from "@/lib/activity-feed";
 import { avatarUrl } from "@/lib/avatar";
 import type { FeedPage } from "@/lib/feed";
 import { friendStatusText } from "@/lib/friend-view";
-import { friendStreaks } from "@/lib/friends-data";
+import { friendStreaks, type ListStreak } from "@/lib/friends-data";
 import { createServerClient } from "@/lib/supabase/server";
 import { searchUsers } from "./actions";
 
 export const metadata: Metadata = { title: "Amigos" };
+
+const EMPTY_FEED: FeedPage = { items: [], next: null };
 
 /** Avatar + name + @usuario that opens the profile; the 44 px row is the target. */
 function PersonLink({
@@ -92,8 +94,9 @@ export default async function AmigosPage({
 
   const [hits, feed, streaks, { data: people }] = await Promise.all([
     q.trim() ? searchUsers(q) : Promise.resolve([]),
-    loadFeedPage(supabase, user.id, { timezone: me.timezone }).catch((): FeedPage => ({ items: [], next: null })),
-    friendStreaks(supabase, friendIds, today).catch(() => new Map<string, { value: number; unit: "days" | "weeks" }>()),
+    loadFeedPage(supabase, user.id, { timezone: me.timezone }).catch((): null => null),
+    // on failure: no status line at all (never a false "Sin racha activa")
+    friendStreaks(supabase, friendIds, today).catch((): Map<string, ListStreak> => new Map()),
     rows.length
       ? supabase.from("public_profiles").select("id,username,display_name,avatar_path").in("id", rows.map(other))
       : Promise.resolve({ data: [] }),
@@ -109,7 +112,7 @@ export default async function AmigosPage({
         username: p?.username ?? "",
         name: p?.display_name ?? "Usuario",
         avatar: avatarUrl(p?.avatar_path ?? null),
-        status: friendStatusText(streaks.get(id) ?? { value: 0, unit: "days" }),
+        status: streaks.has(id) ? friendStatusText(streaks.get(id)!) : undefined,
       };
     })
     .filter((r) => r.username)
@@ -211,7 +214,8 @@ export default async function AmigosPage({
       <section aria-label="Actividad" className="flex flex-col gap-2">
         <SectionHeader label="Actividad" />
         <ActivityFeed
-          initial={feed}
+          initial={feed ?? EMPTY_FEED}
+          initialError={feed ? null : "No pudimos cargar la actividad."}
           today={today}
           empty={
             friends.length === 0

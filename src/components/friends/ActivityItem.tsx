@@ -96,7 +96,7 @@ export function ActivityItem({ entry, showPerson = true }: { entry: FeedEntry; s
               <span className="truncate">{entry.hasPhoto ? entry.habit.name : entry.copy}</span>
             </span>
           )}
-          <time className="ml-auto shrink-0 font-mono text-[12px] font-medium tracking-[0.04em] text-muted">
+          <time dateTime={entry.cursor.at} className="ml-auto shrink-0 font-mono text-[12px] font-medium tracking-[0.04em] text-muted">
             {entry.time}
           </time>
         </div>

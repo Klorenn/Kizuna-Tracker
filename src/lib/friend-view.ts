@@ -64,8 +64,8 @@ export function balanceCopy(balance: number, name: string): string | null {
 }
 
 /** Friends list status line. */
-export function friendStatusText(s: { value: number; unit: 'days' | 'weeks' }): string {
+export function friendStatusText(s: { value: number; unit: 'days' | 'weeks'; capped?: boolean }): string {
   if (s.value <= 0) return 'Sin racha activa'
   const unit = s.unit === 'weeks' ? (s.value === 1 ? 'semana' : 'semanas') : s.value === 1 ? 'día' : 'días'
-  return `Racha de ${s.value} ${unit}`
+  return `Racha de ${s.value}${s.capped ? '+' : ''} ${unit}`
 }

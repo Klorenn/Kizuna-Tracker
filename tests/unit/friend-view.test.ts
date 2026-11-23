@@ -67,5 +67,9 @@ describe('friendStatusText', () => {
     expect(friendStatusText({ value: 1, unit: 'days' })).toBe('Racha de 1 día')
     expect(friendStatusText({ value: 3, unit: 'weeks' })).toBe('Racha de 3 semanas')
   })
+  test('una racha que llena la ventana se muestra con "+"', () => {
+    expect(friendStatusText({ value: 120, unit: 'days', capped: true })).toBe('Racha de 120+ días')
+    expect(friendStatusText({ value: 16, unit: 'weeks', capped: true })).toBe('Racha de 16+ semanas')
+  })
   test('sin racha', () => expect(friendStatusText({ value: 0, unit: 'days' })).toBe('Sin racha activa'))
 })
