@@ -42,8 +42,9 @@ export async function loadFeedPage(
   q = owner ? q.eq("user_id", owner) : q.neq("user_id", me);
   if (filter === "photos") q = q.not("photo_path", "is", null);
   const conds: string[] = [];
-  // the general feed hides rejected photos, except the ones the viewer rejected
-  if (!owner) conds.push(`or(rejected_at.is.null,rejected_by.eq.${me})`);
+  // a rejected check-in is visible only to its owner and to whoever rejected it: every other
+  // viewer (feed and friend profile alike) gets non-rejected rows plus the ones they rejected
+  if (owner !== me) conds.push(`or(rejected_at.is.null,rejected_by.eq.${me})`);
   if (cursor) {
     // strictly after the cursor in (local_date, created_at, id) descending order
     const at = `"${cursor.at}"`;
@@ -156,7 +157,7 @@ export async function loadFeedPage(
       streak:
         r.rejected_at || !r.habits
           ? null
-          : streakContext(datesByHabit.get(r.habit_id) ?? [], r.local_date, challengeFrequency(r.habits)),
+          : streakContext(datesByHabit.get(r.habit_id) ?? [], r.local_date, challengeFrequency(r.habits), from),
       status: reviewStatus(r, me, challenges ?? [], now),
     };
   });
