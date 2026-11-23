@@ -5,13 +5,8 @@ type Grid = ReturnType<typeof activityGrid>;
 /** Rows are Monday to Sunday; only three are labeled to keep it quiet. */
 const WEEKDAYS = ["L", "", "", "J", "", "", "D"];
 
-const LEVEL = [
-  "bg-ink-soft",
-  "bg-accent/20",
-  "bg-accent/45",
-  "bg-accent/70",
-  "bg-accent",
-] as const;
+/** Empty + four steps; every filled step is >= 3:1 against empty in both themes (tokens.css). */
+const LEVEL = ["bg-heat-0", "bg-heat-1", "bg-heat-2", "bg-heat-3", "bg-heat-4"] as const;
 
 /**
  * Perfil "Actividad": every habit together over the last weeks, one square per day. Intensity is
@@ -37,7 +32,7 @@ export function ActivityHeatmap({ grid, today }: { grid: Grid; today: string }) 
         <div aria-hidden className="grid gap-[3px]" style={columns}>
           <span />
           {grid.monthLabels.map((m, i) => (
-            <span key={i} className="relative h-3.5 font-mono text-[11px] leading-[14px] text-muted">
+            <span key={i} className="relative h-4 font-mono text-label leading-[14px] text-muted">
               {m ? <span className="absolute left-0 whitespace-nowrap">{m}</span> : null}
             </span>
           ))}
@@ -45,7 +40,7 @@ export function ActivityHeatmap({ grid, today }: { grid: Grid; today: string }) 
         <div aria-hidden className="grid gap-[3px]" style={columns}>
           <div className="grid gap-[3px]">
             {WEEKDAYS.map((d, i) => (
-              <span key={i} className="flex items-center font-mono text-[11px] leading-none text-muted">
+              <span key={i} className="flex items-center font-mono text-label leading-none text-muted">
                 {d}
               </span>
             ))}
@@ -65,7 +60,7 @@ export function ActivityHeatmap({ grid, today }: { grid: Grid; today: string }) 
         </div>
       </div>
 
-      <div aria-hidden className="flex items-center justify-end gap-1.5 text-[11px] text-muted">
+      <div aria-hidden className="flex items-center justify-end gap-1.5 text-label text-muted">
         <span className="mr-0.5">Menos</span>
         {LEVEL.map((cls) => (
           <span key={cls} className={`size-2.5 rounded-[2px] ${cls}`} />

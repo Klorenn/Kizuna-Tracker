@@ -7,17 +7,38 @@ import { Button } from "@/components/ui/Button";
 import { ListRow, ListSection } from "@/components/ui/ListRow";
 import { Sheet } from "@/components/ui/Sheet";
 import { enablePush, isIosSafari, isStandalone } from "@/lib/push-client";
-import { PUSH_STATUS_COPY, pushStatus, type PushStatus } from "@/lib/push-status";
+import { ENABLE_PUSH_MESSAGE, PUSH_STATUS_COPY, pushStatus, type PushStatus } from "@/lib/push-status";
+import { createBrowserClient } from "@/lib/supabase/client";
 
-/** Reads this device's push facts. getRegistration (not `ready`) so it never waits on a missing worker. */
+/** The server has this endpoint stored for the signed-in user (RLS: own rows only). */
+async function isRegistered(endpoint: string): Promise<boolean> {
+  try {
+    const { data, error } = await createBrowserClient()
+      .from("push_subscriptions")
+      .select("endpoint")
+      .eq("endpoint", endpoint)
+      .maybeSingle();
+    return !error && !!data;
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Reads this device's push facts. getRegistration (not `ready`) so it never waits on a missing
+ * worker. "Activadas" needs the browser subscription AND the server row for that endpoint.
+ */
 async function readStatus(): Promise<{ status: PushStatus; standalone: boolean }> {
   const standalone = isStandalone();
   const hasPush = "serviceWorker" in navigator && "PushManager" in window && "Notification" in window;
   let subscribed = false;
+  let registered = false;
   if (hasPush) {
     try {
       const reg = await navigator.serviceWorker.getRegistration();
-      subscribed = !!(await reg?.pushManager?.getSubscription());
+      const sub = await reg?.pushManager?.getSubscription();
+      subscribed = !!sub;
+      if (sub) registered = await isRegistered(sub.endpoint);
     } catch {
       subscribed = false;
     }
@@ -29,6 +50,7 @@ async function readStatus(): Promise<{ status: PushStatus; standalone: boolean }
     ios: isIosSafari(),
     permission: "Notification" in window ? Notification.permission : null,
     subscribed,
+    registered,
   });
   return { status, standalone };
 }
@@ -52,7 +74,7 @@ export function NotificationSection() {
     setError(null);
     start(async () => {
       const r = await enablePush();
-      if (r === "error") setError("No pudimos activar los avisos. Inténtalo de nuevo.");
+      if (r !== "granted") setError(ENABLE_PUSH_MESSAGE[r]);
       setState(await readStatus());
     });
   }

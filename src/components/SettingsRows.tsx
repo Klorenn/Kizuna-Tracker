@@ -109,23 +109,19 @@ export function AccountRows({
       <ListRow
         icon={<Camera size={20} weight="light" />}
         label="Foto de perfil"
-        hint={
-          avatar.busy ? (
-            "Subiendo foto…"
-          ) : avatar.error ? (
-            <span role="alert" className="flex items-center gap-1 text-ink">
-              <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
-              {avatar.error}
-            </span>
-          ) : (
-            "Aparece en tu perfil"
-          )
-        }
+        hint={avatar.busy ? "Subiendo foto…" : "Aparece en tu perfil"}
         trailing={<Avatar name={name} size="S" src={avatarSrc} />}
         chevron
         onClick={avatar.pick}
         disabled={avatar.busy}
       />
+      {/* outside the row's <button>: an alert inside a button is not announced reliably */}
+      {avatar.error ? (
+        <p role="alert" className="flex items-center gap-1 border-b border-line px-4 py-3 text-small text-ink">
+          <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
+          {avatar.error}
+        </p>
+      ) : null}
       {avatar.input}
       <Toast message={toast} />
 

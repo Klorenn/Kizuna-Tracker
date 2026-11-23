@@ -1,5 +1,7 @@
 /** Browser-side helpers for web push. Client only. */
 
+import { SW_READY_TIMEOUT_MS, withTimeout } from "@/lib/push-status";
+
 export function isStandalone(): boolean {
   if (typeof window === "undefined") return false;
   return (
@@ -32,7 +34,9 @@ export async function enablePush(): Promise<"granted" | "denied" | "unavailable"
   const permission = await Notification.requestPermission();
   if (permission !== "granted") return "denied";
   try {
-    const reg = await navigator.serviceWorker.ready;
+    // `ready` never settles when no worker controls the page (dev, blocked SW): give up after 4 s
+    const reg = await withTimeout(navigator.serviceWorker.ready, SW_READY_TIMEOUT_MS);
+    if (reg === "timeout") return "unavailable";
     const sub =
       (await reg.pushManager.getSubscription()) ??
       (await reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: toKey(key) }));

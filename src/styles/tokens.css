@@ -35,6 +35,12 @@
   --color-accent2-hover: #273150;
   --color-alert: #e5484d;
   --color-alert-text: #c9373c; /* alert-colored words (Zona de peligro): AA on paper and surface */
+  /* Perfil "Actividad" heatmap: empty + 4 steps, each >= 3:1 against empty (heatmap-levels.test.ts) */
+  --color-heat-0: #f1f1f0;
+  --color-heat-1: #8080d0;
+  --color-heat-2: #6363c0;
+  --color-heat-3: #4c4cab;
+  --color-heat-4: #38388a;
   /* shu lives only inside src/components/brand/Seal.tsx */
 
   /* radii 6 / 10 / 15 / 999 */
@@ -133,6 +139,11 @@
   --color-accent2-hover: #b3bce3;
   --color-alert: #f2555a;
   --color-alert-text: #f6797d;
+  --color-heat-0: #232327;
+  --color-heat-1: #6666ab;
+  --color-heat-2: #7b7bd2;
+  --color-heat-3: #9d9df3;
+  --color-heat-4: #cdcdfa;
   --shadow-card: none;
   --habit-on: #0f0f10;
   --habit-soft-mix: 24%;
@@ -171,6 +182,11 @@
     --color-accent2-hover: #b3bce3;
     --color-alert: #f2555a;
     --color-alert-text: #f6797d;
+    --color-heat-0: #232327;
+    --color-heat-1: #6666ab;
+    --color-heat-2: #7b7bd2;
+    --color-heat-3: #9d9df3;
+    --color-heat-4: #cdcdfa;
     --shadow-card: none;
     --habit-on: #0f0f10;
     --habit-soft-mix: 24%;
