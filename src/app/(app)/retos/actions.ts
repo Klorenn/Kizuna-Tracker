@@ -1,6 +1,15 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { createHabit } from "@/app/(app)/habitos/actions";
+import { challengeFrequency } from "@/lib/challenge-view";
+import {
+  SOURCE_HABIT_COLUMNS,
+  habitDraftFromChallenge,
+  sourceFromRow,
+  type SourceHabitRow,
+} from "@/lib/challenge-accept";
+import { requireUser } from "@/lib/require-user";
 import { REJECT_REASONS, type ChallengeInput, type RejectReason, validateChallengeInput } from "@/lib/challenge-form";
 import { notify } from "@/lib/notify";
 import { createServerClient } from "@/lib/supabase/server";
@@ -117,6 +126,72 @@ export async function respondChallenge(id: string, accept: boolean, rivalHabitId
   if (error) return { ok: false, error: mapError(error.message) };
   refresh(id);
   return { ok: true };
+}
+
+/**
+ * "Aceptar reto" with "Crear «…»": creates the habit (same path as any new habit) and joins the
+ * challenge with it. Not atomic by design: if joining fails, the habit this very call created is
+ * removed again (it has no history), so nobody ends with an extra habit.
+ */
+export async function acceptChallengeWithNewHabit(
+  id: string,
+): Promise<{ ok: true; habitId: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
+  if (typeof id !== "string" || !UUID.test(id)) return { ok: false, error: GENERIC };
+
+  // the caller's own session reads both rows: RLS decides what a friend may see
+  const { data: ch, error: chError } = await supabase
+    .from("challenges")
+    .select("id,creator_id,rival_id,creator_habit_id,status,frequency_type,target_per_week,requires_photo")
+    .eq("id", id)
+    .maybeSingle();
+  if (chError) return { ok: false, error: GENERIC };
+  if (!ch) return { ok: false, error: ERRORS.challenge_not_found };
+  if (ch.rival_id !== uid) return { ok: false, error: ERRORS.not_rival };
+  if (ch.status !== "proposed") return { ok: false, error: ERRORS.challenge_not_proposed };
+
+  const { data: row, error: rowError } = await supabase
+    .from("habits")
+    .select(SOURCE_HABIT_COLUMNS)
+    .eq("id", ch.creator_habit_id)
+    .maybeSingle();
+  if (rowError) return { ok: false, error: GENERIC };
+  if (!row) return { ok: false, error: ERRORS.creator_habit_unavailable };
+
+  const { draft } = habitDraftFromChallenge(sourceFromRow(row as unknown as SourceHabitRow), {
+    frequency: challengeFrequency(ch),
+    requiresPhoto: ch.requires_photo,
+  });
+  const created = await createHabit(draft);
+  if (!created.ok) return created;
+
+  const { error } = await supabase.rpc("respond_challenge", {
+    p_id: id,
+    p_accept: true,
+    p_rival_habit_id: created.id,
+  });
+  if (error) {
+    // only the habit created above, only if it is still the caller's: never anything else
+    const { data: removed, error: removeError } = await supabase
+      .from("habits")
+      .delete()
+      .eq("id", created.id)
+      .eq("user_id", uid)
+      .select("id");
+    revalidatePath("/");
+    if (removeError || !removed || removed.length === 0) {
+      return {
+        ok: false,
+        error: `El reto ya no está disponible. Creamos «${draft.name.trim()}» en tus hábitos; puedes archivarlo.`,
+      };
+    }
+    return { ok: false, error: mapError(error.message) };
+  }
+  refresh(id);
+  revalidatePath("/");
+  return { ok: true, habitId: created.id };
 }
 
 export async function requestCancel(
