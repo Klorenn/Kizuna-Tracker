@@ -15,6 +15,7 @@ export type HabitInput = {
   frequency_type: string
   target_per_week: number | null
   color?: string | null
+  preset?: string | null
 }
 export type ItemInput = {
   id: string
@@ -40,6 +41,7 @@ export type TodayRow = {
   color: HabitColor
   visibility: Visibility
   requiresPhoto: boolean
+  preset: string | null
   frequency: Frequency
   done: boolean
   streak: number
@@ -93,6 +95,7 @@ export function buildToday(input: {
       color: toHabitColor(h.color),
       visibility: h.visibility as Visibility,
       requiresPhoto: h.requires_photo,
+      preset: h.preset ?? null,
       frequency,
       done: dates.includes(today),
       streak,

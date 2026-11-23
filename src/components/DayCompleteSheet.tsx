@@ -3,17 +3,33 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { Sheet } from "@/components/ui/Sheet";
+import { CatEat } from "@/components/brand/CatEat";
 import { CatJump } from "@/components/brand/CatJump";
-import { shouldCelebrateDay, type DayProgress } from "@/domain/day-complete";
+import { pickCelebration, type DayProgress, type HoyRowState, type HoyState } from "@/domain/day-complete";
 
 /** Auto-close delay, same as the workout sheet. Any interaction cancels it. */
 export const DAY_COMPLETE_SHEET_MS = 3000;
 
-/** "Día completo": small celebration with the jumping cat. Mirrors WorkoutDoneSheet's behavior. */
-export function DayCompleteSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+const COPY = {
+  day: { title: "Día completo", body: "Completaste todos tus hábitos de hoy.", cat: CatJump },
+  meals: { title: "Comidas del día completas", body: "Marcaste todas tus comidas de hoy.", cat: CatEat },
+} as const;
+export type CelebrationKind = keyof typeof COPY;
+
+/** Small celebration sheet ("Día completo" with the jumping cat, "Comidas del día completas" with the eating cat). Mirrors WorkoutDoneSheet's behavior. */
+export function DayCompleteSheet({
+  kind,
+  open,
+  onClose,
+}: {
+  kind: CelebrationKind;
+  open: boolean;
+  onClose: () => void;
+}) {
   const doneRef = useRef<HTMLButtonElement>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const programmaticFocus = useRef(false);
+  const { title, body, cat: Cat } = COPY[kind];
 
   const cancelAutoClose = () => {
     if (timer.current) clearTimeout(timer.current);
@@ -37,9 +53,9 @@ export function DayCompleteSheet({ open, onClose }: { open: boolean; onClose: ()
   return (
     <>
       <p role="status" aria-live="polite" className="sr-only">
-        {open ? "Día completo. Completaste todos tus hábitos de hoy." : ""}
+        {open ? `${title}. ${body}` : ""}
       </p>
-      <Sheet open={open} title="Día completo" onClose={onClose}>
+      <Sheet open={open} title={title} onClose={onClose}>
         <div
           className="flex flex-col gap-4"
           onPointerDown={cancelAutoClose}
@@ -50,8 +66,8 @@ export function DayCompleteSheet({ open, onClose }: { open: boolean; onClose: ()
           }}
         >
           <div className="flex items-center gap-4">
-            <CatJump width={96} once />
-            <p className="min-w-0 flex-1 text-body text-muted">Completaste todos tus hábitos de hoy.</p>
+            <Cat width={96} once />
+            <p className="min-w-0 flex-1 text-body text-muted">{body}</p>
           </div>
           <Button ref={doneRef} onClick={onClose}>
             Listo
@@ -67,15 +83,21 @@ export function DayCompleteSheet({ open, onClose }: { open: boolean; onClose: ()
  * the last pending habit gets completed. First render (including coming back from a photo check-in,
  * which remounts Hoy) never celebrates, so a gym check-in that completes the day shows only its own sheet.
  */
-export function DayCompleteWatcher({ done, total }: DayProgress) {
-  const prev = useRef<DayProgress | null>(null);
-  const [open, setOpen] = useState(false);
+export function DayCompleteWatcher({ done, total, rows }: DayProgress & { rows: HoyRowState[] }) {
+  const prev = useRef<HoyState | null>(null);
+  const [kind, setKind] = useState<CelebrationKind | null>(null);
+  const last = useRef<CelebrationKind>("day");
 
   useEffect(() => {
-    if (shouldCelebrateDay(prev.current, { done, total })) setOpen(true);
-    prev.current = { done, total };
-  }, [done, total]);
+    const next: HoyState = { done, total, rows };
+    const pick = pickCelebration(prev.current, next);
+    if (pick) {
+      last.current = pick;
+      setKind(pick);
+    }
+    prev.current = next;
+  }, [done, total, rows]);
 
-  const close = useCallback(() => setOpen(false), []);
-  return <DayCompleteSheet open={open} onClose={close} />;
+  const close = useCallback(() => setKind(null), []);
+  return <DayCompleteSheet kind={kind ?? last.current} open={kind !== null} onClose={close} />;
 }

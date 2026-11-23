@@ -29,7 +29,17 @@ export const CAT_JUMP = {
   playMs: 5840,
 } as const;
 
-export const CAT_ASSETS = { lift: CAT_LIFT, jump: CAT_JUMP } as const;
+/** 720 x 720 canvas, 73 frames x 80 ms; cat box 350 x 429 at (160, 137). The still is the full frame 0. */
+export const CAT_EAT = {
+  gif: "/brand/cat-eat.gif",
+  still: "/brand/cat-eat-still.png",
+  canvas: 720,
+  box: { x: 160, y: 137, w: 350, h: 429 },
+  stillBox: { x: 0, y: 0, w: 720, h: 720 },
+  playMs: 5840,
+} as const;
+
+export const CAT_ASSETS = { lift: CAT_LIFT, jump: CAT_JUMP, eat: CAT_EAT } as const;
 export type CatAsset = keyof typeof CAT_ASSETS;
 
 /** CSS custom properties consumed by `.cat-mask` (globals.css), cropped to the cat's box. */

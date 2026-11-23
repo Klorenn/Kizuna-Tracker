@@ -36,7 +36,7 @@ export default async function Home() {
   const [habits, items, checkins, itemChecks] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week")
+      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset")
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
@@ -135,7 +135,11 @@ export default async function Home() {
             <Plus size={20} weight="light" aria-hidden />
             Nuevo hábito
           </ButtonLink>
-          <DayCompleteWatcher done={view.doneCount} total={view.total} />
+          <DayCompleteWatcher
+            done={view.doneCount}
+            total={view.total}
+            rows={view.rows.map((r) => ({ id: r.id, preset: r.preset, hasItems: r.items.length > 0, done: r.done }))}
+          />
         </>
       )}
     </main>

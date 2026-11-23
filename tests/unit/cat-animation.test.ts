@@ -18,6 +18,19 @@ describe("cat-animation assets", () => {
     expect(j.playMs).toBe(5840);
   });
 
+  it("describes the eat GIF: 73 frames of 80 ms on a 720 canvas, union box 350 x 429", () => {
+    const e = CAT_ASSETS.eat;
+    expect(e.gif).toBe("/brand/cat-eat.gif");
+    expect(e.still).toBe("/brand/cat-eat-still.png");
+    expect(e.canvas).toBe(720);
+    expect(e.box).toEqual({ x: 160, y: 137, w: 350, h: 429 });
+    expect(e.stillBox).toEqual({ x: 0, y: 0, w: 720, h: 720 });
+    expect(e.playMs).toBe(5840);
+    const s = catAnimationStyle("eat", 350) as Record<string, unknown>;
+    expect(s.height).toBe(429);
+    expect(s["--cat-mask-pos"]).toBe("-160px -137px");
+  });
+
   it("crops the jump mask to the cat box", () => {
     const s = catAnimationStyle("jump", 465) as Record<string, unknown>;
     expect(s.width).toBe(465);
