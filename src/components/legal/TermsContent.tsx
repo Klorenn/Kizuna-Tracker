@@ -34,7 +34,7 @@ const SECTIONS: LegalSection[] = [
       title: "Tu cuenta",
       body: [
         "Eres responsable de tu contraseña y de lo que ocurra con tu cuenta. En esta versión no hay recuperación de contraseña: si la pierdes, no podremos restablecerla.",
-        "Puedes borrar tu cuenta cuando quieras desde Perfil. Puedes cerrar tu sesión en el mismo lugar.",
+        "Puedes borrar tu cuenta cuando quieras desde Perfil > Ajustes. Puedes cerrar tu sesión en el mismo lugar.",
       ],
     },
     {

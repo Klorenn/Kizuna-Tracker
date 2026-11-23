@@ -9,6 +9,7 @@ const text = (el: React.ReactElement) =>
   renderToStaticMarkup(el)
     .replace(/<[^>]+>/g, ' ')
     .replace(/&quot;/g, '"')
+    .replace(/&gt;/g, '>')
     .replace(/\s+/g, ' ')
 
 describe('legal pages', () => {
@@ -34,6 +35,7 @@ describe('legal pages', () => {
     expect(t).toContain('18 años')
     expect(t).toContain('no hay recuperación de contraseña')
     expect(t).toContain('borrar tu cuenta')
+    expect(t).toContain('desde Perfil > Ajustes')
   })
 
   it('privacy: data, visibility levels, photos never public, deletion, Ley 21.719', () => {
@@ -47,6 +49,9 @@ describe('legal pages', () => {
     expect(t).toContain('foto de perfil')
     expect(t).toContain('Cookies y almacenamiento del dispositivo')
     expect(t).toContain('cookie de sesión')
+    expect(t).toContain('cookie llamada theme')
+    expect(t).not.toContain('Más adelante')
+    expect(t).toContain('desde Perfil > Ajustes')
     expect(t).toContain('cuenta eliminada')
     expect(t).toContain('Ley 21.719')
   })

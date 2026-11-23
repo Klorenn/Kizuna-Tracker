@@ -41,7 +41,7 @@ const SECTIONS: LegalSection[] = [
     {
       title: "Cookies y almacenamiento del dispositivo",
       body: [
-        "Usamos una cookie de sesión para mantenerte con la sesión iniciada. Más adelante usaremos otra cookie para recordar tu tema (claro u oscuro).",
+        "Usamos una cookie de sesión para mantenerte con la sesión iniciada y una cookie llamada theme que recuerda el tema que elegiste (claro, oscuro o el del sistema). Ninguna se usa para publicidad ni seguimiento.",
         "Si instalas Kizuna como app, tu dispositivo guarda una copia de archivos estáticos (íconos, estilos y código) para que abra más rápido. No guarda tus datos ni tus fotos.",
         "Si activas los avisos, tu navegador guarda una suscripción de avisos y nosotros guardamos su dato técnico. Para quitarla, desactiva los permisos de notificaciones de Kizuna en el navegador o en los ajustes de tu dispositivo; también se borra al eliminar tu cuenta.",
       ],
@@ -55,7 +55,7 @@ const SECTIONS: LegalSection[] = [
     {
       title: "Cómo borrar tu cuenta",
       body: [
-        "Puedes borrar tu cuenta desde Perfil. Se borran tus fotos y tus datos personales. Tus amigos conservan el historial de deudas de los retos compartidos, que aparece como \"cuenta eliminada\".",
+        "Puedes borrar tu cuenta desde Perfil > Ajustes. Se borran tus fotos y tus datos personales. Tus amigos conservan el historial de deudas de los retos compartidos, que aparece como \"cuenta eliminada\".",
       ],
     },
     {
