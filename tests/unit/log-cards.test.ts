@@ -54,6 +54,31 @@ describe('buildLogCards', () => {
     expect(cards.find((c) => c.key === 'weight')?.private).toBe(true)
   })
 
+  test('peso sin cambio calculable dice "Sin datos suficientes"', () => {
+    const cards = buildLogCards({
+      month: '2026-11',
+      reading: null,
+      workout: null,
+      visits: null,
+      weights: [{ date: '2026-11-05', kg: 71.9 }],
+    })
+    expect(cards[0].caption).toBe('Este mes: sin datos suficientes')
+  })
+
+  test('el último pesaje anterior a la ventana muestra valor y fecha', () => {
+    const cards = buildLogCards({
+      month: '2026-11',
+      reading: null,
+      workout: null,
+      visits: null,
+      weights: [],
+      latestWeight: { date: '2024-06-10', kg: 79.5 },
+    })
+    expect(cards).toHaveLength(1)
+    expect(cards[0]).toMatchObject({ key: 'weight', value: '79,5 kg', href: '/resumen/peso', private: true })
+    expect(cards[0].caption).toBe('Último registro: 10 de junio de 2024')
+  })
+
   test('sin hábitos con registro ni pesos no hay tarjetas', () => {
     expect(buildLogCards({ month: '2026-11', reading: null, workout: null, visits: null, weights: [] })).toEqual([])
   })

@@ -1,4 +1,4 @@
-import { monthTitle, shiftMonth, type MonthKey } from "@/domain/calendar";
+import { dayLabel, monthTitle, shiftMonth, type MonthKey } from "@/domain/calendar";
 import { formatKg1, formatSignedKg1, latestWeight, monthlyWeightChange, type WeightEntry } from "@/domain/body";
 import {
   DAY_TYPE_LABEL,
@@ -37,6 +37,8 @@ export function buildLogCards(input: {
   workout: { exercises: ExerciseRef[]; sets: WorkoutSet[] } | null;
   visits: LocalDate[] | null;
   weights: WeightEntry[];
+  /** The newest weigh-in ever, when it may be older than the `weights` window. */
+  latestWeight?: WeightEntry | null;
 }): LogCard[] {
   const { month, reading, workout, visits, weights } = input;
   const prev = shiftMonth(month, -1);
@@ -94,14 +96,18 @@ export function buildLogCards(input: {
     }
   }
 
-  const latest = latestWeight(weights);
+  const latest = latestWeight(weights) ?? input.latestWeight ?? null;
   if (latest) {
-    const change = monthlyWeightChange(weights, month);
+    const change = weights.length > 0 ? monthlyWeightChange(weights, month) : null;
+    const stale = weights.length === 0;
+    const year = latest.date.slice(0, 4);
     cards.push({
       key: "weight",
       label: "Peso",
       value: formatKg1(latest.kg),
-      caption: `Este mes: ${change === null ? "sin cambio" : formatSignedKg1(change)}`,
+      caption: stale
+        ? `Último registro: ${dayLabel(latest.date)} de ${year}`
+        : `Este mes: ${change === null ? "sin datos suficientes" : formatSignedKg1(change)}`,
       href: "/resumen/peso",
       private: true,
     });

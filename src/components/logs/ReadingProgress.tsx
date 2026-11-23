@@ -15,6 +15,18 @@ export function currentBook(books: Book[], entries: ReadingEntry[]): Book | null
   return [...reading].sort((a, b) => (last.get(b.id) ?? "").localeCompare(last.get(a.id) ?? ""))[0];
 }
 
+/**
+ * Where the reader is in the book: the last page of the windowed entries, else `knownPage`
+ * (the last entry ever, read separately), else nothing: never "Página 0" for a book that was
+ * read before the window.
+ */
+export function bookPageHint(book: Book, entries: ReadingEntry[], knownPage: number | null): string | null {
+  const inWindow = entries.some((e) => e.bookId === book.id);
+  const page = inWindow ? nextFromPage(entries, book.id) : knownPage;
+  if (page === null || page <= 0) return book.totalPages ? `${book.totalPages} páginas` : null;
+  return book.totalPages ? `${page} de ${book.totalPages}` : `Página ${page}`;
+}
+
 export function ProgressStat({ label, value, caption }: { label: string; value: number | string; caption: string }) {
   return (
     <div className="flex min-w-0 flex-1 flex-col gap-0.5">
@@ -46,6 +58,7 @@ export function ReadingProgress({
   books,
   entries,
   todayEntry,
+  knownPage,
 }: {
   habitId: string;
   month: MonthKey;
@@ -54,12 +67,14 @@ export function ReadingProgress({
   entries: ReadingEntry[];
   /** Today's check-in and whether it already has a reading; null without a check-in today. */
   todayEntry: { logged: boolean } | null;
+  /** Last page reached in the current book when its entries fall before the window. */
+  knownPage?: number | null;
 }) {
   const now = monthlyReading(entries, books, month);
   const prev = monthlyReading(entries, books, shiftMonth(month, -1));
   const prevName = monthTitle(shiftMonth(month, -1)).name;
   const book = currentBook(books, entries);
-  const page = book ? nextFromPage(entries, book.id) : 0;
+  const hint = book ? bookPageHint(book, entries, knownPage ?? null) : null;
 
   return (
     <Card>
@@ -74,9 +89,7 @@ export function ReadingProgress({
             <p className="truncate text-body text-ink">{book.title}</p>
             <p className="text-small text-muted">Leyendo</p>
           </div>
-          <p className="shrink-0 font-mono text-small text-ink">
-            {book.totalPages ? `${page} de ${book.totalPages}` : `Página ${page}`}
-          </p>
+          {hint ? <p className="shrink-0 font-mono text-small text-ink">{hint}</p> : null}
         </div>
       ) : null}
       {todayEntry ? <TodayEntryLink href={logEntryHref(habitId, "reading", today)} logged={todayEntry.logged} /> : null}

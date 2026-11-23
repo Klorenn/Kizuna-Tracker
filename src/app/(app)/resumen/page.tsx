@@ -31,7 +31,14 @@ import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays, loadMonthWeights } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
 import { buildLogCards } from "@/lib/log-cards";
-import { loadReadingData, loadVisitDates, loadWeights, loadWorkoutData, logWindowStart } from "@/lib/logs-data";
+import {
+  loadLatestWeight,
+  loadReadingData,
+  loadVisitDates,
+  loadWeights,
+  loadWorkoutData,
+  logWindowStart,
+} from "@/lib/logs-data";
 import {
   ALL_HABITS,
   monthlyCounts,
@@ -82,6 +89,46 @@ function StreakCards({
 const unitLabel = (n: number, unit: "days" | "weeks") =>
   unit === "days" ? (n === 1 ? "día" : "días") : n === 1 ? "semana" : "semanas";
 
+/**
+ * REGISTROS of this month (reading, gym and the private weight; each card opens its detail).
+ * Reads only what exists: reading data when there is a reading habit, workout data and visits
+ * when there is a workout habit, weights always (they do not depend on habits; own Resumen only).
+ */
+async function loadRegistros(
+  supabase: Awaited<ReturnType<typeof createServerClient>>,
+  userId: string,
+  today: LocalDate,
+  logTypes: LogType[],
+): Promise<ReactNode> {
+  const windowStart = logWindowStart(today);
+  const hasReading = logTypes.includes("reading");
+  const hasWorkout = logTypes.includes("workout");
+  const [readingData, workoutData, visits, weightEntries] = await Promise.all([
+    hasReading ? loadReadingData(supabase, userId, windowStart) : null,
+    hasWorkout ? loadWorkoutData(supabase, userId, windowStart) : null,
+    hasWorkout ? loadVisitDates(supabase, userId, windowStart) : null,
+    loadWeights(supabase, userId, windowStart),
+  ]);
+  // the newest weigh-in may be older than the window: still shown, with its date
+  const latestWeight = weightEntries.length === 0 ? await loadLatestWeight(supabase, userId) : null;
+  const month = monthOf(today);
+  const cards = buildLogCards({
+    month,
+    reading: readingData,
+    workout: workoutData,
+    visits,
+    weights: weightEntries,
+    latestWeight,
+  });
+  if (cards.length === 0) return null;
+  return (
+    <>
+      <SectionHeader label={`Registros · ${monthTitle(month).name}`} />
+      <LogMonthCards cards={cards} />
+    </>
+  );
+}
+
 export default async function ResumenPage({
   searchParams,
 }: {
@@ -109,6 +156,8 @@ export default async function ResumenPage({
   }));
 
   if (habits.length === 0) {
+    // no habits, but the private weight (REGISTROS > Peso) is still there
+    const emptyRegistros = await loadRegistros(supabase, user.id, localDate(new Date(), profile.timezone), []);
     return (
       <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
         <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Resumen</h1>
@@ -124,6 +173,7 @@ export default async function ResumenPage({
             }
           />
         </Card>
+        {emptyRegistros}
       </main>
     );
   }
@@ -203,7 +253,7 @@ export default async function ResumenPage({
   } else {
     // weigh-ins are private: this is the owner's own calendar, read with their session
     const [days, weights] = await Promise.all([
-      loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz }),
+      loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz, includeLogs: true }),
       loadMonthWeights(supabase, user.id, month),
     ]);
     calendarSection = (
@@ -232,30 +282,12 @@ export default async function ResumenPage({
     );
   }
 
-  // REGISTROS of this month: reading, gym and the private weight; each card opens its detail.
-  const windowStart = logWindowStart(today);
-  const hasReading = habits.some((x) => x.logType === "reading");
-  const hasWorkout = habits.some((x) => x.logType === "workout");
-  const [readingData, workoutData, visits, weightEntries] = await Promise.all([
-    loadReadingData(supabase, user.id, windowStart),
-    loadWorkoutData(supabase, user.id, windowStart),
-    loadVisitDates(supabase, user.id, windowStart),
-    loadWeights(supabase, user.id, windowStart),
-  ]);
-  const logCards = buildLogCards({
-    month: current,
-    reading: hasReading || readingData.entries.length > 0 ? readingData : null,
-    workout: hasWorkout || workoutData.sets.length > 0 ? workoutData : null,
-    visits,
-    weights: weightEntries,
-  });
-  const registros =
-    logCards.length > 0 ? (
-      <>
-        <SectionHeader label={`Registros · ${monthTitle(current).name}`} />
-        <LogMonthCards cards={logCards} />
-      </>
-    ) : null;
+  const registros = await loadRegistros(
+    supabase,
+    user.id,
+    today,
+    habits.map((x) => x.logType),
+  );
 
   if (showAll) {
     const { current: currentStreak, best } = profileStreaks(history, today);
