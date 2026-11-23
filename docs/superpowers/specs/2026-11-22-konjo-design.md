@@ -260,7 +260,7 @@ Un hábito sigue siendo "lo hice o no" (rachas, retos, deudas y metas no cambian
 
 ### Antiobjetivos
 
-- **Un registro nunca cambia una racha, un reto, un período, una deuda ni una meta.** Agregar, editar o borrar un registro nunca crea ni borra un check-in. La única excepción es el flujo natural de entrada de Leer, donde "Guardar" u "Omitir" marcan el hábito (el check-in lo crea la RPC de siempre).
+- **Un registro nunca cambia una racha, un reto, un período, una deuda ni una meta.** Agregar, editar o borrar un registro nunca crea ni borra un check-in. La única excepción es el flujo natural de entrada de Leer, donde "Guardar" u "Solo marcar" marcan el hábito (el check-in lo crea la RPC de siempre).
 - Gamificar el peso: nada de rankings, medallas ni comparación con amigos. Los números se muestran sobrios, en Geist Mono.
 - Formularios largos para un día normal: registrar lectura toma un toque más; repetir un entrenamiento, dos.
 
@@ -300,7 +300,7 @@ Migración nueva `0015_detailed_logs.sql` (la siguiente libre al implementar; ho
 │ 26 páginas                         │  mono, se actualiza al escribir
 │ ☐ Terminé este libro               │
 │ [        Guardar        ]          │  marca el hábito + guarda la lectura
-│ [        Omitir         ]          │  marca el hábito sin lectura
+│ [      Solo marcar      ]          │  marca el hábito sin lectura
 └────────────────────────────────────┘
 ```
 
@@ -421,7 +421,7 @@ v3: libros, lecturas, ejercicios propios, sesiones y series son **solo del dueñ
 Decisiones tomadas por el arquitecto (con autoridad delegada del dueño):
 
 1. Escritura: libros y ejercicios por grants de columna + RLS; lecturas y entrenamientos por RPC definer (validan check-in, tipo y fecha en una transacción).
-2. Cerrar la hoja de lectura con ✕ no marca el hábito; solo "Guardar" y "Omitir" marcan.
+2. Cerrar la hoja de lectura con ✕ no marca el hábito; solo "Guardar" y "Solo marcar" marcan.
 3. Visitas al gimnasio = fechas distintas, no check-ins.
 4. Ejercicios de 0 kg no comparan; los nuevos se muestran como "Nuevo".
 5. Registros de check-ins rechazados cuentan en páginas y pesos, no en visitas.
@@ -478,7 +478,7 @@ Y cierra con un **pulido general** de toda la app (plan, última tarea).
 
 ### Antiobjetivos
 
-- **Tiempo, series y cardio nunca cambian una racha, un reto, un período, una deuda ni una meta** por sí mismos. Igual que en Leer, el flujo de entrada de Hoy puede **crear** el check-in de hoy (Guardar u Omitir, o un bloque de Pomodoro); borrar o editar el registro nunca toca el check-in.
+- **Tiempo, series y cardio nunca cambian una racha, un reto, un período, una deuda ni una meta** por sí mismos. Igual que en Leer, el flujo de entrada de Hoy puede **crear** el check-in de hoy (Guardar u Solo marcar, o un bloque de Pomodoro); borrar o editar el registro nunca toca el check-in.
 - **Cantidad es la excepción declarada:** su check-in lo administra el servidor según la meta (como los hábitos con pasos y `complete_day_from_items`). Ningún otro tipo hereda esa regla.
 - Pomodoro que inventa minutos: un temporizador olvidado no debe sumar horas (el descanso termina en "Listo para otra ronda", nunca arranca otro foco solo).
 - Gamificar: sin rankings, sin medallas por kilómetros, sin comparación con amigos. Números sobrios en Geist Mono.
@@ -544,12 +544,12 @@ Trigger `habits_quantity_reeval` (`after update of quantity_target`): si la nuev
 │ QUÉ ESTUDIASTE (opcional)          │  "Tema (opcional)" si no es Estudiar
 │ [ Álgebra                     ]    │  ≤ 60
 │ [        Guardar        ]          │  add_time → marca + suma
-│ [        Omitir         ]          │  create_checkin sin tiempo
+│ [      Solo marcar      ]          │  create_checkin sin tiempo
 │ ⏱ Usar pomodoro                    │  → /habitos/<id>/pomodoro
 └────────────────────────────────────┘
 ```
 
-Hecho con tiempo: la fila dice "1 h 25 min · Álgebra" y ofrece "+ Tiempo" (la misma hoja en modo "Sumar tiempo", sin Omitir). La fila de un hábito `time` tiene además el botón de 44 px "Pomodoro" (ícono `timer`). Editar el total de cualquier día con check-in: `/habitos/<id>/tiempo?fecha=YYYY-MM-DD` (`set_time_entry`, "Borrar registro" con confirmación).
+Hecho con tiempo: la fila dice "1 h 25 min · Álgebra" y ofrece "+ Tiempo" (la misma hoja en modo "Sumar tiempo", sin Solo marcar). La fila de un hábito `time` tiene además el botón de 44 px "Pomodoro" (ícono `timer`). Editar el total de cualquier día con check-in: `/habitos/<id>/tiempo?fecha=YYYY-MM-DD` (`set_time_entry`, "Borrar registro" con confirmación).
 
 **Pomodoro** (`/habitos/<id>/pomodoro`, desde la fila de Hoy y el detalle del hábito):
 
@@ -589,7 +589,7 @@ Personalizado: foco 5–90 min, descanso 1–30 min. Rondas 1–12 o "Sin límit
 │ ☑ La vi completa · 2 h 35 min      │  duración del título si existe
 │ MINUTOS VISTOS [    ]              │  solo si no está completa
 │ [        Guardar        ]          │
-│ [        Omitir         ]          │
+│ [      Solo marcar      ]          │
 └────────────────────────────────────┘
 ```
 
@@ -628,7 +628,7 @@ Mantener presionado el botón (o el ícono "⋯") abre la hoja "Agua hoy": canti
 │ NOTA (opcional) [            ]     │  ≤ 60
 │ [ Repetir el último ]              │  copia actividad, distancia y tiempo
 │ [        Guardar        ]          │  create_checkin + add_cardio_entry
-│ [        Omitir         ]          │
+│ [      Solo marcar      ]          │
 └────────────────────────────────────┘
 ```
 
