@@ -11,8 +11,10 @@ import { isPublicPath, safeNextPath } from "./public-paths";
  *  - REST (the profile query): 3 s, no retries.
  *  - Auth calls (/auth/v1/user, JWKS, logout): 5 s. With the legacy HS256 secret every request
  *    asks /auth/v1/user, so this is the latency Auth may have before protected pages answer 503.
- *  - /auth/v1/token: 10 s, never the short one: it rotates the refresh token, and aborting it
- *    mid-flight can sign the person out for good.
+ *  - /auth/v1/token: 10 s per attempt, not the short budget: a slow refresh should get time to
+ *    answer. The 12 s deadline below still wins over everything, so a refresh (or a retry of it)
+ *    can be aborted mid-flight when the deadline fires; that risks one lost rotation and is
+ *    answered with a 503, never a sign-out.
  *  - The whole middleware: 12 s, then everything in flight is aborted.
  * Worst-case wall time per scenario:
  *  - signed out, no cookies: no network call, instant.
@@ -115,7 +117,8 @@ function isTransient(e: unknown): boolean {
   if (!e || typeof e !== "object") return false;
   const { name, status } = e as { name?: string; status?: number };
   if (name === "AuthRetryableFetchError") return true;
-  return typeof status === "number" && status >= 500;
+  // 429: Auth is rate-limiting us, a slow service, not an answer about this session
+  return typeof status === "number" && (status >= 500 || status === 429);
 }
 
 /** The session cookie by name, chunks (.0, .1 ...) included; not the PKCE code verifier. */

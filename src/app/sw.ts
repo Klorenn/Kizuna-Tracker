@@ -74,3 +74,14 @@ self.addEventListener('notificationclick', (event) => {
     })(),
   )
 })
+
+// Brand art moved to its own bounded cache: drop the copies the older shared static cache holds.
+self.addEventListener('activate', (event) => {
+  event.waitUntil(
+    caches.open(STATIC_CACHE_NAME).then(async (cache) => {
+      for (const req of await cache.keys()) {
+        if (new URL(req.url).pathname.startsWith('/brand/')) await cache.delete(req)
+      }
+    }),
+  )
+})

@@ -1,6 +1,6 @@
 "use server";
 
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
 import { localDate } from "@/domain/dates";
 import { isAvatarPreset } from "@/lib/avatar-presets";
@@ -15,6 +15,23 @@ const GENERIC_SIGNUP_ERROR =
   "No pudimos crear tu cuenta. Revisa tus datos e inténtalo de nuevo.";
 const RATE_LIMITED_ERROR =
   "Demasiados intentos. Espera unos minutos e inténtalo de nuevo.";
+/**
+ * A sign-in opened a session for an account that is not the one being created: end it on this
+ * device only (the real owner's other devices stay signed in) and, if that call fails, delete
+ * the session cookies explicitly so none of that account's tokens reaches the response.
+ */
+async function dropForeignSession(supabase: Awaited<ReturnType<typeof createServerClient>>) {
+  try {
+    await supabase.auth.signOut({ scope: "local" });
+  } catch {
+    // cleared below
+  }
+  const store = await cookies();
+  for (const c of store.getAll()) {
+    if (/^sb-[^.]+-auth-token(\.\d+)?$/.test(c.name)) store.delete(c.name);
+  }
+}
+
 const USERNAME_TAKEN_ERROR = "Ese usuario ya está en uso.";
 
 export async function checkUsername(
@@ -115,24 +132,32 @@ export async function signUp(
       // person's own: signing in with the submitted e-mail AND password proves it (nobody else
       // can pass this), and the handle must be that account's. Anything else: the plain message.
       let owner = false;
+      let sessionOpened = false;
       try {
-        const { data: signedIn, error: signInError } = await supabase.auth.signInWithPassword({
-          email: clean.email,
-          password: clean.password,
-        });
-        const userId = signedIn?.user?.id;
-        if (!signInError && userId) {
-          const { data: profile } = await admin
-            .from("profiles")
-            .select("username")
-            .eq("id", userId)
-            .maybeSingle();
-          owner = profile?.username === clean.username;
-          if (!owner) await supabase.auth.signOut(); // another handle: leave no session behind
+        // Same per-account limit as a normal login attempt (key format of the login action).
+        const allowed =
+          (ip && skipRateLimit(ip)) ||
+          (await admin.rpc("register_login_attempt", { p_keys: [`id:${clean.email}`] })).data === true;
+        if (allowed) {
+          const { data: signedIn, error: signInError } = await supabase.auth.signInWithPassword({
+            email: clean.email,
+            password: clean.password,
+          });
+          const userId = signedIn?.user?.id;
+          if (!signInError && userId) {
+            sessionOpened = true;
+            const { data: profile } = await admin
+              .from("profiles")
+              .select("username")
+              .eq("id", userId)
+              .maybeSingle();
+            owner = profile?.username === clean.username;
+          }
         }
       } catch {
         // a failing sign-in is the same as a wrong password
       }
+      if (sessionOpened && !owner) await dropForeignSession(supabase);
       if (owner) redirect("/listo");
       return { ok: false, error: USERNAME_TAKEN_ERROR };
     }

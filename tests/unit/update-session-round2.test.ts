@@ -1,4 +1,4 @@
-import { NextRequest } from "next/server";
+import { NextRequest, type NextResponse } from "next/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const URL_OK = "https://abc.supabase.co";
@@ -67,7 +67,22 @@ const refreshedSession = () => ({
   expires_at: nowSec() + 3600,
   user: USER,
 });
-const hasAuthCookie = (res: Response) => (res.headers.get("set-cookie") ?? "").includes("sb-abc-auth-token");
+/** The rotated session: value decodes to the new refresh token, never empty, never already expired. */
+function expectRotatedSession(res: NextResponse) {
+  const cookies = res.cookies.getAll().filter((c) => c.name.startsWith("sb-abc-auth-token"));
+  expect(cookies.length).toBeGreaterThan(0);
+  for (const c of cookies) {
+    expect(c.value, c.name).not.toBe("");
+  }
+  const header = res.headers.get("set-cookie") ?? "";
+  expect(header).not.toMatch(/max-age=0/i);
+  for (const m of header.matchAll(/expires=([^;]+)/gi)) {
+    expect(new Date(m[1]).getTime()).toBeGreaterThan(Date.now());
+  }
+  const joined = cookies.map((c) => c.value).join("");
+  const session = JSON.parse(Buffer.from(joined.replace(/^base64-/, ""), "base64url").toString());
+  expect(session.refresh_token).toBe("rt2");
+}
 const location = (res: Response) => {
   const l = res.headers.get("location");
   return l ? new URL(l).pathname : null;
@@ -101,7 +116,7 @@ describe("C-1: every response carries the cookies the client set during this req
     vi.stubGlobal("fetch", f);
     const res = await run(req("/hoy", expiredCookie()));
     expect(res.status).toBe(503);
-    expect(hasAuthCookie(res)).toBe(true);
+    expectRotatedSession(res as NextResponse);
     expect(res.headers.get("cache-control")).toBe("no-store");
     expect(loggedOut(f)).toBe(false);
   });
@@ -117,7 +132,7 @@ describe("C-1: every response carries the cookies the client set during this req
     await vi.advanceTimersByTimeAsync(12_000);
     const res = await p;
     expect(res.status).toBe(503);
-    expect(hasAuthCookie(res)).toBe(true);
+    expectRotatedSession(res as NextResponse);
     expect(loggedOut(f)).toBe(false);
   });
 
@@ -132,7 +147,7 @@ describe("C-1: every response carries the cookies the client set during this req
     vi.stubGlobal("fetch", f);
     const res = await run(req("/login", expiredCookie()));
     expect(location(res)).toBe("/");
-    expect(hasAuthCookie(res)).toBe(true);
+    expectRotatedSession(res as NextResponse);
   });
 
   it("a refresh rejected with 400 redirects to /login and clears the session cookie", async () => {
@@ -299,5 +314,18 @@ describe("no path renders a protected page when the claims call fails", () => {
       const isRedirect = res.headers.get("location") !== null;
       expect(isRedirect || res.status === 503, `${path}: status ${res.status}`).toBe(true);
     }
+  });
+});
+
+describe("F-3: a 429 from Auth is a slow service, not a signed-out visitor", () => {
+  const tooMany = () => json(429, { msg: "rate limit" });
+  it("with session cookies: 503 on protected paths, the page on public ones", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => tooMany()));
+    expect((await run(req("/hoy", freshCookie()))).status).toBe(503);
+    expect((await run(req("/login", freshCookie()))).headers.get("location")).toBeNull();
+  });
+  it("without cookies the signed-out rules stay", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => tooMany()));
+    expect(location(await run(req("/hoy")))).toBe("/login");
   });
 });

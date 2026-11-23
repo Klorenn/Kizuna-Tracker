@@ -9,6 +9,8 @@ const serviceKey = vi.fn();
 const skip = vi.fn();
 const profileUsername = vi.fn();
 const serverSignOut = vi.fn();
+const cookieDelete = vi.fn();
+const cookieJar = vi.fn();
 
 class Redirect extends Error {
   constructor(public to: string) {
@@ -16,7 +18,10 @@ class Redirect extends Error {
   }
 }
 
-vi.mock("next/headers", () => ({ headers: async () => new Headers({ "x-real-ip": "9.9.9.9" }) }));
+vi.mock("next/headers", () => ({
+  headers: async () => new Headers({ "x-real-ip": "9.9.9.9" }),
+  cookies: async () => ({ getAll: () => cookieJar(), delete: cookieDelete }),
+}));
 vi.mock("next/navigation", () => ({
   redirect: (to: string) => {
     throw new Redirect(to);
@@ -77,8 +82,9 @@ async function run() {
 }
 
 beforeEach(() => {
-  for (const m of [adminRpc, createUser, signUp, signInWithPassword, serviceKey, skip, profileUsername, serverSignOut]) m.mockReset();
+  for (const m of [adminRpc, createUser, signUp, signInWithPassword, serviceKey, skip, profileUsername, serverSignOut, cookieDelete, cookieJar]) m.mockReset();
   order.length = 0;
+  cookieJar.mockReturnValue([{ name: 'sb-abc-auth-token' }, { name: 'sb-abc-auth-token.1' }, { name: 'theme' }]);
   skip.mockReturnValue(false);
   serviceKey.mockReturnValue("svc");
   adminRpc.mockImplementation(async (name: string) => {
@@ -147,6 +153,51 @@ describe("signUp with a service key", () => {
       profileUsername.mockReturnValue({ username: "caro_m" });
       expect(await run()).toEqual({ redirect: "/listo" });
       expect(signInWithPassword).toHaveBeenCalledWith({ email: "caro@example.com", password: "kizuna-2026" });
+    });
+    it("the recovery sign-in counts against the per-account login limit (id:<email>) before it runs", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-me" } }, error: null });
+      profileUsername.mockReturnValue({ username: "caro_m" });
+      await run();
+      const keyed = adminRpc.mock.calls.filter(([n, a]) => n === "register_login_attempt" && a.p_keys.includes("id:caro@example.com"));
+      expect(keyed).toHaveLength(1);
+      const keyedIdx = adminRpc.mock.calls.findIndex(([n, a]) => n === "register_login_attempt" && a.p_keys.includes("id:caro@example.com"));
+      expect(adminRpc.mock.invocationCallOrder[keyedIdx]).toBeLessThan(signInWithPassword.mock.invocationCallOrder[0]);
+    });
+    it("a blocked key skips the sign-in and shows the taken message", async () => {
+      let calls = 0;
+      adminRpc.mockImplementation(async (name: string, args: { p_keys?: string[] }) => {
+        if (name === "username_available") return { data: ++calls === 1, error: null };
+        if (name === "register_login_attempt") return { data: !args.p_keys?.includes("id:caro@example.com"), error: null };
+        return { data: true, error: null };
+      });
+      createUser.mockResolvedValue({ data: { user: null }, error: { message: "timeout" } });
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+      expect(signInWithPassword).not.toHaveBeenCalled();
+    });
+    it("a different handle signs out with scope local only (never every device) and leaves no session cookie", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-other" } }, error: null });
+      profileUsername.mockReturnValue({ username: "someone_else" });
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+      expect(serverSignOut).toHaveBeenCalledWith({ scope: "local" });
+      expect(cookieDelete.mock.calls.map((c) => c[0]).sort()).toEqual(["sb-abc-auth-token", "sb-abc-auth-token.1"]);
+    });
+    it("a failing sign-out still clears the other account's session cookies", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-other" } }, error: null });
+      profileUsername.mockReturnValue({ username: "someone_else" });
+      serverSignOut.mockRejectedValue(new TypeError("fetch failed"));
+      expect(await run()).toEqual({ ok: false, error: "Ese usuario ya está en uso." });
+      expect(cookieDelete).toHaveBeenCalledWith("sb-abc-auth-token");
+    });
+    it("the real owner keeps the session cookies (nothing is cleared)", async () => {
+      lostResponse();
+      signInWithPassword.mockResolvedValue({ data: { user: { id: "u-me" } }, error: null });
+      profileUsername.mockReturnValue({ username: "caro_m" });
+      expect(await run()).toEqual({ redirect: "/listo" });
+      expect(cookieDelete).not.toHaveBeenCalled();
+      expect(serverSignOut).not.toHaveBeenCalled();
     });
     it("a wrong password for that e-mail keeps the taken message and reveals nothing", async () => {
       lostResponse();
