@@ -13,6 +13,15 @@ export function supabaseUrl(): string | null {
   );
 }
 
+/**
+ * URL for rendering that must match between server HTML and the browser bundle:
+ * only the NEXT_PUBLIC_ name is inlined into the client, so never fall back to a
+ * server-only name here (it would cause a hydration mismatch).
+ */
+export function supabaseRenderUrl(): string | null {
+  return clean(process.env.NEXT_PUBLIC_SUPABASE_URL);
+}
+
 /** Public (anon / publishable) key, first one set wins. */
 export function supabasePublicKey(): string | null {
   return (

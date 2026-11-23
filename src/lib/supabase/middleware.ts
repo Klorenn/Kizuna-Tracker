@@ -6,7 +6,10 @@ import { supabasePublicConfig, supabasePublicKey, supabaseUrl } from "./env";
 import { shouldSignOut } from "./profile-gate";
 import { isPublicPath, safeNextPath } from "./public-paths";
 
-const AUTH_PAGES = ["/bienvenida", "/login", "/registro"];
+const FETCH_TIMEOUT_MS = 3000;
+let warned = false; // log the configuration problem once per process, not per request
+
+const AUTH_PAGES =["/bienvenida", "/login", "/registro"];
 
 function redirectTo(
   request: NextRequest,
@@ -38,28 +41,46 @@ export async function updateSession(request: NextRequest) {
   const path = request.nextUrl.pathname;
   const config = supabasePublicConfig();
 
-  if (!config) {
-    const missing = [!supabaseUrl() && "url", !supabasePublicKey() && "publicKey"].filter(Boolean);
-    console.error(`[middleware] Supabase configuration missing: ${missing.join(", ")}`);
+  let supabase: ReturnType<typeof createServerClient<Database>> | null = null;
+  if (config) {
+    try {
+      supabase = createServerClient<Database>(config.url, config.key, {
+        global: {
+          // A hanging Supabase must fail fast (counts as an auth failure), not 504.
+          fetch: (input, init) =>
+            fetch(input, { ...init, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }),
+        },
+        cookies: {
+          getAll: () => request.cookies.getAll(),
+          setAll(list) {
+            list.forEach(({ name, value }) => request.cookies.set(name, value));
+            response = NextResponse.next({ request });
+            list.forEach(({ name, value, options }) =>
+              response.cookies.set(name, value, options),
+            );
+          },
+        },
+      });
+    } catch {
+      // e.g. a malformed URL: same as missing configuration.
+      supabase = null;
+    }
+  }
+
+  if (!supabase) {
+    if (!warned) {
+      warned = true;
+      const missing = [!supabaseUrl() && "url", !supabasePublicKey() && "publicKey"].filter(Boolean);
+      console.error(
+        `[middleware] Supabase configuration missing or invalid: ${missing.join(", ") || "unusable value"}`,
+      );
+    }
     return applyDecision(
       request,
       decideAccess({ path, configPresent: false, user: null, authError: false }),
       response,
     );
   }
-
-  const supabase = createServerClient<Database>(config.url, config.key, {
-    cookies: {
-      getAll: () => request.cookies.getAll(),
-      setAll(list) {
-        list.forEach(({ name, value }) => request.cookies.set(name, value));
-        response = NextResponse.next({ request });
-        list.forEach(({ name, value, options }) =>
-          response.cookies.set(name, value, options),
-        );
-      },
-    },
-  });
 
   let user: { id: string } | null = null;
   let authError = false;

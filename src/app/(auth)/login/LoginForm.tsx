@@ -6,6 +6,7 @@ import { useRef, useState, useTransition } from "react";
 import { PasswordToggle } from "@/components/auth/PasswordToggle";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { safeAction } from "@/lib/safe-action";
 import { safeNextPath } from "@/lib/supabase/public-paths";
 import { signIn } from "./actions";
 
@@ -43,13 +44,12 @@ export function LoginForm({
     if (identifier.trim() === "" || password === "") return;
     setError(null);
     startTransition(async () => {
-      let res: Awaited<ReturnType<typeof signIn>>;
-      try {
-        res = await signIn({ identifier, password });
-      } catch {
-        setError("No pudimos conectar. Inténtalo de nuevo en unos minutos.");
+      const out = await safeAction(() => signIn({ identifier, password }));
+      if (!out.ok) {
+        setError(out.error);
         return;
       }
+      const res = out.value;
       if (res.ok) {
         router.replace(safeNextPath(next));
         router.refresh();

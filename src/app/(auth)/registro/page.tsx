@@ -25,6 +25,7 @@ import {
   type SignupInput,
   type SignupStep,
 } from "@/lib/signup";
+import { safeAction } from "@/lib/safe-action";
 import { checkUsername, signUp } from "./actions";
 
 type Availability = "idle" | "checking" | "available" | "taken" | "limited";
@@ -161,12 +162,10 @@ export default function RegistroPage() {
     setAvailability("checking");
     let cancelled = false;
     const t = setTimeout(async () => {
-      try {
-        const res = await checkUsername(username);
-        if (!cancelled) setAvailability(res.rateLimited ? "limited" : res.available ? "available" : "taken");
-      } catch {
-        if (!cancelled) setAvailability("idle");
-      }
+      const out = await safeAction(() => checkUsername(username));
+      if (cancelled) return;
+      if (!out.ok) setAvailability("idle");
+      else setAvailability(out.value.rateLimited ? "limited" : out.value.available ? "available" : "taken");
     }, 300);
     return () => {
       cancelled = true;
@@ -224,13 +223,10 @@ export default function RegistroPage() {
       return;
     }
     startTransition(async () => {
-      try {
-        const res = await signUp(full);
-        // On success the action redirects to /listo.
-        if (res && !res.ok) setSubmitError(res.error);
-      } catch {
-        setSubmitError("No pudimos conectar. Inténtalo de nuevo en unos minutos.");
-      }
+      // On success the action redirects to /listo; safeAction rethrows that redirect.
+      const out = await safeAction(() => signUp(full));
+      if (!out.ok) setSubmitError(out.error);
+      else if (out.value && !out.value.ok) setSubmitError(out.value.error);
     });
   }
 

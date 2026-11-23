@@ -1,5 +1,5 @@
 import { stripJpegMetadata } from "@/lib/checkins";
-import { supabaseUrl } from "@/lib/supabase/env";
+import { supabaseRenderUrl } from "@/lib/supabase/env";
 
 export const MAX_AVATAR_BYTES = 1024 * 1024;
 
@@ -17,7 +17,7 @@ export function processAvatar(
 
 /** Public URL of an avatar in the public `avatars` bucket (client and server safe). */
 export function avatarUrl(path: string | null | undefined, updatedAt?: string | null): string | null {
-  const base = supabaseUrl()?.replace(/\/+$/, "");
+  const base = supabaseRenderUrl()?.replace(/\/+$/, "");
   if (!path || !base) return null;
   const v = updatedAt ? Date.parse(updatedAt) : NaN;
   return `${base}/storage/v1/object/public/avatars/${path}${Number.isNaN(v) ? "" : `?v=${v}`}`;
