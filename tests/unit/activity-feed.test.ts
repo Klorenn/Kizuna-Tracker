@@ -76,3 +76,18 @@ describe('loadFeedPage: round trips', () => {
     expect((dates[0].params.p_habit_ids as string[]).sort()).toEqual(['h-gone', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6'])
   })
 })
+
+describe('loadFeedPage: timezone only matters for formatting', () => {
+  test('reads start before the timezone is known, and the page waits for it only to format times', async () => {
+    let resolveTz!: (tz: string) => void
+    const tz = new Promise<string>((r) => (resolveTz = r))
+    const f = feedClient()
+    const pending = loadFeedPage(f.client, ME, { timezone: tz, now: NOW })
+    await new Promise((r) => setTimeout(r, 10))
+    expect(f.trips).toContain('rpc:friend_feed')
+    resolveTz('UTC')
+    const page = await pending
+    const reference = await run({}, FIXTURE)
+    expect(page.items.map((i) => i.time)).toEqual(reference.page.items.map((i) => i.time))
+  })
+})

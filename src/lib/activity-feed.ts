@@ -42,12 +42,13 @@ type FeedRow = {
  * non-private habits, and a rejected check-in shows only to its owner and to whoever rejected it.
  * With `owner`, only that person (profile "Actividad"). Keyset pagination on (local_date,
  * created_at, id), so pages never overlap or skip when new rows arrive. Reads the newest rows of
- * each friend through an index instead of scanning every check-in in the table.
+ * each friend through an index instead of scanning every check-in in the table. `timezone` may still
+ * be loading: the reads start without it and it is awaited only to format the times.
  */
 export async function loadFeedPage(
   supabase: Supabase,
   me: string,
-  opts: { timezone: string; filter?: FeedFilter; cursor?: FeedCursor | null; owner?: string; limit?: number; now?: Date },
+  opts: { timezone: string | Promise<string>; filter?: FeedFilter; cursor?: FeedCursor | null; owner?: string; limit?: number; now?: Date },
 ): Promise<FeedPage> {
   const { timezone, filter = "all", cursor = null, owner, limit = FEED_PAGE, now = new Date() } = opts;
 
@@ -115,7 +116,7 @@ export async function loadFeedPage(
   const urlByPath = new Map(
     (signed.data ?? []).flatMap((s) => (s.path && s.signedUrl ? [[s.path, s.signedUrl] as const] : [])),
   );
-  const clock = new Intl.DateTimeFormat("es-CL", { timeZone: timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
+  const clock = new Intl.DateTimeFormat("es-CL", { timeZone: await timezone, hour: "2-digit", minute: "2-digit", hourCycle: "h23" });
 
   const entries = rows.map((r): FeedEntry => {
     const p = byId.get(r.user_id);
