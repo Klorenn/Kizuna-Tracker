@@ -48,12 +48,21 @@ function StreakLine({ streak }: { streak: NonNullable<FeedEntry["streak"]> }) {
 }
 
 /** Proof photo: dark media surface in both themes, white title over a scrim. */
-function PhotoCard({ entry }: { entry: FeedEntry }) {
+function PhotoCard({ entry, eager }: { entry: FeedEntry; eager: boolean }) {
   return (
     <div className="relative mt-1 flex h-[208px] flex-col justify-end overflow-hidden rounded-md bg-media p-3.5">
       {entry.photoUrl ? (
         // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-        <img src={entry.photoUrl} alt={`Foto de ${entry.habit.name}`} className="absolute inset-0 size-full object-cover" />
+        // lazy + async decode: up to 20 full-size photos per page must not compete with the first screen
+        <img
+          src={entry.photoUrl}
+          alt={`Foto de ${entry.habit.name}`}
+          width={448}
+          height={208}
+          loading={eager ? "eager" : "lazy"}
+          decoding="async"
+          className="absolute inset-0 size-full object-cover"
+        />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center gap-1.5 pb-8 text-small text-on-media/80">
           <ImageBroken size={18} weight="light" aria-hidden />
@@ -71,7 +80,16 @@ function PhotoCard({ entry }: { entry: FeedEntry }) {
  * color, what happened, when, and the streak or review status when it matters.
  * `showPerson={false}` on the friend's own profile, where the person is already the page.
  */
-export function ActivityItem({ entry, showPerson = true }: { entry: FeedEntry; showPerson?: boolean }) {
+export function ActivityItem({
+  entry,
+  showPerson = true,
+  eager = false,
+}: {
+  entry: FeedEntry;
+  showPerson?: boolean;
+  /** The first photo of the first screen loads eagerly; every other one is lazy. */
+  eager?: boolean;
+}) {
   const href = profileHref(entry.person.username);
   const hasMeta = Boolean(entry.streak || entry.status);
   return (
@@ -101,7 +119,7 @@ export function ActivityItem({ entry, showPerson = true }: { entry: FeedEntry; s
           </time>
         </div>
         {entry.hasPhoto ? (
-          <PhotoCard entry={entry} />
+          <PhotoCard entry={entry} eager={eager} />
         ) : showPerson ? (
           <p className="flex min-w-0 items-center gap-2 text-body text-ink">
             <span aria-hidden className="size-2.5 shrink-0 rounded-full bg-(--habit)" />
@@ -134,13 +152,15 @@ export function ActivityDays({
   continuesFrom?: string | null;
   showPerson?: boolean;
 }) {
+  // only the first page has a "first screen": a page that continues an earlier one is all lazy
+  const eagerId = continuesFrom === null ? items.find((e) => e.hasPhoto)?.id : undefined;
   return groupByDay(items, today, continuesFrom).map((g) => (
     <section key={`${g.date}-${g.items[0].id}`} aria-label={g.label} className="flex flex-col gap-2">
       {g.continued ? null : <h3 className="section-label flex h-6 items-center pt-1 text-muted">{g.label}</h3>}
       <Card>
         <ul className="divide-y divide-line">
           {g.items.map((e) => (
-            <ActivityItem key={e.id} entry={e} showPerson={showPerson} />
+            <ActivityItem key={e.id} entry={e} showPerson={showPerson} eager={e.id === eagerId} />
           ))}
         </ul>
       </Card>
