@@ -6,10 +6,11 @@ import { useState, useTransition } from "react";
 import { deleteAccount } from "@/app/(app)/perfil/actions";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { ListRow } from "@/components/ui/ListRow";
 import { Sheet } from "@/components/ui/Sheet";
 
 /** "Borrar cuenta": the user confirms by typing their @username. */
-export function DeleteAccountButton({ username }: { username: string }) {
+export function DeleteAccountButton({ username, variant = "button" }: { username: string; variant?: "button" | "row" }) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState("");
@@ -29,10 +30,21 @@ export function DeleteAccountButton({ username }: { username: string }) {
 
   return (
     <>
-      <Button variant="ghost" className="text-ink hover:bg-field" onClick={() => setOpen(true)}>
-        <Trash size={20} weight="light" aria-hidden />
-        Borrar cuenta
-      </Button>
+      {variant === "row" ? (
+        <ListRow
+          tone="danger"
+          icon={<Trash size={20} weight="light" />}
+          label="Borrar cuenta"
+          hint="Para siempre, no se puede deshacer"
+          chevron
+          onClick={() => setOpen(true)}
+        />
+      ) : (
+        <Button variant="ghost" className="text-ink hover:bg-field" onClick={() => setOpen(true)}>
+          <Trash size={20} weight="light" aria-hidden />
+          Borrar cuenta
+        </Button>
+      )}
       <Sheet open={open} title="Borrar cuenta" onClose={() => setOpen(false)}>
         <p className="text-body text-ink">
           Se borran tus fotos y datos, y no podrás volver a entrar. Tus amigos conservan el historial de deudas como

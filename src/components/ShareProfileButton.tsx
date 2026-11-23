@@ -1,24 +1,20 @@
 "use client";
 
 import { LinkSimple, ShareNetwork } from "@phosphor-icons/react";
-import { useEffect, useState, useTransition } from "react";
+import { useTransition } from "react";
 import { createInvite } from "@/app/(app)/amigos/actions";
+import { ListRow } from "./ui/ListRow";
+import { Toast, useToast } from "./ui/Toast";
 import { Button } from "./ui/Button";
 
 type Props =
   | { kind: "invite"; label?: string }
-  | { kind: "profile"; url: string; label?: string; icon?: "link" | "share" };
+  | { kind: "profile"; url: string; label?: string; icon?: "link" | "share"; variant?: "button" | "row" };
 
 /** Web Share API with a copy-to-clipboard fallback; confirms with a short toast. */
 export function ShareProfileButton(props: Props) {
-  const [toast, setToast] = useState<string | null>(null);
+  const [toast, showToast] = useToast();
   const [busy, start] = useTransition();
-
-  useEffect(() => {
-    if (!toast) return;
-    const t = setTimeout(() => setToast(null), 2500);
-    return () => clearTimeout(t);
-  }, [toast]);
 
   async function share(url: string, title: string) {
     try {
@@ -27,11 +23,11 @@ export function ShareProfileButton(props: Props) {
         return;
       }
       await navigator.clipboard.writeText(url);
-      setToast("Link copiado");
+      showToast("Link copiado");
     } catch (e) {
       // closing the native share sheet is not an error
       if (e instanceof DOMException && e.name === "AbortError") return;
-      setToast("No pudimos copiar el link");
+      showToast("No pudimos copiar el link");
     }
   }
 
@@ -42,25 +38,30 @@ export function ShareProfileButton(props: Props) {
         return;
       }
       const r = await createInvite();
-      if (!r.ok) setToast(r.error);
+      if (!r.ok) showToast(r.error);
       else await share(r.url, "Únete a Kizuna");
     });
   }
 
   const Icon = props.kind === "profile" && props.icon === "link" ? LinkSimple : ShareNetwork;
+  const label = props.label ?? (props.kind === "invite" ? "Invitar con un link" : "Compartir perfil");
   return (
     <>
-      <Button variant="secondary" disabled={busy} onClick={onClick}>
-        <Icon size={20} weight="light" aria-hidden />
-        {props.label ?? (props.kind === "invite" ? "Invitar con un link" : "Compartir perfil")}
-      </Button>
-      <div aria-live="polite" role="status">
-        {toast ? (
-          <p className="fixed inset-x-5 bottom-24 z-10 mx-auto max-w-sm rounded-md bg-ink px-4 py-3 text-center text-small text-on-accent shadow-card">
-            {toast}
-          </p>
-        ) : null}
-      </div>
+      {props.kind === "profile" && props.variant === "row" ? (
+        <ListRow
+          icon={<Icon size={20} weight="light" />}
+          label={label}
+          hint="Envía tu link o cópialo"
+          onClick={onClick}
+          disabled={busy}
+        />
+      ) : (
+        <Button variant="secondary" disabled={busy} onClick={onClick}>
+          <Icon size={20} weight="light" aria-hidden />
+          {label}
+        </Button>
+      )}
+      <Toast message={toast} />
     </>
   );
 }

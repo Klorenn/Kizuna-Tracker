@@ -1,7 +1,8 @@
 "use client";
 
-import { Bell, DownloadSimple, Export, House, PlusSquare, X } from "@phosphor-icons/react";
+import { Bell, DownloadSimple, X } from "@phosphor-icons/react";
 import { useCallback, useEffect, useState } from "react";
+import { InstallSteps } from "@/components/InstallSteps";
 import { Button } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { IconButton } from "@/components/ui/IconButton";
@@ -20,12 +21,6 @@ function readDismissed(): boolean {
     return false;
   }
 }
-
-const STEPS = [
-  { Icon: Export, text: "Toca Compartir en Safari" },
-  { Icon: PlusSquare, text: 'Elige "Agregar a inicio"' },
-  { Icon: House, text: "Abre Kizuna desde tu inicio" },
-];
 
 /**
  * Install nudge (iOS instructions sheet / Android prompt) and, only inside the installed app,
@@ -138,24 +133,7 @@ export function InstallPrompt() {
         ) : null}
       </Card>
       <Sheet open={sheet} title="Instala Kizuna" onClose={() => setSheet(false)}>
-        <div className="flex items-center gap-4">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img src="/icons/icon-192.png" alt="" width={56} height={56} className="size-14 shrink-0 rounded-lg" />
-          <p className="min-w-0 flex-1 text-body text-muted">
-            En iPhone, los recordatorios solo llegan si Kizuna está en tu pantalla de inicio.
-          </p>
-        </div>
-        <ol className="flex flex-col rounded-lg border border-line bg-surface px-4 shadow-card">
-          {STEPS.map(({ Icon, text }, i) => (
-            <li key={text} className="flex min-h-14 items-center gap-3 border-line [&:not(:last-child)]:border-b">
-              <span className="flex size-9 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
-                <Icon size={20} weight="light" aria-hidden />
-              </span>
-              <span className="min-w-0 flex-1 text-body text-ink">{text}</span>
-              <span className="section-label text-muted">{String(i + 1).padStart(2, "0")}</span>
-            </li>
-          ))}
-        </ol>
+        <InstallSteps />
         <Button onClick={() => setSheet(false)}>Entendido</Button>
         <Button variant="ghost" className="text-ink! hover:bg-field!" onClick={dismiss}>
           Ahora no
