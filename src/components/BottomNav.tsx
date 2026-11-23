@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { isTabActive } from "./bottom-nav-active";
 import { ChartBar, House, Trophy, User, Users } from "@phosphor-icons/react";
 
 const TABS = [
@@ -12,7 +13,7 @@ const TABS = [
   { href: "/perfil", label: "Perfil", Icon: User },
 ] as const;
 
-/** Home is active for "/" and for habit screens (/habitos/...); Amigos also for /@handle. */
+/** Which tab is lit for a path: see `isTabActive`. */
 export function BottomNav() {
   const pathname = usePathname();
   if (pathname === "/listo") return null;
@@ -23,13 +24,7 @@ export function BottomNav() {
     >
       <ul className="mx-auto flex max-w-md px-2 pt-1">
         {TABS.map(({ href, label, Icon }) => {
-          const active =
-            href === "/"
-              ? pathname === "/" || pathname.startsWith("/habitos")
-              : href === "/amigos"
-                ? // other people's profiles (/@handle) belong to Amigos
-                  pathname.startsWith(href) || pathname.startsWith("/@") || pathname.startsWith("/u/")
-                : pathname.startsWith(href);
+          const active = isTabActive(href, pathname);
           return (
             <li key={href} className="flex-1">
               <Link
