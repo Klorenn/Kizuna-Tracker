@@ -40,6 +40,8 @@ function habitRow(draft: HabitDraft) {
     visibility: draft.visibility,
     preset: draft.preset,
     color: draft.color,
+    // a habit with steps never carries a detailed log (validateHabitDraft refuses the mix)
+    log_type: draft.logType,
   };
 }
 
