@@ -90,6 +90,26 @@ test("Explorar finds a name without its accent, sends a request, and Cancelar br
   await expect(row(page, d.handle).getByRole("button", { name: "Agregar", exact: true })).toBeVisible();
 });
 
+test("a suggestion row stays in place showing Solicitud enviada after Agregar, and Enviadas gains the person", async ({ page }) => {
+  const [a, b, c] = await Promise.all([mk("dea", "Ana"), mk("deb", "Beto"), mk("dec", "Carla")]);
+  await link(a.id, b.id, "accepted");
+  await link(b.id, c.id, "accepted");
+  await as(page, a.handle);
+  await page.goto("/amigos");
+  const suggestions = page.getByRole("region", { name: "Sugerencias" });
+  const rows = suggestions.getByRole("listitem");
+  const before = await rows.allTextContents();
+  const carla = suggestions.getByRole("listitem").filter({ hasText: `@${c.handle}` });
+  await carla.getByRole("button", { name: "Agregar", exact: true }).click();
+  await expect(carla.getByText("Solicitud enviada")).toBeVisible();
+  await expect(page.getByRole("region", { name: "Solicitudes" }).getByText(`@${c.handle}`)).toBeVisible();
+  const after = await rows.allTextContents();
+  expect(after.length).toBe(before.length);
+  expect(after.map((t) => t.replace("Solicitud enviada", "")).map((t) => t.includes(`@${c.handle}`))).toEqual(
+    before.map((t) => t.includes(`@${c.handle}`)),
+  );
+});
+
 test("one character runs nothing; no match and a non-match have their own messages", async ({ page }) => {
   const a = await mk("dqa", "Ana");
   await as(page, a.handle);

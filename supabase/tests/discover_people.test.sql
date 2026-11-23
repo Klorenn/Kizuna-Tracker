@@ -4,7 +4,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(62);
+select plan(65);
 
 -- Fixtures. ana (01) is the caller.
 --   01 ana        caller
@@ -43,7 +43,9 @@ insert into public.friendships (requester_id, addressee_id, status) values
   ('c0000000-0000-0000-0000-000000000006', 'c0000000-0000-0000-0000-000000000004', 'accepted'),
   ('c0000000-0000-0000-0000-000000000001', 'c0000000-0000-0000-0000-000000000008', 'pending'),
   ('c0000000-0000-0000-0000-000000000009', 'c0000000-0000-0000-0000-000000000001', 'pending'),
-  ('c0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000011', 'pending');
+  ('c0000000-0000-0000-0000-000000000002', 'c0000000-0000-0000-0000-000000000011', 'pending'),
+  ('c0000000-0000-0000-0000-000000000007', 'c0000000-0000-0000-0000-000000000002', 'accepted'),
+  ('c0000000-0000-0000-0000-000000000003', 'c0000000-0000-0000-0000-000000000007', 'accepted');
 
 -- ===== the switch (column) =====
 select is((select column_default from information_schema.columns
@@ -94,6 +96,7 @@ select is((select d.username from public.discover_people('hidden_h') d), 'hidden
 select is((select count(*)::int from public.discover_people('hidden_') d), 0, 'hidden profile is not found by a username prefix');
 select is((select count(*)::int from public.discover_people('hidden person') d), 0, 'hidden profile is not found by display name');
 select is((select count(*)::int from public.discover_people('@HIDDEN_H') d), 1, 'exact username query is normalised (@, case)');
+select is((select d.mutual_count from public.discover_people('hidden_h') d), 0, 'a hidden person with 2 friends in common is returned with mutual_count 0');
 
 -- ===== name and username search =====
 select is((select array_agg(d.username order by d.username) from public.discover_people('jose') d), array['jose_n', 'jose_nx'], '"jose" finds José Núñez (accents folded) and the username prefix');
@@ -108,7 +111,7 @@ select is((select count(*)::int from public.discover_people('j\') d), 0, 'a back
 select throws_ok($$ select * from public.discover_people('a') $$, 'P0001', 'invalid_query', 'one character is invalid');
 select throws_ok($$ select * from public.discover_people(repeat('a', 41)) $$, 'P0001', 'invalid_query', '41 characters is invalid');
 select is((select count(*)::int from public.discover_people(repeat('a', 40)) d), 0, '40 characters is accepted');
-select is((select count(*)::int from public.discover_people('  @Ana ') d), 0, '"  @Ana " behaves as ana (the caller is never listed)');
+select is((select array_agg(d.username) from public.discover_people('  @OUT_O ') d), array['out_o'], '"  @OUT_O " is trimmed, loses the @ and is lower-cased');
 select is((select array_agg(d.username) from public.discover_people('  @Carla_C ') d), array['carla_c'], 'trim, leading @ and case are normalised');
 select is((select count(*)::int from public.discover_people('') d), 7, 'empty string behaves as no query');
 select is((select count(*)::int from public.discover_people('@') d), 7, 'a lone @ behaves as no query');
@@ -204,6 +207,25 @@ select is((select status from public.friendships where requester_id = 'c1000000-
 reset role;
 select is((select count(*)::int from public.friendships
   where requester_id = 'c1000000-0000-0000-0000-000000000001' and status = 'pending'), 20, 'the requester still has exactly 20 pending rows');
+
+-- the clamp to 50 with more than 50 matching rows
+reset role;
+insert into auth.users (id)
+select ('c2000000-0000-0000-0000-0000000000' || lpad(g::text, 2, '0'))::uuid from generate_series(1, 60) g;
+insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone)
+select ('c2000000-0000-0000-0000-0000000000' || lpad(g::text, 2, '0'))::uuid, 'many_' || lpad(g::text, 2, '0'),
+  'Many', 'User', '1990-01-01', now(), 'America/Santiago'
+from generate_series(1, 60) g;
+set local role authenticated;
+select set_config('request.jwt.claims', '{"sub":"c0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select is((select count(*)::int from public.discover_people(null, 500, 0) d), 50, 'limit 500 is clamped to 50 with more than 50 matches');
+
+-- a deleted caller gets no rows
+reset role;
+update public.profiles set deleted_at = now() where id = 'c0000000-0000-0000-0000-000000000001';
+set local role authenticated;
+select is((select count(*)::int from public.discover_people() d), 0, 'a deleted caller gets no rows');
+reset role;
 
 select * from finish();
 rollback;

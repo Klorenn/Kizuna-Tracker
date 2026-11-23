@@ -2,7 +2,7 @@ import { CaretRight } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { DiscoverPersonRow, SentRequestRow } from "@/components/FriendActions";
+import { SentRequestRow } from "@/components/FriendActions";
 import { FriendRequestRow } from "@/components/FriendRequestRow";
 import { LoadFailed } from "@/components/LoadFailed";
 import { ActivityFeed } from "@/components/friends/ActivityFeed";
@@ -21,6 +21,7 @@ import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 import { PeopleSearch } from "./PeopleSearch";
+import { SuggestionsSection } from "./SuggestionsSection";
 
 export const metadata: Metadata = { title: "Amigos" };
 
@@ -111,7 +112,7 @@ export default async function AmigosPage({
       : Promise.resolve({ data: [] }),
   ]);
   // pending requests already have their own lists (Solicitudes, Enviadas)
-  const suggested = suggestions.ok ? suggestions.people.filter((p) => p.relation === "none").slice(0, SUGGESTION_COUNT) : [];
+  const suggested = suggestions.ok ? suggestions.people.filter((p) => p.relation === "none").slice(0, SUGGESTION_COUNT) : null;
   const streaks = streakRead.ok ? streakRead.streaks : null;
   const byId = new Map(readRows(peopleRes).map((p) => [p.id, p]));
 
@@ -143,24 +144,7 @@ export default async function AmigosPage({
 
       <PeopleSearch />
 
-      {suggestions.ok && suggested.length === 0 ? null : (
-        <section aria-label="Sugerencias" className="flex flex-col gap-2">
-          <SectionHeader label="Sugerencias" action="Ver todos" href="/amigos/explorar" />
-          {suggestions.ok ? (
-            <Card>
-              <ul className="divide-y divide-line">
-                {suggested.map((p) => (
-                  <li key={p.id}>
-                    <DiscoverPersonRow person={p} />
-                  </li>
-                ))}
-              </ul>
-            </Card>
-          ) : (
-            <LoadFailed href="/amigos" />
-          )}
-        </section>
-      )}
+      <SuggestionsSection people={suggested} />
 
       <ShareProfileButton kind="invite" />
 

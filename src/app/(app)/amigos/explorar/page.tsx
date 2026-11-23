@@ -30,7 +30,7 @@ export default async function ExplorarPage({ searchParams }: { searchParams: Pro
   return (
     <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-1">
       <div className="flex flex-col gap-1">
-        <Link href="/amigos" className="-ml-1 flex h-11 w-fit items-center gap-1 pr-2 text-[17px] text-accent">
+        <Link href="/amigos" className="-ml-1 flex h-11 w-fit items-center gap-1 pr-2 text-body text-accent">
           <CaretLeft size={20} weight="light" aria-hidden />
           Amigos
         </Link>

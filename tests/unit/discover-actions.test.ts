@@ -8,12 +8,14 @@ const client = { auth: { getUser: async () => ({ data: { user }, error: null }) 
 
 vi.mock('server-only', () => ({}))
 vi.mock('@/lib/supabase/server', () => ({ createServerClient: async () => client }))
-vi.mock('@/lib/notify', () => ({ notify: vi.fn(async () => {}) }))
+const notifyMock = vi.fn(async (...args: unknown[]) => void args)
+vi.mock('@/lib/notify', () => ({ notify: (...a: unknown[]) => notifyMock(...a) }))
 vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 vi.mock('next/headers', () => ({ headers: async () => new Headers() }))
 vi.mock('@/lib/activity-feed', () => ({ loadFeedPage: vi.fn() }))
 
 const {
+  acceptFriendRequestFrom,
   addFriendByUsername,
   cancelFriendRequest,
   declineFriendRequest,
@@ -35,6 +37,7 @@ beforeEach(() => {
   user = { id: 'me' }
   rpc.mockReset()
   from.mockReset()
+  notifyMock.mockClear()
 })
 
 describe('every discovery action refuses without a session before touching the database', () => {
@@ -44,6 +47,7 @@ describe('every discovery action refuses without a session before touching the d
     ['addFriendByUsername', () => addFriendByUsername('ana')],
     ['cancelFriendRequest', () => cancelFriendRequest(U2)],
     ['declineFriendRequest', () => declineFriendRequest(U2)],
+    ['acceptFriendRequestFrom', () => acceptFriendRequestFrom(U2)],
     ['setDiscoverable', () => setDiscoverable(true)],
   ]
   it.each(calls)('%s', async (_name, run) => {
@@ -96,6 +100,28 @@ describe('cancel and decline', () => {
   it('cancels a pending request', async () => {
     from.mockReturnValue(chain({ data: [{ id: 'f1' }], error: null }))
     expect(await cancelFriendRequest(U2)).toEqual({ ok: true })
+  })
+})
+
+describe('acceptFriendRequestFrom', () => {
+  const notify = notifyMock
+  it('updates the pending row where the caller is the addressee and never inserts or notifies a new request', async () => {
+    const insert = vi.fn()
+    from.mockReturnValue({ ...chain({ data: [{ id: 'f1' }], error: null }), insert })
+    expect(await acceptFriendRequestFrom(U2)).toEqual({ ok: true })
+    expect(insert).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  })
+  it('0 rows: the request no longer exists (the requester withdrew), nothing is created', async () => {
+    const insert = vi.fn()
+    from.mockReturnValue({ ...chain({ data: [], error: null }), insert })
+    expect(await acceptFriendRequestFrom(U2)).toEqual({ ok: false, error: 'Esta solicitud ya no existe.' })
+    expect(insert).not.toHaveBeenCalled()
+    expect(notify).not.toHaveBeenCalled()
+  })
+  it('rejects a malformed id without a round trip', async () => {
+    expect(await acceptFriendRequestFrom('nope')).toMatchObject({ ok: false })
+    expect(from).not.toHaveBeenCalled()
   })
 })
 

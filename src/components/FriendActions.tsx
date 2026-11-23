@@ -4,6 +4,7 @@ import { Check, UserPlus, Warning, X } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import {
+  acceptFriendRequestFrom,
   addFriendByUsername,
   cancelFriendRequest,
   declineFriendRequest,
@@ -15,7 +16,7 @@ import { Button } from "./ui/Button";
 
 function ErrorLine({ children }: { children: string }) {
   return (
-    <p role="alert" className="flex items-start gap-[6px] text-small text-ink">
+    <p role="alert" className="flex items-start gap-1.5 text-small text-ink">
       <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
       {children}
     </p>
@@ -73,7 +74,7 @@ export function DiscoverPersonRow({ person }: { person: Person }) {
               return r.ok ? { ok: true, next: "none" } : r;
             })
           }
-          className="flex size-11 shrink-0 items-center justify-center rounded-full border-[1.5px] border-accent text-accent transition-colors duration-[120ms] hover:bg-accent-soft disabled:opacity-50"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full border-2 border-accent text-accent transition-colors duration-150 hover:bg-accent-soft disabled:opacity-50"
         >
           <X size={20} weight="light" aria-hidden />
         </button>
@@ -83,11 +84,11 @@ export function DiscoverPersonRow({ person }: { person: Person }) {
           aria-label={`Aceptar a ${person.displayName}`}
           onClick={() =>
             run(async () => {
-              const r = await sendFriendRequest(person.id);
+              const r = await acceptFriendRequestFrom(person.id);
               return r.ok ? { ok: true, next: "accepted" } : r;
             })
           }
-          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-colors duration-[120ms] hover:bg-accent-hover disabled:opacity-50"
+          className="flex size-11 shrink-0 items-center justify-center rounded-full bg-accent text-on-accent transition-colors duration-150 hover:bg-accent-hover disabled:opacity-50"
         >
           <Check size={20} weight="light" aria-hidden />
         </button>

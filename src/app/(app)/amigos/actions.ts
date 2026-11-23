@@ -113,6 +113,27 @@ export async function addFriendByUsername(username: string): Promise<RequestResu
   return requestFrom(auth.supabase, auth.userId, data.id, false);
 }
 
+/**
+ * The addressee accepts a pending request from `userId`. Only ever an UPDATE of that pending row:
+ * if the requester withdrew meanwhile it reports it, and never creates a request of its own.
+ */
+export async function acceptFriendRequestFrom(userId: string): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (typeof userId !== "string" || !UUID.test(userId)) return { ok: false, error: GENERIC };
+  const { data, error } = await auth.supabase
+    .from("friendships")
+    .update({ status: "accepted" })
+    .eq("requester_id", userId)
+    .eq("addressee_id", auth.userId)
+    .eq("status", "pending")
+    .select("id");
+  if (error) return { ok: false, error: GENERIC };
+  if (!data || data.length === 0) return { ok: false, error: "Esta solicitud ya no existe." };
+  refresh();
+  return { ok: true };
+}
+
 /** The requester withdraws a pending request they sent (client DELETE of a pending row under RLS). */
 export async function cancelFriendRequest(userId: string): Promise<Result> {
   return dropPending(userId, "sent");

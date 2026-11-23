@@ -6,10 +6,10 @@ type Supabase = Awaited<ReturnType<typeof createServerClient>>;
 export const PAGE_SIZE = 20;
 export const SUGGESTION_COUNT = 3;
 /**
- * Amigos asks for a few more than it shows: people with a pending request already appear under
+ * Amigos asks for the function's maximum (50) and shows the first few: people with a pending request already appear under
  * Solicitudes / Enviadas, so the suggestions skip them without costing a second round trip.
  */
-export const SUGGESTION_POOL = 13;
+export const SUGGESTION_POOL = 50;
 
 export const SHORT_QUERY_COPY = "Escribe al menos 2 letras.";
 export const LONG_QUERY_COPY = "Esa búsqueda es demasiado larga.";

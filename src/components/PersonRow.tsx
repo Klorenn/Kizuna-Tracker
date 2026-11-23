@@ -45,7 +45,7 @@ export function PersonRow({
           <Avatar name={person.displayName} src={person.avatarSrc} preset={person.avatarPreset} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-body font-medium text-ink">{person.displayName}</span>
-            <span className="truncate font-mono text-[13px] text-muted">@{person.username}</span>
+            <span className="truncate font-mono text-small text-muted">@{person.username}</span>
             {showMeta ? (
               <span data-meta className="block min-h-5 truncate text-small text-muted">
                 {meta}

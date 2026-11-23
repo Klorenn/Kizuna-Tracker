@@ -84,7 +84,8 @@ begin
     p.display_name,
     p.avatar_path,
     p.avatar_preset,
-    m.n,
+    -- a hidden person (listed only for an exact @usuario) never discloses their friendships
+    case when p.discoverable then m.n else 0 end,
     case
       when pr.requester_id = v_uid then 'outgoing'
       when pr.requester_id is not null then 'incoming'
@@ -130,7 +131,7 @@ begin
     )
   order by
     (v_q is not null and p.username::text = v_q) desc,
-    m.n desc,
+    (case when p.discoverable then m.n else 0 end) desc,
     p.created_at desc,
     p.id
   limit v_limit offset v_offset;

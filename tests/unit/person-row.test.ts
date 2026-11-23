@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('next/navigation', () => ({ useRouter: () => ({ refresh: () => {} }) }))
 vi.mock('@/app/(app)/amigos/actions', () => ({
+  acceptFriendRequestFrom: vi.fn(),
   addFriendByUsername: vi.fn(),
   sendFriendRequest: vi.fn(),
   cancelFriendRequest: vi.fn(),

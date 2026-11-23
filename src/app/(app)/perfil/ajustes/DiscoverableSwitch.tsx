@@ -3,6 +3,7 @@
 import { UsersThree, Warning } from "@phosphor-icons/react";
 import { useState, useTransition } from "react";
 import { setDiscoverable } from "@/app/(app)/perfil/actions";
+import { Toggle } from "@/components/ui/Toggle";
 import { safeAction } from "@/lib/safe-action";
 
 const RETRY = "No pudimos guardar los cambios. Inténtalo de nuevo.";
@@ -37,39 +38,24 @@ export function DiscoverableSwitch({ initial }: { initial: boolean }) {
           <UsersThree size={20} weight="light" />
         </span>
         <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span id="discoverable-label" className="text-body text-ink">
+          <span className="text-body text-ink">
             Aparecer en sugerencias y en Explorar
           </span>
           <span id="discoverable-hint" className="text-small text-muted">
             Si lo apagas, no apareces en esas listas. Igual pueden agregarte con tu @usuario o tu enlace de invitación.
           </span>
         </span>
-        <button
-          type="button"
-          role="switch"
-          aria-checked={on}
-          aria-labelledby="discoverable-label"
-          aria-describedby="discoverable-hint"
+        <Toggle
+          touch
+          checked={on}
+          onChange={toggle}
+          label="Aparecer en sugerencias y en Explorar"
+          describedBy="discoverable-hint"
           disabled={busy}
-          onClick={toggle}
-          className="relative flex size-11 shrink-0 items-center justify-center rounded-full focus-visible:outline-offset-0"
-        >
-          <span
-            aria-hidden
-            className={`relative block h-[31px] w-[51px] rounded-full transition-colors duration-[120ms] motion-reduce:transition-none ${
-              on ? "bg-accent" : "bg-outline-strong"
-            }`}
-          >
-            <span
-              className={`absolute top-0.5 size-[27px] rounded-full shadow-card transition-[left] duration-[120ms] motion-reduce:transition-none ${
-                on ? "left-[22px] bg-on-accent" : "left-0.5 bg-knob"
-              }`}
-            />
-          </span>
-        </button>
+        />
       </div>
       {error ? (
-        <p role="alert" className="flex items-start gap-[6px] text-small text-ink">
+        <p role="alert" className="flex items-start gap-1.5 text-small text-ink">
           <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
           {error}
         </p>
