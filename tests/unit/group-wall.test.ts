@@ -92,6 +92,29 @@ describe('WallFeed', () => {
   })
 })
 
+describe('day labels without a known today (fix round 1, M2)', () => {
+  it('no prop before mount: plain dates only, even for 31 December', () => {
+    const h = renderToStaticMarkup(
+      createElement(WallFeed, {
+        groupId: 'g1',
+        wall: { items: [item('1', { localDate: '2026-12-31' }), item('2', { localDate: '2026-12-30' })], next: null },
+        actions: { loadMoreWall },
+        retryHref: '/grupos/g1',
+        color: 'oliva',
+      }),
+    )
+    expect(text(h)).not.toContain('Hoy')
+    expect(text(h)).not.toContain('Ayer')
+    expect(text(h)).toContain('Jue 31 dic')
+    expect(text(h)).toContain('Mié 30 dic')
+  })
+
+  it('the prop is followed exactly: 31 December with today 1 January is "Ayer"', () => {
+    expect(text(render({ items: [item('1', { localDate: '2026-12-31' })], next: null }, '2027-01-01'))).toContain('Ayer')
+    expect(text(render({ items: [item('1', { localDate: '2026-12-31' })], next: null }, '2026-12-31'))).toContain('Hoy')
+  })
+})
+
 describe('fetchMoreWall', () => {
   const cursor = { before: '2026-11-20T00:00:00Z', beforeId: '2' }
   const start = { pages: [[item('1'), item('2')]], next: cursor, error: null }

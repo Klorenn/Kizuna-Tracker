@@ -1,7 +1,7 @@
 import { createElement } from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { describe, expect, it, vi } from 'vitest'
-import { MembersList, MemberRow, doInvite, doLeave, doRemove, doSetAdmin } from '@/components/groups/detail/MembersList'
+import { MembersList, MemberRow, doInvite, doLeave, doRemove, doSetAdmin, inviteDecision, openInvite } from '@/components/groups/detail/MembersList'
 import { createRunner } from '@/components/groups/detail/group-logic'
 import type { GroupBoardRow } from '@/lib/groups-contract'
 
@@ -191,5 +191,44 @@ describe('action handlers', () => {
   it('a thrown action is an error result, not an unhandled rejection', async () => {
     const r = await doLeave(createRunner(), vi.fn().mockRejectedValue(new Error('offline')), 'g1', vi.fn())
     expect(r).toMatchObject({ ok: false })
+  })
+})
+
+describe('invite link reuse (fix round 1, I2)', () => {
+  it('decides: create on first open and after an error; reuse a ready or running one', () => {
+    expect(inviteDecision(null)).toBe('create')
+    expect(inviteDecision({ status: 'error', error: 'x' })).toBe('create')
+    expect(inviteDecision({ status: 'ready', url: 'u' })).toBe('reuse')
+    expect(inviteDecision({ status: 'pending' })).toBe('reuse')
+  })
+
+  it('first open: one call; reopen: no call and the same URL; error then retry: a second call', async () => {
+    const create = vi.fn().mockResolvedValueOnce({ ok: true, data: { code: 'A', url: 'https://k.test/A' } })
+    const runner = createRunner()
+    const first = await openInvite(runner, create, 'g1', null)
+    expect(first).toEqual({ status: 'ready', url: 'https://k.test/A' })
+    expect(await openInvite(runner, create, 'g1', first)).toEqual(first)
+    expect(create).toHaveBeenCalledTimes(1)
+
+    const failing = vi
+      .fn()
+      .mockResolvedValueOnce({ ok: false, error: 'Ya hay 5 enlaces activos. Espera a que venza alguno.' })
+      .mockResolvedValueOnce({ ok: true, data: { code: 'B', url: 'https://k.test/B' } })
+    const err = await openInvite(runner, failing, 'g1', null)
+    expect(err).toMatchObject({ status: 'error' })
+    expect(await openInvite(runner, failing, 'g1', err)).toEqual({ status: 'ready', url: 'https://k.test/B' })
+    expect(failing).toHaveBeenCalledTimes(2)
+  })
+
+  it('a double tap calls the action once', async () => {
+    let release: (v: unknown) => void = () => {}
+    const create = vi.fn(() => new Promise((r) => (release = r)))
+    const runner = createRunner()
+    const a = openInvite(runner, create as never, 'g1', null)
+    const b = await openInvite(runner, create as never, 'g1', null)
+    expect(b).toBeNull()
+    release({ ok: true, data: { code: 'A', url: 'u' } })
+    await a
+    expect(create).toHaveBeenCalledTimes(1)
   })
 })

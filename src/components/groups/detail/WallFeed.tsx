@@ -23,7 +23,7 @@ import { groupByDay } from "@/lib/feed";
 import type { GroupActions, GroupResult, GroupWallCursor, GroupWallItem, GroupWallPage } from "@/lib/groups-contract";
 import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
 import { useSignedUrls } from "@/lib/use-signed-urls";
-import { appendWallPage, initialWall, type WallState } from "./group-logic";
+import { appendWallPage, initialWall, plainDayLabel, type WallState } from "./group-logic";
 import { ErrorLine, PersonLink } from "./parts";
 
 /** One "Ver más": the next page appended to what is on screen, or the same state carrying the error. */
@@ -90,13 +90,16 @@ export const WallChunk = memo(function WallChunk({
   continuesFrom,
 }: {
   items: GroupWallItem[];
-  today: string;
+  /** The viewer's date, or null while unknown (plain dates then). */
+  today: string | null;
   continuesFrom: string | null;
 }) {
   const urls = useSignedUrls(items.flatMap((i) => (i.photoPath ? [i.photoPath] : [])));
-  return groupByDay(items, today, continuesFrom).map((g) => (
-    <section key={`${g.date}-${g.items[0].checkinId}`} aria-label={g.label} className="flex flex-col gap-2">
-      {g.continued ? null : <h3 className="section-label flex h-6 items-center pt-1 text-muted">{g.label}</h3>}
+  return groupByDay(items, today ?? "0000-01-01", continuesFrom).map((g) => {
+    const label = today === null ? plainDayLabel(g.date) : g.label;
+    return (
+    <section key={`${g.date}-${g.items[0].checkinId}`} aria-label={label} className="flex flex-col gap-2">
+      {g.continued ? null : <h3 className="section-label flex h-6 items-center pt-1 text-muted">{label}</h3>}
       <Card>
         <ul className="divide-y divide-line">
           {g.items.map((i) => (
@@ -105,17 +108,19 @@ export const WallChunk = memo(function WallChunk({
         </ul>
       </Card>
     </section>
-  ));
+    );
+  });
 });
 
 /** The viewer's date for the day labels: the page's own `today` when given, else the device's after mount. */
-function useToday(provided: string | undefined, firstDate: string | undefined): string {
+function useToday(provided: string | undefined): string | null {
   const [device, setDevice] = useState<string | null>(null);
   useEffect(() => {
+    // the device clock is only consulted when the page gave no date
     if (!provided) setDevice(localDate(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone));
   }, [provided]);
-  // before mount nothing is "Hoy": a date that cannot match keeps server and first client render equal
-  return provided ?? device ?? `${(firstDate ?? "2000").slice(0, 4)}-12-31`;
+  // null until known: the labels are plain dates (never "Hoy"/"Ayer"), equal on server and first client render
+  return provided ?? device;
 }
 
 export function WallFeed({
@@ -142,7 +147,7 @@ export function WallFeed({
   }
   const inFlight = useRef(false);
   const [busy, setBusy] = useState(false);
-  const day = useToday(today, state?.pages[0]?.[0]?.localDate);
+  const day = useToday(today);
 
   if (!wall || !state) return <LoadFailed href={retryHref} />;
 

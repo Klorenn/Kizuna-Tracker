@@ -5,6 +5,7 @@
 import { addDays } from "@/domain/dates";
 import { HABIT_ICONS, type IconKey } from "@/domain/presets";
 import { dayMonthLabel } from "@/lib/challenge-view";
+import { feedDayLabel } from "@/lib/feed";
 import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
 import {
   GROUP_LIMITS,
@@ -136,6 +137,13 @@ export function validateCommitment(c: GroupCommitment): string | null {
 /** "16 nov al 22 nov": a closed week, Monday to Sunday. */
 export function weekRange(weekStart: GroupDate): string {
   return `${dayMonthLabel(weekStart)} al ${dayMonthLabel(addDays(weekStart, 6))}`;
+}
+
+/** "Jue 31 dic": a day label that never says "Hoy" or "Ayer" (used until the viewer's date is known). */
+export function plainDayLabel(date: GroupDate): string {
+  // a reference day in the same year and never adjacent to `date`, so no relative word and no year suffix
+  const y = date.slice(0, 4);
+  return feedDayLabel(date, date.slice(5, 7) === "06" ? `${y}-01-01` : `${y}-06-15`);
 }
 
 export function isIconKey(value: string): value is IconKey {

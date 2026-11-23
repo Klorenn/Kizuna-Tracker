@@ -44,3 +44,8 @@ Gates: `pnpm test` 166 files, 2120 tests passed; `pnpm typecheck` clean; `pnpm l
 - `GroupChip` is server-safe: `<GroupChip name color />` inside the habit row's subtitle line (`HabitRow` not edited).
 - Admin sheets are the only portals; they render only when open (never in static markup), so their bodies are exported and tested directly.
 - No browser verification was done (no dev server by instruction): 360 px overflow, AA under each theme and the Sheet focus behaviour are checked by class/markup assertions only.
+
+## Fix round 1
+- I2: `MembersList.tsx` now has `inviteDecision` and `openInvite`; `invite` state starts `null`, lives while the view is mounted, and `createLink` only calls the action on first open or after an error (reopen reuses the URL; double tap = one call). Tests in `group-members.test.ts` (RED: `inviteDecision is not a function`, `openInvite is not a function`; GREEN).
+- M2: `WallFeed.tsx` `useToday` returns `null` until known (prop, else device after mount; the device clock is never read when the prop is given); `group-logic.ts` `plainDayLabel` gives plain dates meanwhile. Tests in `group-wall.test.ts` (RED: "Hoy" present for 31 Dec; GREEN; 31 Dec with today 1 Jan = "Ayer").
+- Gates: 166 files, 2125 tests; typecheck and lint clean. I1 left as ruled.

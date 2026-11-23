@@ -96,6 +96,22 @@ export async function doInvite(
   return r.ok ? { status: "ready", url: r.data.url } : { status: "error", error: r.error };
 }
 
+/** A link is minted on the first open and on retry after an error; a ready (or running) one is reused. */
+export function inviteDecision(current: InviteState | null): "create" | "reuse" {
+  return current === null || current.status === "error" ? "create" : "reuse";
+}
+
+/** The state after tapping "Invitar": the same state when reusing (no call), else a new link or its error. `null`: ignored (a call is running). */
+export async function openInvite(
+  runner: Runner,
+  createInvite: GroupActions["createInvite"],
+  groupId: string,
+  current: InviteState | null,
+): Promise<InviteState | null> {
+  if (inviteDecision(current) === "reuse") return current;
+  return doInvite(runner, createInvite, groupId);
+}
+
 /* ------------------------------------- rows ------------------------------------- */
 
 /** Memoized by value: changing one member's role does not re-render the other rows. */
@@ -171,7 +187,7 @@ export function MembersList({
   const [runner] = useState(createRunner);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [invite, setInvite] = useState<InviteState>({ status: "pending" });
+  const [invite, setInvite] = useState<InviteState | null>(null);
   const [copy, setCopy] = useState<CopyOutcome | "idle">("idle");
 
   const editable = !detail.archived;
@@ -202,9 +218,10 @@ export function MembersList({
   }
 
   async function createLink() {
-    if (runner.busy()) return;
+    if (runner.busy() || inviteDecision(invite) === "reuse") return;
+    const current = invite;
     setInvite({ status: "pending" });
-    const next = await doInvite(runner, actions.createInvite, detail.id);
+    const next = await openInvite(runner, actions.createInvite, detail.id, current);
     if (next) setInvite(next);
   }
 
@@ -223,7 +240,7 @@ export function MembersList({
   let body: React.ReactNode = null;
   if (open?.kind === "invite") {
     title = "Invitar al grupo";
-    body = <InviteView state={invite} copy={copy} onRetry={() => void createLink()} onCopy={(u) => void copyUrl(u)} />;
+    body = <InviteView state={invite ?? { status: "pending" }} copy={copy} onRetry={() => void createLink()} onCopy={(u) => void copyUrl(u)} />;
   } else if (open?.kind === "edit") {
     title = "Editar grupo";
     body = (
