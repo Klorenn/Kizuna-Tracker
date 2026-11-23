@@ -93,7 +93,7 @@ export default async function AjustesPage() {
       </ListSection>
 
       <ListSection id="ajustes-sesion" label="Sesión">
-        <SignOutButton variant="row" />
+        <SignOutButton variant="row" userId={user.id} />
       </ListSection>
 
       <ListSection

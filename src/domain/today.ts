@@ -198,13 +198,20 @@ export function undoLosesCopy(row: Pick<TodayRow, 'log'>): string | null {
 const toLogType = (v: string | null | undefined): LogType =>
   (LOG_TYPES as readonly string[]).includes(v ?? '') ? (v as LogType) : 'none'
 
-export function habitSubtitle(row: TodayRow): string {
-  if (row.quantity) {
-    return logSubtitle({ kind: 'quantity', total: row.quantity.total, config: row.quantity.config, done: row.done })
-  }
-  if (row.log) return logSubtitle(row.log)
+/**
+ * The row's second line without its log or quantity progress (a quantity habit's control shows
+ * the running number itself, optimistic, so the row does not repeat a stale one).
+ */
+export function baseSubtitle(row: TodayRow): string {
   if (row.frequency.type === 'weekly') {
     return `${row.weekCount} de ${row.frequency.target} esta semana`
   }
   return row.items.length > 0 ? `Diario · ${row.items.length} pasos` : 'Diario'
+}
+
+export function habitSubtitle(row: TodayRow): string {
+  if (row.quantity) {
+    return logSubtitle({ kind: 'quantity', total: row.quantity.total, config: row.quantity.config, done: row.done })
+  }
+  return row.log ? logSubtitle(row.log) : baseSubtitle(row)
 }

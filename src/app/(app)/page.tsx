@@ -5,9 +5,11 @@ import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import { CatPreload } from "@/components/brand/CatPreload";
+import { loadPickerMedia, type PickerMedia } from "@/app/(app)/series/media-data";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { PomodoroBannerLazy } from "@/components/PomodoroBannerLazy";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
@@ -41,7 +43,9 @@ export default async function Home() {
   const [habits, items, checkins, itemChecks, todayCheckins, todayLogs] = await Promise.all([
     supabase
       .from("habits")
-      .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset,log_type")
+      .select(
+        "id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,preset,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+      )
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
@@ -77,13 +81,15 @@ export default async function Home() {
     checkins,
     itemChecks: itemChecks.data ?? [],
     logs: todayLogs.logs,
+    quantity: todayLogs.quantity,
     today,
     timeZone: profile.timezone,
   });
-  // the reading sheet's books, only when a reading habit is on Hoy
-  const books: PickerBook[] = view.rows.some((r) => r.logType === "reading")
-    ? await loadPickerBooks(supabase, user.id)
-    : [];
+  // the sheets' pickers (books, titles), only for the kinds that are on Hoy, read together
+  const [books, media]: [PickerBook[], PickerMedia[]] = await Promise.all([
+    view.rows.some((r) => r.logType === "reading") ? loadPickerBooks(supabase, user.id) : [],
+    view.rows.some((r) => r.logType === "watch") ? loadPickerMedia(supabase, user.id) : [],
+  ]);
   const checkinByHabit = new Map((todayCheckins.data ?? []).map((c) => [c.habit_id, c.id]));
   const readingFor = (habitId: string): RowReading => ({
     books,
@@ -101,6 +107,11 @@ export default async function Home() {
         <NotificationBell />
       </div>
       <InstallPrompt />
+      <PomodoroBannerLazy
+        userId={user.id}
+        timeZone={profile.timezone}
+        habits={view.rows.filter((r) => r.logType === "time").map((r) => ({ id: r.id, name: r.name }))}
+      />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
       {view.total === 0 ? (
         <>
@@ -149,7 +160,11 @@ export default async function Home() {
                 <HabitRow
                   key={row.id}
                   row={row}
+                  today={today}
+                  timeZone={profile.timezone}
+                  checkinId={checkinByHabit.get(row.id) ?? null}
                   reading={row.logType === "reading" ? readingFor(row.id) : undefined}
+                  media={row.logType === "watch" ? media : undefined}
                 />
               ))}
             </div>
