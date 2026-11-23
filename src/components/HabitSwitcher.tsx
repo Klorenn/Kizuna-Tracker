@@ -2,6 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { Segmented } from "@/components/ui/Segmented";
+import { withSearch } from "@/domain/calendar";
 import type { HabitColor } from "@/domain/habit-colors";
 
 type Habit = { id: string; name: string; color: HabitColor };
@@ -12,11 +13,22 @@ const dot = (color: HabitColor) => (
 
 /**
  * Habit selector for Resumen: the choice lives in the URL (?h=<id>) so the page stays server-rendered.
- * With two or more habits it starts with `allValue` (every habit at once).
+ * With two or more habits it starts with `allValue` (every habit at once). `query` keeps the
+ * other params (calendar month and view) when switching.
  */
-export function HabitSwitcher({ habits, value, allValue }: { habits: Habit[]; value: string; allValue: string }) {
+export function HabitSwitcher({
+  habits,
+  value,
+  allValue,
+  query = {},
+}: {
+  habits: Habit[];
+  value: string;
+  allValue: string;
+  query?: Record<string, string | undefined>;
+}) {
   const router = useRouter();
-  const go = (id: string) => router.replace(`/resumen?h=${id}`, { scroll: false });
+  const go = (id: string) => router.replace(withSearch("/resumen", { h: id, ...query }), { scroll: false });
   const withAll = habits.length > 1;
   if (habits.length > 2) {
     return (

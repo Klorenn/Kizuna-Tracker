@@ -1,23 +1,34 @@
 import { Plus } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import type { ReactNode } from "react";
+import { MonthCalendar } from "@/components/calendar/MonthCalendar";
+import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { MonthlyBars } from "@/components/charts/MonthlyBars";
 import { StackedBars } from "@/components/charts/StackedBars";
 import { WeeklyBars } from "@/components/charts/WeeklyBars";
-import { CompletionCalendar } from "@/components/CompletionCalendar";
 import { HabitSwitcher } from "@/components/HabitSwitcher";
-import { MultiHabitCalendar } from "@/components/MultiHabitCalendar";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import {
+  earliestMonth,
+  monthNav,
+  monthOf,
+  parseMonthParam,
+  recentMonths,
+  withSearch,
+  type MonthKey,
+} from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
-import type { Frequency } from "@/domain/types";
+import type { Frequency, LocalDate } from "@/domain/types";
+import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
+import { monthOverview } from "@/lib/calendar-days";
 import {
   ALL_HABITS,
-  completionsByDay,
   monthlyCounts,
   profileStreaks,
   stackRows,
@@ -27,13 +38,12 @@ import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Resumen" };
 
-const MONTHS = [
-  "Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio",
-  "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre",
-];
-
 /** One year back, per habit: always under the API cap of 1000 rows per query. */
 const HISTORY_DAYS = 366;
+/** "Ver por meses": up to a year of months (all inside HISTORY_DAYS). */
+const OVERVIEW_MONTHS = 12;
+/** `?vista=meses` shows the month-by-month view instead of the calendar. */
+const MONTHS_VIEW = "meses";
 
 function StreakCards({
   current,
@@ -67,8 +77,12 @@ function StreakCards({
 const unitLabel = (n: number, unit: "days" | "weeks") =>
   unit === "days" ? (n === 1 ? "día" : "días") : n === 1 ? "semana" : "semanas";
 
-export default async function ResumenPage({ searchParams }: { searchParams: Promise<{ h?: string }> }) {
-  const { h } = await searchParams;
+export default async function ResumenPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ h?: string; mes?: string | string[]; vista?: string }>;
+}) {
+  const { h, mes, vista } = await searchParams;
   const supabase = await createServerClient();
   const {
     data: { user },
@@ -79,7 +93,7 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
 
   const { data: habitRows } = await supabase
     .from("habits")
-    .select("id,name,color,frequency_type,target_per_week")
+    .select("id,name,icon,color,frequency_type,target_per_week,created_at")
     .eq("user_id", user.id)
     .is("archived_at", null)
     .order("created_at");
@@ -105,16 +119,31 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
     );
   }
 
+  const tz = profile.timezone;
   const showAll = habits.length > 1 && (h === undefined || h === ALL_HABITS || !habits.some((x) => x.id === h));
   const habit = habits.find((x) => x.id === h) ?? habits[0];
-  const today = localDate(new Date(), profile.timezone);
-  const month = `${today.slice(0, 7)}-01`;
-  const monthLabel = `${MONTHS[Number(today.slice(5, 7)) - 1]} ${today.slice(0, 4)}`;
+  const selected = showAll ? habits : [habit];
+  const today = localDate(new Date(), tz);
+  const since = (x: { created_at: string }): LocalDate => localDate(new Date(x.created_at), tz);
+
+  // Month in the URL (?mes=YYYY-MM), clamped between the first record and this month.
+  const current = monthOf(today);
+  const firstCheckin = await loadFirstCheckinDate(supabase, user.id, selected.map((x) => x.id));
+  const earliest = earliestMonth([firstCheckin, ...selected.map(since)], current);
+  const month = parseMonthParam(mes, { current, earliest });
+  const nav = monthNav(month, { current, earliest });
+  const monthsView = vista === MONTHS_VIEW;
+  const hParam = showAll ? (h === ALL_HABITS ? ALL_HABITS : undefined) : h === habit.id ? habit.id : undefined;
+  const mesParam = month === current ? undefined : month;
+  const href = (m: MonthKey, view?: string) =>
+    withSearch("/resumen", { h: hParam, mes: m === current ? undefined : m, vista: view });
+
   const switcher = (
     <HabitSwitcher
       habits={habits.map((x) => ({ id: x.id, name: x.name, color: x.color }))}
       value={showAll ? ALL_HABITS : habit.id}
       allValue={ALL_HABITS}
+      query={{ mes: mesParam, vista: monthsView ? MONTHS_VIEW : undefined }}
     />
   );
 
@@ -127,11 +156,63 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
       .gte("local_date", addDays(today, -HISTORY_DAYS));
     return (data ?? []).map((c) => c.local_date);
   };
+  const history = await Promise.all(selected.map(async (x) => ({ ...x, dates: await datesOf(x.id) })));
+
+  // Calendar for the visible month only, or the month-by-month view from the year of history.
+  const calendarHabits = selected.map((x) => ({ id: x.id, name: x.name, color: x.color, icon: x.icon }));
+  let calendarSection: ReactNode;
+  if (monthsView) {
+    const doneByDay: Record<LocalDate, number> = {};
+    for (const x of history) for (const d of new Set(x.dates)) doneByDay[d] = (doneByDay[d] ?? 0) + 1;
+    const starts = selected.map((x) => ({ since: since(x) }));
+    const months = recentMonths(current, earliest, OVERVIEW_MONTHS);
+    calendarSection = (
+      <>
+        <SectionHeader
+          label={months.length === 1 ? "Este mes" : `Últimos ${months.length} meses`}
+          action="Ver calendario"
+          href={href(month)}
+          scroll={false}
+        />
+        <MonthOverviewGrid
+          mode={showAll ? "all" : "single"}
+          color={showAll ? undefined : habit.color}
+          items={months.map((m) => ({
+            overview: monthOverview(m, doneByDay, starts, today),
+            href: href(m),
+            selected: m === month,
+          }))}
+        />
+      </>
+    );
+  } else {
+    const days = await loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz });
+    calendarSection = (
+      <>
+        <SectionHeader label="Calendario" action="Ver por meses" href={href(month, MONTHS_VIEW)} scroll={false} />
+        <Card className="px-3 py-4">
+          <MonthCalendar
+            month={month}
+            today={today}
+            habits={calendarHabits}
+            days={days}
+            mode={showAll ? "all" : "single"}
+            prevHref={nav.prev ? href(nav.prev) : null}
+            nextHref={nav.next ? href(nav.next) : null}
+            todayHref={nav.isCurrent ? null : href(current)}
+            note={
+              !showAll && habit.frequency_type === "weekly"
+                ? `Meta: ${habit.target_per_week ?? 1} por semana.`
+                : undefined
+            }
+          />
+        </Card>
+      </>
+    );
+  }
 
   if (showAll) {
-    const history = await Promise.all(habits.map(async (x) => ({ ...x, dates: await datesOf(x.id) })));
-    const { current, best } = profileStreaks(history, today);
-    const byDay = completionsByDay(history.map((x) => ({ id: x.id, dates: x.dates.filter((d) => d.startsWith(month.slice(0, 7))) })));
+    const { current: currentStreak, best } = profileStreaks(history, today);
     const weekBuckets = weeklyCounts([], 8, today).map((w) => w.weekStart);
     const monthBuckets = monthlyCounts([], 6, today).map((m) => m.month);
     const series = habits.map((x) => ({ id: x.id, name: x.name, color: x.color }));
@@ -149,14 +230,11 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
         <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Resumen</h1>
         {switcher}
         <StreakCards
-          current={{ value: current.value, label: unitLabel(current.value, current.unit) }}
+          current={{ value: currentStreak.value, label: unitLabel(currentStreak.value, currentStreak.unit) }}
           best={{ value: best.value, label: unitLabel(best.value, best.unit) }}
         />
 
-        <SectionHeader label={monthLabel} action="Todos los hábitos" />
-        <Card className="p-4">
-          <MultiHabitCalendar month={month} today={today} habits={series} doneByDay={Object.fromEntries(byDay)} />
-        </Card>
+        {calendarSection}
 
         <SectionHeader label="Últimas 8 semanas" action="Check-ins" />
         <Card className="p-4">
@@ -171,12 +249,13 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
     );
   }
 
-  const dates = await datesOf(habit.id);
+  const dates = history[0].dates;
   const frequency: Frequency =
     habit.frequency_type === "weekly"
       ? { type: "weekly", target: habit.target_per_week ?? 1 }
       : { type: "daily" };
-  const current = frequency.type === "daily" ? dailyStreak(dates, today) : weeklyStreak(dates, frequency.target, today);
+  const currentStreak =
+    frequency.type === "daily" ? dailyStreak(dates, today) : weeklyStreak(dates, frequency.target, today);
   const best = bestStreak(dates, frequency);
   const unit = frequency.type === "daily" ? "days" : "weeks";
   const target = frequency.type === "weekly" ? frequency.target : 7;
@@ -186,23 +265,12 @@ export default async function ResumenPage({ searchParams }: { searchParams: Prom
       <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Resumen</h1>
       {switcher}
       <StreakCards
-        current={{ value: current, label: unitLabel(current, unit) }}
+        current={{ value: currentStreak, label: unitLabel(currentStreak, unit) }}
         best={{ value: best, label: unitLabel(best, unit) }}
         color={habit.color}
       />
 
-      <SectionHeader
-        label={monthLabel}
-        action={frequency.type === "weekly" ? `${frequency.target} por semana` : undefined}
-      />
-      <Card className="p-4">
-        <CompletionCalendar
-          month={month}
-          today={today}
-          doneDates={dates.filter((d) => d.startsWith(month.slice(0, 7)))}
-          color={habit.color}
-        />
-      </Card>
+      {calendarSection}
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">
