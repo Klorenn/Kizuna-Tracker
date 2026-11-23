@@ -19,9 +19,9 @@ import { holdCelebrations } from "@/lib/celebration-bus";
  *   <TimeSheet open onClose mode preset onSaved? />
  *   - open / onClose: render it only while open (the form starts from its props each time).
  *   - mode:
- *       { kind: "checkin", habitId }  Hoy "Hecho": Guardar (add_time: checks in + adds), Omitir
+ *       { kind: "checkin", habitId }  Hoy "Hecho": Guardar (add_time: checks in + adds), Solo marcar
  *                                     (checks in without time), "Usar pomodoro".
- *       { kind: "add", habitId }      "+ Tiempo" on a habit already done today: adds, no Omitir.
+ *       { kind: "add", habitId }      "+ Tiempo" on a habit already done today: adds, no Solo marcar.
  *       { kind: "edit", checkinId, entry }  any day with a check-in: fixes the total
  *                                     (set_time_entry) or deletes it. Never touches the check-in.
  *   - preset: the habit's preset key; "study" labels the topic "Qué estudiaste", otherwise "Tema".
@@ -211,7 +211,7 @@ export function TimeForm({
       </Button>
       {mode.kind === "checkin" ? (
         <Button variant="secondary" onClick={skip} disabled={pending}>
-          Omitir
+          Solo marcar
         </Button>
       ) : null}
       {habitId ? (

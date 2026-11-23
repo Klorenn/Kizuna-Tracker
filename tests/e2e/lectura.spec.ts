@@ -68,9 +68,9 @@ test("reading, rest, study and book celebrations on Hoy; books and the day readi
   await expect(rest).toBeVisible();
   await shot(page, "04-rest-done");
   await rest.getByRole("button", { name: "Listo" }).click();
-  // Estudiar is a time habit now: "Hecho" opens "¿Cuánto rato?" and "Omitir" checks in without time
+  // Estudiar is a time habit now: "Hecho" opens "¿Cuánto rato?" and "Solo marcar" checks in without time
   await page.getByRole("checkbox", { name: "Estudiar" }).click();
-  await dialog(page, "¿Cuánto rato?").getByRole("button", { name: "Omitir" }).click();
+  await dialog(page, "¿Cuánto rato?").getByRole("button", { name: "Solo marcar" }).click();
   const study = dialog(page, "Estudio registrado");
   await expect(study).toBeVisible();
   await shot(page, "05-study-done");

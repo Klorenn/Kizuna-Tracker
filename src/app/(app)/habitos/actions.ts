@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { localDate } from "@/domain/dates";
 import { normalizeHabitDraft, validateHabitDraft, type HabitDraft, type Visibility } from "@/domain/presets";
+import { draftExtraError } from "@/lib/habit-draft-checks";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
@@ -14,6 +15,7 @@ const ERRORS: Record<string, string> = {
   items_with_log: "Un hábito con pasos no lleva registro detallado.",
   period_closed: "Este día ya cerró en un reto: no puedes deshacerlo.",
   quantity_habit: "Un hábito de cantidad no lleva foto: suma la cantidad desde Hoy.",
+  quantity_checkin_managed: "Un hábito de cantidad se deshace quitando sumas.",
   habit_has_items: "Este hábito se completa marcando sus pasos.",
   photo_required: "Este hábito pide una foto de prueba.",
   item_not_found: "No encontramos ese paso.",
@@ -40,7 +42,23 @@ function messageFor(raw: string | undefined, context: { logType?: string; quanti
 
 /** A failed undo: the quantity rule has its own copy here (the row offers no undo for them). */
 function undoMessage(raw: string | undefined): string {
-  return raw?.includes("quantity_habit") ? QUANTITY_UNDO : messageFor(raw);
+  return raw?.includes("quantity_habit") || raw?.includes("quantity_checkin_managed") ? QUANTITY_UNDO : messageFor(raw);
+}
+
+const TODAY_LOCKED = "Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.";
+const NOT_FOUND = ERRORS.habit_not_found;
+
+type Supabase = Awaited<ReturnType<typeof createServerClient>>;
+
+/** The caller's own habit, or null (a foreign or missing id is "not found", never a silent success). */
+async function ownHabit(supabase: Supabase, uid: string, id: string) {
+  const { data } = await supabase
+    .from("habits")
+    .select("id,log_type,quantity_unit,visibility")
+    .eq("id", id)
+    .eq("user_id", uid)
+    .maybeSingle();
+  return data ?? null;
 }
 
 function refresh() {
@@ -74,6 +92,8 @@ export async function createHabit(
   input: HabitDraft,
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const draft = normalizeHabitDraft(input);
+  const extra = draftExtraError(draft);
+  if (extra) return { ok: false, error: extra };
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
   const supabase = await createServerClient();
@@ -109,12 +129,33 @@ export async function createHabit(
 
 export async function updateHabit(id: string, input: HabitDraft): Promise<Result> {
   const draft = normalizeHabitDraft(input);
+  const extra = draftExtraError(draft);
+  if (extra) return { ok: false, error: extra };
   const valid = validateHabitDraft(draft);
   if (!valid.ok) return valid;
   const supabase = await createServerClient();
   const { data: auth } = await supabase.auth.getUser();
   const uid = auth.user?.id;
   if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  const own = await ownHabit(supabase, uid, id);
+  if (!own) return { ok: false, error: NOT_FOUND };
+
+  // Switching to or from quantity (or changing its unit) with today already checked in would leave a
+  // check-in no quantity sum backs, and a quantity check-in can only go away by removing sums.
+  const wasQuantity = own.log_type === "quantity";
+  const switches =
+    (wasQuantity || draft.logType === "quantity") &&
+    (wasQuantity !== (draft.logType === "quantity") || own.quantity_unit !== (draft.quantity?.unit ?? null));
+  if (switches) {
+    const { data: profile } = await supabase.from("profiles").select("timezone").single();
+    const { data: today } = await supabase
+      .from("checkins")
+      .select("id")
+      .eq("habit_id", id)
+      .eq("local_date", localDate(new Date(), profile?.timezone ?? "UTC"))
+      .maybeSingle();
+    if (today) return { ok: false, error: TODAY_LOCKED };
+  }
 
   // Items are matched by label (case-insensitive): renaming archives the old step and
   // creates a new one, reordering only updates positions, so history is not mislabelled.
@@ -144,15 +185,13 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
       .in("id", dropped);
     if (archiveError) return { ok: false, error: messageFor(archiveError.message, { logType: draft.logType }) };
   }
-  const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id);
+  const { error } = await supabase.from("habits").update(habitRow(draft)).eq("id", id).eq("user_id", uid);
   if (error) {
     // habit_in_challenge also guards visibility and photos: tell which rule a quantity habit broke
-    let quantityInChallenge = false;
-    if (error.message?.includes("habit_in_challenge")) {
-      const { data: now } = await supabase.from("habits").select("log_type,visibility").eq("id", id).maybeSingle();
-      quantityInChallenge =
-        now?.log_type === "quantity" && !(draft.visibility === "private" && now.visibility !== "private");
-    }
+    const quantityInChallenge =
+      error.message?.includes("habit_in_challenge") &&
+      own.log_type === "quantity" &&
+      !(draft.visibility === "private" && own.visibility !== "private");
     return { ok: false, error: messageFor(error.message, { logType: draft.logType, quantityInChallenge }) };
   }
 
@@ -180,7 +219,11 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
 export async function setHabitVisibility(id: string, v: Visibility): Promise<Result> {
   if (!["private", "friends", "public"].includes(v)) return { ok: false, error: GENERIC };
   const supabase = await createServerClient();
-  const { error } = await supabase.from("habits").update({ visibility: v }).eq("id", id);
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id;
+  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  if (!(await ownHabit(supabase, uid, id))) return { ok: false, error: NOT_FOUND };
+  const { error } = await supabase.from("habits").update({ visibility: v }).eq("id", id).eq("user_id", uid);
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
   return { ok: true };
@@ -188,10 +231,15 @@ export async function setHabitVisibility(id: string, v: Visibility): Promise<Res
 
 export async function archiveHabit(id: string): Promise<Result> {
   const supabase = await createServerClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id;
+  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  if (!(await ownHabit(supabase, uid, id))) return { ok: false, error: NOT_FOUND };
   const { error } = await supabase
     .from("habits")
     .update({ archived_at: new Date().toISOString() })
-    .eq("id", id);
+    .eq("id", id)
+    .eq("user_id", uid);
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
   return { ok: true };
@@ -213,6 +261,10 @@ const CANNOT_UNDO = "No puedes deshacer este registro.";
 /** Removes today's photo-less check-in (the date comes from the profile timezone). */
 export async function undoCheckIn(habitId: string): Promise<Result> {
   const supabase = await createServerClient();
+  const { data: auth } = await supabase.auth.getUser();
+  const uid = auth.user?.id;
+  if (!uid) return { ok: false, error: ERRORS.not_authenticated };
+  if (!(await ownHabit(supabase, uid, habitId))) return { ok: false, error: NOT_FOUND };
   const { data: profile } = await supabase.from("profiles").select("timezone").single();
   if (!profile) return { ok: false, error: ERRORS.not_authenticated };
   const date = localDate(new Date(), profile.timezone);

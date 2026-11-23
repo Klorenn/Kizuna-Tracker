@@ -94,6 +94,7 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
 
   // a very fast double tap is two sums (not one, not three). Two back-to-back clicks: Playwright's
   // dblclick fires both in the same instant, which no finger does (see the task report)
+  // TODO(double-tap): the real `dblclick` e2e comes with the QuantityControl fix (see the review, I3)
   await add.click();
   await add.click();
   await expect(page.getByText("2 de 8 vasos")).toBeVisible();
@@ -141,7 +142,10 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await goal.fill("6");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   const lock = "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.";
-  await expect(page.getByText(lock).first()).toBeVisible();
+  // the form alert itself says why (never "La meta debe ser mayor que 0.")
+  const alert = page.getByRole("alert").filter({ hasText: lock });
+  await expect(alert).toBeVisible();
+  await expect(page.getByText("La meta debe ser mayor que 0.")).toHaveCount(0);
   await expect(page).toHaveURL(/\/editar$/);
   await goal.fill("10");
   await page.getByRole("button", { name: "Guardar cambios" }).click();
@@ -187,7 +191,7 @@ test("time: Estudiar asks how long, then adds more; the Pomodoro screen leaves i
   await addHabit(v, "Estudiar", "book-open", "time", { preset: "study" });
   await page.context().clearCookies();
   await logIn(page, v.email, PASSWORD);
-  await page.getByRole("link", { name: "Pomodoro", exact: true }).click();
+  await page.getByRole("link", { name: /^Pomodoro/ }).click();
   await expect(page.getByRole("heading", { name: "Pomodoro · Estudiar" })).toBeVisible();
   await page.getByRole("button", { name: "Empezar foco" }).click();
   await expect(page.getByRole("timer")).toBeVisible();
@@ -203,7 +207,7 @@ test("time: a Pomodoro block is credited once and shows on Hoy", async ({ page }
   await logIn(page, u.email, PASSWORD);
   await page.clock.install();
   await page.goto("/");
-  await page.getByRole("link", { name: "Pomodoro", exact: true }).click();
+  await page.getByRole("link", { name: /^Pomodoro/ }).click();
   await page.getByRole("button", { name: "Personalizado" }).click();
   await page.getByLabel("Foco (min)").fill("5");
   await page.getByText("Sin límite", { exact: true }).click();
@@ -372,6 +376,17 @@ test("form: every log type can be created and edited, and the rules explain them
   await page.getByRole("button", { name: "Guardar cambios" }).click();
   await expect(page).toHaveURL(new RegExp(`/habitos/${guitarra}$`));
   expect((await admin().from("habits").select("log_type").eq("id", guitarra).single()).data!.log_type).toBe("cardio");
+
+  // I1: a habit already checked in today cannot switch to quantity (and back) until tomorrow
+  const hecho = await addHabit(u, "Hecho hoy", "check", "none");
+  expect((await admin().from("checkins").insert({ habit_id: hecho, user_id: u.id, local_date: new Intl.DateTimeFormat("en-CA", { timeZone: TZ }).format(new Date()) })).error).toBeNull();
+  await page.goto(`/habitos/${hecho}/editar`);
+  await page.getByRole("radiogroup", { name: "Registro detallado" }).getByRole("radio", { name: "Cantidad" }).click();
+  await page.getByRole("button", { name: "Guardar cambios" }).click();
+  await expect(
+    page.getByRole("alert").filter({ hasText: "Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy." }),
+  ).toBeVisible();
+  expect((await admin().from("habits").select("log_type").eq("id", hecho).single()).data!.log_type).toBe("none");
 
   // the database rule behind the form: a habit with steps refuses a log type (items_with_log)
   const steps = await addHabit(u, "Rutina", "check", "none");

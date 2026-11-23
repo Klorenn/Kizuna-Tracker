@@ -5,7 +5,7 @@ import { es } from "date-fns/locale";
 import { redirect } from "next/navigation";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import { CatPreload } from "@/components/brand/CatPreload";
-import { loadPickerMedia, type PickerMedia } from "@/app/(app)/series/media-data";
+import { loadPickerMedia } from "@/app/(app)/series/media-data";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
@@ -40,7 +40,8 @@ export default async function Home() {
   const now = new Date();
   const today = localDate(now, profile.timezone);
 
-  const [habits, items, checkins, itemChecks, todayCheckins, todayLogs] = await Promise.all([
+  // titles for the watch sheet ride in the same batch: knowing whether a watch habit exists would cost a hop
+  const [habits, items, checkins, itemChecks, todayCheckins, todayLogs, media] = await Promise.all([
     supabase
       .from("habits")
       .select(
@@ -73,6 +74,7 @@ export default async function Home() {
       .eq("local_date", today),
     supabase.from("checkins").select("id,habit_id").eq("user_id", user.id).eq("local_date", today),
     loadTodayLogs(supabase, user.id, today),
+    loadPickerMedia(supabase, user.id),
   ]);
 
   const view = buildToday({
@@ -85,11 +87,10 @@ export default async function Home() {
     today,
     timeZone: profile.timezone,
   });
-  // the sheets' pickers (books, titles), only for the kinds that are on Hoy, read together
-  const [books, media]: [PickerBook[], PickerMedia[]] = await Promise.all([
-    view.rows.some((r) => r.logType === "reading") ? loadPickerBooks(supabase, user.id) : [],
-    view.rows.some((r) => r.logType === "watch") ? loadPickerMedia(supabase, user.id) : [],
-  ]);
+  // the reading sheet's books, only when a reading habit is on Hoy
+  const books: PickerBook[] = view.rows.some((r) => r.logType === "reading")
+    ? await loadPickerBooks(supabase, user.id)
+    : [];
   const checkinByHabit = new Map((todayCheckins.data ?? []).map((c) => [c.habit_id, c.id]));
   const readingFor = (habitId: string): RowReading => ({
     books,

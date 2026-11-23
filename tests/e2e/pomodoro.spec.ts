@@ -152,7 +152,7 @@ test("the time page edits and deletes the day", async ({ page }) => {
   await page.getByLabel("Minutos").fill("25");
   await page.getByLabel("Qué estudiaste").fill("Álgebra");
   // the first save's toast may still be on screen: wait for the second save itself before reloading
-  const saved = page.waitForResponse((r) => r.request().method() === "POST");
+  const saved = page.waitForResponse((r) => r.request().method() === "POST" && r.url().includes(`/habitos/${id}/tiempo`));
   await page.getByRole("button", { name: "Guardar" }).click();
   await saved;
   await expect(page.getByText("Tiempo guardado")).toBeVisible();

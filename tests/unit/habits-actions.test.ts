@@ -49,6 +49,7 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 import {
   checkIn,
   checkItem,
+  archiveHabit,
   createHabit,
   setHabitVisibility,
   uncheckItem,
@@ -62,7 +63,11 @@ beforeEach(() => {
   insertHabitResult = { data: { id: 'h1' }, error: null }
   updateError = null
   reads = {}
+  // the caller owns habit h1 (a plain habit); tests override it
+  reads['habits.select'] = { data: OWN, error: null }
 })
+
+const OWN = { id: 'h1', log_type: 'none', quantity_unit: null, visibility: 'friends' }
 
 describe('habit actions', () => {
   it('checkIn calls create_checkin and maps the row', async () => {
@@ -231,6 +236,11 @@ describe('habit actions', () => {
       ok: false,
       error: 'Este día ya cerró en un reto: no puedes deshacerlo.',
     })
+    reads['checkins.delete'] = { error: { message: 'quantity_checkin_managed' } }
+    await expect(undoCheckIn('h1')).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito de cantidad se deshace quitando sumas.',
+    })
     reads['checkins.delete'] = { error: { message: 'quantity_habit' } }
     await expect(undoCheckIn('h1')).resolves.toEqual({
       ok: false,
@@ -240,6 +250,11 @@ describe('habit actions', () => {
     await expect(uncheckItem('i1')).resolves.toEqual({
       ok: false,
       error: 'Este día ya cerró en un reto: no puedes deshacerlo.',
+    })
+    rpc.mockResolvedValue({ data: null, error: { message: 'quantity_checkin_managed' } })
+    await expect(uncheckItem('i1')).resolves.toEqual({
+      ok: false,
+      error: 'Un hábito de cantidad se deshace quitando sumas.',
     })
     rpc.mockResolvedValue({ data: null, error: { message: 'quantity_habit' } })
     await expect(uncheckItem('i1')).resolves.toEqual({
@@ -298,6 +313,87 @@ describe('habit actions', () => {
       reads['checkins.select'] = { data: { photo_path: 'u/c.jpg' }, error: null }
       await expect(undoCheckIn('h1')).resolves.toEqual({ ok: false, error: 'No puedes deshacer este registro.' })
       expect(calls.some((c) => c.op === 'delete')).toBe(false)
+    })
+  })
+
+  describe('I1: switching to or from quantity with a check-in today', () => {
+    const MSG = 'Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy.'
+    beforeEach(() => {
+      reads['habit_items.select'] = { data: [], error: null }
+      reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    })
+    const written = () => calls.some((c) => c.table === 'habits' && c.op === 'update')
+
+    it('refuses none -> quantity while today has a check-in', async () => {
+      reads['checkins.select'] = { data: { id: 'c1' }, error: null }
+      await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({ ok: false, error: MSG })
+      expect(written()).toBe(false)
+    })
+
+    it('refuses quantity -> none and a changed unit while today has a check-in', async () => {
+      reads['habits.select'] = { data: { ...OWN, log_type: 'quantity', quantity_unit: 'ml' }, error: null }
+      reads['checkins.select'] = { data: { id: 'c1' }, error: null }
+      await expect(updateHabit('h1', { ...presetDraft('water'), logType: 'none' })).resolves.toEqual({ ok: false, error: MSG })
+      const steps = { ...presetDraft('water'), quantity: { unit: 'steps' as const, label: null, target: 8000, step: 1000, display: 'base' as const, glassMl: 250 } }
+      await expect(updateHabit('h1', steps)).resolves.toEqual({ ok: false, error: MSG })
+      expect(written()).toBe(false)
+    })
+
+    it('allows the switch without a check-in today, and goal changes with one', async () => {
+      reads['checkins.select'] = { data: null, error: null }
+      await expect(updateHabit('h1', presetDraft('water'))).resolves.toEqual({ ok: true })
+      reads['habits.select'] = { data: { ...OWN, log_type: 'quantity', quantity_unit: 'ml' }, error: null }
+      reads['checkins.select'] = { data: { id: 'c1' }, error: null }
+      const water = presetDraft('water')
+      await expect(updateHabit('h1', { ...water, quantity: { ...water.quantity!, target: 2500 } })).resolves.toEqual({ ok: true })
+    })
+  })
+
+  describe('I2: a goal below the lock is refused by the server with the lock copy', () => {
+    it('maps the database refusal of a lowered goal', async () => {
+      reads['habit_items.select'] = { data: [], error: null }
+      reads['habits.select'] = { data: { ...OWN, log_type: 'quantity', quantity_unit: 'ml' }, error: null }
+      reads['checkins.select'] = { data: null, error: null }
+      reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+      updateError = { message: 'habit_in_challenge' }
+      const water = presetDraft('water')
+      await expect(updateHabit('h1', { ...water, quantity: { ...water.quantity!, target: 1500 } })).resolves.toEqual({
+        ok: false,
+        error: 'Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.',
+      })
+    })
+  })
+
+  describe('m3: foreign or missing habit ids', () => {
+    beforeEach(() => {
+      reads['habits.select'] = { data: null, error: null }
+      reads['habit_items.select'] = { data: [], error: null }
+      reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    })
+    const NOT_FOUND = 'No encontramos ese hábito.'
+    it('updateHabit, setHabitVisibility, archiveHabit and undoCheckIn refuse and write nothing', async () => {
+      await expect(updateHabit('x', presetDraft('walk'))).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(setHabitVisibility('x', 'public')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(archiveHabit('x')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(undoCheckIn('x')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      expect(calls.some((c) => c.op === 'update' || c.op === 'delete' || c.op === 'insert')).toBe(false)
+    })
+  })
+
+  describe('m4/m5: server-side draft checks', () => {
+    it('refuses an unknown log type', async () => {
+      const r = await createHabit({ ...presetDraft('walk'), logType: 'hack' as never })
+      expect(r).toEqual({ ok: false, error: 'Elige el tipo de registro.' })
+      expect(calls).toHaveLength(0)
+    })
+    it('refuses more than two decimals in a km or custom goal', async () => {
+      const km = { unit: 'km' as const, label: null, target: 5.123, step: 1, display: 'base' as const, glassMl: 250 }
+      const r = await createHabit({ ...presetDraft('walk'), logType: 'quantity', quantity: km })
+      expect(r).toEqual({ ok: false, error: 'Usa hasta dos decimales.' })
+      const step = await updateHabit('h1', { ...presetDraft('walk'), logType: 'quantity', quantity: { ...km, target: 5, step: 0.333 } })
+      expect(step).toEqual({ ok: false, error: 'Usa hasta dos decimales.' })
+      expect(calls).toHaveLength(0)
+      expect((await createHabit({ ...presetDraft('walk'), logType: 'quantity', quantity: { ...km, target: 5.12 } })).ok).toBe(true)
     })
   })
 })

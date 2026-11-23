@@ -1,5 +1,7 @@
 import { readFileSync } from 'node:fs'
-import { describe, expect, test } from 'vitest'
+import { describe, expect, test, vi } from 'vitest'
+
+vi.mock('server-only', () => ({}))
 import { DELETE_ORDER, deleteAccountWith, type DeleteAccountDeps } from '@/lib/delete-account'
 
 const UID = '12345678-aaaa-4bbb-8ccc-1234567890ab'
@@ -126,5 +128,14 @@ describe('deleteAccountWith', () => {
         )
       }
     }
+  })
+
+  test('el adaptador borra por user_id todas las tablas de 0018 (OWN_ROWS)', async () => {
+    const { OWN_ROWS } = await import('@/lib/delete-account-deps')
+    const sql = readFileSync('supabase/migrations/0018_v4_logs.sql', 'utf8')
+    const created = [...sql.matchAll(/create table public\.(\w+)\s*\(/g)].map((m) => m[1])
+    for (const t of created) expect(OWN_ROWS.has(t as never), `${t} in OWN_ROWS`).toBe(true)
+    // every table of DELETE_ORDER except the two kept-aware ones is deleted by user_id
+    for (const t of DELETE_ORDER) if (t !== 'checkins' && t !== 'habits') expect(OWN_ROWS.has(t), t).toBe(true)
   })
 })

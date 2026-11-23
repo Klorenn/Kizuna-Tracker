@@ -135,6 +135,7 @@ function HabitRowView({
     action = (
       <Link
         href={`/habitos/${row.id}/pomodoro`}
+        aria-label={`Pomodoro de ${row.name}`}
         className="inline-flex h-11 shrink-0 items-center gap-1 rounded-full bg-accent-soft px-3 text-small font-medium text-accent"
       >
         <Timer size={16} weight="light" aria-hidden />
@@ -143,7 +144,12 @@ function HabitRowView({
     );
   } else if (timeFlow && done) {
     action = (
-      <button type="button" onClick={() => setSheet({ type: "time", mode: { kind: "add", habitId: row.id } })} className={ACTION}>
+      <button
+        type="button"
+        aria-label={`+ Tiempo: ${row.name}`}
+        onClick={() => setSheet({ type: "time", mode: { kind: "add", habitId: row.id } })}
+        className={ACTION}
+      >
         + Tiempo
       </button>
     );
@@ -151,6 +157,7 @@ function HabitRowView({
     action = (
       <button
         type="button"
+        aria-label={`+ Salida: ${row.name}`}
         onClick={() => setSheet({ type: "cardio", mode: { kind: "add", checkinId } })}
         className={ACTION}
       >

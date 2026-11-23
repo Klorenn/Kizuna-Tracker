@@ -3,7 +3,7 @@
 import { Minus, Plus, Warning, X } from "@phosphor-icons/react/dist/ssr";
 import { radioKeyTarget } from "@/lib/radio-keys";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useId, useState, useTransition } from "react";
 import { createHabit, updateHabit } from "@/app/(app)/habitos/actions";
 import {
   MAX_ITEMS,
@@ -17,6 +17,7 @@ import {
 } from "@/domain/presets";
 import { LOG_TYPES, LOG_TYPE_LABEL, type LogType } from "@/domain/logs";
 import type { QuantityConfig } from "@/domain/quantity";
+import { draftExtraError } from "@/lib/habit-draft-checks";
 import { ColorPicker } from "./ColorPicker";
 import { IconPicker } from "./IconPicker";
 import { VisibilityPicker } from "./VisibilityPicker";
@@ -73,6 +74,7 @@ export function HabitForm({
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const editing = habitId !== undefined;
+  const logHintId = useId();
   const hasItems = draft.items.length > 0;
   const weeklyTarget = draft.frequency.type === "weekly" ? draft.frequency.target : 3;
 
@@ -99,8 +101,14 @@ export function HabitForm({
   }
   function submit(e: React.FormEvent) {
     e.preventDefault();
+    // a goal typed below the challenge lock arrives as NaN: say why, not "mayor que 0"
+    if (quantityLockedReason && draft.logType === "quantity" && draft.quantity && !Number.isFinite(draft.quantity.target)) {
+      return setError(quantityLockedReason);
+    }
     const valid = validateHabitDraft(draft);
     if (!valid.ok) return setError(valid.error);
+    const extra = draftExtraError(draft);
+    if (extra) return setError(extra);
     setError(null);
     start(async () => {
       const result = editing ? await updateHabit(habitId, draft) : await createHabit(draft);
@@ -277,6 +285,7 @@ export function HabitForm({
         <div
           role="radiogroup"
           aria-label="Registro detallado"
+          aria-describedby={logHintId}
           className="flex flex-wrap gap-1 rounded-md bg-field p-1"
           onKeyDown={(e) => {
             const enabled = LOG_TYPE_OPTIONS.filter((o) => !logTypeOff(o.value));
@@ -314,7 +323,7 @@ export function HabitForm({
             );
           })}
         </div>
-        <p className="text-small text-muted">
+        <p id={logHintId} className="text-small text-muted">
           {hasItems ? STEPS_NO_LOG : draft.requiresPhoto ? `${PHOTO_NO_LOG} ${LOG_TYPE_HINT[draft.logType]}` : LOG_TYPE_HINT[draft.logType]}
         </p>
         {draft.logType === "quantity" ? (

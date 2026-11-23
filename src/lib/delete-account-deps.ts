@@ -3,7 +3,7 @@ import type { DeletableTable, DeleteAccountDeps } from "@/lib/delete-account";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const CHUNK = 500;
-const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
+export const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
   "workout_sets",
   "workout_sessions",
   "reading_entries",
