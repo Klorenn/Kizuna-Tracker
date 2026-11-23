@@ -368,10 +368,13 @@ describe('color theme tokens', () => {
     const anim = src('src/components/brand/CatAnimation.tsx')
     expect(anim).not.toMatch(/\bbg-accent\b/)
     expect(anim).toContain('--color-cat')
-    expect(tokens).toMatch(/--color-cat: var\(--color-accent\)/) // the documented one-line switch (in a comment)
+    // the declarations are literal values (not aliases of the accent), in light, explicit dark and system dark
+    for (const block of [light, darkExplicit, darkSystem]) {
+      for (const k of ['--color-cat', '--color-cat2']) expect(block[k], k).toMatch(/^#[0-9a-f]{6}$/)
+    }
   })
 
-  it('globals.css and tokens.css carries no raw hex (colours live in tokens.css only)', () => {
+  it('globals.css carries no raw hex (colours live in tokens.css only)', () => {
     expect(globals).not.toMatch(/#[0-9a-fA-F]{6}\b/)
   })
 })

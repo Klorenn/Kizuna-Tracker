@@ -3,7 +3,7 @@ import { createPresetHabit, randomHandle, signUp } from "./helpers";
 
 test.skip(!process.env.E2E_SUPABASE || !process.env.COLOR_SHOTS, "needs the local stack and COLOR_SHOTS=<dir>");
 
-/** 375 px screenshots for Task 33: the Ajustes colour row (light, dark) and Hoy in each colour. */
+/** 375 px screenshots for Tasks 33/35: the Ajustes colour row (light, dark) and Hoy in each colour. */
 test("colour theme screenshots", async ({ page, context, baseURL }) => {
   const dir = process.env.COLOR_SHOTS!;
   await page.setViewportSize({ width: 375, height: 812 });
@@ -18,7 +18,7 @@ test("colour theme screenshots", async ({ page, context, baseURL }) => {
 
   for (const scheme of ["light", "dark"] as const) {
     await page.emulateMedia({ colorScheme: scheme, reducedMotion: "reduce" });
-    await setColor("sakura");
+    await setColor("kon");
     await page.goto("/perfil/ajustes");
     const group = page.getByRole("radiogroup", { name: "Color" });
     await expect(group).toBeVisible();
@@ -28,7 +28,7 @@ test("colour theme screenshots", async ({ page, context, baseURL }) => {
   }
 
   await page.emulateMedia({ colorScheme: "light", reducedMotion: "reduce" });
-  for (const color of ["sakura", "matcha", "yuzu", "umi", "ume", "sumi"]) {
+  for (const color of ["sora", "kon", "fuji", "budo", "mori", "wakaba", "kin", "cha", "nezu", "suna"]) {
     await setColor(color);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Hoy" })).toBeVisible();
@@ -36,7 +36,7 @@ test("colour theme screenshots", async ({ page, context, baseURL }) => {
     await page.screenshot({ path: `${dir}/hoy-${color}-light.png`, fullPage: true });
   }
   await page.emulateMedia({ colorScheme: "dark", reducedMotion: "reduce" });
-  for (const color of ["sakura", "yuzu"]) {
+  for (const color of ["kon", "mori", "suna"]) {
     await setColor(color);
     await page.goto("/");
     await expect(page.getByRole("heading", { name: "Hoy" })).toBeVisible();
