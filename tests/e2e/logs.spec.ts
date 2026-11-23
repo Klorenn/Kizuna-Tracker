@@ -114,21 +114,40 @@ test("user_a sees REGISTROS, the drill-downs, the calendar log and PROGRESO with
   expect(foreignRes?.status()).toBe(404);
 
   // edit today's workout from the calendar link: Extensión 30 -> 32,5, saved, and the leg group
-  // progress (Sentadilla 80 vs 60 last month... +40 kg) does not change; then put the seed back
+  // progress (+40 kg) does not change. The owner's seed is put back in `finally`, through the
+  // database, so a failure halfway can never leave the demo data changed.
   const editUrl = `/habitos/b0000000-0000-0000-0000-0000000000a2/entrenamiento?fecha=${today}`;
-  const setKg = async (kg: string) => {
+  const extension = "Extensión de cuádriceps";
+  try {
     await page.goto(editUrl);
-    const field = page.getByLabel("Peso en kilos de la serie 1 de Extensión de cuádriceps");
-    await expect(field).toHaveValue("30" === kg ? "32,5" : "30");
-    await field.fill(kg);
+    const field = page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`);
+    await expect(field).toHaveValue("30");
+    await field.fill("32,5");
     await page.getByRole("button", { name: "Guardar" }).click();
     await expect(page.getByText("Entrenamiento guardado")).toBeVisible();
     await expect(page).not.toHaveURL(/entrenamiento/, { timeout: 5_000 });
-  };
-  await setKg("32,5");
-  await page.goto("/resumen");
-  await expect(page.getByRole("link", { name: /^Pierna \+40 kg\./ })).toBeVisible();
-  await setKg("30");
+    await page.goto(editUrl);
+    await expect(page.getByLabel(`Peso en kilos de la serie 1 de ${extension}`)).toHaveValue("32,5");
+    await page.goto("/resumen");
+    await expect(page.getByRole("link", { name: /^Pierna \+40 kg\./ })).toBeVisible();
+  } finally {
+    const db = admin();
+    const { data: session } = await db
+      .from("workout_sessions")
+      .select("id")
+      .eq("habit_id", "b0000000-0000-0000-0000-0000000000a2")
+      .eq("local_date", today)
+      .maybeSingle();
+    const { data: ex } = await db.from("exercises").select("id").is("user_id", null).eq("name", extension).maybeSingle();
+    if (session && ex) {
+      const { error } = await db
+        .from("workout_sets")
+        .update({ weight_kg: 30 })
+        .eq("session_id", session.id)
+        .eq("exercise_id", ex.id);
+      expect(error).toBeNull();
+    }
+  }
 
   await page.setViewportSize({ width: 375, height: 812 });
   for (const path of [
