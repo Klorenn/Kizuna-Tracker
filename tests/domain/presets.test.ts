@@ -81,3 +81,19 @@ describe('dayComplete', () => {
     expect(dayComplete([], [])).toBe(false)
   })
 })
+
+describe('presets: detailed log type', () => {
+  it('maps log types to the presets', () => {
+    expect(PRESETS.read.logType).toBe('reading')
+    expect(PRESETS.gym.logType).toBe('workout')
+    expect(PRESETS.water.logType).toBe('none')
+    expect(customDraft().logType).toBe('none')
+  })
+
+  it('refuses a detailed log on a habit with steps', () => {
+    expect(validateHabitDraft({ ...presetDraft('eat_well'), logType: 'reading' })).toEqual({
+      ok: false,
+      error: 'Un hábito con pasos no lleva registro detallado.',
+    })
+  })
+})

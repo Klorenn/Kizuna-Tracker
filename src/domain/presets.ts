@@ -1,4 +1,5 @@
 import { DEFAULT_HABIT_COLOR, PRESET_COLOR, isHabitColor, type HabitColor } from './habit-colors'
+import type { LogType } from './logs'
 import type { Frequency } from './types'
 
 export type Visibility = 'private' | 'friends' | 'public'
@@ -42,6 +43,7 @@ export type HabitDraft = {
   visibility: Visibility
   preset: PresetKey | null
   color: HabitColor
+  logType: LogType
 }
 
 export const MAX_ITEMS = 12
@@ -53,6 +55,7 @@ const base = (preset: PresetKey) => ({
   requiresPhoto: false,
   items: [] as HabitItemDraft[],
   color: PRESET_COLOR[preset],
+  logType: 'none' as LogType,
 })
 const daily: Frequency = { type: 'daily' }
 
@@ -64,6 +67,7 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
     frequency: { type: 'weekly', target: 4 },
     requiresPhoto: true,
     preset: 'gym',
+    logType: 'workout',
   },
   water: { ...base('water'), name: 'Agua', icon: 'drop', frequency: daily, preset: 'water' },
   study: {
@@ -73,7 +77,14 @@ export const PRESETS: Readonly<Record<PresetKey, HabitDraft>> = {
     frequency: { type: 'weekly', target: 5 },
     preset: 'study',
   },
-  read: { ...base('read'), name: 'Leer', icon: 'book', frequency: daily, preset: 'read' },
+  read: {
+    ...base('read'),
+    name: 'Leer',
+    icon: 'book',
+    frequency: daily,
+    preset: 'read',
+    logType: 'reading',
+  },
   walk: { ...base('walk'), name: 'Caminar', icon: 'sneaker-move', frequency: daily, preset: 'walk' },
   sleep: { ...base('sleep'), name: 'Dormir 8 h', icon: 'moon', frequency: daily, preset: 'sleep' },
   eat_well: {
@@ -111,6 +122,7 @@ export function customDraft(): HabitDraft {
     visibility: 'friends',
     preset: null,
     color: DEFAULT_HABIT_COLOR,
+    logType: 'none',
   }
 }
 
@@ -132,6 +144,9 @@ export function validateHabitDraft(d: HabitDraft): { ok: true } | { ok: false; e
   if (d.items.length > MAX_ITEMS) return fail(`Puedes agregar hasta ${MAX_ITEMS} pasos.`)
   if (d.items.length > 0 && d.requiresPhoto) {
     return fail('Un hábito con pasos pide la foto en cada paso, no en el hábito.')
+  }
+  if (d.items.length > 0 && d.logType !== 'none') {
+    return fail('Un hábito con pasos no lleva registro detallado.')
   }
   const seen = new Set<string>()
   for (const item of d.items) {
