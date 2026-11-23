@@ -2,6 +2,7 @@
 const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/api/health", "/serwist"];
 
 export function isPublicPath(path: string): boolean {
+  if (path === "/robots.txt") return true; // exact match, served by src/app/robots.ts
   if (path.startsWith("/@")) return true;
   return PUBLIC_PREFIXES.some((p) => path === p || path.startsWith(`${p}/`));
 }

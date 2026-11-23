@@ -71,6 +71,7 @@ the app through the database, so it never has to be copied by hand. To rotate it
 4. Check in a habit, add a photo check-in, and open Resumen.
 5. In the SQL editor: `select count(*) from net._http_response where created > now() - interval '1 hour';`
    grows every 15 minutes (the cron job is calling the app), and the cron routes answer 200.
+6. `curl -I https://<your-domain>/login` shows `X-Frame-Options`, `Content-Security-Policy` (frame-ancestors), `X-Content-Type-Options`, `Referrer-Policy` and `Permissions-Policy`.
 
 ## 5. Known gaps
 

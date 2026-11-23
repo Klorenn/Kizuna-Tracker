@@ -1,5 +1,6 @@
 import type { NextConfig } from "next";
 import { withSerwist } from "@serwist/turbopack";
+import { SECURITY_HEADERS } from "./src/lib/security-headers";
 
 // Public static art: a week fresh, a month served stale while the browser revalidates. Not
 // `immutable`: brand files are busted with the BRAND_ASSET_VERSION query (src/lib/brand-assets.ts).
@@ -13,6 +14,7 @@ const nextConfig: NextConfig = {
   },
   async headers() {
     return [
+      { source: "/:path*", headers: SECURITY_HEADERS },
       // only the files themselves: an extensionless path reaches middleware and must not get a public header
       { source: "/brand/:file([^/]+\\.(?:gif|png|webp))", headers: [{ key: "Cache-Control", value: PUBLIC_ART_CACHE }] },
       { source: "/avatars/:file([^/]+\\.(?:gif|png|webp))", headers: [{ key: "Cache-Control", value: PUBLIC_ART_CACHE }] },
