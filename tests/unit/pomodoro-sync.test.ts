@@ -26,7 +26,37 @@ describe('flushPending', () => {
       { type: 'confirm', blockId: 'b1' },
       { type: 'confirm', blockId: 'b2' },
     ])
-    expect(send).toHaveBeenCalledWith('h1', { blockId: 'b1', minutes: 25 }, null)
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'b2', minutes: 25, endedAt: 1001 }, null)
+  })
+
+  it('a retry sends the same block id and end instant again', async () => {
+    const send = vi.fn<Send>(async () => ({ ok: false, error: 'red', retry: true }))
+    const state = withPending('b1')
+    await flushPending(state, send, null)
+    await flushPending(state, send, null)
+    expect(send).toHaveBeenNthCalledWith(1, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
+    expect(send).toHaveBeenNthCalledWith(2, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
+  })
+
+  it('the resend without the topic keeps the block id and the end instant', async () => {
+    const send = vi.fn<Send>(async (_h, _b, topic) =>
+      topic === null ? ok : { ok: false, error: 'tema', retry: false, code: 'invalid_topic' },
+    )
+    await flushPending(withPending('b1'), send, 'x'.repeat(61))
+    expect(send).toHaveBeenNthCalledWith(1, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, 'x'.repeat(61))
+    expect(send).toHaveBeenNthCalledWith(2, 'h1', { blockId: 'b1', minutes: 25, endedAt: 1000 }, null)
+  })
+
+  it('a block restored without endedAt (older stored shape) is sent without it', async () => {
+    const send = vi.fn<Send>(async () => ok)
+    const legacy = {
+      ...initialPomodoro('h1', config),
+      pending: [{ blockId: 'old', minutes: 25 }],
+    } as unknown as PomodoroState
+    expect(await flushPending(legacy, send, null)).toEqual([{ type: 'confirm', blockId: 'old' }])
+    expect(send).toHaveBeenCalledWith('h1', { blockId: 'old', minutes: 25 }, null)
+    expect(send.mock.calls[0][1]).not.toHaveProperty('endedAt')
   })
 
   it('a retryable failure stays pending (no event)', async () => {

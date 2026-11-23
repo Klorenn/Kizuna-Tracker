@@ -146,7 +146,12 @@ export async function flushPendingDetailed(
   const attempt = async (p: (typeof mine)[number]): Promise<{ answer: Answer; topicRejected: boolean }> => {
     const call = async (t: string | null): Promise<Answer> => {
       try {
-        return await send(s.habitId, { blockId: p.blockId, minutes: p.minutes }, t);
+        // the end instant lets the server refuse a block that ended on an earlier day; an older stored
+        // block without one is sent as before
+        const block = Number.isFinite(p.endedAt)
+          ? { blockId: p.blockId, minutes: p.minutes, endedAt: p.endedAt }
+          : { blockId: p.blockId, minutes: p.minutes };
+        return await send(s.habitId, block, t);
       } catch {
         return { ok: false, error: "", retry: true };
       }
