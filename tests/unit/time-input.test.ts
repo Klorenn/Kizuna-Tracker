@@ -3,7 +3,7 @@ import { describe, expect, it, vi } from 'vitest'
 vi.mock('@/app/(app)/registros/time-actions', () => ({}))
 vi.mock('next/navigation', () => ({ useRouter: () => ({}) }))
 
-import { timeInputError } from '@/components/logs/TimeSheet'
+import { MEASURE_LINK_TEXT, timeInputError } from '@/components/logs/TimeSheet'
 
 describe('timeInputError (copy for the hours and minutes fields)', () => {
   it('is null for a valid time', () => {
@@ -31,5 +31,11 @@ describe('timeInputError (copy for the hours and minutes fields)', () => {
     expect(timeInputError('', '')).toBe('El tiempo va de 1 minuto a 24 horas.')
     expect(timeInputError('0', '0')).toBe('El tiempo va de 1 minuto a 24 horas.')
     expect(timeInputError('25', '')).toBe('El tiempo va de 1 minuto a 24 horas.')
+  })
+})
+
+describe('the sheet link to the measuring screen', () => {
+  it('is named "Medir tiempo", like every other entry point (the screen opens in the last mode used)', () => {
+    expect(MEASURE_LINK_TEXT).toBe('Medir tiempo')
   })
 })

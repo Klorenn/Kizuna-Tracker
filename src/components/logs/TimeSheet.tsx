@@ -20,13 +20,16 @@ import { holdCelebrations } from "@/lib/celebration-bus";
  *   - open / onClose: render it only while open (the form starts from its props each time).
  *   - mode:
  *       { kind: "checkin", habitId }  Hoy "Hecho": Guardar (add_time: checks in + adds), Solo marcar
- *                                     (checks in without time), "Medir con temporizador".
+ *                                     (checks in without time), "Medir tiempo".
  *       { kind: "add", habitId }      "+ Tiempo" on a habit already done today: adds, no Solo marcar.
  *       { kind: "edit", checkinId, entry }  any day with a check-in: fixes the total
  *                                     (set_time_entry) or deletes it. Never touches the check-in.
  *   - preset: the habit's preset key; "study" labels the topic "Qué estudiaste", otherwise "Tema".
  *   - onSaved(message): after a save, skip or delete, with the toast text.
  */
+/** The link to the measuring screen (it opens in the last mode used, so it names none). */
+export const MEASURE_LINK_TEXT = "Medir tiempo";
+
 export type TimeSheetMode =
   | { kind: "checkin"; habitId: string }
   | { kind: "add"; habitId: string }
@@ -220,7 +223,7 @@ export function TimeForm({
           className="inline-flex h-11 items-center justify-center gap-2 rounded-md text-body font-medium text-accent hover:bg-accent-soft"
         >
           <Timer size={20} weight="light" aria-hidden />
-          Medir con temporizador
+          {MEASURE_LINK_TEXT}
         </Link>
       ) : existing ? (
         confirmDelete ? (
