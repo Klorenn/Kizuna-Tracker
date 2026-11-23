@@ -161,8 +161,12 @@ export default function RegistroPage() {
     setAvailability("checking");
     let cancelled = false;
     const t = setTimeout(async () => {
-      const res = await checkUsername(username);
-      if (!cancelled) setAvailability(res.rateLimited ? "limited" : res.available ? "available" : "taken");
+      try {
+        const res = await checkUsername(username);
+        if (!cancelled) setAvailability(res.rateLimited ? "limited" : res.available ? "available" : "taken");
+      } catch {
+        if (!cancelled) setAvailability("idle");
+      }
     }, 300);
     return () => {
       cancelled = true;
@@ -220,9 +224,13 @@ export default function RegistroPage() {
       return;
     }
     startTransition(async () => {
-      const res = await signUp(full);
-      // On success the action redirects to /listo.
-      if (res && !res.ok) setSubmitError(res.error);
+      try {
+        const res = await signUp(full);
+        // On success the action redirects to /listo.
+        if (res && !res.ok) setSubmitError(res.error);
+      } catch {
+        setSubmitError("No pudimos conectar. Inténtalo de nuevo en unos minutos.");
+      }
     });
   }
 

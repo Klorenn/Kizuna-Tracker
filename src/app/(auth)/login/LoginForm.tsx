@@ -37,7 +37,13 @@ export function LoginForm({
     if (identifier.trim() === "" || password === "") return;
     setError(null);
     startTransition(async () => {
-      const res = await signIn({ identifier, password });
+      let res: Awaited<ReturnType<typeof signIn>>;
+      try {
+        res = await signIn({ identifier, password });
+      } catch {
+        setError("No pudimos conectar. Inténtalo de nuevo en unos minutos.");
+        return;
+      }
       if (res.ok) {
         router.replace(safeNextPath(next));
         router.refresh();
