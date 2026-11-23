@@ -5,9 +5,13 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
-import { WeeklyBars } from "@/components/charts/WeeklyBars";
+import { WeeklyBarsLazy } from "@/components/charts/LazyCharts";
 import { GoalCard } from "@/components/GoalCard";
+import { CardioProgress } from "@/components/logs/CardioProgress";
+import { QuantityProgress } from "@/components/logs/QuantityProgress";
 import { ReadingProgress, currentBook } from "@/components/logs/ReadingProgress";
+import { TimeProgress } from "@/components/logs/TimeProgress";
+import { WatchProgress } from "@/components/logs/WatchProgress";
 import { WorkoutProgress } from "@/components/logs/WorkoutProgress";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
@@ -25,14 +29,24 @@ import {
 } from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
-import type { LogType } from "@/domain/logs";
+import { LOG_TYPES, type LogType } from "@/domain/logs";
 import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
-import type { Frequency } from "@/domain/types";
+import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
 import { loadGoals } from "@/lib/goals-data";
-import { loadReadingData, loadVisitDates, loadWorkoutData, logWindowStart } from "@/lib/logs-data";
+import {
+  loadCardioData,
+  loadQuantityData,
+  loadReadingData,
+  loadTimeData,
+  loadVisitDates,
+  loadWatchData,
+  loadWorkoutData,
+  logWindowStart,
+  quantityConfigOf,
+} from "@/lib/logs-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -57,35 +71,156 @@ export default async function HabitoPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase
-    .from("profiles")
-    .select("timezone")
-    .eq("id", user.id)
-    .maybeSingle();
+  const [{ data: profile }, { data: habit }] = await Promise.all([
+    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("habits")
+      .select(
+        "id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at,created_at,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+      )
+      .eq("id", id)
+      .eq("user_id", user.id)
+      .is("archived_at", null)
+      .maybeSingle(),
+  ]);
   if (!profile) redirect("/login?error=perfil");
-
-  const { data: habit } = await supabase
-    .from("habits")
-    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at,created_at,log_type")
-    .eq("id", id)
-    .eq("user_id", user.id)
-    .is("archived_at", null)
-    .maybeSingle();
   if (!habit) notFound();
 
   const color = toHabitColor(habit.color);
-  const logType: LogType = habit.log_type === "reading" || habit.log_type === "workout" ? habit.log_type : "none";
+  const logType: LogType = (LOG_TYPES as readonly string[]).includes(habit.log_type)
+    ? (habit.log_type as LogType)
+    : "none";
   const today = localDate(new Date(), profile.timezone);
   // bounded by date and rows (the API caps a query at 1000 rows)
   const { from, limit } = streakWindow(today);
-  const { data: checkins } = await supabase
-    .from("checkins")
-    .select("local_date")
-    .eq("habit_id", id)
-    .is("rejected_at", null)
-    .gte("local_date", from)
-    .order("local_date", { ascending: false })
-    .limit(limit);
+  const thisMonth = monthOf(today);
+  const monthsView = vista === MONTHS_VIEW;
+
+  // PROGRESO of a habit with a detailed log: this month against the last, from a bounded window.
+  const loadProgress = async (): Promise<ReactNode> => {
+    if (logType === "none") return null;
+    const windowStart = logWindowStart(today);
+    // today's check-in, and whether it already has its log (not for quantity: no check-in needed)
+    const todayEntry = async (): Promise<{ logged: boolean } | null> => {
+      const { data: todayCheckin } = await supabase
+        .from("checkins")
+        .select("id")
+        .eq("habit_id", habit.id)
+        .eq("local_date", today)
+        .maybeSingle();
+      if (!todayCheckin) return null;
+      const cid = todayCheckin.id;
+      let count: number | null = null;
+      if (logType === "reading") {
+        count = (await supabase.from("reading_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
+      } else if (logType === "workout") {
+        count = (await supabase.from("workout_sessions").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
+      } else if (logType === "time") {
+        count = (await supabase.from("time_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
+      } else if (logType === "watch") {
+        count = (await supabase.from("watch_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
+      } else if (logType === "cardio") {
+        count = (await supabase.from("cardio_entries").select("id", { count: "exact", head: true }).eq("checkin_id", cid)).count;
+      }
+      return { logged: (count ?? 0) > 0 };
+    };
+
+    switch (logType) {
+      case "reading": {
+        const [{ books, entries }, entry] = await Promise.all([
+          loadReadingData(supabase, user.id, windowStart),
+          todayEntry(),
+        ]);
+        // a book last read before the window: ask for its last entry instead of showing page 0
+        const reading = currentBook(books, entries);
+        let knownPage: number | null = null;
+        if (reading && !entries.some((e) => e.bookId === reading.id)) {
+          const { data: last } = await supabase
+            .from("reading_entries")
+            .select("to_page")
+            .eq("user_id", user.id)
+            .eq("book_id", reading.id)
+            .order("local_date", { ascending: false })
+            .order("id", { ascending: false })
+            .limit(1);
+          knownPage = last?.[0]?.to_page ?? null;
+        }
+        return (
+          <ReadingProgress
+            habitId={habit.id}
+            month={thisMonth}
+            today={today}
+            books={books}
+            entries={entries}
+            todayEntry={entry}
+            knownPage={knownPage}
+          />
+        );
+      }
+      case "workout": {
+        const [{ exercises, sets, sessions }, visits, entry] = await Promise.all([
+          loadWorkoutData(supabase, user.id, windowStart),
+          loadVisitDates(supabase, user.id, windowStart),
+          todayEntry(),
+        ]);
+        return (
+          <WorkoutProgress
+            habitId={habit.id}
+            month={thisMonth}
+            today={today}
+            exercises={exercises}
+            sets={sets}
+            sessions={sessions}
+            visits={visits}
+            todayEntry={entry}
+          />
+        );
+      }
+      case "time": {
+        const [entries, entry] = await Promise.all([loadTimeData(supabase, user.id, windowStart), todayEntry()]);
+        return <TimeProgress habitId={habit.id} month={thisMonth} today={today} entries={entries} todayEntry={entry} />;
+      }
+      case "watch": {
+        const [{ media, entries }, entry] = await Promise.all([loadWatchData(supabase, user.id, windowStart), todayEntry()]);
+        return (
+          <WatchProgress habitId={habit.id} month={thisMonth} today={today} media={media} entries={entries} todayEntry={entry} />
+        );
+      }
+      case "cardio": {
+        const [entries, entry] = await Promise.all([loadCardioData(supabase, user.id, windowStart), todayEntry()]);
+        return <CardioProgress habitId={habit.id} month={thisMonth} today={today} entries={entries} todayEntry={entry} />;
+      }
+      case "quantity": {
+        const config = quantityConfigOf(habit);
+        if (!config) return null;
+        const { entries, doneDates } = await loadQuantityData(supabase, user.id, habit.id, windowStart);
+        return <QuantityProgress habitId={habit.id} month={thisMonth} config={config} entries={entries} doneDates={doneDates} />;
+      }
+    }
+  };
+
+  // independent reads in one go (the month of the calendar depends on the first check-in, below)
+  const [{ data: checkins }, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
+    supabase
+      .from("checkins")
+      .select("local_date")
+      .eq("habit_id", id)
+      .is("rejected_at", null)
+      .gte("local_date", from)
+      .order("local_date", { ascending: false })
+      .limit(limit),
+    loadGoals(supabase, user.id, today, id),
+    loadFirstCheckinDate(supabase, user.id, [habit.id]),
+    loadProgress(),
+    monthsView
+      ? supabase
+          .from("checkins")
+          .select("local_date")
+          .eq("habit_id", id)
+          .is("rejected_at", null)
+          .gte("local_date", addDays(today, -HISTORY_DAYS))
+      : Promise.resolve(null),
+  ]);
   const dates = (checkins ?? []).map((c) => c.local_date);
   const frequency: Frequency =
     habit.frequency_type === "weekly"
@@ -100,29 +235,19 @@ export default async function HabitoPage({
     frequency.type === "daily" ? (n === 1 ? "día" : "días") : n === 1 ? "semana" : "semanas";
 
   const target = frequency.type === "weekly" ? frequency.target : 7;
-  const goals = await loadGoals(supabase, user.id, today, id);
 
   // Month in the URL (?mes=YYYY-MM), between the first record of this habit and this month.
-  const thisMonth = monthOf(today);
-  const firstCheckin = await loadFirstCheckinDate(supabase, user.id, [habit.id]);
   const earliest = earliestMonth([firstCheckin, localDate(new Date(habit.created_at), profile.timezone)], thisMonth);
   const month = parseMonthParam(mes, { current: thisMonth, earliest });
   const nav = monthNav(month, { current: thisMonth, earliest });
-  const monthsView = vista === MONTHS_VIEW;
   const monthHref = (m: MonthKey, view?: string) =>
     withSearch(`/habitos/${habit.id}`, { mes: m === thisMonth ? undefined : m, vista: view });
   const weeklyNote = frequency.type === "weekly" ? `Meta: ${frequency.target} por semana.` : undefined;
 
   let calendar: ReactNode;
   if (monthsView) {
-    const { data: year } = await supabase
-      .from("checkins")
-      .select("local_date")
-      .eq("habit_id", id)
-      .is("rejected_at", null)
-      .gte("local_date", addDays(today, -HISTORY_DAYS));
-    const doneByDay: Record<string, number> = {};
-    for (const c of year ?? []) doneByDay[c.local_date] = 1;
+    const doneByDay: Record<LocalDate, number> = {};
+    for (const c of yearCheckins?.data ?? []) doneByDay[c.local_date] = 1;
     const since = localDate(new Date(habit.created_at), profile.timezone);
     const months = recentMonths(thisMonth, earliest, OVERVIEW_MONTHS);
     calendar = (
@@ -151,7 +276,7 @@ export default async function HabitoPage({
       month,
       today,
       timezone: profile.timezone,
-      // own habit detail: the owner sees the reading / workout detail
+      // own habit detail: the owner sees the detail of every kind of log
       includeLogs: true,
     });
     calendar = (
@@ -173,70 +298,6 @@ export default async function HabitoPage({
         </Card>
       </>
     );
-  }
-  // PROGRESO (reading / workout habits): this month against the last, from a bounded window.
-  let progress: ReactNode = null;
-  if (logType !== "none") {
-    const windowStart = logWindowStart(today);
-    const { data: todayCheckin } = await supabase
-      .from("checkins")
-      .select("id")
-      .eq("habit_id", habit.id)
-      .eq("local_date", today)
-      .maybeSingle();
-    let todayEntry: { logged: boolean } | null = null;
-    if (todayCheckin) {
-      const { count } = await supabase
-        .from(logType === "reading" ? "reading_entries" : "workout_sessions")
-        .select("id", { count: "exact", head: true })
-        .eq("checkin_id", todayCheckin.id);
-      todayEntry = { logged: (count ?? 0) > 0 };
-    }
-    if (logType === "reading") {
-      const { books, entries } = await loadReadingData(supabase, user.id, windowStart);
-      // a book last read before the window: ask for its last entry instead of showing page 0
-      const reading = currentBook(books, entries);
-      let knownPage: number | null = null;
-      if (reading && !entries.some((e) => e.bookId === reading.id)) {
-        const { data: last } = await supabase
-          .from("reading_entries")
-          .select("to_page")
-          .eq("user_id", user.id)
-          .eq("book_id", reading.id)
-          .order("local_date", { ascending: false })
-          .order("id", { ascending: false })
-          .limit(1);
-        knownPage = last?.[0]?.to_page ?? null;
-      }
-      progress = (
-        <ReadingProgress
-          habitId={habit.id}
-          month={thisMonth}
-          today={today}
-          books={books}
-          entries={entries}
-          todayEntry={todayEntry}
-          knownPage={knownPage}
-        />
-      );
-    } else {
-      const [{ exercises, sets, sessions }, visits] = await Promise.all([
-        loadWorkoutData(supabase, user.id, windowStart),
-        loadVisitDates(supabase, user.id, windowStart),
-      ]);
-      progress = (
-        <WorkoutProgress
-          habitId={habit.id}
-          month={thisMonth}
-          today={today}
-          exercises={exercises}
-          sets={sets}
-          sessions={sessions}
-          visits={visits}
-          todayEntry={todayEntry}
-        />
-      );
-    }
   }
 
   const meta = [
@@ -302,7 +363,7 @@ export default async function HabitoPage({
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">
-        <WeeklyBars data={weeklyCounts(dates, 8, today)} target={target} color={color} />
+        <WeeklyBarsLazy data={weeklyCounts(dates, 8, today)} target={target} color={color} />
         <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
       </Card>
 

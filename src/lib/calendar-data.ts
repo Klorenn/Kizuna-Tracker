@@ -2,7 +2,7 @@ import { monthBounds, type MonthKey } from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
 import { buildDaySummaries, type HabitDay } from "@/lib/calendar-days";
-import { loadMonthLogs, loadWeights } from "@/lib/logs-data";
+import { loadMonthLogs, loadWeights, quantityConfigOf, type QuantityColumns } from "@/lib/logs-data";
 import { fetchAll } from "@/lib/paginate";
 import type { createServerClient } from "@/lib/supabase/server";
 
@@ -34,7 +34,7 @@ export async function loadMonthDays(
   supabase: Supabase,
   opts: {
     userId: string;
-    habits: { id: string; created_at: string; log_type?: string }[];
+    habits: ({ id: string; created_at: string; log_type?: string } & QuantityColumns)[];
     month: MonthKey;
     today: LocalDate;
     timezone: string;
@@ -53,10 +53,22 @@ export async function loadMonthDays(
   const until = last < today ? last : today;
   if (until < first) return {};
 
+  // The detail of every kind is the owner's: nothing below is read without `includeLogs`.
+  const quantityHabits = includeLogs
+    ? habits.flatMap((h) => {
+        const config = h.log_type === "quantity" ? quantityConfigOf(h) : null;
+        return config ? [{ id: h.id, config }] : [];
+      })
+    : [];
   const kinds = {
     reading: includeLogs && habits.some((h) => h.log_type === "reading"),
     workout: includeLogs && habits.some((h) => h.log_type === "workout"),
+    time: includeLogs && habits.some((h) => h.log_type === "time"),
+    watch: includeLogs && habits.some((h) => h.log_type === "watch"),
+    cardio: includeLogs && habits.some((h) => h.log_type === "cardio"),
+    quantity: quantityHabits.length > 0 ? { habits: quantityHabits, timezone } : undefined,
   };
+  const anyLogs = kinds.reading || kinds.workout || kinds.time || kinds.watch || kinds.cardio || kinds.quantity !== undefined;
   const [checkins, checkinItems, items, logs] = await Promise.all([
     fetchAll((from, to) =>
       supabase
@@ -92,9 +104,7 @@ export async function loadMonthDays(
         .order("id")
         .range(from, to),
     ),
-    kinds.reading || kinds.workout
-      ? loadMonthLogs(supabase, userId, { first, until }, kinds)
-      : Promise.resolve(undefined),
+    anyLogs ? loadMonthLogs(supabase, userId, { first, until }, kinds) : Promise.resolve(undefined),
   ]);
 
   const dates: LocalDate[] = [];
@@ -121,6 +131,7 @@ export async function loadMonthDays(
     today,
     timezone,
     logs,
+    quantityByHabitDay: logs?.quantityByHabitDay,
   });
 }
 

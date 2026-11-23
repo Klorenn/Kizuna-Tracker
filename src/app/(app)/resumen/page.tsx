@@ -4,9 +4,7 @@ import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
-import { MonthlyBars } from "@/components/charts/MonthlyBars";
-import { StackedBars } from "@/components/charts/StackedBars";
-import { WeeklyBars } from "@/components/charts/WeeklyBars";
+import { MonthlyBarsLazy, StackedBarsLazy, WeeklyBarsLazy } from "@/components/charts/LazyCharts";
 import { HabitSwitcher } from "@/components/HabitSwitcher";
 import { LogMonthCards } from "@/components/logs/LogMonthCards";
 import { ButtonLink } from "@/components/ui/Button";
@@ -32,13 +30,20 @@ import { loadFirstCheckinDate, loadMonthDays, loadMonthWeights } from "@/lib/cal
 import { monthOverview } from "@/lib/calendar-days";
 import { buildLogCards } from "@/lib/log-cards";
 import {
+  loadCardioData,
   loadLatestWeight,
+  loadQuantityForHabits,
   loadReadingData,
+  loadTimeData,
   loadVisitDates,
+  loadWatchData,
   loadWeights,
   loadWorkoutData,
   logWindowStart,
+  quantityConfigOf,
+  type QuantityColumns,
 } from "@/lib/logs-data";
+import { fetchAll } from "@/lib/paginate";
 import {
   ALL_HABITS,
   monthlyCounts,
@@ -89,25 +94,43 @@ function StreakCards({
 const unitLabel = (n: number, unit: "days" | "weeks") =>
   unit === "days" ? (n === 1 ? "día" : "días") : n === 1 ? "semana" : "semanas";
 
+type HabitForCards = { id: string; name: string; logType: LogType } & QuantityColumns;
+
 /**
- * REGISTROS of this month (reading, gym and the private weight; each card opens its detail).
- * Reads only what exists: reading data when there is a reading habit, workout data and visits
- * when there is a workout habit, weights always (they do not depend on habits; own Resumen only).
+ * REGISTROS of this month (reading, gym, time, series, quantity, distance and the private
+ * weight; each card opens its detail). Reads only what exists, all at once: the data of a
+ * kind only when there is a habit of that kind, ONE query for every quantity habit (grouped
+ * here), weights always (they do not depend on habits; own Resumen only).
  */
 async function loadRegistros(
   supabase: Awaited<ReturnType<typeof createServerClient>>,
   userId: string,
   today: LocalDate,
-  logTypes: LogType[],
+  habits: HabitForCards[],
 ): Promise<ReactNode> {
   const windowStart = logWindowStart(today);
-  const hasReading = logTypes.includes("reading");
-  const hasWorkout = logTypes.includes("workout");
-  const [readingData, workoutData, visits, weightEntries] = await Promise.all([
+  const has = (t: LogType) => habits.some((h) => h.logType === t);
+  const hasReading = has("reading");
+  const hasWorkout = has("workout");
+  // the first three quantity habits (creation order) get a card
+  const quantityHabits = habits
+    .filter((h) => h.logType === "quantity")
+    .flatMap((h) => {
+      const config = quantityConfigOf(h);
+      return config ? [{ habitId: h.id, name: h.name, config }] : [];
+    })
+    .slice(0, 3);
+  const [readingData, workoutData, visits, weightEntries, time, watch, quantityData, cardio] = await Promise.all([
     hasReading ? loadReadingData(supabase, userId, windowStart) : null,
     hasWorkout ? loadWorkoutData(supabase, userId, windowStart) : null,
     hasWorkout ? loadVisitDates(supabase, userId, windowStart) : null,
     loadWeights(supabase, userId, windowStart),
+    has("time") ? loadTimeData(supabase, userId, windowStart) : null,
+    has("watch") ? loadWatchData(supabase, userId, windowStart) : null,
+    quantityHabits.length > 0
+      ? loadQuantityForHabits(supabase, userId, quantityHabits.map((h) => h.habitId), windowStart)
+      : null,
+    has("cardio") ? loadCardioData(supabase, userId, windowStart) : null,
   ]);
   // the newest weigh-in may be older than the window: still shown, with its date
   const latestWeight = weightEntries.length === 0 ? await loadLatestWeight(supabase, userId) : null;
@@ -119,6 +142,16 @@ async function loadRegistros(
     visits,
     weights: weightEntries,
     latestWeight,
+    time,
+    watch,
+    quantity: quantityData
+      ? quantityHabits.map((h) => ({
+          ...h,
+          entries: quantityData.get(h.habitId)?.entries ?? [],
+          doneDates: quantityData.get(h.habitId)?.doneDates ?? [],
+        }))
+      : null,
+    cardio,
   });
   if (cards.length === 0) return null;
   return (
@@ -140,15 +173,19 @@ export default async function ResumenPage({
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
-  const { data: profile } = await supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle();
+  const [{ data: profile }, { data: habitRows }] = await Promise.all([
+    supabase.from("profiles").select("timezone").eq("id", user.id).maybeSingle(),
+    supabase
+      .from("habits")
+      .select(
+        "id,name,icon,color,frequency_type,target_per_week,created_at,log_type,quantity_unit,quantity_label,quantity_target,quantity_step,quantity_display,glass_ml",
+      )
+      .eq("user_id", user.id)
+      .is("archived_at", null)
+      .order("created_at")
+      .order("id"),
+  ]);
   if (!profile) redirect("/login?error=perfil");
-
-  const { data: habitRows } = await supabase
-    .from("habits")
-    .select("id,name,icon,color,frequency_type,target_per_week,created_at,log_type")
-    .eq("user_id", user.id)
-    .is("archived_at", null)
-    .order("created_at");
   const habits = (habitRows ?? []).map((x) => ({
     ...x,
     color: toHabitColor(x.color),
@@ -158,6 +195,7 @@ export default async function ResumenPage({
   if (habits.length === 0) {
     // no habits, but the private weight (REGISTROS > Peso) is still there
     const emptyRegistros = await loadRegistros(supabase, user.id, localDate(new Date(), profile.timezone), []);
+    // (no habits: only the private weight card can exist)
     return (
       <main className="mx-auto flex max-w-md flex-col gap-4 px-5 pb-6 pt-8">
         <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Resumen</h1>
@@ -185,9 +223,33 @@ export default async function ResumenPage({
   const today = localDate(new Date(), tz);
   const since = (x: { created_at: string }): LocalDate => localDate(new Date(x.created_at), tz);
 
-  // Month in the URL (?mes=YYYY-MM), clamped between the first record and this month.
+  // Independent reads in one go: the first check-in (bounds the month), the year of check-ins
+  // of the selected habits (ONE query, grouped here) and the REGISTROS cards.
   const current = monthOf(today);
-  const firstCheckin = await loadFirstCheckinDate(supabase, user.id, selected.map((x) => x.id));
+  const selectedIds = selected.map((x) => x.id);
+  const [firstCheckin, historyRows, registros] = await Promise.all([
+    loadFirstCheckinDate(supabase, user.id, selectedIds),
+    fetchAll<{ habit_id: string; local_date: LocalDate }>((a, b) =>
+      supabase
+        .from("checkins")
+        .select("habit_id,local_date")
+        .in("habit_id", selectedIds)
+        .is("rejected_at", null)
+        .gte("local_date", addDays(today, -HISTORY_DAYS))
+        .order("local_date")
+        .order("id")
+        .range(a, b),
+    ),
+    loadRegistros(supabase, user.id, today, habits),
+  ]);
+  const datesByHabit = new Map<string, LocalDate[]>();
+  for (const r of historyRows) {
+    const list = datesByHabit.get(r.habit_id);
+    if (list) list.push(r.local_date);
+    else datesByHabit.set(r.habit_id, [r.local_date]);
+  }
+
+  // Month in the URL (?mes=YYYY-MM), clamped between the first record and this month.
   const earliest = earliestMonth([firstCheckin, ...selected.map(since)], current);
   const month = parseMonthParam(mes, { current, earliest });
   const nav = monthNav(month, { current, earliest });
@@ -206,16 +268,7 @@ export default async function ResumenPage({
     />
   );
 
-  const datesOf = async (habitId: string) => {
-    const { data } = await supabase
-      .from("checkins")
-      .select("local_date")
-      .eq("habit_id", habitId)
-      .is("rejected_at", null)
-      .gte("local_date", addDays(today, -HISTORY_DAYS));
-    return (data ?? []).map((c) => c.local_date);
-  };
-  const history = await Promise.all(selected.map(async (x) => ({ ...x, dates: await datesOf(x.id) })));
+  const history = selected.map((x) => ({ ...x, dates: datesByHabit.get(x.id) ?? [] }));
 
   // Calendar for the visible month only, or the month-by-month view from the year of history.
   const calendarHabits = selected.map((x) => ({
@@ -282,13 +335,6 @@ export default async function ResumenPage({
     );
   }
 
-  const registros = await loadRegistros(
-    supabase,
-    user.id,
-    today,
-    habits.map((x) => x.logType),
-  );
-
   if (showAll) {
     const { current: currentStreak, best } = profileStreaks(history, today);
     const weekBuckets = weeklyCounts([], 8, today).map((w) => w.weekStart);
@@ -318,12 +364,12 @@ export default async function ResumenPage({
 
         <SectionHeader label="Últimas 8 semanas" action="Check-ins" />
         <Card className="p-4">
-          <StackedBars rows={weekly} series={series} kind="week" />
+          <StackedBarsLazy rows={weekly} series={series} kind="week" />
         </Card>
 
         <SectionHeader label="Por mes" action="Check-ins" />
         <Card className="p-4">
-          <StackedBars rows={monthly} series={series} kind="month" />
+          <StackedBarsLazy rows={monthly} series={series} kind="month" />
         </Card>
       </main>
     );
@@ -356,13 +402,13 @@ export default async function ResumenPage({
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">
-        <WeeklyBars data={weeklyCounts(dates, 8, today)} target={target} color={habit.color} />
+        <WeeklyBarsLazy data={weeklyCounts(dates, 8, today)} target={target} color={habit.color} />
         <p className="text-small text-muted">Barras grises: semanas bajo la meta.</p>
       </Card>
 
       <SectionHeader label="Por mes" action="Check-ins" />
       <Card className="p-4">
-        <MonthlyBars data={monthlyCounts(dates, 6, today)} color={habit.color} />
+        <MonthlyBarsLazy data={monthlyCounts(dates, 6, today)} color={habit.color} />
       </Card>
     </main>
   );
