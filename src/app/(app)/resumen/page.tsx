@@ -8,6 +8,7 @@ import { MonthlyBars } from "@/components/charts/MonthlyBars";
 import { StackedBars } from "@/components/charts/StackedBars";
 import { WeeklyBars } from "@/components/charts/WeeklyBars";
 import { HabitSwitcher } from "@/components/HabitSwitcher";
+import { LogMonthCards } from "@/components/logs/LogMonthCards";
 import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -16,6 +17,7 @@ import {
   earliestMonth,
   monthNav,
   monthOf,
+  monthTitle,
   parseMonthParam,
   recentMonths,
   withSearch,
@@ -23,10 +25,13 @@ import {
 } from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
+import { LOG_TYPES, type LogType } from "@/domain/logs";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency, LocalDate } from "@/domain/types";
-import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
+import { loadFirstCheckinDate, loadMonthDays, loadMonthWeights } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
+import { buildLogCards } from "@/lib/log-cards";
+import { loadReadingData, loadVisitDates, loadWeights, loadWorkoutData, logWindowStart } from "@/lib/logs-data";
 import {
   ALL_HABITS,
   monthlyCounts,
@@ -93,11 +98,15 @@ export default async function ResumenPage({
 
   const { data: habitRows } = await supabase
     .from("habits")
-    .select("id,name,icon,color,frequency_type,target_per_week,created_at")
+    .select("id,name,icon,color,frequency_type,target_per_week,created_at,log_type")
     .eq("user_id", user.id)
     .is("archived_at", null)
     .order("created_at");
-  const habits = (habitRows ?? []).map((x) => ({ ...x, color: toHabitColor(x.color) }));
+  const habits = (habitRows ?? []).map((x) => ({
+    ...x,
+    color: toHabitColor(x.color),
+    logType: ((LOG_TYPES as readonly string[]).includes(x.log_type) ? x.log_type : "none") as LogType,
+  }));
 
   if (habits.length === 0) {
     return (
@@ -159,7 +168,13 @@ export default async function ResumenPage({
   const history = await Promise.all(selected.map(async (x) => ({ ...x, dates: await datesOf(x.id) })));
 
   // Calendar for the visible month only, or the month-by-month view from the year of history.
-  const calendarHabits = selected.map((x) => ({ id: x.id, name: x.name, color: x.color, icon: x.icon }));
+  const calendarHabits = selected.map((x) => ({
+    id: x.id,
+    name: x.name,
+    color: x.color,
+    icon: x.icon,
+    logType: x.logType,
+  }));
   let calendarSection: ReactNode;
   if (monthsView) {
     const doneByDay: Record<LocalDate, number> = {};
@@ -186,7 +201,11 @@ export default async function ResumenPage({
       </>
     );
   } else {
-    const days = await loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz });
+    // weigh-ins are private: this is the owner's own calendar, read with their session
+    const [days, weights] = await Promise.all([
+      loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz }),
+      loadMonthWeights(supabase, user.id, month),
+    ]);
     calendarSection = (
       <>
         <SectionHeader label="Calendario" action="Ver por meses" href={href(month, MONTHS_VIEW)} scroll={false} />
@@ -201,6 +220,7 @@ export default async function ResumenPage({
             prevHref={nav.prev ? href(nav.prev) : null}
             nextHref={nav.next ? href(nav.next) : null}
             todayHref={nav.isCurrent ? null : href(current)}
+            weights={weights}
             note={
               !showAll && habit.frequency_type === "weekly"
                 ? `Meta: ${habit.target_per_week ?? 1} por semana.`
@@ -211,6 +231,31 @@ export default async function ResumenPage({
       </>
     );
   }
+
+  // REGISTROS of this month: reading, gym and the private weight; each card opens its detail.
+  const windowStart = logWindowStart(today);
+  const hasReading = habits.some((x) => x.logType === "reading");
+  const hasWorkout = habits.some((x) => x.logType === "workout");
+  const [readingData, workoutData, visits, weightEntries] = await Promise.all([
+    loadReadingData(supabase, user.id, windowStart),
+    loadWorkoutData(supabase, user.id, windowStart),
+    loadVisitDates(supabase, user.id, windowStart),
+    loadWeights(supabase, user.id, windowStart),
+  ]);
+  const logCards = buildLogCards({
+    month: current,
+    reading: hasReading || readingData.entries.length > 0 ? readingData : null,
+    workout: hasWorkout || workoutData.sets.length > 0 ? workoutData : null,
+    visits,
+    weights: weightEntries,
+  });
+  const registros =
+    logCards.length > 0 ? (
+      <>
+        <SectionHeader label={`Registros · ${monthTitle(current).name}`} />
+        <LogMonthCards cards={logCards} />
+      </>
+    ) : null;
 
   if (showAll) {
     const { current: currentStreak, best } = profileStreaks(history, today);
@@ -236,6 +281,8 @@ export default async function ResumenPage({
         />
 
         {calendarSection}
+
+        {registros}
 
         <SectionHeader label="Últimas 8 semanas" action="Check-ins" />
         <Card className="p-4">
@@ -272,6 +319,8 @@ export default async function ResumenPage({
       />
 
       {calendarSection}
+
+      {registros}
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">

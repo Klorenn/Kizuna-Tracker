@@ -80,6 +80,7 @@ export function MonthCalendar({
   nextHref,
   todayHref,
   note,
+  weights,
 }: {
   month: MonthKey;
   today: LocalDate;
@@ -92,6 +93,8 @@ export function MonthCalendar({
   /** Link back to the current month; null when already on it. */
   todayHref: string | null;
   note?: string;
+  /** The owner's weigh-ins by date. Private: only on the owner's own calendar. */
+  weights?: Record<LocalDate, number>;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -479,6 +482,7 @@ export function MonthCalendar({
           single={mode === "single"}
           onClose={closeSheet}
           returnFocusRef={returnFocus}
+          weightKg={weights?.[selected] ?? null}
         />
       ) : null}
     </div>

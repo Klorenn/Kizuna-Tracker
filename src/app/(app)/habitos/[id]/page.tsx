@@ -7,6 +7,8 @@ import { MonthCalendar } from "@/components/calendar/MonthCalendar";
 import { MonthOverviewGrid } from "@/components/calendar/MonthOverviewGrid";
 import { WeeklyBars } from "@/components/charts/WeeklyBars";
 import { GoalCard } from "@/components/GoalCard";
+import { ReadingProgress } from "@/components/logs/ReadingProgress";
+import { WorkoutProgress } from "@/components/logs/WorkoutProgress";
 import { HabitSettings } from "@/components/HabitSettings";
 import { HabitIcon, VISIBILITY_LABEL, VisibilityIcon } from "@/components/habit-icon";
 import { ButtonLink } from "@/components/ui/Button";
@@ -23,12 +25,14 @@ import {
 } from "@/domain/calendar";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
+import type { LogType } from "@/domain/logs";
 import type { IconKey, Visibility } from "@/domain/presets";
 import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
 import { loadGoals } from "@/lib/goals-data";
+import { loadReadingData, loadVisitDates, loadWorkoutData, logWindowStart } from "@/lib/logs-data";
 import { streakWindow, weeklyCounts } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -62,7 +66,7 @@ export default async function HabitoPage({
 
   const { data: habit } = await supabase
     .from("habits")
-    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at,created_at")
+    .select("id,name,icon,color,visibility,requires_photo,frequency_type,target_per_week,archived_at,created_at,log_type")
     .eq("id", id)
     .eq("user_id", user.id)
     .is("archived_at", null)
@@ -70,6 +74,7 @@ export default async function HabitoPage({
   if (!habit) notFound();
 
   const color = toHabitColor(habit.color);
+  const logType: LogType = habit.log_type === "reading" || habit.log_type === "workout" ? habit.log_type : "none";
   const today = localDate(new Date(), profile.timezone);
   // bounded by date and rows (the API caps a query at 1000 rows)
   const { from, limit } = streakWindow(today);
@@ -155,7 +160,7 @@ export default async function HabitoPage({
           <MonthCalendar
             month={month}
             today={today}
-            habits={[{ id: habit.id, name: habit.name, color, icon: habit.icon }]}
+            habits={[{ id: habit.id, name: habit.name, color, icon: habit.icon, logType }]}
             days={days}
             mode="single"
             prevHref={nav.prev ? monthHref(nav.prev) : null}
@@ -167,6 +172,56 @@ export default async function HabitoPage({
       </>
     );
   }
+  // PROGRESO (reading / workout habits): this month against the last, from a bounded window.
+  let progress: ReactNode = null;
+  if (logType !== "none") {
+    const windowStart = logWindowStart(today);
+    const { data: todayCheckin } = await supabase
+      .from("checkins")
+      .select("id")
+      .eq("habit_id", habit.id)
+      .eq("local_date", today)
+      .maybeSingle();
+    let todayEntry: { logged: boolean } | null = null;
+    if (todayCheckin) {
+      const { count } = await supabase
+        .from(logType === "reading" ? "reading_entries" : "workout_sessions")
+        .select("id", { count: "exact", head: true })
+        .eq("checkin_id", todayCheckin.id);
+      todayEntry = { logged: (count ?? 0) > 0 };
+    }
+    if (logType === "reading") {
+      const { books, entries } = await loadReadingData(supabase, user.id, windowStart);
+      progress = (
+        <ReadingProgress
+          habitId={habit.id}
+          month={thisMonth}
+          today={today}
+          books={books}
+          entries={entries}
+          todayEntry={todayEntry}
+        />
+      );
+    } else {
+      const [{ exercises, sets, sessions }, visits] = await Promise.all([
+        loadWorkoutData(supabase, user.id, windowStart),
+        loadVisitDates(supabase, user.id, windowStart),
+      ]);
+      progress = (
+        <WorkoutProgress
+          habitId={habit.id}
+          month={thisMonth}
+          today={today}
+          exercises={exercises}
+          sets={sets}
+          sessions={sessions}
+          visits={visits}
+          todayEntry={todayEntry}
+        />
+      );
+    }
+  }
+
   const meta = [
     frequency.type === "weekly" ? `${frequency.target} por semana` : "Diario",
     habit.requires_photo ? "foto en vivo" : null,
@@ -220,6 +275,13 @@ export default async function HabitoPage({
       </div>
 
       {calendar}
+
+      {progress ? (
+        <>
+          <SectionHeader label="Progreso" />
+          {progress}
+        </>
+      ) : null}
 
       <SectionHeader label="Últimas 8 semanas" action={`Meta ${target}`} />
       <Card className="flex flex-col gap-2 p-4">

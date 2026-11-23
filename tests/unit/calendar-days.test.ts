@@ -9,6 +9,7 @@ import {
   type CheckinRow,
   type HabitDay,
 } from '@/lib/calendar-days'
+import type { DayLog } from '@/lib/logs-data'
 
 const TZ = 'America/Santiago' // UTC-3 en noviembre
 
@@ -46,6 +47,28 @@ const item = (over: Partial<CheckinItemRow>): CheckinItemRow => ({
 })
 
 describe('buildDaySummaries', () => {
+  test('el registro del check-in va en su hábito, también si la foto fue rechazada', () => {
+    const reading: DayLog = { kind: 'reading', bookTitle: 'Dune', fromPage: 14, toPage: 40, pages: 26, finishedBook: false }
+    const days = buildDaySummaries({
+      habits: [leer, gym],
+      checkins: [
+        checkin({}),
+        checkin({ id: 'c2', habit_id: 'h3', rejected_at: '2026-11-23T20:00:00Z', reject_reason: 'unclear' }),
+      ],
+      checkinItems: [],
+      dates: ['2026-11-23', '2026-11-24'],
+      today: '2026-11-25',
+      timezone: TZ,
+      logs: new Map<string, DayLog>([
+        ['c1', reading],
+        ['c2', { kind: 'workout', dayTypes: ['cardio'], exercises: [], volumeKg: 0 }],
+      ]),
+    })
+    expect(days['2026-11-23'][0].log).toEqual(reading)
+    expect(days['2026-11-23'][1].log).toMatchObject({ kind: 'workout' })
+    expect(days['2026-11-24'].map((e) => e.log)).toEqual([null, null])
+  })
+
   test('hecho con hora local, en progreso con ítems y no registrado', () => {
     const days = buildDaySummaries({
       habits: [leer, comer, gym],
@@ -60,7 +83,7 @@ describe('buildDaySummaries', () => {
       timezone: TZ,
     })
     expect(days['2026-11-23']).toEqual([
-      { habitId: 'h1', status: 'done', time: '08:15', items: null, photos: [], rejectReason: null },
+      { habitId: 'h1', status: 'done', time: '08:15', items: null, photos: [], rejectReason: null, log: null },
       {
         habitId: 'h2',
         status: 'partial',
@@ -68,8 +91,9 @@ describe('buildDaySummaries', () => {
         items: { done: 3, total: 4, labels: ['Desayuno', 'Almuerzo', 'Once'] },
         photos: [],
         rejectReason: null,
+        log: null,
       },
-      { habitId: 'h3', status: 'none', time: null, items: null, photos: [], rejectReason: null },
+      { habitId: 'h3', status: 'none', time: null, items: null, photos: [], rejectReason: null, log: null },
     ])
   })
 
@@ -111,6 +135,7 @@ describe('buildDaySummaries', () => {
       items: null,
       photos: [{ path: 'u/c1.jpg', label: null }],
       rejectReason: 'unclear',
+      log: null,
     })
   })
 
@@ -204,6 +229,7 @@ describe('hasRecords', () => {
     items: null,
     photos: [],
     rejectReason: null,
+    log: null,
   })
   test('hecho, en progreso o rechazado cuentan como registro', () => {
     expect(hasRecords([e('none'), e('done')])).toBe(true)
@@ -216,7 +242,7 @@ describe('hasRecords', () => {
 
 describe('dayAriaLabel', () => {
   const names = { h1: 'Leer', h2: 'Comer bien', h3: 'Gimnasio' }
-  const base = { time: null, items: null, photos: [], rejectReason: null }
+  const base = { time: null, items: null, photos: [], rejectReason: null, log: null }
   test('fecha y estado de cada hábito', () => {
     expect(
       dayAriaLabel('2026-11-23', '2026-11-25', [
