@@ -1,6 +1,6 @@
 # Local development
 
-1. Start the local stack (Docker/OrbStack): `supabase start`, then `supabase db reset` (applies migrations 0001-0011 and `supabase/seed.sql`).
+1. Start the local stack (Docker/OrbStack): `supabase start`, then `supabase db reset` (applies every migration and `supabase/seed.sql`; it wipes local data, so only on a fresh stack).
 2. Create `.env.local` with the values from `supabase status -o json`:
    `NEXT_PUBLIC_SUPABASE_URL` (API_URL), `NEXT_PUBLIC_SUPABASE_ANON_KEY` (ANON_KEY), `SUPABASE_SERVICE_ROLE_KEY` (SERVICE_ROLE_KEY).
    Never commit this file.
