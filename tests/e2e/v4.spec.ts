@@ -105,9 +105,14 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
   await expect(page.getByText("0 de 1 hechos")).toBeVisible();
 
   // the 8th: the goal is met only after the server says so, and the day counter goes up
+  const before = (await add.boundingBox())!;
   await add.click();
   await expect(page.getByText("8 de 8 vasos")).toBeVisible();
   await expect(page.getByText("Meta de hoy cumplida")).toBeVisible();
+  // the quick-add button does not move when the goal is met
+  const after = (await add.boundingBox())!;
+  expect(Math.abs(after.y - before.y)).toBeLessThan(0.5);
+  expect(Math.abs(after.height - before.height)).toBeLessThan(0.5);
   await clearCelebration(page);
   await expect(page.getByText("1 de 1 hechos")).toBeVisible();
   await page.reload();
@@ -159,7 +164,8 @@ test("quantity: Agua from the preset, quick add to the goal, undo, double tap, a
 const WALKS = { quantity_unit: "times", quantity_target: 4, quantity_step: 1, quantity_display: "base" };
 
 test.describe("touch", () => {
-  test.use({ hasTouch: true });
+  // a phone: mobile viewport meta handling, touch events, and the double-tap zoom heuristics
+  test.use({ isMobile: true, hasTouch: true, viewport: { width: 390, height: 844 } });
 
   test("quantity: a fast touch double tap is two sums", async ({ page }) => {
     test.setTimeout(90_000);
@@ -433,6 +439,10 @@ test("form: every log type can be created and edited, and the rules explain them
   await expect(
     page.getByRole("alert").filter({ hasText: "Hoy ya registraste este hábito. Cámbialo mañana o deshaz el registro de hoy." }),
   ).toBeVisible();
+  expect((await admin().from("habits").select("log_type").eq("id", hecho).single()).data!.log_type).toBe("none");
+  // and the database repeats the rule (migration 0021) for a request that skips the form
+  const direct = await (await sessionOf(u)).from("habits").update({ log_type: "quantity", ...WATER }).eq("id", hecho);
+  expect(direct.error?.message).toContain("checkin_today");
   expect((await admin().from("habits").select("log_type").eq("id", hecho).single()).data!.log_type).toBe("none");
 
   // the database rule behind the form: a habit with steps refuses a log type (items_with_log)

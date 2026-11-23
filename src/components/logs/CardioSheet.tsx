@@ -2,7 +2,7 @@
 
 import { Warning } from "@phosphor-icons/react/dist/ssr";
 import { useRouter } from "next/navigation";
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useEffect, useId, useRef, useState, useTransition } from "react";
 import {
   addCardio,
   checkInWithCardio,
@@ -108,7 +108,6 @@ function LivePace({ text }: { text: string }) {
 }
 
 const EFFORTS = [1, 2, 3, 4, 5] as const;
-const TIME_ERROR_ID = "cardio-time-error";
 
 /**
  * Activity chips, distance, h/min/s with live pace, effort 1–5, note. Check-in mode: Guardar /
@@ -130,6 +129,8 @@ export function CardioForm({
   onSaved?: (message: string) => void;
 }) {
   const router = useRouter();
+  // one id per form: two forms on a page never share the error id
+  const timeErrorId = useId();
   const existing = mode.kind === "edit" ? mode.entry : null;
   const [distance, setDistance] = useState(existing ? distanceText(existing.distanceM, existing.kind) : "");
   const initialHms = existing ? hmsParts(existing.durationS) : (["", "", ""] as const);
@@ -237,7 +238,7 @@ export function CardioForm({
 
   const timeInvalid = Boolean(errors.time);
   // the one time message describes all three time fields
-  const timeDescribedBy = timeInvalid ? TIME_ERROR_ID : undefined;
+  const timeDescribedBy = timeInvalid ? timeErrorId : undefined;
   return (
     <div className="flex flex-col gap-4 pb-1">
       <div role="group" aria-label="Actividad" className="flex flex-wrap gap-2">
@@ -265,7 +266,7 @@ export function CardioForm({
           <Input label="Segundos" name="seconds" inputMode="numeric" autoComplete="off" value={s} className="font-mono" invalid={timeInvalid} aria-describedby={timeDescribedBy} onChange={(e) => setS(e.target.value)} />
         </div>
         {errors.time ? (
-          <p id={TIME_ERROR_ID} role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
+          <p id={timeErrorId} role="alert" className="flex items-start gap-[6px] text-small text-pretty text-ink">
             <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
             {errors.time}
           </p>

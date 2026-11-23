@@ -23,8 +23,12 @@ describe('every action verifies the session first', () => {
     await expect(addQuantity('h1', 'q1', 250)).resolves.toEqual({ ok: false, error: 'Inicia sesión para continuar.', retry: false })
     expect(rpc).not.toHaveBeenCalled()
   })
-  it('addQuantity: a failed session check keeps the tap for a retry', async () => {
-    authAnswer = { data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0 } }
+  it.each([
+    ['a network error', { name: 'AuthRetryableFetchError', status: 0 }],
+    ['a 5xx', { name: 'AuthApiError', status: 503 }],
+    ['a 429', { name: 'AuthApiError', status: 429 }],
+  ])('addQuantity: %s on the session check keeps the tap for a retry', async (_n, error) => {
+    authAnswer = { data: { user: null }, error }
     await expect(addQuantity('h1', 'q1', 250)).resolves.toMatchObject({ ok: false, retry: true })
     expect(rpc).not.toHaveBeenCalled()
   })

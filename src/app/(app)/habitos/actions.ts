@@ -191,8 +191,11 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
     .map((i) => i.id);
   // if the habit update is refused after the steps were archived, they come back: a failed save must
   // not leave a habit whose day now completes with one tap
-  const restoreDropped = async () => {
-    if (dropped.length > 0) await supabase.from("habit_items").update({ archived_at: null }).in("id", dropped);
+  // returns the copy to show when the restore itself fails (then the steps are still archived)
+  const restoreDropped = async (): Promise<string | null> => {
+    if (dropped.length === 0) return null;
+    const { error: restoreError } = await supabase.from("habit_items").update({ archived_at: null }).in("id", dropped);
+    return restoreError ? GENERIC : null;
   };
   if (dropped.length > 0) {
     const { error: archiveError } = await supabase
@@ -200,8 +203,8 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
       .update({ archived_at: new Date().toISOString() })
       .in("id", dropped);
     if (archiveError) {
-      await restoreDropped();
-      return { ok: false, error: messageFor(archiveError.message, { logType: draft.logType }) };
+      const restoreFailed = await restoreDropped();
+      return { ok: false, error: restoreFailed ?? messageFor(archiveError.message, { logType: draft.logType }) };
     }
   }
   const { data: updated, error } = await supabase
@@ -211,22 +214,24 @@ export async function updateHabit(id: string, input: HabitDraft): Promise<Result
     .eq("user_id", uid)
     .select("id");
   if (!error && (!updated || updated.length === 0)) {
-    await restoreDropped();
-    return { ok: false, error: NOT_FOUND };
+    return { ok: false, error: (await restoreDropped()) ?? NOT_FOUND };
   }
   if (error) {
-    await restoreDropped();
+    const restoreFailed = await restoreDropped();
     // habit_in_challenge also guards visibility and photos: tell which rule a quantity habit broke
     const quantityInChallenge =
       error.message?.includes("habit_in_challenge") &&
       own.log_type === "quantity" &&
       !(draft.visibility === "private" && own.visibility !== "private");
-    // switching TO quantity while in a challenge is refused too: it is not about visibility either
+    // a log type switch while in a challenge is refused too (to quantity, or with a photo challenge):
+    // it is not about visibility either
     const switchToQuantityInChallenge =
-      error.message?.includes("habit_in_challenge") && draft.logType === "quantity" && own.log_type !== "quantity";
+      error.message?.includes("habit_in_challenge") && draft.logType !== own.log_type;
     return {
       ok: false,
-      error: messageFor(error.message, { logType: draft.logType, quantityInChallenge, switchToQuantityInChallenge }),
+      error:
+        restoreFailed ??
+        messageFor(error.message, { logType: draft.logType, quantityInChallenge, switchToQuantityInChallenge }),
     };
   }
 

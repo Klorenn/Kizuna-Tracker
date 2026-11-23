@@ -13,7 +13,8 @@ export type Authed =
 /** An Auth answer that means "there is no valid session", as opposed to "could not ask". */
 function isSignedOutError(e: { name?: string; status?: number }): boolean {
   if (e.name === "AuthSessionMissingError") return true;
-  return typeof e.status === "number" && e.status >= 400 && e.status < 500;
+  // 429 is rate limiting, not a lost session: it must stay retryable (a tap or block is never dropped for it)
+  return typeof e.status === "number" && e.status >= 400 && e.status < 500 && e.status !== 429;
 }
 
 /**

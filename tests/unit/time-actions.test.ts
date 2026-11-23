@@ -270,6 +270,7 @@ describe('sendPomodoroBlock: a failed session check is not a lost session', () =
     ['a network failure', { name: 'AuthRetryableFetchError', status: 0, message: 'fetch failed' }],
     ['a server error', { name: 'AuthApiError', status: 503, message: 'upstream down' }],
     ['an unknown error', { message: 'something odd' }],
+    ['a 429', { name: 'AuthApiError', status: 429, message: 'rate limit' }],
   ])('%s keeps the block and says it could not connect', async (_name, authError) => {
     client.auth = { getUser: async () => ({ data: { user: null }, error: authError }) }
     expect(await sendPomodoroBlock('h1', block, null)).toEqual({
@@ -301,6 +302,22 @@ describe('sendPomodoroBlock: a failed session check is not a lost session', () =
       code: 'not_authenticated',
       error: 'Inicia sesión para guardar tus bloques.',
     })
+  })
+})
+
+describe('a failed session check says it could not connect (not "Inicia sesión")', () => {
+  const realAuth = client.auth
+  afterEach(() => {
+    client.auth = realAuth
+  })
+  it('addTime, checkInWithoutTime, setTimeEntry and deleteTimeEntry', async () => {
+    client.auth = { getUser: async () => ({ data: { user: null }, error: { name: 'AuthRetryableFetchError', status: 0 } }) }
+    const connect = { ok: false, error: 'No pudimos conectar. Inténtalo de nuevo en unos minutos.' }
+    expect(await addTime('h1', 10, null)).toEqual(connect)
+    expect(await checkInWithoutTime('h1')).toEqual(connect)
+    expect(await setTimeEntry('c1', 10, null)).toEqual(connect)
+    expect(await deleteTimeEntry('c1')).toEqual(connect)
+    expect(rpc).not.toHaveBeenCalled()
   })
 })
 

@@ -77,10 +77,9 @@ function refresh() {
 
 type Client = Awaited<ReturnType<typeof createServerClient>>;
 
-/** The signed-in client, or null: every action authenticates before touching the RPCs. */
-async function authed(): Promise<Client | null> {
-  const auth = await requireUser();
-  return auth.ok ? auth.supabase : null;
+/** The session check of every time action: the client, or the ready answer (sign in, or could not connect). */
+async function authed() {
+  return requireUser();
 }
 
 /** Like `authed`, but a failed check (network, server trouble) is its own answer for the block receipt. */
@@ -101,8 +100,9 @@ export async function addTime(
   const t = cleanTopic(topic);
   const valid = checkInput(minutes, t);
   if (!valid.ok) return valid;
-  const supabase = await authed();
-  if (!supabase) return { ok: false, error: NOT_AUTHENTICATED };
+  const auth = await authed();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { data, error } = await supabase.rpc("add_time", { p_habit_id: habitId, p_minutes: minutes, p_topic: t as string });
   const row = data?.[0];
   if (error || !row) return { ok: false, error: messageFor(error?.message) };
@@ -112,8 +112,9 @@ export async function addTime(
 
 /** "Solo marcar" in the time sheet: checks today in without any time. */
 export async function checkInWithoutTime(habitId: string): Promise<Result> {
-  const supabase = await authed();
-  if (!supabase) return { ok: false, error: NOT_AUTHENTICATED };
+  const auth = await authed();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { data, error } = await supabase.rpc("create_checkin", { p_habit_id: habitId });
   if (error || !data?.[0]) return { ok: false, error: messageFor(error?.message) };
   refresh();
@@ -125,8 +126,9 @@ export async function setTimeEntry(checkinId: string, minutes: number, topic: st
   const t = cleanTopic(topic);
   const valid = checkInput(minutes, t);
   if (!valid.ok) return valid;
-  const supabase = await authed();
-  if (!supabase) return { ok: false, error: NOT_AUTHENTICATED };
+  const auth = await authed();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { error } = await supabase.rpc("set_time_entry", { p_checkin_id: checkinId, p_minutes: minutes, p_topic: t as string });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();
@@ -134,8 +136,9 @@ export async function setTimeEntry(checkinId: string, minutes: number, topic: st
 }
 
 export async function deleteTimeEntry(checkinId: string): Promise<Result> {
-  const supabase = await authed();
-  if (!supabase) return { ok: false, error: NOT_AUTHENTICATED };
+  const auth = await authed();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase } = auth;
   const { error } = await supabase.rpc("delete_time_entry", { p_checkin_id: checkinId });
   if (error) return { ok: false, error: messageFor(error.message) };
   refresh();

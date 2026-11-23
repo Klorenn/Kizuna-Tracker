@@ -10,6 +10,10 @@ import { parseAmount, type QuantityConfig } from "@/domain/quantity";
  *   queues over the same storage never erase each other's taps.
  * - Each sum has its own entry id, kept across retries (the RPC is idempotent by id). An id is in
  *   flight at most once at a time; sending twice is harmless, losing a tap is not.
+ * - Known limit: "a tap never counts for a later day" is enforced on the client only (each tap records
+ *   its local day and zone, and one still pending on a later local day is dropped). A wrong device
+ *   clock can still credit a later day, because `add_quantity_entry` writes the day it is called on;
+ *   closing that needs the RPC to take the tap time (a future migration).
  * - A network failure keeps the tap and retries with capped exponential backoff (1 s, 2 s, 4 s ...
  *   30 s), and again on add, `online` and `visibilitychange`. A refusal by the server drops the tap
  *   and leaves a notice for its habit.

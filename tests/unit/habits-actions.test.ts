@@ -534,3 +534,39 @@ describe('updateHabit keeps the steps when the habit update is refused', () => {
     expect(itemUpdates[1]).toEqual({ archived_at: null })
   })
 })
+
+describe('round 1: restore failure and type-switch copy', () => {
+  it('reports the generic copy when restoring the archived steps fails too', async () => {
+    reads['habit_items.select'] = { data: [{ id: 'i1', label: 'Pecho' }], error: null }
+    const original = client.from
+    let itemUpdates = 0
+    client.from = (t: string) => {
+      const b = original(t)
+      if (t === 'habits') {
+        return { ...b, update: (payload: unknown) => { calls.push({ table: t, op: 'update', payload }); return chain(() => ({ data: null, error: { message: 'photo_conflict' } })) } }
+      }
+      if (t === 'habit_items') {
+        return { ...b, update: (payload: unknown) => { itemUpdates++; calls.push({ table: t, op: 'update', payload }); return chain(() => (itemUpdates === 1 ? { data: [{ id: 'i1' }], error: null } : { data: null, error: { message: 'down' } })) } }
+      }
+      return b
+    }
+    try {
+      await expect(updateHabit('h1', { ...presetDraft('gym'), items: [] })).resolves.toEqual({
+        ok: false,
+        error: 'No pudimos guardar los cambios. Inténtalo de nuevo.',
+      })
+    } finally {
+      client.from = original
+    }
+    expect(itemUpdates).toBe(2)
+  })
+
+  it('a photo challenge that blocks a type switch (not only to quantity) shows the type-switch copy', async () => {
+    reads['habit_items.select'] = { data: [], error: null }
+    updateError = { message: 'habit_in_challenge' }
+    await expect(updateHabit('h1', { ...presetDraft('walk'), logType: 'time' })).resolves.toEqual({
+      ok: false,
+      error: 'Este hábito está en un reto. Cambia el tipo de registro cuando el reto termine.',
+    })
+  })
+})

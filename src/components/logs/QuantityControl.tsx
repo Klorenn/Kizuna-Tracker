@@ -66,7 +66,9 @@ export function QuantityStatus({
   return (
     <>
       {showHead ? (
-      <div className="flex items-center gap-3">
+      // fixed minimum height: the "Meta de hoy cumplida" line must not make the header taller, or the
+      // quick-add button below would move away from a fast tap
+      <div className="flex min-h-12 items-center gap-3">
         <ProgressRing value={pct} label={progressLabel(shown, config)} color={color} />
         <div className="flex min-w-0 flex-1 flex-col" aria-live="polite">
           <p className="font-mono text-small text-ink">{progressLabel(shown, config)}</p>

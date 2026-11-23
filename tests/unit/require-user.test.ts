@@ -31,6 +31,7 @@ describe('requireUser', () => {
   it.each([
     [{ name: 'AuthRetryableFetchError', status: 0 }],
     [{ name: 'AuthApiError', status: 503 }],
+    [{ name: 'AuthApiError', status: 429 }],
     [{ message: 'odd' }],
   ])('a failed check (%o) is "could not connect"', async (error) => {
     getUser = async () => ({ data: { user: null }, error })
