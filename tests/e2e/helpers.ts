@@ -7,9 +7,8 @@ export const SEED_PASSWORD = "kizuna-test-1";
 
 export const randomHandle = (prefix: string) => `${prefix}_${Math.random().toString(36).slice(2, 8)}`;
 
-/** Five-step signup ending on /listo, then "Empezar" to Hoy. */
-export async function signUp(page: Page, handle: string, first = "Carolina") {
-  await page.goto("/registro");
+/** The five signup steps, from the first field to the "Crear cuenta" click (the page is already /registro). */
+export async function fillSignup(page: Page, handle: string, first = "Carolina") {
   await page.getByLabel("Nombre").fill(first);
   await page.getByLabel("Apellido").fill("E2E");
   await page.getByRole("button", { name: "Continuar" }).click();
@@ -30,6 +29,12 @@ export async function signUp(page: Page, handle: string, first = "Carolina") {
   await page.getByLabel("Confirmar contraseña").fill(PASSWORD);
   await page.getByText("Acepto los términos y la privacidad").click();
   await page.getByRole("button", { name: "Crear cuenta" }).click();
+}
+
+/** Five-step signup ending on /listo, then "Empezar" to Hoy. */
+export async function signUp(page: Page, handle: string, first = "Carolina") {
+  await page.goto("/registro");
+  await fillSignup(page, handle, first);
 
   await expect(page).toHaveURL(/\/listo$/);
   await expect(page.getByRole("heading", { name: `Listo, @${handle}` })).toBeVisible();

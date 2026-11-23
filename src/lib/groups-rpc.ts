@@ -204,7 +204,3 @@ export type InvitePreviewForRow = {
 /** The preview of an invitation. Callable ONLY with the service role. `viewer` is the signed-in person's id from the session, never from the request. Null for a code that does not work. */
 export const groupInvitePreviewFor = (c: GroupsClient, code: string, viewer: string | null) =>
   call(c, 'group_invite_preview_for', { p_code: code, p_viewer: viewer })
-
-/** `true` = blocked. Service role only. `record: false` only checks; `true` also counts this attempt. */
-export const rateLimit = (c: GroupsClient, key: string, limit: number, windowSeconds: number, record: boolean) =>
-  call(c, 'rate_limit', { p_key: key, p_limit: limit, p_window_seconds: windowSeconds, p_record: record })

@@ -36,13 +36,13 @@ export function isInviteCodeShape(v: unknown): v is string {
 
 /**
  * What a person may type or paste -> the canonical code, or null. Exactly the database's `groups_normalize_code`: longer than
- * 64 characters is invalid at once; every whitespace character and at most one hyphen are removed; the rest must be 8 ASCII
+ * 64 characters is invalid at once; every ASCII whitespace character (space, \t \n \v \f \r: what Postgres `\s` strips; NOT NBSP, U+202F, U+2007, U+FEFF) and at most one hyphen are removed; the rest must be 8 ASCII
  * characters of the alphabet in either case (checked BEFORE upper-casing, so a ligature or full-width letters never become
  * letters); then upper-case.
  */
 export function normalizeInviteCode(v: unknown): string | null {
   if (typeof v !== 'string' || v.length > 64) return null
-  const noSpace = v.replace(/\s/g, '')
+  const noSpace = v.replace(/[\t\n\v\f\r ]/g, '')
   if (noSpace.split('-').length > 2) return null
   const joined = noSpace.replace('-', '')
   return ASCII_CODE.test(joined) ? joined.toUpperCase() : null

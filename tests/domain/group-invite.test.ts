@@ -35,51 +35,31 @@ describe('groupPageNotFound', () => {
   it('all fine is not a 404', () => expect(groupPageNotFound([ok, ok, ok, ok])).toBe(false))
 })
 
-describe('limitedInviteLookup', () => {
-  const found = { ok: true as const, data: { name: 'x' } }
-  const make = (over: Partial<Parameters<typeof limitedInviteLookup<{ name: string }>>[0]> = {}) => ({
-    blocked: vi.fn(async () => false),
-    lookup: vi.fn(async () => found as { ok: true; data: { name: string } | null } | { ok: false }),
-    record: vi.fn(async () => {}),
-    ...over,
-  })
+describe('limitedInviteLookup (one database call decides limited / found / gone)', () => {
+  type T = { name: string }
+  type R = { ok: true; limited: boolean; data: T | null } | { ok: false }
+  const run = (lookup: () => Promise<R>) => limitedInviteLookup<T>({ lookup })
 
-  it('blocked: no lookup, no record', async () => {
-    const d = make({ blocked: vi.fn(async () => true) })
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'blocked' })
-    expect(d.lookup).not.toHaveBeenCalled()
-    expect(d.record).not.toHaveBeenCalled()
+  it('limited: blocked, whatever else came back', async () => {
+    expect(await run(async () => ({ ok: true, limited: true, data: null }))).toEqual({ kind: 'blocked' })
+    expect(await run(async () => ({ ok: true, limited: true, data: { name: 'x' } }))).toEqual({ kind: 'blocked' })
   })
-  it('a valid code is found and never recorded', async () => {
-    const d = make()
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'found', data: { name: 'x' } })
-    expect(d.record).not.toHaveBeenCalled()
+  it('a valid code is found', async () => {
+    expect(await run(async () => ({ ok: true, limited: false, data: { name: 'x' } }))).toEqual({ kind: 'found', data: { name: 'x' } })
   })
-  it('an unknown code (null) is recorded once and the link is gone', async () => {
-    const d = make({ lookup: vi.fn(async () => ({ ok: true as const, data: null })) })
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'gone' })
-    expect(d.record).toHaveBeenCalledTimes(1)
+  it('an unknown code (null, not limited) is gone', async () => {
+    expect(await run(async () => ({ ok: true, limited: false, data: null }))).toEqual({ kind: 'gone' })
   })
-  it('a failed lookup is a failure, not "gone", and records nothing', async () => {
-    const d = make({ lookup: vi.fn(async () => ({ ok: false as const })) })
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'failed' })
-    expect(d.record).not.toHaveBeenCalled()
+  it('the call is made exactly once', async () => {
+    const lookup = vi.fn(async (): Promise<R> => ({ ok: true, limited: false, data: null }))
+    await run(lookup)
+    expect(lookup).toHaveBeenCalledTimes(1)
+  })
+  it('a failed lookup is the generic failure for any code: never "gone", never a preview', async () => {
+    expect(await run(async () => ({ ok: false }))).toEqual({ kind: 'failed' })
   })
   it('a throwing lookup is a failure, never an exception', async () => {
-    const d = make({ lookup: vi.fn(async () => { throw new Error('x') }) })
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'failed' })
-  })
-  it('limiter check fails: a valid code still works, an unknown one is the generic failure (fail closed), nothing recorded', async () => {
-    const boom = vi.fn(async () => { throw new Error('limiter down') })
-    const valid = make({ blocked: boom })
-    expect(await limitedInviteLookup(valid)).toEqual({ kind: 'found', data: { name: 'x' } })
-    const unknown = make({ blocked: boom, lookup: vi.fn(async () => ({ ok: true as const, data: null })) })
-    expect(await limitedInviteLookup(unknown)).toEqual({ kind: 'failed' })
-    expect(unknown.record).not.toHaveBeenCalled()
-  })
-  it('a failing record never turns the answer into an error', async () => {
-    const d = make({ lookup: vi.fn(async () => ({ ok: true as const, data: null })), record: vi.fn(async () => { throw new Error('x') }) })
-    expect(await limitedInviteLookup(d)).toEqual({ kind: 'gone' })
+    expect(await run(async () => { throw new Error('x') })).toEqual({ kind: 'failed' })
   })
   it('the copy', () => expect(TOO_MANY_COPY).toBe('Demasiados intentos. Prueba de nuevo en unos minutos.'))
 })

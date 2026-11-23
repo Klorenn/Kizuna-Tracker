@@ -209,15 +209,9 @@ function HabitRowView({
         >
           {row.name}
         </Link>
-        {/* the chip gives way first: the habit name keeps its room */}
-        {group ? (
-          <span className="flex min-w-0 shrink-[8]">
-            <GroupChip name={group.name} color={group.color} />
-          </span>
-        ) : null}
       </span>
-      {/* fixed height: the mono streak figure must not change this line when a streak starts */}
-      <span className="flex h-5 items-center gap-1 text-small text-muted">
+      {/* fixed height: the mono streak figure (and the group chip) must not change this line; with a chip the text stays on one line and the chip alone truncates, so the habit name never loses width to it */}
+      <span className={`flex h-5 items-center gap-1 text-small text-muted${group ? " min-w-0 overflow-hidden whitespace-nowrap" : ""}`}>
         <VisibilityIcon value={row.visibility} />
         {quantity ? baseSubtitle(row) : habitSubtitle(row)}
         {row.streak > 0 ? (
@@ -226,6 +220,11 @@ function HabitRowView({
             <span className="font-sans text-muted">
               {row.frequency.type === "daily" ? " d" : " sem"}
             </span>
+          </span>
+        ) : null}
+        {group ? (
+          <span className="ml-1 flex min-w-0 shrink overflow-hidden">
+            <GroupChip name={group.name} color={group.color} />
           </span>
         ) : null}
       </span>

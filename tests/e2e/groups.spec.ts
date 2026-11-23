@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { createClient } from "@supabase/supabase-js";
 import { expect, test, type Browser, type BrowserContext, type Page } from "@playwright/test";
-import { expectNotFound, logIn, PASSWORD, randomHandle, signUp } from "./helpers";
+import { expectNotFound, fillSignup, logIn, PASSWORD, randomHandle } from "./helpers";
 
 // Written in phase 1 and NOT run yet: it needs migration 0023 (groups) applied locally.
 test.skip(!process.env.E2E_SUPABASE, "needs a local Supabase (E2E_SUPABASE=1) with migration 0023 applied");
@@ -353,7 +353,7 @@ test("360 px without horizontal overflow on the four pages, light and dark", asy
   await Promise.all([A.ctx.close(), B.ctx.close()]);
 });
 
-test("signing up from an invitation link, then joining; no member data in the signed-out page source", async ({ browser }) => {
+test("signing up from an invitation link lands on that invitation, where the new account joins; no member data in the signed-out page source", async ({ browser }) => {
   const a = await mk("gsa", "Ana");
   const A = await session(browser, a);
   const name = `Registro ${tag()}`;
@@ -362,17 +362,23 @@ test("signing up from an invitation link, then joining; no member data in the si
 
   const out = await browser.newContext({ viewport: { width: 390, height: 844 } });
   const po = await out.newPage();
-  // the page source a signed-out visitor receives: the group, never a member (name, @usuario or id)
+  // the page source a signed-out visitor receives: the group, never a member (name, @usuario or id) and never the group's id
   const html = await (await out.request.get(invite)).text();
   expect(html).toContain(name);
-  for (const secret of [a.handle, a.name, a.id, "Ana"]) expect(html, `source mentions ${secret}`).not.toContain(secret);
+  for (const secret of [a.handle, a.name, a.id, "Ana", groupId]) expect(html, `source mentions ${secret}`).not.toContain(secret);
 
-  // preview, then sign up (the new account has no group yet), then the same link joins
+  // preview -> "Inicia sesión para unirte" -> "Crea una" -> sign up: the invitation travels the whole way
   await po.goto(invite);
   await expect(po.getByRole("heading", { name: `Te invitaron a ${name}` })).toBeVisible();
+  await po.getByRole("link", { name: "Inicia sesión para unirte" }).click();
+  await expect(po).toHaveURL(/\/login\?next=%2Fg%2F[A-Z0-9]{8}$/);
+  await po.getByRole("link", { name: "Crea una" }).click();
+  await expect(po).toHaveURL(/\/registro\?next=%2Fg%2F[A-Z0-9]{8}$/);
   const handle = randomHandle("gsb");
-  await signUp(po, handle, "Bruno");
-  await po.goto(invite);
+  await fillSignup(po, handle, "Bruno");
+
+  // no reopening by hand: after signing up the person is already on the invitation and can join
+  await expect(po).toHaveURL(new RegExp(`${new URL(invite, "http://x").pathname}$`));
   await expect(po.getByRole("heading", { name: `Te invitaron a ${name}` })).toBeVisible();
   await po.getByRole("button", { name: "Unirme" }).click();
   await expect(po).toHaveURL(new RegExp(`/grupos/${groupId}$`));
@@ -383,6 +389,14 @@ test("signing up from an invitation link, then joining; no member data in the si
   await expect(po.getByRole("link", { name: "Ver el grupo" })).toHaveAttribute("href", `/grupos/${groupId}`);
   await expect(po.getByRole("button", { name: "Unirme" })).toHaveCount(0);
 
+  // a hostile return path is ignored: sign-up ends on the welcome screen as always
+  const out2 = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const pe = await out2.newPage();
+  await pe.goto("/registro?next=https%3A%2F%2Fevil.com");
+  await fillSignup(pe, randomHandle("gsc"), "Carla");
+  await expect(pe).toHaveURL(/\/listo$/);
+
+  await out2.close();
   await out.close();
   await A.ctx.close();
 });

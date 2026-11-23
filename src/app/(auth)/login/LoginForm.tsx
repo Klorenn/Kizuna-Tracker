@@ -6,6 +6,7 @@ import { useRef, useState, useTransition } from "react";
 import { PasswordToggle } from "@/components/auth/PasswordToggle";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
+import { registroHref } from "@/lib/auth-return";
 import { safeAction } from "@/lib/safe-action";
 import { safeNextPath } from "@/lib/supabase/public-paths";
 import { signIn } from "./actions";
@@ -102,7 +103,7 @@ export function LoginForm({
       <p className="flex items-center justify-center gap-1 text-body">
         <span className="text-muted">¿No tienes cuenta?</span>
         <Link
-          href="/registro"
+          href={registroHref(next)}
           className="-mx-2 inline-flex min-h-11 items-center rounded-md px-2 font-medium text-accent hover:underline hover:underline-offset-4"
         >
           Crea una

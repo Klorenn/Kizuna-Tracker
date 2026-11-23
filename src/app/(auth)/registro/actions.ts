@@ -2,6 +2,7 @@
 
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
+import { loginAfterSignupHref, postSignupPath } from "@/lib/auth-return";
 import { localDate } from "@/domain/dates";
 import { isAvatarPreset } from "@/lib/avatar-presets";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -73,6 +74,8 @@ function todayIn(timezone: string): string {
 
 export async function signUp(
   input: SignupInput,
+  /** Where to go after sign-up (an invitation): validated here by `safeNextPath`, whatever the client sent. */
+  next?: string | null,
 ): Promise<{ ok: true } | { ok: false; error: string }> {
   if (!isSignupInput(input)) return { ok: false, error: GENERIC_SIGNUP_ERROR };
   const clean: SignupInput = {
@@ -158,7 +161,7 @@ export async function signUp(
         // a failing sign-in is the same as a wrong password
       }
       if (sessionOpened && !owner) await dropForeignSession(supabase);
-      if (owner) redirect("/listo");
+      if (owner) redirect(postSignupPath(next));
       return { ok: false, error: USERNAME_TAKEN_ERROR };
     }
     let signedIn = false;
@@ -172,8 +175,8 @@ export async function signUp(
       signedIn = false;
     }
     // Account exists: no retry, no deletion; the person signs in by hand (also when the call threw).
-    if (!signedIn) redirect("/login?notice=cuenta-lista");
-    redirect("/listo");
+    if (!signedIn) redirect(loginAfterSignupHref(next));
+    redirect(postSignupPath(next));
     // redirect() never returns; this line only guarantees that nothing below runs with a service key
     return { ok: false, error: GENERIC_SIGNUP_ERROR };
   }
@@ -191,5 +194,5 @@ export async function signUp(
   });
   // Any failure (existing email included) gets the same neutral message.
   if (error || !data.session) return { ok: false, error: GENERIC_SIGNUP_ERROR };
-  redirect("/listo");
+  redirect(postSignupPath(next));
 }
