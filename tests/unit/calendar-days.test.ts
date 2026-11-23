@@ -306,3 +306,49 @@ describe('monthOverview', () => {
     expect(o.bestRun).toBe(0)
   })
 })
+
+describe('cantidad: días con sumas bajo la meta', () => {
+  const agua: CalendarHabitInput = { id: 'h4', since: '2026-11-01', items: [] }
+  const config = { unit: 'ml', label: null, target: 2000, step: 250, display: 'base', glassMl: 250 } as const
+  const log = (total: number): DayLog => ({
+    kind: 'quantity',
+    total,
+    target: 2000,
+    config,
+    entries: [{ amount: total, time: '8:10' }],
+  })
+  const run = (withCheckin: boolean, total: number) =>
+    buildDaySummaries({
+      habits: [agua],
+      checkins: withCheckin ? [checkin({ id: 'c7', habit_id: 'h4' })] : [],
+      checkinItems: [],
+      dates: ['2026-11-23'],
+      today: '2026-11-25',
+      timezone: TZ,
+      quantityByHabitDay: new Map([['h4:2026-11-23', log(total)]]),
+    })['2026-11-23'][0]
+
+  test('1.250 de 2.000 ml sin check-in es "en progreso" con su etiqueta', () => {
+    const e = run(false, 1250)
+    expect(e).toMatchObject({ habitId: 'h4', status: 'partial', progressLabel: '1.250 de 2.000 ml' })
+    expect(e.log).toMatchObject({ kind: 'quantity', total: 1250 })
+    expect(dayAriaLabel('2026-11-23', '2026-11-25', [e], { h4: 'Agua' })).toBe('23 de noviembre: Agua 1.250 de 2.000 ml')
+  })
+
+  test('con check-in es hecho', () => {
+    expect(run(true, 2000)).toMatchObject({ status: 'done', progressLabel: '2.000 de 2.000 ml' })
+  })
+
+  test('sin sumas ni check-in no hay registro', () => {
+    const e = buildDaySummaries({
+      habits: [agua],
+      checkins: [],
+      checkinItems: [],
+      dates: ['2026-11-23'],
+      today: '2026-11-25',
+      timezone: TZ,
+      quantityByHabitDay: new Map(),
+    })['2026-11-23'][0]
+    expect(e).toMatchObject({ status: 'none', log: null })
+  })
+})

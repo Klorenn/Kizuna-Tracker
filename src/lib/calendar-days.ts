@@ -2,6 +2,7 @@ import { TZDate } from '@date-fns/tz'
 import { format } from 'date-fns'
 import { dayLabel, monthBounds, monthGrid, type MonthKey } from '@/domain/calendar'
 import { addDays } from '@/domain/dates'
+import { progressLabel } from '@/domain/quantity'
 import type { LocalDate } from '@/domain/types'
 import { REJECT_REASONS, type RejectReason } from '@/lib/challenge-form'
 import type { DayLog } from '@/lib/logs-data'
@@ -40,8 +41,10 @@ export type HabitDay = {
   /** Storage paths in the private `proofs` bucket: the check-in photo first, then item photos. */
   photos: { path: string; label: string | null }[]
   rejectReason: RejectReason | null
-  /** What was read or trained that day (the detail of the check-in), if logged. */
+  /** What was read, trained, studied, watched, drunk or covered that day (the detail of the check-in), if logged. */
   log: DayLog | null
+  /** Quantity habits: "1.250 de 2.000 ml" (the sums of the day against the goal). */
+  progressLabel?: string
 }
 
 const RECORD: ReadonlySet<DayStatus> = new Set(['done', 'rejected', 'partial'])
@@ -64,8 +67,10 @@ export function buildDaySummaries(input: {
   timezone: string
   /** Logs by check-in id (`toDayLogs`). */
   logs?: Map<string, DayLog>
+  /** Quantity logs by `habitId:date`: they exist without a check-in (sums under the goal). */
+  quantityByHabitDay?: Map<string, DayLog>
 }): Record<LocalDate, HabitDay[]> {
-  const { habits, checkins, checkinItems, today, timezone, logs } = input
+  const { habits, checkins, checkinItems, today, timezone, logs, quantityByHabitDay } = input
   const key = (habitId: string, date: LocalDate) => `${habitId}|${date}`
   const checkinBy = new Map(checkins.map((c) => [key(c.habit_id, c.local_date), c]))
   const itemsBy = new Map<string, CheckinItemRow[]>()
@@ -83,7 +88,9 @@ export function buildDaySummaries(input: {
     for (const habit of habits) {
       const c = checkinBy.get(key(habit.id, date))
       const checked = itemsBy.get(key(habit.id, date)) ?? []
-      if (date < habit.since && !c && checked.length === 0) continue
+      const sums = quantityByHabitDay?.get(`${habit.id}:${date}`)
+      const quantity = sums?.kind === 'quantity' ? sums : null
+      if (date < habit.since && !c && checked.length === 0 && !quantity) continue
 
       const itemById = new Map(habit.items.map((i) => [i.id, i]))
       const checkedIds = new Set(checked.map((ci) => ci.item_id))
@@ -118,6 +125,10 @@ export function buildDaySummaries(input: {
         status = 'partial'
         const last = checked.reduce((a, b) => (a.created_at > b.created_at ? a : b))
         time = localTime(last.created_at, timezone)
+      } else if (quantity) {
+        // sums under the goal: no check-in yet, the day is in progress (the ring of the steps pattern)
+        status = 'partial'
+        time = quantity.entries[quantity.entries.length - 1]?.time ?? null
       } else {
         status = date === today ? 'pending' : 'none'
       }
@@ -129,7 +140,8 @@ export function buildDaySummaries(input: {
         items,
         photos,
         rejectReason: c?.rejected_at ? toReason(c.reject_reason) : null,
-        log: c ? (logs?.get(c.id) ?? null) : null,
+        log: quantity ?? (c ? (logs?.get(c.id) ?? null) : null),
+        ...(quantity ? { progressLabel: progressLabel(quantity.total, quantity.config) } : {}),
       })
     }
     out[date] = entries
@@ -154,7 +166,7 @@ function statusPhrase(e: HabitDay): string {
     case 'rejected':
       return 'con foto rechazada'
     case 'partial':
-      return e.items ? `${e.items.done} de ${e.items.total}` : 'en progreso'
+      return e.items ? `${e.items.done} de ${e.items.total}` : (e.progressLabel ?? 'en progreso')
     case 'pending':
       return 'pendiente'
     default:
