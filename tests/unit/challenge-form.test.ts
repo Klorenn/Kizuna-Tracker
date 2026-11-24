@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { parseNewChallengeParams, parseRivalParam, validateChallengeInput } from '@/lib/challenge-form'
+import {
+  openTermsByRival,
+  parseNewChallengeParams,
+  parseRivalParam,
+  validateAddItemInput,
+  validateChallengeInput,
+} from '@/lib/challenge-form'
 
 const base = {
   rivalId: 'r',
@@ -58,5 +64,65 @@ describe('parseRivalParam', () => {
     expect(parseRivalParam(undefined)).toBeNull()
     expect(parseRivalParam('user_b')).toBeNull()
     expect(parseRivalParam(['a0000000-0000-0000-0000-00000000000b'])).toBeNull()
+  })
+})
+
+const row = (over: Record<string, unknown> = {}) => ({
+  id: 'c1',
+  creator_id: 'me',
+  rival_id: 'ana',
+  status: 'active',
+  frequency_type: 'weekly',
+  target_per_week: 3,
+  weeks: 6,
+  fine_amount: 4500,
+  starts_on: '2026-11-30',
+  timezone: 'America/Santiago',
+  ...over,
+})
+
+describe('openTermsByRival', () => {
+  it('maps the other person to the terms of the open challenge, newest first wins', () => {
+    const out = openTermsByRival(
+      [row(), row({ id: 'c0', creator_id: 'ana', rival_id: 'me', status: 'proposed' }), row({ id: 'cx', rival_id: 'zed', frequency_type: 'daily', target_per_week: null })],
+      'me',
+    )
+    expect(out.ana).toEqual({
+      id: 'c1',
+      status: 'active',
+      frequency: { type: 'weekly', target: 3 },
+      weeks: 6,
+      fineAmount: 4500,
+      startsOn: '2026-11-30',
+      timezone: 'America/Santiago',
+    })
+    expect(out.zed.frequency).toEqual({ type: 'daily' })
+  })
+
+  it('ignores closed challenges', () => {
+    expect(openTermsByRival([row({ status: 'cancelled' }), row({ status: 'finished' })], 'me')).toEqual({})
+  })
+
+  it('keeps a null starts_on for a proposed challenge', () => {
+    expect(openTermsByRival([row({ status: 'proposed', starts_on: null })], 'me').ana.startsOn).toBeNull()
+  })
+})
+
+describe('validateAddItemInput', () => {
+  const H = 'a0000000-0000-4000-8000-00000000000b'
+  const C = 'a0000000-0000-4000-8000-00000000000c'
+  it('accepts a weekly target 1..7 and a daily null target', () => {
+    expect(validateAddItemInput({ challengeId: C, habitId: H, target: 3 }, 'weekly')).toEqual({ ok: true })
+    expect(validateAddItemInput({ challengeId: C, habitId: H, target: null }, 'daily')).toEqual({ ok: true })
+  })
+  it('rejects a bad target for the frequency', () => {
+    for (const target of [0, 8, 1.5, null]) {
+      expect(validateAddItemInput({ challengeId: C, habitId: H, target }, 'weekly').ok).toBe(false)
+    }
+    expect(validateAddItemInput({ challengeId: C, habitId: H, target: 3 }, 'daily').ok).toBe(false)
+  })
+  it('rejects ids that are not uuids', () => {
+    expect(validateAddItemInput({ challengeId: 'x', habitId: H, target: null }, 'daily').ok).toBe(false)
+    expect(validateAddItemInput({ challengeId: C, habitId: 'x,or(1)', target: null }, 'daily').ok).toBe(false)
   })
 })

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { createHabit } from "@/app/(app)/habitos/actions";
 import { challengeFrequency } from "@/lib/challenge-view";
+import { CHALLENGE_ERRORS, GENERIC_ERROR, mapChallengeError } from "@/lib/challenge-errors";
 import {
   SOURCE_HABIT_COLUMNS,
   habitDraftFromChallenge,
@@ -10,39 +11,34 @@ import {
   type SourceHabitRow,
 } from "@/lib/challenge-accept";
 import { requireUser } from "@/lib/require-user";
-import { OPEN_CHALLENGE_STATUSES, REJECT_REASONS, type ChallengeInput, type RejectReason, validateChallengeInput } from "@/lib/challenge-form";
+import {
+  OPEN_CHALLENGE_STATUSES,
+  REJECT_REASONS,
+  type ChallengeInput,
+  type RejectReason,
+  validateAddItemInput,
+  validateChallengeInput,
+} from "@/lib/challenge-form";
+import type { Frequency } from "@/domain/types";
 import { notify } from "@/lib/notify";
 import { createServerClient } from "@/lib/supabase/server";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-const GENERIC = "No pudimos completar la acción. Inténtalo de nuevo.";
+const GENERIC = GENERIC_ERROR;
 const NOT_AUTH = "Inicia sesión para continuar.";
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const PRIVATE_HABIT = "Este hábito es solo para ti. Cámbialo a Amigos o Público para retar.";
 
-const ERRORS: Record<string, string> = {
-  not_authenticated: NOT_AUTH,
-  challenge_not_found: "Este reto ya no existe.",
-  not_rival: "No puedes hacer esto en este reto.",
-  challenge_not_proposed: "Este reto ya fue respondido.",
-  challenge_not_cancellable: "Este reto ya no se puede cancelar.",
-  rival_habit_required: "Elige el hábito con el que vas a participar.",
-  rival_habit_invalid: "Ese hábito no está disponible. Elige otro que no sea solo para ti.",
-  rival_habit_needs_photo: "Este reto exige foto. Elige un hábito que pida foto.",
-  not_friends: "Solo puedes retar a tus amigos.",
-  reject_window_closed: "Pasaron más de 24 horas. Ya no puedes rechazar esta foto.",
-  already_rejected: "Esta foto ya fue rechazada.",
-  creator_habit_unavailable: "El hábito de este reto ya no está disponible.",
-  checkin_out_of_range: "Esta foto no cuenta para el reto.",
-  checkin_not_found: "No encontramos esa foto.",
-  invalid_reason: "Elige un motivo.",
-};
+const ERRORS = CHALLENGE_ERRORS;
+const mapError = mapChallengeError;
 
-function mapError(message: string | undefined): string {
-  const key = Object.keys(ERRORS).find((k) => message?.includes(k));
-  return key ? ERRORS[key] : GENERIC;
-}
+// TODO(sub-retos types): challenge_items and the sub-reto RPCs are not in database.types.ts until it is regenerated (batch 6)
+type UntypedClient = {
+  from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
+  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
+};
+const untyped = (c: unknown) => c as UntypedClient;
 
 async function currentUser() {
   const supabase = await createServerClient();
@@ -57,10 +53,16 @@ function refresh(id?: string) {
 
 const EXISTS = "Ya tienes un reto con esta persona.";
 
-/** `code: "exists"` = a proposed or active challenge with that person is already there; `existingId` is its id. */
+/** Terms of the open challenge a "new" challenge collided with: the form switches to "add sub-reto" with them. */
+export type ExistingTerms = { status: string; frequency: Frequency; weeks: number; fineAmount: number };
+
+/**
+ * `code: "exists"` = a proposed or active challenge with that person is already there; `existingId` is its id and
+ * `terms` its status and terms (absent when only the database unique index caught the race).
+ */
 export type ProposeResult =
   | { ok: true; id: string }
-  | { ok: false; error: string; code?: "exists"; existingId?: string };
+  | { ok: false; error: string; code?: "exists"; existingId?: string; terms?: ExistingTerms };
 
 export async function proposeChallenge(input: ChallengeInput): Promise<ProposeResult> {
   const valid = validateChallengeInput(input);
@@ -82,14 +84,23 @@ export async function proposeChallenge(input: ChallengeInput): Promise<ProposeRe
 
   const { data: open } = await supabase
     .from("challenges")
-    .select("id")
+    .select("id,status,frequency_type,target_per_week,weeks,fine_amount")
     .in("status", [...OPEN_CHALLENGE_STATUSES])
     .or(
       `and(creator_id.eq.${uid},rival_id.eq.${input.rivalId}),and(creator_id.eq.${input.rivalId},rival_id.eq.${uid})`,
     )
     .order("created_at", { ascending: false })
     .limit(1);
-  if (open && open.length > 0) return { ok: false, code: "exists", existingId: open[0].id, error: EXISTS };
+  if (open && open.length > 0) {
+    const o = open[0];
+    return {
+      ok: false,
+      code: "exists",
+      existingId: o.id,
+      terms: { status: o.status, frequency: challengeFrequency(o), weeks: o.weeks, fineAmount: o.fine_amount },
+      error: EXISTS,
+    };
+  }
 
   const { data: habit } = await supabase
     .from("habits")
@@ -132,20 +143,166 @@ export async function proposeChallenge(input: ChallengeInput): Promise<ProposeRe
   return { ok: true, id: data.id };
 }
 
-export async function respondChallenge(id: string, accept: boolean, rivalHabitId?: string): Promise<Result> {
+/**
+ * `choice`: one habit id (single-item challenge, legacy) or a map itemId -> habitId (one rival habit per
+ * proposed item, sent as p_item_habits).
+ */
+export async function respondChallenge(
+  id: string,
+  accept: boolean,
+  choice?: string | Record<string, string>,
+): Promise<Result> {
   const { supabase, uid } = await currentUser();
   if (!uid) return { ok: false, error: NOT_AUTH };
-  const { error } = await supabase.rpc("respond_challenge", {
-    p_id: id,
-    p_accept: accept,
-    p_rival_habit_id: rivalHabitId,
-  });
+  const args =
+    choice && typeof choice === "object"
+      ? { p_id: id, p_accept: accept, p_item_habits: choice }
+      : { p_id: id, p_accept: accept, p_rival_habit_id: choice };
+  const { error } = await supabase.rpc("respond_challenge", args);
   if (error) return { ok: false, error: mapError(error.message) };
   refresh(id);
   return { ok: true };
 }
 
+export type HabitChoice = { habitId: string } | "create";
+
 /**
+ * "Aceptar reto" with a habit per proposed sub-reto: an existing habit or "Crear «…»" (the habit is created
+ * through the same path as any new habit, copying the proposer's). Not atomic by design: if joining fails, the
+ * habits this very call created are removed again (they have no history), so nobody ends with extra habits.
+ */
+export async function acceptChallengeWithHabits(
+  id: string,
+  choices: Record<string, HabitChoice>,
+): Promise<{ ok: true; habitIds: Record<string, string> } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
+  if (typeof id !== "string" || !UUID.test(id)) return { ok: false, error: GENERIC };
+  for (const [itemId, c] of Object.entries(choices ?? {})) {
+    if (!UUID.test(itemId)) return { ok: false, error: GENERIC };
+    if (c !== "create" && !(c && typeof c === "object" && typeof c.habitId === "string" && UUID.test(c.habitId))) {
+      return { ok: false, error: GENERIC };
+    }
+  }
+
+  // the caller's own session reads the rows: RLS decides what a friend may see
+  const { data: ch, error: chError } = await supabase
+    .from("challenges")
+    .select("id,creator_id,rival_id,status,frequency_type,target_per_week")
+    .eq("id", id)
+    .maybeSingle();
+  if (chError) return { ok: false, error: GENERIC };
+  if (!ch) return { ok: false, error: ERRORS.challenge_not_found };
+  if (ch.rival_id !== uid) return { ok: false, error: ERRORS.not_rival };
+  if (ch.status !== "proposed") return { ok: false, error: ERRORS.challenge_not_proposed };
+
+  type ItemRow = {
+    id: string;
+    creator_habit_id: string | null;
+    target_per_week: number | null;
+    requires_photo: boolean;
+  };
+  const { data: itemRows, error: itemsError } = await untyped(supabase)
+    .from("challenge_items")
+    .select("id,position,creator_habit_id,target_per_week,requires_photo,status")
+    .eq("challenge_id", id)
+    .eq("status", "proposed")
+    .order("position", { ascending: true });
+  if (itemsError) return { ok: false, error: GENERIC };
+  const items = (itemRows ?? []) as ItemRow[];
+  if (items.length === 0) return { ok: false, error: ERRORS.item_not_found };
+  const itemIds = new Set(items.map((i) => i.id));
+  if (Object.keys(choices).some((k) => !itemIds.has(k))) return { ok: false, error: ERRORS.item_not_found };
+  if (items.some((i) => !choices[i.id])) return { ok: false, error: ERRORS.rival_habit_required };
+
+  const created: string[] = [];
+  const removeCreated = async () => {
+    for (const habitId of created) {
+      await supabase.from("habits").delete().eq("id", habitId).eq("user_id", uid).select("id");
+    }
+    if (created.length > 0) revalidatePath("/");
+  };
+
+  const habitIds: Record<string, string> = {};
+  const draftNames: string[] = [];
+  for (const item of items) {
+    const c = choices[item.id];
+    if (c !== "create") {
+      habitIds[item.id] = c.habitId;
+      continue;
+    }
+    const { data: row, error: rowError } = await supabase
+      .from("habits")
+      .select(SOURCE_HABIT_COLUMNS)
+      .eq("id", item.creator_habit_id ?? "")
+      .maybeSingle();
+    if (rowError || !row) {
+      await removeCreated();
+      return { ok: false, error: rowError ? GENERIC : ERRORS.creator_habit_unavailable };
+    }
+    const { draft } = habitDraftFromChallenge(sourceFromRow(row as unknown as SourceHabitRow), {
+      frequency: challengeFrequency({ frequency_type: ch.frequency_type, target_per_week: item.target_per_week }),
+      requiresPhoto: item.requires_photo,
+    });
+    const made = await createHabit(draft);
+    if (!made.ok) {
+      await removeCreated();
+      return made;
+    }
+    created.push(made.id);
+    habitIds[item.id] = made.id;
+    draftNames.push(draft.name.trim());
+  }
+
+  const { error } = await supabase.rpc("respond_challenge", {
+    p_id: id,
+    p_accept: true,
+    p_item_habits: habitIds,
+  });
+  if (error) {
+    // the response may be lost while the accept committed: ask the challenge before judging
+    const { data: now, error: rereadError } = await supabase
+      .from("challenges")
+      .select("status")
+      .eq("id", id)
+      .maybeSingle();
+    const { data: nowItems, error: nowItemsError } = await untyped(supabase)
+      .from("challenge_items")
+      .select("id,rival_habit_id,status")
+      .eq("challenge_id", id)
+      .eq("status", "active");
+    if (rereadError || nowItemsError) {
+      return {
+        ok: false,
+        error: created.length
+          ? `No pudimos confirmar el reto. Creamos ${draftNames.map((n) => `«${n}»`).join(", ")} en tus hábitos; revisa Retos antes de reintentar.`
+          : GENERIC,
+      };
+    }
+    const mine = new Map(((nowItems ?? []) as { id: string; rival_habit_id: string | null }[]).map((i) => [i.id, i.rival_habit_id]));
+    if (now?.status === "active" && items.every((i) => mine.get(i.id) === habitIds[i.id])) {
+      refresh(id);
+      revalidatePath("/");
+      return { ok: true, habitIds };
+    }
+    // only the habits created above, only if still the caller's: never anything else
+    await removeCreated();
+    if (created.length > 0 && !(now?.status === "proposed")) {
+      return {
+        ok: false,
+        error: `El reto ya no está disponible. Creamos ${draftNames.map((n) => `«${n}»`).join(", ")} en tus hábitos; puedes archivarlos.`,
+      };
+    }
+    return { ok: false, error: mapError(error.message) };
+  }
+  refresh(id);
+  revalidatePath("/");
+  return { ok: true, habitIds };
+}
+
+/**
+ * @deprecated single-item flow, superseded by acceptChallengeWithHabits (UI switches in batch 5; remove then).
  * "Aceptar reto" with "Crear «…»": creates the habit (same path as any new habit) and joins the
  * challenge with it. Not atomic by design: if joining fails, the habit this very call created is
  * removed again (it has no history), so nobody ends with an extra habit.
@@ -226,6 +383,147 @@ export async function acceptChallengeWithNewHabit(
   refresh(id);
   revalidatePath("/");
   return { ok: true, habitId: created.id };
+}
+
+// ---- sub-retos (challenge_items) ----
+
+export type AddItemResult =
+  | { ok: true; itemId: string }
+  | { ok: false; error: string; code?: "ending" | "duplicate" | "too_many" };
+
+const ADD_CODES: Record<string, "ending" | "duplicate" | "too_many"> = {
+  challenge_ending: "ending",
+  habit_already_in_challenge: "duplicate",
+  too_many_items: "too_many",
+};
+
+async function firstName(supabase: unknown, uid: string): Promise<string | null> {
+  const { data } = await (supabase as Awaited<ReturnType<typeof createServerClient>>)
+    .from("profiles")
+    .select("first_name")
+    .eq("id", uid)
+    .maybeSingle();
+  return data?.first_name ?? null;
+}
+
+async function habitName(supabase: unknown, habitId: string | null | undefined): Promise<string | null> {
+  if (!habitId) return null;
+  const { data } = await (supabase as Awaited<ReturnType<typeof createServerClient>>)
+    .from("habits")
+    .select("name")
+    .eq("id", habitId)
+    .maybeSingle();
+  return data?.name ?? null;
+}
+
+/**
+ * "Agregar sub-reto": the caller proposes one more habit inside an open challenge. The frequency, weeks and
+ * fine are the challenge's, so only the habit (and, if weekly, the target) is sent. The other player is told only
+ * once the challenge is active: while it is still proposed they answer everything together in one accept.
+ */
+export async function addChallengeItem(input: {
+  challengeId: string;
+  habitId: string;
+  target: number | null;
+}): Promise<AddItemResult> {
+  if (!input || typeof input.challengeId !== "string" || !UUID.test(input.challengeId)) {
+    return { ok: false, error: ERRORS.challenge_not_found };
+  }
+  if (typeof input.habitId !== "string" || !UUID.test(input.habitId)) return { ok: false, error: "Elige un hábito." };
+  const { supabase, uid } = await currentUser();
+  if (!uid) return { ok: false, error: NOT_AUTH };
+
+  const { data: ch, error: chError } = await supabase
+    .from("challenges")
+    .select("status,creator_id,rival_id,frequency_type")
+    .eq("id", input.challengeId)
+    .maybeSingle();
+  if (chError) return { ok: false, error: GENERIC };
+  if (!ch) return { ok: false, error: ERRORS.challenge_not_found };
+
+  const target = input.target ?? null;
+  const valid = validateAddItemInput(
+    { challengeId: input.challengeId, habitId: input.habitId, target },
+    ch.frequency_type === "weekly" ? "weekly" : "daily",
+  );
+  if (!valid.ok) return valid;
+
+  const { data, error } = await untyped(supabase).rpc("add_challenge_item", {
+    p_challenge_id: input.challengeId,
+    p_habit_id: input.habitId,
+    p_target_per_week: target,
+  });
+  if (error) return { ok: false, error: mapError(error.message), code: ADD_CODES[error.message] };
+  const itemId = typeof data === "string" ? data : "";
+
+  if (ch.status === "active") {
+    const other = ch.creator_id === uid ? ch.rival_id : ch.creator_id;
+    const [name, habit] = await Promise.all([firstName(supabase, uid), habitName(supabase, input.habitId)]);
+    await notify(other, "challenge_item_proposed", {
+      challenge_id: input.challengeId,
+      item_id: itemId,
+      from_id: uid,
+      from_name: name,
+      habit_name: habit,
+      target,
+    }, { defer: true });
+  }
+  refresh(input.challengeId);
+  return { ok: true, itemId };
+}
+
+/**
+ * Answer a sub-reto proposed while the challenge is active (the other player's turn): accept with one of your
+ * habits, or decline. The proposer is told either way.
+ */
+export async function respondChallengeItem(itemId: string, accept: boolean, habitId?: string): Promise<Result> {
+  if (typeof itemId !== "string" || !UUID.test(itemId)) return { ok: false, error: ERRORS.item_not_found };
+  if (habitId !== undefined && !UUID.test(habitId)) return { ok: false, error: ERRORS.habit_required };
+  const { supabase, uid } = await currentUser();
+  if (!uid) return { ok: false, error: NOT_AUTH };
+
+  // read before answering: once accepted the proposer's habit is no longer the only one on the row
+  const { data: item } = await untyped(supabase)
+    .from("challenge_items")
+    .select("proposed_by,creator_habit_id,rival_habit_id")
+    .eq("id", itemId)
+    .maybeSingle();
+
+  const { data, error } = await untyped(supabase).rpc("respond_challenge_item", {
+    p_item_id: itemId,
+    p_accept: accept,
+    p_habit_id: accept ? (habitId ?? null) : null,
+  });
+  if (error) return { ok: false, error: mapError(error.message) };
+  const challengeId = typeof data === "string" ? data : undefined;
+
+  const row = item as { proposed_by: string; creator_habit_id: string | null; rival_habit_id: string | null } | null;
+  if (row?.proposed_by && challengeId) {
+    const [name, habit] = await Promise.all([
+      firstName(supabase, uid),
+      habitName(supabase, row.creator_habit_id ?? row.rival_habit_id),
+    ]);
+    await notify(row.proposed_by, accept ? "challenge_item_accepted" : "challenge_item_declined", {
+      challenge_id: challengeId,
+      item_id: itemId,
+      from_id: uid,
+      from_name: name,
+      habit_name: habit,
+    }, { defer: true });
+  }
+  refresh(challengeId);
+  return { ok: true };
+}
+
+/** The proposer takes back a sub-reto nobody has answered yet. Silent by design. */
+export async function withdrawChallengeItem(itemId: string): Promise<Result> {
+  if (typeof itemId !== "string" || !UUID.test(itemId)) return { ok: false, error: ERRORS.item_not_found };
+  const { supabase, uid } = await currentUser();
+  if (!uid) return { ok: false, error: NOT_AUTH };
+  const { data, error } = await untyped(supabase).rpc("withdraw_challenge_item", { p_item_id: itemId });
+  if (error) return { ok: false, error: mapError(error.message) };
+  refresh(typeof data === "string" ? data : undefined);
+  return { ok: true };
 }
 
 export async function requestCancel(

@@ -99,13 +99,17 @@ describe('proposeChallenge', () => {
 
   it('returns a typed "exists" result with the challenge id when one is already open with that person', async () => {
     reads['friendships.select'] = { data: [{ id: 'f1' }], error: null }
-    reads['challenges.select'] = { data: [{ id: 'c-open' }], error: null }
+    reads['challenges.select'] = {
+      data: [{ id: 'c-open', status: 'active', frequency_type: 'weekly', target_per_week: 3, weeks: 6, fine_amount: 2500 }],
+      error: null,
+    }
     reads['habits.select'] = { data: { visibility: 'friends', requires_photo: false, archived_at: null }, error: null }
     reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
     await expect(proposeChallenge(input)).resolves.toEqual({
       ok: false,
       code: 'exists',
       existingId: 'c-open',
+      terms: { status: 'active', frequency: { type: 'weekly', target: 3 }, weeks: 6, fineAmount: 2500 },
       error: 'Ya tienes un reto con esta persona.',
     })
     expect(writes).toHaveLength(0)

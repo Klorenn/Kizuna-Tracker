@@ -10,6 +10,9 @@ export type NotificationType =
   | 'group_photo_rejected'
   | 'friend_request'
   | 'challenge_proposed'
+  | 'challenge_item_proposed'
+  | 'challenge_item_accepted'
+  | 'challenge_item_declined'
   | 'photo_rejected'
   | 'new_debt'
   | 'reminder'
@@ -31,6 +34,9 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
  */
 const groupUrl = (id: unknown, section?: 'fondo' | 'muro'): string =>
   typeof id === 'string' && UUID.test(id) ? `/grupos/${id}${section ? `?seccion=${section}` : ''}` : '/grupos'
+
+/** `/retos/<id>` when the payload carries an id, else the list. */
+const challengeUrl = (id: unknown): string => (str(id) ? `/retos/${id}` : '/retos')
 
 const REASONS: Record<string, string> = {
   not_habit: 'no era el hábito',
@@ -62,6 +68,32 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         title: name ? `${name} te propone un reto` : 'Te proponen un reto',
         body: parts.length ? parts.join(' · ') : 'Revisa el reto y responde.',
         url: str(payload.challenge_id) ? `/retos/${payload.challenge_id}` : '/retos',
+      }
+    }
+    case 'challenge_item_proposed': {
+      const name = str(payload.from_name)
+      const parts = [
+        str(payload.habit_name),
+        typeof payload.target === 'number' ? `${payload.target} por semana` : null,
+      ].filter(Boolean)
+      return {
+        title: name ? `${name} suma un sub-reto` : 'Te proponen un sub-reto',
+        body: parts.length ? parts.join(' · ') : 'Revisa el reto y responde.',
+        url: challengeUrl(payload.challenge_id),
+      }
+    }
+    case 'challenge_item_accepted':
+    case 'challenge_item_declined': {
+      const name = str(payload.from_name)
+      const accepted = type === 'challenge_item_accepted'
+      return {
+        title: name
+          ? `${name} ${accepted ? 'aceptó' : 'rechazó'} el sub-reto`
+          : accepted
+            ? 'Aceptaron tu sub-reto'
+            : 'Rechazaron tu sub-reto',
+        body: str(payload.habit_name) ?? 'Revisa el reto para ver el detalle.',
+        url: challengeUrl(payload.challenge_id),
       }
     }
     case 'photo_rejected': {

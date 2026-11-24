@@ -19,6 +19,9 @@ export const metadata: Metadata = { title: "Notificaciones" };
 const ICONS = {
   friend_request: Users,
   challenge_proposed: Trophy,
+  challenge_item_proposed: Trophy,
+  challenge_item_accepted: Trophy,
+  challenge_item_declined: Trophy,
   photo_rejected: Warning,
   new_debt: Receipt,
   reminder: Bell,

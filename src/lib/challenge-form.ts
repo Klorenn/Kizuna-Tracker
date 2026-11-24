@@ -75,3 +75,67 @@ export function openChallengeByRival(
 export function existingChallengeMessage(username: string | null): string {
   return username ? `Ya tienes un reto con @${username}` : 'Ya tienes un reto con esta persona'
 }
+
+export type OpenTermsRow = {
+  id: string
+  creator_id: string
+  rival_id: string
+  status: string
+  frequency_type: string
+  target_per_week: number | null
+  weeks: number
+  fine_amount: number
+  starts_on: string | null
+  timezone: string
+}
+
+/** The terms a new sub-reto inherits: the challenge decides frequency, weeks and fine, not the form. */
+export type OpenTerms = {
+  id: string
+  status: string
+  frequency: Frequency
+  weeks: number
+  fineAmount: number
+  startsOn: string | null
+  timezone: string
+}
+
+/** Other person -> terms of the open challenge shared with them. Rows newest first: the first per person wins. */
+export function openTermsByRival(rows: OpenTermsRow[], me: string): Record<string, OpenTerms> {
+  const out: Record<string, OpenTerms> = {}
+  for (const r of rows) {
+    if (!(OPEN_CHALLENGE_STATUSES as readonly string[]).includes(r.status)) continue
+    const other = r.creator_id === me ? r.rival_id : r.creator_id
+    if (other in out) continue
+    out[other] = {
+      id: r.id,
+      status: r.status,
+      frequency:
+        r.frequency_type === 'weekly' ? { type: 'weekly', target: r.target_per_week ?? 1 } : { type: 'daily' },
+      weeks: r.weeks,
+      fineAmount: r.fine_amount,
+      startsOn: r.starts_on,
+      timezone: r.timezone,
+    }
+  }
+  return out
+}
+
+export type AddItemInput = { challengeId: string; habitId: string; target: number | null }
+
+/** Weekly challenges need a 1..7 target, daily ones take none; ids must be uuids. */
+export function validateAddItemInput(
+  input: AddItemInput,
+  frequencyType: 'daily' | 'weekly',
+): { ok: true } | { ok: false; error: string } {
+  if (!UUID.test(input.challengeId)) return { ok: false, error: 'Este reto ya no existe.' }
+  if (!UUID.test(input.habitId)) return { ok: false, error: 'Elige un hábito.' }
+  if (frequencyType === 'weekly') {
+    if (typeof input.target !== 'number' || !Number.isInteger(input.target) || input.target < 1 || input.target > 7) {
+      return { ok: false, error: 'Elige entre 1 y 7 días por semana.' }
+    }
+  } else if (input.target !== null) {
+    return { ok: false, error: 'Este reto es diario: el sub-reto no lleva días por semana.' }
+  }
+  return { ok: true }
+}
