@@ -2,6 +2,18 @@
 
 import { revalidatePath } from "next/cache";
 import { requireUser } from "@/lib/require-user";
+import {
+  INVALID_MINUTES,
+  INVALID_TOPIC,
+  SIGN_IN_BLOCKS,
+  TIME_ERRORS,
+  TIME_FINAL_CODES,
+  TIME_GENERIC,
+  TIME_UNAVAILABLE,
+  cleanTopic,
+  timeCodeOf,
+  timeMessageFor,
+} from "@/lib/time-copy";
 import type { createServerClient } from "@/lib/supabase/server";
 
 // Time logs and the Pomodoro block receipt. Every write goes through the 0018 RPCs; time never
@@ -10,57 +22,13 @@ import type { createServerClient } from "@/lib/supabase/server";
 type Result = { ok: true } | { ok: false; error: string };
 
 // The generated RPC types say `string`, but a null topic means "no topic" in SQL: casts below.
-const INVALID_MINUTES = "El tiempo va de 1 minuto a 24 horas.";
-const INVALID_TOPIC = "El tema tiene hasta 60 caracteres.";
-const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
-const NOT_AUTHENTICATED = "Inicia sesión para continuar.";
-const SIGN_IN_BLOCKS = "Inicia sesión para guardar tus bloques.";
-const UNAVAILABLE = "No pudimos conectar. Inténtalo de nuevo en unos minutos.";
-const EXPIRED ="Un bloque terminó ayer y ya no se puede sumar.";
-const ERRORS: Record<string, string> = {
-  invalid_minutes: INVALID_MINUTES,
-  minutes_over_day: "Un día tiene 24 horas: revisa el tiempo.",
-  invalid_topic: INVALID_TOPIC,
-  log_type_mismatch: "Este hábito ya no lleva tiempo.",
-  habit_not_found: "Este hábito ya no está activo.",
-  photo_required: "Este hábito pide foto: registra el tiempo después de subirla.",
-  habit_has_items: "Este hábito se completa marcando sus pasos.",
-  checkin_not_found: "Ese día no tiene check-in.",
-  invalid_block: "No pudimos guardar este bloque.",
-  block_expired: EXPIRED,
-  not_authenticated: NOT_AUTHENTICATED,
-};
-/** Codes that will never succeed on a retry. Everything else is retried (the RPC is idempotent). */
-const FINAL_CODES = [
-  "habit_not_found",
-  "log_type_mismatch",
-  "photo_required",
-  "habit_has_items",
-  "minutes_over_day",
-  "invalid_block",
-  "invalid_minutes",
-  "invalid_topic",
-  "block_expired",
-];
-
-function codeOf(raw: string | undefined): string | null {
-  if (!raw) return null;
-  if (/jwt|refresh token|not_authenticated|not authenticated|unauthori[sz]ed/i.test(raw)) return "not_authenticated";
-  // a malformed block id fails the uuid cast: it can never be sent
-  if (/invalid input syntax for type uuid/i.test(raw)) return "invalid_block";
-  return Object.keys(ERRORS).find((k) => raw.includes(k)) ?? null;
-}
-
-function messageFor(raw: string | undefined): string {
-  const code = codeOf(raw);
-  return code ? ERRORS[code] : GENERIC;
-}
-
-
-function cleanTopic(topic: string | null): string | null {
-  const t = (topic ?? "").trim();
-  return t === "" ? null : t;
-}
+const GENERIC = TIME_GENERIC;
+const SIGN_IN_BLOCKS_COPY = SIGN_IN_BLOCKS;
+const UNAVAILABLE = TIME_UNAVAILABLE;
+const ERRORS = TIME_ERRORS;
+const FINAL_CODES = TIME_FINAL_CODES;
+const codeOf = timeCodeOf;
+const messageFor = timeMessageFor;
 
 function checkInput(minutes: number, topic: string | null): Result {
   if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return { ok: false, error: INVALID_MINUTES };

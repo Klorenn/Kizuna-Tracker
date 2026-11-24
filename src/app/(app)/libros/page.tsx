@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { TopBar } from "@/components/ui/TopBar";
 import { localDate } from "@/domain/dates";
-import { nextFromPage, pagesRead } from "@/domain/logs";
+import { pagesRead } from "@/domain/logs";
 import { fetchAll } from "@/lib/paginate";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
@@ -37,9 +37,27 @@ export default async function LibrosPage() {
     ),
   ]);
 
-  const asEntries = entries.map((e) => ({ date: e.local_date, bookId: e.book_id, fromPage: e.from_page, toPage: e.to_page }));
+  const progressByBook = new Map<string, { pages: number; readings: number; latestDate: string; currentPage: number }>();
+  for (const entry of entries) {
+    const progress = progressByBook.get(entry.book_id);
+    if (progress) {
+      progress.pages += pagesRead({ fromPage: entry.from_page, toPage: entry.to_page });
+      progress.readings += 1;
+      if (entry.local_date > progress.latestDate || (entry.local_date === progress.latestDate && entry.to_page > progress.currentPage)) {
+        progress.latestDate = entry.local_date;
+        progress.currentPage = entry.to_page;
+      }
+    } else {
+      progressByBook.set(entry.book_id, {
+        pages: pagesRead({ fromPage: entry.from_page, toPage: entry.to_page }),
+        readings: 1,
+        latestDate: entry.local_date,
+        currentPage: entry.to_page,
+      });
+    }
+  }
   const view: BookView[] = readRows(books).map((b) => {
-    const mine = entries.filter((e) => e.book_id === b.id);
+    const progress = progressByBook.get(b.id);
     return {
       id: b.id,
       title: b.title,
@@ -47,9 +65,9 @@ export default async function LibrosPage() {
       totalPages: b.total_pages,
       status: b.status === "finished" ? "finished" : "reading",
       finishedOn: b.finished_on,
-      currentPage: nextFromPage(asEntries, b.id),
-      readings: mine.length,
-      pages: mine.reduce((n, e) => n + pagesRead({ fromPage: e.from_page, toPage: e.to_page }), 0),
+      currentPage: progress?.currentPage ?? 0,
+      readings: progress?.readings ?? 0,
+      pages: progress?.pages ?? 0,
     };
   });
 

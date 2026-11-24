@@ -1,7 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { QUANTITY_MESSAGES } from "@/lib/quantity-queue";
+import {
+  QUANTITY_ERRORS,
+  QUANTITY_GENERIC,
+  QUANTITY_MESSAGES,
+  isQuantityNetwork,
+  quantityMessageFor,
+} from "@/lib/quantity-copy";
 import { requireUser } from "@/lib/require-user";
 
 type Totals = { total: number; target: number; done: boolean };
@@ -9,34 +15,10 @@ type Totals = { total: number; target: number; done: boolean };
 export type AddQuantityResult = ({ ok: true } & Totals) | { ok: false; error: string; retry: boolean };
 export type RemoveQuantityResult = ({ ok: true } & Totals) | { ok: false; error: string };
 
-const GENERIC = "No pudimos guardar la cantidad. Inténtalo de nuevo.";
-
-const ERRORS: Record<string, string> = {
-  invalid_amount: "Revisa la cantidad.",
-  amount_over_day: "Es demasiado para un día.",
-  entry_not_today: "Solo puedes quitar lo de hoy.",
-  entry_not_found: QUANTITY_MESSAGES.notFound,
-  invalid_entry: "No pudimos guardar esa suma.",
-  habit_not_found: "No encontramos ese hábito.",
-  log_type_mismatch: "Este hábito ya no es de cantidad.",
-  habit_in_challenge: "Este hábito está en un reto: puedes subir la meta, no bajarla ni cambiar la unidad.",
-  not_authenticated: "Inicia sesión para continuar.",
-};
-
-const NETWORK = /fetch|network|failed to fetch|econn|timeout|load failed/i;
-
-type DbError = { message?: string; code?: string } | null | undefined;
-
-function isNetwork(error: DbError): boolean {
-  const raw = error?.message ?? "";
-  return !Object.keys(ERRORS).some((k) => raw.includes(k)) && NETWORK.test(raw);
-}
-
-function messageFor(error: DbError): string {
-  const raw = error?.message ?? "";
-  const key = Object.keys(ERRORS).find((k) => raw.includes(k));
-  return key ? ERRORS[key] : GENERIC;
-}
+const ERRORS = QUANTITY_ERRORS;
+const GENERIC = QUANTITY_GENERIC;
+const isNetwork = isQuantityNetwork;
+const messageFor = quantityMessageFor;
 
 type Row = { total: number | string; target: number | string; done: boolean };
 

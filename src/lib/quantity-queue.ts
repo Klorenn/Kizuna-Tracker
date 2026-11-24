@@ -1,6 +1,7 @@
 import type { addQuantity } from "@/app/(app)/registros/quantity-actions";
 import { localDate } from "@/domain/dates";
 import { parseAmount, type QuantityConfig } from "@/domain/quantity";
+import { QUANTITY_MESSAGES } from "@/lib/quantity-copy";
 import { isStaleTap } from "@/lib/stale-day";
 
 /**
@@ -24,14 +25,7 @@ export const QUANTITY_QUEUE_KEY = "kizuna:quantity-queue";
 export const BACKOFF_FIRST_MS = 1000;
 export const BACKOFF_MAX_MS = 30000;
 
-/** Copy shared by the actions and the controls. */
-export const QUANTITY_MESSAGES = {
-  offlineAdd: "Sin conexión. Guardaremos la suma cuando vuelvas a estar en línea.",
-  offlineRemove: "Sin conexión. No pudimos quitar la suma.",
-  /** A tap from an earlier local day is never credited to a later one (same rule as Pomodoro blocks). */
-  staleDay: "Una suma de ayer no se guardó.",
-  notFound: "No encontramos esa suma.",
-} as const;
+export { QUANTITY_MESSAGES };
 
 /**
  * `day` is the local date (in `zone`, the profile time zone) on which the tap happened; sums stored
