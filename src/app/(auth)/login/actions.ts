@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { LOGIN_GENERIC_ERROR, loginWith } from "@/lib/login";
-import { skipRateLimit } from "@/lib/rate-limit-mode";
+import { loginDeps } from "@/lib/login-deps";
 import { clientIp } from "@/lib/request-ip";
 
 export async function signIn(input: {
@@ -25,30 +25,14 @@ export async function signIn(input: {
   const supabase = await createServerClient();
 
   return loginWith(
-    {
-      async registerAttempt(keys) {
-        if (skipRateLimit(ip)) return true;
-        const { data, error } = await admin.rpc("register_login_attempt", {
-          p_keys: keys,
-        });
-        // Fail closed: if the limiter is down nobody gets to try.
-        return !error && data === true;
-      },
-      async resolveAccount(id) {
-        const { data, error } = await admin.rpc("account_for_login", {
-          p_kind: id.kind,
-          p_value: id.value,
-        });
-        const row = error ? null : data?.[0];
-        return row && row.user_id && row.email
-          ? { userId: row.user_id, email: row.email }
-          : null;
-      },
-      async signInWithPassword(email, password) {
+    loginDeps(
+      admin,
+      async (email, password) => {
         const { error } = await supabase.auth.signInWithPassword({ email, password });
         return { ok: !error };
       },
-    },
+      ip,
+    ),
     input,
     ip,
   );
