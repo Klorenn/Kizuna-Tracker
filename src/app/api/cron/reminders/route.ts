@@ -8,6 +8,7 @@ import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
 export const runtime = 'nodejs'
+export const maxDuration = 60
 
 export async function POST(request: Request) {
   if (!(await authorizeCronRequest(request))) return NextResponse.json({ error: 'unauthorized' }, { status: 401 })

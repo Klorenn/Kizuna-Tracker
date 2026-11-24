@@ -16,7 +16,7 @@ export type ScheduledDeps = {
   loadHabits(userIds: string[], scope: 'streak-risk' | 'summary'): Promise<Map<string, UserHabit[]>>
   loadDebts(userIds: string[], now: Date): Promise<Map<string, SummaryDebt[]>>
   claim(kind: ScheduledKind, entries: { id: string; localDate: string }[]): Promise<string[]>
-  notify(userId: string, type: NotificationType, payload: Record<string, unknown>): Promise<void>
+  notify(userId: string, type: NotificationType, payload: Record<string, unknown>, opts?: { defer?: boolean }): Promise<void>
 }
 
 export function scheduledDeps(db: ReturnType<typeof createAdminClient>): ScheduledDeps {
@@ -43,10 +43,10 @@ async function run(
   if (due.length === 0) return 0
   const payloads = await buildPayloads(due)
   const entries = due.filter((u) => payloads.has(u.id)).map((u) => ({ id: u.id, localDate: u.localDate }))
-  if (entries.length === 0) return 0
-  const won = await deps.claim(kind, entries) // once per user per local date
+  const won = entries.length === 0 ? [] : await deps.claim(kind, entries) // once per user per local date
+  console.info('scheduled push', { kind, due: due.length, candidates: entries.length, won: won.length })
   for (let i = 0; i < won.length; i += SEND_BATCH) {
-    await Promise.all(won.slice(i, i + SEND_BATCH).map((id) => deps.notify(id, kind, payloads.get(id) ?? {})))
+    await Promise.all(won.slice(i, i + SEND_BATCH).map((id) => deps.notify(id, kind, payloads.get(id) ?? {}, { defer: true })))
   }
   return won.length
 }

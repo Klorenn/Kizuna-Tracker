@@ -1,5 +1,6 @@
 import 'server-only'
 import { addDays, localDate } from '@/domain/dates'
+import { HISTORY_DAYS } from '@/lib/today-data'
 import type { SummaryDebt } from '@/domain/weekly-summary'
 import { fetchAll } from '@/lib/paginate'
 import type { createAdminClient } from '@/lib/supabase/admin'
@@ -21,8 +22,12 @@ export type UserHabit = {
 const USER_CHUNK = 100
 /** `checkin_dates` refuses more than 500 habit ids and answers one row per habit. */
 const HABIT_CHUNK = 500
-/** Far enough back for any streak the app can show. */
-const HISTORY_DAYS = 3660
+export { HISTORY_DAYS }
+/** The debts filter repeats the id list twice, so its chunk is smaller (URL stays under ~6 KB). */
+export const DEBT_USER_CHUNK = 40
+
+/** PostgREST `or` filter: debts where any of these users is debtor or creditor. */
+export const debtsInvolving = (ids: string[]): string => `debtor_id.in.(${ids.join(',')}),creditor_id.in.(${ids.join(',')})`
 
 const chunks = <T>(list: T[], size: number): T[][] => {
   const out: T[][] = []
@@ -82,22 +87,21 @@ export async function loadUserHabits(db: Db, userIds: string[], scope: 'streak-r
 export async function loadUserDebts(db: Db, userIds: string[], now: Date): Promise<Map<string, SummaryDebt[]>> {
   const out = new Map<string, SummaryDebt[]>(userIds.map((id) => [id, []]))
   const since = new Date(now.getTime() - 9 * 86_400_000).toISOString()
-  for (const ids of chunks(userIds, USER_CHUNK)) {
-    const list = ids.join(',')
-    const involved = `debtor_id.in.(${list}),creditor_id.in.(${list})`
+  for (const ids of chunks(userIds, DEBT_USER_CHUNK)) {
+    const involved = debtsInvolving(ids)
     const [unpaid, recent] = await Promise.all([
       fetchAll((from, to) =>
-        db.from('debts').select('id,debtor_id,creditor_id,amount,paid_at,created_at').is('paid_at', null).or(involved).order('id').range(from, to),
+        db.from('debts').select('id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at').is('paid_at', null).or(involved).order('id').range(from, to),
       ),
       fetchAll((from, to) =>
-        db.from('debts').select('id,debtor_id,creditor_id,amount,paid_at,created_at').gte('created_at', since).or(involved).order('id').range(from, to),
+        db.from('debts').select('id,challenge_id,period_start,debtor_id,creditor_id,amount,paid_at,created_at').gte('created_at', since).or(involved).order('id').range(from, to),
       ),
     ])
     const seen = new Set<string>()
     for (const d of [...unpaid, ...recent]) {
       if (seen.has(d.id)) continue
       seen.add(d.id)
-      const debt: SummaryDebt = { debtorId: d.debtor_id, creditorId: d.creditor_id, amount: d.amount, paidAt: d.paid_at, createdAt: d.created_at }
+      const debt: SummaryDebt = { challengeId: d.challenge_id, periodStart: d.period_start, debtorId: d.debtor_id, creditorId: d.creditor_id, amount: d.amount, paidAt: d.paid_at, createdAt: d.created_at }
       for (const uid of new Set([d.debtor_id, d.creditor_id])) out.get(uid)?.push(debt)
     }
   }

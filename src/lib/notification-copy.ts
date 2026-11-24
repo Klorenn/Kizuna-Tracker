@@ -135,11 +135,11 @@ export function notificationView(type: string, payload: Record<string, unknown>)
       const won = count(payload.won) ?? 0
       const lost = count(payload.lost) ?? 0
       const balance = typeof payload.balance === 'number' && Number.isInteger(payload.balance) ? payload.balance : 0
-      const retos = (n: number) => `${n} ${n === 1 ? 'reto' : 'retos'}`
+      const weeks = (n: number) => `${n} ${n === 1 ? 'semana' : 'semanas'} de reto`
       const parts = [
         streak && habit ? `mejor racha ${streak} ${streak === 1 ? 'día' : 'días'} en ${habit}` : null,
-        won ? `ganaste ${retos(won)}` : null,
-        lost ? `perdiste ${retos(lost)}` : null,
+        won ? `ganaste ${weeks(won)}` : null,
+        lost ? `perdiste ${won ? lost : weeks(lost)}` : null,
         balance < 0 ? `debes ${formatCLP(-balance)}` : balance > 0 ? `te deben ${formatCLP(balance)}` : null,
       ].filter(Boolean)
       return {

@@ -31,8 +31,10 @@ describe('weekly_summary copy', () => {
     expect(v.body).not.toMatch(/racha|debes|te deben|ganaste|perdiste/)
     expect(v.body.length).toBeGreaterThan(0)
   })
-  it('reports challenges won and lost, singular and plural', () => {
-    expect(notificationView('weekly_summary', { done: 1, due: 2, won: 1, lost: 2, balance: 0 }).body).toBe('ganaste 1 reto · perdiste 2 retos')
+  it('reports challenge weeks won and lost, singular and plural', () => {
+    expect(notificationView('weekly_summary', { done: 1, due: 2, won: 2, lost: 1, balance: 0 }).body).toBe('ganaste 2 semanas de reto · perdiste 1')
+    expect(notificationView('weekly_summary', { done: 1, due: 2, won: 0, lost: 1, balance: 0 }).body).toBe('perdiste 1 semana de reto')
+    expect(notificationView('weekly_summary', { done: 1, due: 2, won: 1, lost: 2, balance: 0 }).body).toBe('ganaste 1 semana de reto · perdiste 2')
   })
   it('says "te deben" when the balance is positive and "1 día" in singular', () => {
     const v = notificationView('weekly_summary', { done: 1, due: 2, best_streak: 1, best_habit: 'Leer', won: 0, lost: 0, balance: 4500 })

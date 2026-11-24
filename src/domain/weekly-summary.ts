@@ -13,7 +13,7 @@ export type SummaryHabit = {
   dates: LocalDate[]
 }
 
-export type SummaryDebt = { debtorId: string; creditorId: string; amount: number; paidAt: string | null; createdAt: string }
+export type SummaryDebt = { challengeId: string; periodStart: string; debtorId: string; creditorId: string; amount: number; paidAt: string | null; createdAt: string }
 
 export type WeeklySummary = {
   done: number
@@ -29,9 +29,10 @@ export type WeeklySummary = {
 /**
  * Summary of the ISO week (Monday to Sunday) that ends on `today` (a Sunday, in the user's zone).
  * Due: a daily habit is due every day since it existed this week, a weekly one `target` times
- * (never more than the days it had). Done is capped at due. Challenges are counted from the debts
- * the period close generated this local week (creditor won, debtor lost): the period that ends
- * tonight closes tomorrow, so these are the ones that settled since Monday. Returns null when
+ * (never more than the days it had). Done is capped at due. Challenge weeks are counted from the
+ * debts the period close generated this local week, grouped by (challenge, period): won when only
+ * the rival owes, lost when only I owe, neither when both failed (two debts, no winner). The
+ * period that ends tonight closes tomorrow, so these are the ones that settled since Monday. Returns null when
  * nothing was due, so a user with no habits gets no push.
  */
 export function weeklySummary(input: {
@@ -65,15 +66,26 @@ export function weeklySummary(input: {
     .filter((s) => s.streak > 0)
     .sort((a, b) => b.streak - a.streak || a.h.name.localeCompare(b.h.name) || a.h.id.localeCompare(b.h.id))
 
-  let won = 0
-  let lost = 0
+  const weeks = new Map<string, { owed: boolean; owing: boolean }>()
   let balance = 0
   for (const d of debts) {
     const mine = d.creditorId === me ? 1 : d.debtorId === me ? -1 : 0
     if (mine === 0) continue
     const settled = localDate(new Date(d.createdAt), timeZone)
-    if (settled >= monday && settled <= sunday) mine === 1 ? won++ : lost++
+    if (settled >= monday && settled <= sunday) {
+      const key = `${d.challengeId}|${d.periodStart}`
+      const w = weeks.get(key) ?? { owed: false, owing: false }
+      if (mine === 1) w.owed = true
+      else w.owing = true
+      weeks.set(key, w)
+    }
     if (d.paidAt === null) balance += mine * d.amount
+  }
+  let won = 0
+  let lost = 0
+  for (const w of weeks.values()) {
+    if (w.owed && !w.owing) won++
+    else if (w.owing && !w.owed) lost++
   }
 
   return { done, due, bestStreak: streaks[0]?.streak ?? 0, bestHabit: streaks[0]?.h.name ?? null, won, lost, balance }

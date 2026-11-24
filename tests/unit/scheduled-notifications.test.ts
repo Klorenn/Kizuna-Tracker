@@ -35,7 +35,7 @@ function deps(over: Partial<ScheduledDeps> & { habits?: Record<string, UserHabit
       claims.push(entries)
       return entries.map((e: { id: string }) => e.id)
     }),
-    notify: vi.fn(async (id, type, payload) => {
+    notify: vi.fn(async (id: string, type: string, payload: Record<string, unknown>, _opts?: { defer?: boolean }) => {
       sent.push({ id, type, payload })
     }),
     ...over,
@@ -97,6 +97,21 @@ describe('runStreakRisk', () => {
   })
 })
 
+describe('delivery and logging', () => {
+  it('defers the push (row inserted now, pushed after the response, swept by pushPendingNotifications otherwise)', async () => {
+    const { d } = deps()
+    await runStreakRisk(d, EVENING)
+    expect(d.notify).toHaveBeenCalledWith('cl', 'streak_risk', expect.anything(), { defer: true })
+  })
+  it('logs due / claimed / sent counts per kind', async () => {
+    const info = vi.spyOn(console, 'info').mockImplementation(() => {})
+    const { d } = deps()
+    await runStreakRisk(d, EVENING)
+    expect(info).toHaveBeenCalledWith('scheduled push', { kind: 'streak_risk', due: 1, candidates: 1, won: 1 })
+    info.mockRestore()
+  })
+})
+
 describe('runWeeklySummary', () => {
   const SUNDAY_NIGHT = new Date('2026-11-23T00:03:00Z') // Sunday 21:03 in Santiago
   it('sends the summary at Sunday 21:00 local', async () => {
@@ -120,7 +135,7 @@ describe('runWeeklySummary', () => {
   })
   it('puts the net balance and challenge results in the payload', async () => {
     const { d, sent } = deps({
-      loadDebts: vi.fn(async () => new Map([['cl', [{ debtorId: 'cl', creditorId: 'f', amount: 2000, paidAt: null, createdAt: '2026-11-18T12:00:00Z' }]]])),
+      loadDebts: vi.fn(async () => new Map([['cl', [{ challengeId: 'c1', periodStart: '2026-11-09', debtorId: 'cl', creditorId: 'f', amount: 2000, paidAt: null, createdAt: '2026-11-18T12:00:00Z' }]]])),
     })
     await runWeeklySummary(d, SUNDAY_NIGHT)
     expect(sent[0].payload).toMatchObject({ lost: 1, balance: -2000 })

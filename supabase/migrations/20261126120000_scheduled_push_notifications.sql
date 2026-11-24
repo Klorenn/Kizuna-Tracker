@@ -5,7 +5,9 @@
 --     (ON CONFLICT DO NOTHING) and only sends when the insert won, like reminder_log does for the
 --     daily reminder. A separate table (not a new reminder_log kind) so the running app keeps
 --     working while this migration is applied before the new code is deployed.
---  3. notification_targets(kind): live users with a push subscription who did not opt out, for the
+--  3. checkin_dates is granted to service_role: the cron reads streak history through it (it was
+--     authenticated-only, so the cron would hit 42501).
+--  4. notification_targets(kind): live users with a push subscription who did not opt out, for the
 --     cron to filter by local time in code.
 -- Idempotent: safe to run twice.
 
@@ -42,3 +44,6 @@ as $$
 $$;
 revoke execute on function public.notification_targets(text) from public, anon, authenticated;
 grant execute on function public.notification_targets(text) to service_role;
+
+-- The cron (service role) reads check-in dates with checkin_dates; it was granted to authenticated only.
+grant execute on function public.checkin_dates(uuid[], date) to service_role;

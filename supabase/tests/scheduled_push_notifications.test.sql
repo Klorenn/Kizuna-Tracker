@@ -4,7 +4,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(21);
+select plan(28);
 
 -- Fixtures:
 --   01 pushy    push subscription, both notifications on (defaults)
@@ -73,6 +73,21 @@ with lost as (
   on conflict (user_id, kind, local_date) do nothing returning 1
 )
 select is((select count(*)::int from lost), 0, 'the cron upsert (do nothing) loses the claim the second time');
+
+-- ============================================================ the cron path runs as service_role
+-- every call scheduled-data-repo / the targets / log repos make, with the privileges the cron really has
+select ok(has_function_privilege('service_role', 'public.checkin_dates(uuid[],date)', 'execute'), 'service_role can run checkin_dates (the cron reads streak history with it)');
+set local role service_role;
+select lives_ok($$ select * from public.checkin_dates(array['e0000000-0000-0000-0000-0000000000aa']::uuid[], '2026-01-01') $$, 'service_role: checkin_dates');
+select lives_ok($$ select user_id, timezone from public.notification_targets('streak_risk') order by user_id limit 10 $$, 'service_role: notification_targets');
+select lives_ok($$ select id, user_id, name, visibility, archived_at, created_at, frequency_type, target_per_week from public.habits
+  where user_id in ('e0000000-0000-0000-0000-000000000001') and archived_at is null order by id limit 10 $$, 'service_role: habits read');
+select lives_ok($$ select id, debtor_id, creditor_id, challenge_id, period_start, amount, paid_at, created_at from public.debts
+  where debtor_id in ('e0000000-0000-0000-0000-000000000001') or creditor_id in ('e0000000-0000-0000-0000-000000000001') order by id limit 10 $$, 'service_role: debts read');
+select lives_ok($$ insert into public.notification_log (user_id, kind, local_date) values ('e0000000-0000-0000-0000-000000000001', 'weekly_summary', '2026-12-06')
+  on conflict (user_id, kind, local_date) do nothing $$, 'service_role: notification_log claim');
+reset role;
+select is((select count(*)::int from public.notification_log where local_date = '2026-12-06'), 1, 'the claim written as service_role is stored');
 
 select * from finish();
 rollback;

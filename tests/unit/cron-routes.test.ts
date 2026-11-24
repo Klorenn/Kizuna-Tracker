@@ -30,6 +30,12 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
     return POST(new Request(`http://x/api/cron/${name}`, { method: 'POST', headers: auth ? { authorization: auth } : {} }))
   }
 
+  it('declares a long enough maxDuration for the evening pushes', async () => {
+    if (name !== 'reminders') return
+    const mod = (await load()) as { maxDuration?: number }
+    expect(mod.maxDuration).toBe(60)
+  })
+
   it('no header -> 401', async () => {
     expect((await post()).status).toBe(401)
     expect(rpc).not.toHaveBeenCalled()
