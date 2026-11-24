@@ -13,6 +13,9 @@ export type TodayRaw = Omit<Ready, "groupChips" | "ok"> & { ok?: true; groupChip
 
 export type TodayView = {
   label: string;
+  /** the local date (user zone) the view is for, and that zone: taps capture them for the replay rule */
+  today: string;
+  timeZone: string;
   rows: TodayRow[];
   doneCount: number;
   total: number;
@@ -62,6 +65,8 @@ export function selectToday(raw: TodayRaw, now: Date = new Date()): TodayView {
     timeZone: raw.timeZone,
   });
   return {
+    today: raw.today,
+    timeZone: raw.timeZone,
     label: `Hoy · ${format(new TZDate(now, raw.timeZone), "EEE d MMM", { locale: es })}`,
     rows: built.rows,
     doneCount: built.doneCount,
