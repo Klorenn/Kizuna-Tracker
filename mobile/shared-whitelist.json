@@ -16,6 +16,7 @@
     "src/lib/tracking-copy.ts",
     "src/lib/undo-checkin.ts",
     "src/lib/tracking-rpc.ts",
+    "src/lib/logs-rpc.ts",
     "src/lib/today-core.ts",
     "src/lib/today-logs.ts",
     "src/lib/checkin-dates.ts",
