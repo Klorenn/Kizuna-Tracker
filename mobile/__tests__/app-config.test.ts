@@ -14,9 +14,14 @@ describe("app.config", () => {
     const filters = expo.android?.intentFilters ?? [];
     expect(filters).toHaveLength(1);
     expect(filters[0].action).toBe("VIEW");
-    expect(filters[0].data).toEqual([{ scheme: "kizuna" }]);
+    // host "app": the widget's kizuna://widget/pair activity must be the ONLY match for its link (no chooser)
+    expect(filters[0].data).toEqual([{ scheme: "kizuna", host: "app" }]);
     expect(JSON.stringify(filters)).not.toContain("https");
     expect(JSON.stringify(filters)).not.toContain("autoVerify");
+  });
+  it("registers the expo-notifications plugin with the monochrome small icon", () => {
+    const entry = (expo.plugins as unknown[]).find((p) => Array.isArray(p) && p[0] === "expo-notifications") as [string, Record<string, unknown>] | undefined;
+    expect(entry?.[1]).toMatchObject({ icon: "./assets/android-icon-monochrome.png" });
   });
   it("uses the fingerprint runtime policy and the router plugin", () => {
     expect(expo.runtimeVersion).toEqual({ policy: "fingerprint" });

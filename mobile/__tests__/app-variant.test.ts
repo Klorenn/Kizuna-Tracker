@@ -32,7 +32,7 @@ describe("APP_VARIANT=dev", () => {
     expect(dev.name).toBe("Kizuna Dev");
     expect(dev.android?.package).toBe("com.kizunatracker.app.dev");
     expect(dev.scheme).toBe("kizuna-dev");
-    expect(dev.android?.intentFilters?.[0].data).toEqual([{ scheme: "kizuna-dev" }]);
+    expect(dev.android?.intentFilters?.[0].data).toEqual([{ scheme: "kizuna-dev", host: "app" }]);
   });
   it("keeps production untouched", () => {
     expect(prod.name).toBe("Kizuna");

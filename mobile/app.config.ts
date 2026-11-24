@@ -36,12 +36,15 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
       monochromeImage: "./assets/android-icon-monochrome.png",
     },
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON,
-    // kizuna:// only. No https filter and no autoVerify: https links stay with the TWA/browser during the transition.
-    intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: SCHEME }] }],
+    // kizuna://app only. The widget owns kizuna://widget/pair (its own activity): with a bare scheme both would match and Android
+    // would show a chooser. No https filter and no autoVerify: https links stay with the TWA/browser during the transition.
+    intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: SCHEME, host: "app" }] }],
   },
   plugins: [
     "expo-router",
     "expo-secure-store",
+    // pushes: the small status-bar icon must be monochrome; the channel and the permission are handled in code
+    ["expo-notifications", { icon: "./assets/android-icon-monochrome.png", color: "#5a5ac2" }],
     "./plugins/with-kizuna-widget",
     // the camera only (proof photos): no gallery, no microphone
     ["expo-image-picker", { cameraPermission: "Kizuna usa la cámara para tus fotos de prueba.", photosPermission: false, microphonePermission: false }],

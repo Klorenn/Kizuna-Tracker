@@ -20,9 +20,9 @@ public class WidgetOpenActivity extends Activity {
 
         String path = getIntent().getStringExtra(EXTRA_PATH);
         if (path == null || !path.startsWith("/")) path = "/";
-        // The native app first (kizuna://), then the https URL for the TWA, which does not register the scheme.
+        // The native app first (kizuna://app, a host that never matches the widget's own kizuna://widget/pair), then the https URL for the TWA, which does not register the scheme.
         // setPackage keeps both to our own app: never a chooser or another browser.
-        Intent nativeView = new Intent(Intent.ACTION_VIEW, Uri.parse("kizuna://" + path.substring(1)))
+        Intent nativeView = new Intent(Intent.ACTION_VIEW, Uri.parse("kizuna://app" + path))
                 .setPackage(getPackageName())
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try {
