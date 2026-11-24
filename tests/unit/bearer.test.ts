@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 
 vi.mock('server-only', () => ({}))
 
-import { claimsToVerified, createBearerClient, verifyJwtWith } from '@/lib/supabase/bearer'
+import { claimsToVerified, createBearerClient, verifyJwtWith, verifyLiveSessionWith } from '@/lib/supabase/bearer'
 
 type ClaimsResult = { data: { claims: Record<string, unknown> } | null; error: unknown }
 const stub = (r: ClaimsResult | Error) => ({
@@ -56,5 +56,31 @@ describe('createBearerClient', () => {
     const c = createBearerClient('a.b.c')
     expect(typeof c.auth.getClaims).toBe('function')
     expect(typeof c.rpc).toBe('function')
+  })
+})
+
+describe('verifyLiveSessionWith (the session check that guards minting a new web session)', () => {
+  const claims = { sub: 'u-1', role: 'authenticated', session_id: 's-1' }
+  const admin = (r: { data: { user: { id: string } | null }; error: unknown } | Error) => ({
+    auth: { getUser: vi.fn(async () => { if (r instanceof Error) throw r; return r }) },
+  })
+  it('accepts a token whose session still exists server side', async () => {
+    const a = admin({ data: { user: { id: 'u-1' } }, error: null })
+    expect(await verifyLiveSessionWith(stub({ data: { claims }, error: null }), a, 'j.w.t')).toEqual({ sub: 'u-1' })
+    expect(a.auth.getUser).toHaveBeenCalledWith('j.w.t')
+  })
+  it('a revoked or unknown session (getUser fails) is refused: a signed-out JWT cannot mint a session', async () => {
+    const a = admin({ data: { user: null }, error: { message: 'session_not_found' } })
+    expect(await verifyLiveSessionWith(stub({ data: { claims }, error: null }), a, 'j.w.t')).toBeNull()
+    expect(await verifyLiveSessionWith(stub({ data: { claims }, error: null }), admin(new Error('down')), 'j.w.t')).toBeNull()
+  })
+  it('a token with no session_id claim is refused before any server call', async () => {
+    const a = admin({ data: { user: { id: 'u-1' } }, error: null })
+    expect(await verifyLiveSessionWith(stub({ data: { claims: { sub: 'u-1', role: 'authenticated' } }, error: null }), a, 'j.w.t')).toBeNull()
+    expect(a.auth.getUser).not.toHaveBeenCalled()
+  })
+  it('a user id that differs from the claims sub is refused; so are bad claims', async () => {
+    expect(await verifyLiveSessionWith(stub({ data: { claims }, error: null }), admin({ data: { user: { id: 'other' } }, error: null }), 'j.w.t')).toBeNull()
+    expect(await verifyLiveSessionWith(stub({ data: null, error: { message: 'bad' } }), admin({ data: { user: { id: 'u-1' } }, error: null }), 'j.w.t')).toBeNull()
   })
 })

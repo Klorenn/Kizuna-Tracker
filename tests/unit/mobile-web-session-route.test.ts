@@ -4,7 +4,7 @@ const verifyJwt = vi.fn()
 const rpc = vi.fn()
 const getUserById = vi.fn()
 const generateLink = vi.fn()
-vi.mock('@/lib/supabase/bearer', () => ({ verifyJwt: (jwt: string) => verifyJwt(jwt) }))
+vi.mock('@/lib/supabase/bearer', () => ({ verifyJwt: (jwt: string) => verifyJwt(jwt), verifyLiveSession: (jwt: string) => verifyJwt(jwt) }))
 vi.mock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ rpc, auth: { admin: { getUserById, generateLink } } }) }))
 
 import { POST } from '@/app/api/m/web-session/route'
@@ -18,6 +18,11 @@ describe('POST /api/m/web-session', () => {
 
   it('401 without a bearer token: no link is generated', async () => {
     expect((await POST(req({}))).status).toBe(401)
+    expect(generateLink).not.toHaveBeenCalled()
+  })
+  it('401 when the session is revoked or unknown (the live-session check returns null)', async () => {
+    verifyJwt.mockResolvedValue(null)
+    expect((await POST(req(AUTH))).status).toBe(401)
     expect(generateLink).not.toHaveBeenCalled()
   })
   it('generates a magic link for the verified user only and returns the handoff url, uncached', async () => {

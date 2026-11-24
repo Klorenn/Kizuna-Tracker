@@ -1,7 +1,7 @@
 import { requireUser } from "@/lib/mobile-auth";
 import { siteOrigin } from "@/lib/site-url";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { verifyJwt } from "@/lib/supabase/bearer";
+import { verifyLiveSession } from "@/lib/supabase/bearer";
 import { webSession } from "@/lib/web-session-api";
 import { readJson, respond } from "@/lib/widget-http";
 
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 /** One-time URL that signs the app's WebView into the web as the verified user (see /auth/native-handoff). */
 export async function POST(request: Request) {
-  const auth = await requireUser(request.headers, { verify: verifyJwt });
+  const auth = await requireUser(request.headers, { verify: verifyLiveSession });
   if (!auth.ok) return respond({ status: 401, body: { ok: false, error: "unauthorized" } });
   const type = request.headers.get("content-type")?.split(";")[0]?.trim().toLowerCase();
   if (type !== "application/json") return respond({ status: 415, body: { ok: false, error: "unsupported_media_type" } });
