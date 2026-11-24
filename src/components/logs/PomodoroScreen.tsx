@@ -46,6 +46,7 @@ import {
   type NotificationEnv,
 } from "@/lib/pomodoro-alerts";
 import {
+  configFor,
   loadPrefs,
   openPomodoroStorage,
   savePrefs,
@@ -84,10 +85,6 @@ import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/p
  */
 
 const MIN_MS = 60_000;
-
-/** The configuration a mode starts with: the timer takes its minutes from the prefs, the others keep theirs. */
-const configFor = (mode: TimerMode, p: PomodoroPrefs): PomodoroConfig =>
-  mode === "timer" ? { ...p.config, focusMin: p.timerMin } : p.config;
 
 export function PomodoroScreen(props: {
   habitId: string;

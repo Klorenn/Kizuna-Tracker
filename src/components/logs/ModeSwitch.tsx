@@ -2,6 +2,7 @@
 
 import { useRef, type ReactNode } from "react";
 import type { TimerMode } from "@/domain/pomodoro";
+import { LOCKED_HINT, MODE_OPTIONS } from "@/lib/pomodoro-copy";
 
 /*
  * ModeSwitch: the segmented control of "Medir tiempo" (Pomodoro · Temporizador · Cronómetro).
@@ -14,13 +15,7 @@ import type { TimerMode } from "@/domain/pomodoro";
  * End) move the selection and the focus. The focus ring comes from the global :focus-visible rule.
  */
 
-export const MODE_OPTIONS: readonly { value: TimerMode; label: string }[] = [
-  { value: "pomodoro", label: "Pomodoro" },
-  { value: "timer", label: "Temporizador" },
-  { value: "stopwatch", label: "Cronómetro" },
-];
-
-export const LOCKED_HINT = "Termina la sesión para cambiar de modo.";
+export { LOCKED_HINT, MODE_OPTIONS };
 
 /** The mode a key moves to from `current`, or null when the key does nothing here. */
 export function nextMode(current: TimerMode, key: string): TimerMode | null {

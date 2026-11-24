@@ -3,6 +3,8 @@ import { initialPomodoro, pomodoroReducer, type PomodoroState } from "@/domain/p
 import { EMPTY_SESSION } from "@/lib/pomodoro-core";
 import {
   blockEndText,
+  LOCKED_HINT,
+  MODE_OPTIONS,
   phaseLabel,
   pomodoroStatusLine,
   RANGE_MESSAGE,
@@ -50,5 +52,9 @@ describe("pomodoro copy", () => {
     });
     expect(blockEndText({ kind: "focus", habitName: "Estudio", minutes: 25, lastRound: true }).body).toBe("25 min de foco en Estudio.");
     expect(blockEndText({ kind: "break", habitName: "Estudio" })).toEqual({ title: "Terminó el descanso", body: "Listo para otra ronda." });
+  });
+  it("the three modes and the locked hint", () => {
+    expect(MODE_OPTIONS.map((o) => o.label)).toEqual(["Pomodoro", "Temporizador", "Cronómetro"]);
+    expect(LOCKED_HINT).toBe("Termina la sesión para cambiar de modo.");
   });
 });

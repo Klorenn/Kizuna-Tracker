@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { initialPomodoro, pomodoroReducer } from "@/domain/pomodoro";
 import {
   ACTION_REV_BUMP,
+  configFor,
   DEFAULT_POMODORO_PREFS,
   loadPomodoro,
   loadPrefs,
@@ -86,5 +87,11 @@ describe("pomodoro-core over any key-value storage", () => {
     expect(webStore.loadPomodoro).toBe(loadPomodoro);
     expect(webStore.pomodoroBoxReducer).toBe(pomodoroBoxReducer);
     expect(webStore.stateKey).toBe(stateKey);
+  });
+  it("configFor: the timer takes its minutes from the prefs, the others keep their config", () => {
+    const p = { ...DEFAULT_POMODORO_PREFS, timerMin: 45 };
+    expect(configFor("timer", p)).toEqual({ ...p.config, focusMin: 45 });
+    expect(configFor("pomodoro", p)).toEqual(p.config);
+    expect(configFor("stopwatch", p)).toEqual(p.config);
   });
 });

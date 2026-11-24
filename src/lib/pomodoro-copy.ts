@@ -1,4 +1,4 @@
-import type { PomodoroState } from "@/domain/pomodoro";
+import type { PomodoroState, TimerMode } from "@/domain/pomodoro";
 import { formatDuration } from "@/domain/time";
 import type { PomodoroSession } from "@/lib/pomodoro-core";
 
@@ -46,3 +46,10 @@ export function blockEndText(end: PhaseEndInfo): { title: string; body: string }
     body: `${end.minutes} min de foco en ${end.habitName}.${end.lastRound ? "" : " Toma un descanso."}`,
   };
 }
+
+export const MODE_OPTIONS: readonly { value: TimerMode; label: string }[] = [
+  { value: "pomodoro", label: "Pomodoro" },
+  { value: "timer", label: "Temporizador" },
+  { value: "stopwatch", label: "Cronómetro" },
+];
+export const LOCKED_HINT = "Termina la sesión para cambiar de modo.";

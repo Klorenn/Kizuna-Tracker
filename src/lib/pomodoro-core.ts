@@ -146,6 +146,10 @@ export const DEFAULT_POMODORO_PREFS: PomodoroPrefs = {
   habitName: "",
 };
 
+/** The configuration a mode starts with: the timer takes its minutes from the prefs, the others keep theirs. */
+export const configFor = (mode: TimerMode, p: PomodoroPrefs): PomodoroConfig =>
+  mode === "timer" ? { ...p.config, focusMin: p.timerMin } : p.config;
+
 export function loadPrefs(habitId: string, storage: KeyValueStorage): PomodoroPrefs {
   try {
     const raw = storage.getItem(prefsKey(habitId));
