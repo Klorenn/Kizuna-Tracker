@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { useState } from "react";
 import { DiscoverPersonRow } from "@/components/FriendActions";
 import { LoadFailed } from "@/components/LoadFailed";
@@ -17,11 +18,18 @@ export function SuggestionsSection({ people }: { people: Person[] | null }) {
   // only data is frozen: a failed read (null) adopts the rows a retry brings
   const shown = frozen ?? people;
   if (frozen === null && people !== null) setFrozen(people);
-  if (shown && shown.length === 0) return null;
   return (
     <section aria-label="Sugerencias" className="flex flex-col gap-2">
       <SectionHeader label="Sugerencias" action="Ver todos" href="/amigos/explorar" />
-      {shown ? (
+      {shown && shown.length === 0 ? (
+        // nobody to suggest: keep Explorar reachable instead of hiding the only way in
+        <Card>
+          <Link href="/amigos/explorar" className="flex min-h-11 items-center justify-between gap-3 px-4 py-3 text-sm">
+            <span className="text-muted">No hay sugerencias por ahora</span>
+            <span className="font-medium">Explorar personas</span>
+          </Link>
+        </Card>
+      ) : shown ? (
         <Card>
           <ul className="divide-y divide-line">
             {shown.map((p) => (

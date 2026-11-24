@@ -60,8 +60,10 @@ describe('SuggestionsSection', () => {
     expect(after).not.toContain('user_9')
   })
 
-  it('is not rendered when there was nobody to suggest', () => {
-    expect(render([])).toBe('')
+  it('still links to Explorar when there was nobody to suggest', () => {
+    const html = render([])
+    expect(html).toContain('href="/amigos/explorar"')
+    expect(html).toContain('Explorar')
   })
 
   it('recovers when a retry brings data after a failed read (null first, rows later)', () => {
