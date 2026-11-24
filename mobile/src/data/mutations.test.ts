@@ -1,7 +1,7 @@
 import { MutationObserver, QueryClient } from "@tanstack/react-query";
 import fixture from "../../../tests/fixtures/today-fixture.json";
 import { createQueryClient } from "./query-client";
-import { TrackingError } from "./mutations";
+import { StaleDayError, TrackingError } from "./mutations";
 import { selectToday, type TodayRaw } from "./today";
 
 jest.mock("@/lib/tracking-rpc");
@@ -90,5 +90,33 @@ describe("tracking mutations", () => {
     expect(retry(0, new TrackingError("No pudimos guardar los cambios. Inténtalo de nuevo."))).toBe(true);
     expect(retry(3, new TrackingError("No pudimos guardar los cambios. Inténtalo de nuevo."))).toBe(false);
     expect(qc.getMutationDefaults(["track", "checkin"]).scope).toEqual({ id: "track" });
+  });
+
+  it("drops a tap whose day is over at replay: no RPC, rollback, one counted Spanish notice", async () => {
+    const { run, row, errors, qc } = setup();
+    const stale = { day: "2000-01-01" }; // any real zone date is later
+    await run("checkin", { habitId, ...stale }).catch(() => undefined);
+    expect(mocked.checkInRpc).not.toHaveBeenCalled();
+    expect(row(habitId).done).toBe(false);
+    expect(errors).toEqual(["Un registro de ayer no se guardó."]);
+    await run("checkin", { habitId, ...stale }).catch(() => undefined);
+    expect(errors[errors.length - 1]).toBe("Un registro de ayer no se guardó.");
+    qc.clear();
+  });
+
+  it("counts stale drops while others are still queued", async () => {
+    const { qc, errors } = setup();
+    const m = qc.getMutationCache();
+    const stale = { ...vars, day: "2000-01-01", habitId };
+    const obs = [1, 2].map(() => new MutationObserver<unknown, Error, object>(qc, { mutationKey: ["track", "checkin"] }));
+    await Promise.all(obs.map((o) => o.mutate(stale).catch(() => undefined)));
+    expect(errors).toContain("2 registros de ayer no se guardaron.");
+    expect(m.getAll().length).toBeGreaterThan(0);
+  });
+
+  it("never retries a stale drop", async () => {
+    const qc = setup().qc;
+    const retry = qc.getMutationDefaults(["track", "checkin"]).retry as (n: number, e: Error) => boolean;
+    expect(retry(0, new StaleDayError())).toBe(false);
   });
 });

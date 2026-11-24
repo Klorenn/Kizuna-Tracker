@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { isStaleTap } from "@/lib/stale-day";
+import { isStaleTap, staleDayNotice } from "@/lib/stale-day";
 
 const ZONE = "America/Santiago";
 // 2026-03-10 23:50 Santiago (UTC-3 in March) = 2026-03-11 02:50Z
@@ -19,5 +19,14 @@ describe("isStaleTap", () => {
   });
   it("an invalid zone is not stale", () => {
     expect(isStaleTap({ day: TAP_DAY, zone: "Not/AZone" }, Date.now())).toBe(false);
+  });
+});
+
+describe("staleDayNotice", () => {
+  it("says one in singular", () => {
+    expect(staleDayNotice(1)).toBe("Un registro de ayer no se guardó.");
+  });
+  it("counts the plural", () => {
+    expect(staleDayNotice(3)).toBe("3 registros de ayer no se guardaron.");
   });
 });

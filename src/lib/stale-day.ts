@@ -16,3 +16,7 @@ export function isStaleTap(tap: TapStamp, now: number): boolean {
     return false;
   }
 }
+
+/** The one notice for taps dropped because their day was over at replay (singular or counted plural). */
+export const staleDayNotice = (count: number): string =>
+  count === 1 ? "Un registro de ayer no se guardó." : `${count} registros de ayer no se guardaron.`;
