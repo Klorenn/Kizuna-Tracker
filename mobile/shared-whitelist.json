@@ -9,6 +9,7 @@
     "src/lib/quantity-input.ts",
     "src/lib/quantity-copy.ts",
     "src/lib/time-copy.ts",
+    "src/lib/photo-copy.ts",
     "src/lib/reading-copy.ts",
     "src/lib/cardio-copy.ts",
     "src/lib/watch-copy.ts",

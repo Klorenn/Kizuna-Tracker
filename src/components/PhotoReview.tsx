@@ -3,6 +3,7 @@
 import { ArrowsClockwise, CaretLeft, Check, Clock, Warning } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import { PHOTO_TARGET_MB, type PhotoCheckinResult } from "@/lib/checkins";
+import { PHOTO_SEND_FAILED } from "@/lib/photo-copy";
 
 /** Review screen (Figma 07). Compresses to JPEG (re-encoding drops EXIF) and posts to the server. */
 export function PhotoReview({
@@ -53,7 +54,7 @@ export function PhotoReview({
       if (result.status !== 200) setError(result.error);
       else onDone(result);
     } catch {
-      setError("No pudimos enviar la foto. Inténtalo de nuevo.");
+      setError(PHOTO_SEND_FAILED);
     } finally {
       setBusy(false);
     }

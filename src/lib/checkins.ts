@@ -1,11 +1,9 @@
 import type { PresetKey } from '@/domain/presets'
 import { localDate } from '@/domain/dates'
+import { MAX_PHOTO_BYTES, PHOTO_NOT_JPEG, PHOTO_SAVE_ERROR, PHOTO_TARGET_MB, PHOTO_TOO_BIG } from '@/lib/photo-copy'
 
-/** Vercel rejects request bodies over 4.5 MB: 4 MB for the photo leaves room for the form fields. */
-export const MAX_PHOTO_BYTES = 4 * 1024 * 1024
-/** Client-side compression target (MB), under MAX_PHOTO_BYTES with margin for the multipart envelope. */
-export const PHOTO_TARGET_MB = 3
-const TOO_BIG = 'La foto pesa demasiado. Prueba con otra o toma una nueva.'
+export { MAX_PHOTO_BYTES, PHOTO_TARGET_MB }
+const TOO_BIG = PHOTO_TOO_BIG
 
 export async function sha256Hex(buf: ArrayBuffer): Promise<string> {
   const digest = await crypto.subtle.digest('SHA-256', buf)
@@ -122,7 +120,7 @@ function concat(parts: number[][], tail: number[][]): ArrayBuffer {
   return res.buffer as ArrayBuffer
 }
 
-const SAVE_ERROR = 'No pudimos guardar la foto. Inténtalo de nuevo.'
+const SAVE_ERROR = PHOTO_SAVE_ERROR
 
 /** Rejects requests with a missing or oversized Content-Length before the body is read. */
 export function contentLengthError(header: string | null): PhotoCheckinResult | null {
@@ -145,10 +143,10 @@ async function run(
   if (Math.max(file.size, file.bytes.byteLength) > MAX_PHOTO_BYTES) {
     return fail(413, TOO_BIG)
   }
-  if (file.type !== 'image/jpeg') return fail(415, 'La foto debe ser una imagen JPEG.')
+  if (file.type !== 'image/jpeg') return fail(415, PHOTO_NOT_JPEG)
   // never trust the client: drop EXIF/XMP/comments and validate the structure server-side
   const clean = stripJpegMetadata(file.bytes)
-  if (!clean) return fail(415, 'La foto debe ser una imagen JPEG.')
+  if (!clean) return fail(415, PHOTO_NOT_JPEG)
 
   let habitId: string
   let isItem = false
