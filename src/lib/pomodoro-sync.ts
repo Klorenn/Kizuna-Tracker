@@ -1,8 +1,13 @@
 import type { PomodoroEvent, PomodoroState } from "@/domain/pomodoro";
 import { localDate } from "@/domain/dates";
-import type { sendPomodoroBlock } from "@/app/(app)/registros/time-actions";
+import type { PomodoroRpcResult } from "@/lib/tracking-rpc";
 
-type Send = typeof sendPomodoroBlock;
+/** Sends one block: the web server action and the native RPC wrapper (bound to its client) both fit. */
+export type Send = (
+  habitId: string,
+  block: { blockId: string; minutes: number; endedAt: number },
+  topic: string | null,
+) => Promise<PomodoroRpcResult>;
 
 // ---------------------------------------------------------------- the day a block counts for
 

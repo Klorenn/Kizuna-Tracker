@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
+import { blockEndText } from "@/lib/pomodoro-copy";
 
 // What the Pomodoro screen does when a block ends: a short sound (Web Audio, no file), a vibration
 // and, only when the permission was granted and the page is hidden, a notification. None of it is
@@ -82,11 +83,7 @@ export function blockEndAlert(end: BlockEnd, silent: boolean): void {
   if (!silent) beep();
   navigator.vibrate?.([200, 100, 200]);
   if (typeof Notification === "undefined" || Notification.permission !== "granted" || !document.hidden) return;
-  const title = end.kind === "focus" ? "Terminó el foco" : "Terminó el descanso";
-  const body =
-    end.kind === "focus"
-      ? `${end.minutes} min de foco en ${end.habitName}.${end.lastRound ? "" : " Toma un descanso."}`
-      : "Listo para otra ronda.";
+  const { title, body } = blockEndText(end);
   const options = { body, tag: `pomodoro-${end.habitId}` };
   const fallback = () => {
     try {

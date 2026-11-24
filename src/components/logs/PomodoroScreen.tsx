@@ -56,6 +56,16 @@ import {
   type PomodoroStorage,
   type PomodoroPresetKey,
 } from "@/lib/pomodoro-store";
+import {
+  PAUSED_NOTE,
+  phaseLabel,
+  pomodoroStatusLine,
+  RANGE_MESSAGE,
+  STORAGE_PROBLEM,
+  topicLabel,
+  TOPIC_MAX_MESSAGE,
+  WAITING_NOTE,
+} from "@/lib/pomodoro-copy";
 import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/pomodoro-sync";
 
 /*
@@ -73,10 +83,7 @@ import { createRetryScheduler, flushPendingDetailed, reportLines } from "@/lib/p
  * while nothing runs; the last one used is remembered per user and habit (the prefs).
  */
 
-const topicLabel = (preset: string | null) => (preset === "study" ? "Qué estudiaste (opcional)" : "Tema (opcional)");
-
 const MIN_MS = 60_000;
-const RANGE_MESSAGE = "Elige entre 1 y 90 minutos.";
 
 /** The configuration a mode starts with: the timer takes its minutes from the prefs, the others keep theirs. */
 const configFor = (mode: TimerMode, p: PomodoroPrefs): PomodoroConfig =>
@@ -284,26 +291,11 @@ function Timer({
 
   if (!hydrated) return <div className="min-h-96" aria-busy="true" />;
 
-  const view = pomodoroView(state, 0);
   const measuring = mode !== "pomodoro";
   const locked = running || state.phase === "ready";
-  const pausedNote = state.pausedAt !== null ? "En pausa." : null;
-  const waiting = state.pending.length > 0 ? "Pendiente de sumar." : null;
-  const status = measuring
-    ? null
-    : state.phase === "break"
-      ? session.lastStatus === "confirmed"
-        ? `Sumamos ${session.last} min a ${habitName}.`
-        : session.lastStatus === "pending"
-          ? `Pendiente de sumar: ${session.last} min.`
-          : null
-      : state.phase === "ready"
-        ? "Descanso terminado."
-        : state.phase === "done"
-          ? session.blocks === 0
-            ? "Sin bloques esta vez: un bloque cuenta desde 1 minuto de foco."
-            : `${session.blocks} ${session.blocks === 1 ? "pomodoro" : "pomodoros"} · ${formatDuration(session.minutes)}`
-          : null;
+  const pausedNote = state.pausedAt !== null ? PAUSED_NOTE : null;
+  const waiting = state.pending.length > 0 ? WAITING_NOTE : null;
+  const status = measuring ? null : pomodoroStatusLine(state, session, habitName);
 
   return (
     <div className="flex flex-col gap-4">
@@ -362,19 +354,13 @@ function Timer({
         <section className="flex flex-col items-center gap-4" aria-label="Temporizador">
           {state.phase === "focus" || state.phase === "break" ? (
             <>
-              <p className="section-label text-muted">
-                {state.phase === "focus"
-                  ? view.cyclesTotal === null
-                    ? `Foco · ronda ${state.cycle}`
-                    : `Foco · ronda ${state.cycle} de ${view.cyclesTotal}`
-                  : "Descanso"}
-              </p>
+              <p className="section-label text-muted">{phaseLabel(state)}</p>
               <CatAnimation asset={state.phase === "focus" ? "code" : "sleep"} width={96} />
               <Clock state={state} />
             </>
           ) : (
             <>
-              <p className="section-label text-muted">{state.phase === "ready" ? "Listo" : "Terminado"}</p>
+              <p className="section-label text-muted">{phaseLabel(state)}</p>
               <CatAnimation asset="sleep" width={96} variant="still" />
             </>
           )}
@@ -394,7 +380,7 @@ function Timer({
         {storageProblem ? (
           <p className="flex items-start justify-center gap-1 text-small text-pretty text-ink">
             <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
-            No pudimos guardar el temporizador en este dispositivo.
+            {STORAGE_PROBLEM}
           </p>
         ) : null}
         {notice || (rangeError && state.phase === "idle" && mode === "timer") ? (
@@ -662,7 +648,7 @@ function MeasureStart({
       ) : null}
       <Button
         onClick={() => {
-          if (topic.length > 60) return setError("El tema tiene hasta 60 caracteres.");
+          if (topic.length > 60) return setError(TOPIC_MAX_MESSAGE);
           onStart(topic);
         }}
       >
@@ -706,7 +692,7 @@ function IdlePanel({
     const config: PomodoroConfig = { focusMin: num(focusMin), breakMin: num(breakMin), cycles: unlimited ? null : cycles };
     const valid = validatePomodoroConfig(config);
     if (!valid.ok) return setError(valid.error);
-    if (topic.length > 60) return setError("El tema tiene hasta 60 caracteres.");
+    if (topic.length > 60) return setError(TOPIC_MAX_MESSAGE);
     onStart(config, key, topic);
   }
 
