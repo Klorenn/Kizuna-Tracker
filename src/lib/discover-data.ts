@@ -110,3 +110,10 @@ export async function loadDiscoverable(supabase: Supabase, userId: string): Prom
   if (error || !data) return null;
   return data.discoverable;
 }
+
+/** Ajustes > Notificaciones: the two opt-out switches (null = the read failed). */
+export async function loadNotifyPrefs(supabase: Supabase, userId: string): Promise<{ streakRisk: boolean; weeklySummary: boolean } | null> {
+  const { data, error } = await supabase.from("profiles").select("notify_streak_risk,notify_weekly_summary").eq("id", userId).maybeSingle();
+  if (error || !data) return null;
+  return { streakRisk: data.notify_streak_risk, weeklySummary: data.notify_weekly_summary };
+}
