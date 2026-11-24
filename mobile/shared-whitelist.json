@@ -5,6 +5,7 @@
     "src/lib/groups-copy.ts",
     "src/lib/groups-fines-contract.ts",
     "src/lib/groups-rpc.ts",
+    "src/lib/stale-day.ts",
     "src/lib/tracking-copy.ts",
     "src/lib/undo-checkin.ts",
     "src/lib/tracking-rpc.ts",

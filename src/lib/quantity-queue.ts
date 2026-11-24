@@ -1,6 +1,7 @@
 import type { addQuantity } from "@/app/(app)/registros/quantity-actions";
 import { localDate } from "@/domain/dates";
 import { parseAmount, type QuantityConfig } from "@/domain/quantity";
+import { isStaleTap } from "@/lib/stale-day";
 
 /**
  * Offline-tolerant queue for quantity taps: one tap = one sum, even if the network fails.
@@ -106,16 +107,6 @@ function isSum(x: unknown): x is PendingSum {
   return typeof s.entryId === "string" && typeof s.habitId === "string" && typeof s.amount === "number" && s.amount > 0;
 }
 
-/** True when the tap's local day is over (its zone's date is now later). Unknown day or zone: not stale. */
-function isStale(sum: PendingSum, now: number): boolean {
-  if (!sum.day || !sum.zone) return false;
-  try {
-    return localDate(new Date(now), sum.zone) > sum.day;
-  } catch {
-    return false;
-  }
-}
-
 /** The line to show for refusals nobody has seen: "Una suma de ayer…" in singular or plural, else the last one. */
 export function refusalText(refused: readonly { error: string }[]): string {
   const allStale = refused.length > 0 && refused.every((n) => n.error === QUANTITY_MESSAGES.staleDay);
@@ -188,7 +179,7 @@ export function createQuantityQueue(send: Send, idFactory: () => string, options
     if (existing) return existing;
     const run = (async () => {
       let result: SendResult;
-      if (isStale(sum, now())) {
+      if (isStaleTap(sum, now())) {
         // the day of the tap is over: it is not credited to today (refused for good, with a notice)
         result = { ok: false, error: QUANTITY_MESSAGES.staleDay, retry: false };
       } else {
