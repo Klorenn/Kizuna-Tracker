@@ -8,6 +8,7 @@ import { CatPreload } from "@/components/brand/CatPreload";
 import { DayCompleteWatcher } from "@/components/DayCompleteSheet";
 import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
+import { HideInNative } from "@/components/NativeShell";
 import { LoadFailed } from "@/components/LoadFailed";
 import { PomodoroBannerLazy } from "@/components/PomodoroBannerLazy";
 import { NotificationBell } from "@/components/NotificationBell";
@@ -70,7 +71,9 @@ export default async function Home() {
         <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Hoy</h1>
         <NotificationBell />
       </div>
-      <InstallPrompt />
+      <HideInNative>
+        <InstallPrompt />
+      </HideInNative>
       <PomodoroBannerLazy
         userId={user.id}
         timeZone={timeZone}

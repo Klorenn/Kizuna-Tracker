@@ -5,6 +5,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { DeleteAccountButton } from "@/components/DeleteAccountButton";
 import { LoadFailed } from "@/components/LoadFailed";
+import { HideInNative } from "@/components/NativeShell";
 import { NotificationSection } from "@/components/NotificationSection";
 import { AccountRows, PreferenceRows } from "@/components/SettingsRows";
 import { SignOutButton } from "@/components/SignOutButton";
@@ -87,7 +88,9 @@ export default async function AjustesPage() {
         />
       </ListSection>
 
-      <NotificationSection />
+      <HideInNative>
+        <NotificationSection />
+      </HideInNative>
 
       <ListSection id="ajustes-avisos" label="Avisos">
         {notifyPrefs === null ? (
