@@ -9,12 +9,13 @@ import { Avatar } from "@/components/ui/Avatar";
 import { avatarUrl } from "@/lib/avatar";
 import { Card } from "@/components/ui/Card";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { periodsFor } from "@/domain/challenges";
 import { formatCLP, formatSignedCLP, netBalances } from "@/domain/ledger";
-import { challengeFrequency, firstName } from "@/lib/challenge-view";
+import { firstName } from "@/lib/challenge-view";
+import { debtReason, type FailedItemRow } from "@/lib/debt-reason";
 import { fetchAll } from "@/lib/paginate";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
+import { untypedDb } from "@/lib/untyped-db";
 import { loadMyFundDebts } from "@/lib/groups-fines-data";
 import { getSessionUser } from "@/lib/viewer";
 import { fundDebtsForSection } from "./fund-debts";
@@ -50,7 +51,7 @@ export default async function DeudasPage() {
 
   // Challenge (with the two habit names) and profiles are independent: one level, not three.
   // A habit the viewer cannot read comes back null, as it did when habits were read on their own.
-  const [challengesRes, profilesRes] = await Promise.all([
+  const [challengesRes, profilesRes, failedRes] = await Promise.all([
     challengeIds.length
       ? supabase
           .from("challenges")
@@ -64,7 +65,22 @@ export default async function DeudasPage() {
       : Promise.resolve({
           data: [] as { id: string | null; display_name: string | null; avatar_path: string | null; avatar_preset: number | null }[],
         }),
+    // sub-reto outcomes behind each debt (periods closed before sub-retos have none: legacy reason)
+    challengeIds.length
+      ? fetchAll<unknown>((from, to) =>
+          untypedDb(supabase) // TODO(sub-retos types)
+            .from("challenge_item_results")
+            .select(
+              "challenge_id,period_start,player_id,item:challenge_items(creator_habit:habits!creator_habit_id(name),rival_habit:habits!rival_habit_id(name))",
+            )
+            .eq("met", false)
+            .in("challenge_id", challengeIds)
+            .order("id")
+            .range(from, to),
+        ).then((rows) => rows as FailedItemRow[], (): FailedItemRow[] => [])
+      : Promise.resolve([] as FailedItemRow[]),
   ]);
+  const failedItems = failedRes;
   const challengeRows = readRows(challengesRes);
   const profiles = readRows(profilesRes);
   const challenges = new Map(challengeRows.map((c) => [c.id, c]));
@@ -74,15 +90,8 @@ export default async function DeudasPage() {
   const personName = (id: string) => (nameOf.has(id) ? nameOf.get(id) || DELETED : DELETED);
   const shortName = (id: string) => (nameOf.has(id) ? firstName(nameOf.get(id), DELETED) : DELETED);
 
-  /** "Gimnasio · semana 2": the debtor's habit and the period's position in the challenge. */
-  const reason = (d: (typeof debts)[number]) => {
-    const c = challenges.get(d.challenge_id);
-    if (!c) return "Reto";
-    const name = (d.debtor_id === c.creator_id ? c.creator_habit?.name : c.rival_habit?.name) || "Reto";
-    const f = challengeFrequency(c);
-    const idx = c.starts_on ? periodsFor(c.starts_on, c.weeks, f).findIndex((p) => p.start === d.period_start) : -1;
-    return idx === -1 ? name : `${name} · ${f.type === "weekly" ? "semana" : "día"} ${idx + 1}`;
-  };
+  /** "Agua, Gym · semana 2": the debtor's failed sub-retos and the period's position in the challenge. */
+  const reason = (d: (typeof debts)[number]) => debtReason(d, challenges.get(d.challenge_id), failedItems);
 
   const ledger = debts.map((d) => ({
     id: d.id,
