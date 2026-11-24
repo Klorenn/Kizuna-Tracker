@@ -25,7 +25,9 @@
     },
     "production": {
       "extends": "base",
-      "channel": "production"
+      "channel": "production",
+      "credentialsSource": "local",
+      "android": { "buildType": "apk" }
     }
   }
 }
