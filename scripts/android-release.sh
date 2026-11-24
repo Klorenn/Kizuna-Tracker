@@ -116,8 +116,12 @@ done
 DEX_CLASSES="$("$DEXDUMP" app-release-signed.apk 2>/dev/null || true)"
 if ! rg -q "Class descriptor\\s+: 'Lcom/kizunatracker/widget/KizunaWidgetProvider;'" <<<"$DEX_CLASSES"; then
   # dexdump may stop at the first dex of a multi-dex APK: scan every classes*.dex as a fallback.
-  unzip -p app-release-signed.apk 'classes*.dex' | rg -a -q 'Lcom/kizunatracker/widget/KizunaWidgetProvider;' \
-    || die "R8 removed the widget provider (check consumer-rules.pro)"
+  # Into a temp file, never `unzip | rg -q`: rg exiting early would SIGPIPE unzip and pipefail turns that into a failure.
+  DEX_TMP="$(mktemp)"
+  unzip -p app-release-signed.apk 'classes*.dex' >"$DEX_TMP" || { rm -f "$DEX_TMP"; die "could not read classes*.dex from the APK"; }
+  rg -a -q 'Lcom/kizunatracker/widget/KizunaWidgetProvider;' "$DEX_TMP" \
+    || { rm -f "$DEX_TMP"; die "R8 removed the widget provider (check consumer-rules.pro)"; }
+  rm -f "$DEX_TMP"
 fi
 
 cp app-release-signed.apk "$ROOT/$APK_NAME"
