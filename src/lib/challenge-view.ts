@@ -135,6 +135,44 @@ export function subRetosLabel(count: number): string | null {
   return `+${extra} ${extra === 1 ? 'sub-reto' : 'sub-retos'}`
 }
 
+/**
+ * Check-in dates of one habit that count for a sub-reto, as the close-periods cron counts them:
+ * not rejected, from the item's start, and photo check-ins only for a photo sub-reto.
+ */
+export function countingDates(
+  rows: { habit_id: string; local_date: LocalDate; photo_path: string | null; rejected_at: string | null }[],
+  habitId: string,
+  requiresPhoto: boolean,
+  startsOn: LocalDate | null,
+): LocalDate[] {
+  return rows
+    .filter(
+      (k) =>
+        k.habit_id === habitId &&
+        !k.rejected_at &&
+        (!requiresPhoto || k.photo_path) &&
+        (startsOn === null || k.local_date >= startsOn),
+    )
+    .map((k) => k.local_date)
+}
+
+/** Habit names of every sub-reto (any status: results outlive the item) oriented to the viewer, in position order. */
+export function itemNamesOf(
+  items: { id: string; position: number; creator_habit_id: string | null; rival_habit_id: string | null }[],
+  iAmCreator: boolean,
+  nameOf: (habitId: string | null) => string | undefined,
+): ItemNames {
+  return new Map(
+    [...items]
+      .sort((a, b) => a.position - b.position)
+      .map((i) => {
+        const mine = iAmCreator ? i.creator_habit_id : i.rival_habit_id
+        const theirs = iAmCreator ? i.rival_habit_id : i.creator_habit_id
+        return [i.id, { mine: nameOf(mine) ?? '', theirs: nameOf(theirs) ?? '' }] as const
+      }),
+  )
+}
+
 export type HistoryDebt = { period_start: string; debtor_id: string; amount: number; paid_at: string | null }
 
 export type ItemResultRow = { period_start: string; item_id: string; player_id: string; met: boolean }

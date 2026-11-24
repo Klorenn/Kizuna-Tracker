@@ -17,17 +17,30 @@ import { formatCLP, netBalances } from "@/domain/ledger";
 import { REJECT_LABEL, type RejectReason } from "@/lib/challenge-form";
 import {
   challengeFrequency,
-  countDone,
+  countingDates,
   cancelledLabel,
   dayMonthLabel,
   endsOn,
   failureHistory,
   firstName,
   frequencyLabel,
+  itemNamesOf,
+  itemProgress,
+  itemViews,
   periodStatus,
+  subRetosLabel,
   weekdayLabel,
+  type ItemResultRow,
+  type ItemRow,
 } from "@/lib/challenge-view";
+import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
+import type { Database } from "@/lib/supabase/database.types";
+import { itemHabitIds } from "@/lib/retos-cards";
+import { untypedDb } from "@/lib/untyped-db";
+
+type ChallengeRow = Database["public"]["Tables"]["challenges"]["Row"] & { challenge_items: ItemRow[] | null };
+const ITEM_COLUMNS = "id,position,status,creator_habit_id,rival_habit_id,target_per_week,requires_photo,proposed_by,starts_on";
 
 export const metadata: Metadata = { title: "Reto" };
 
@@ -52,21 +65,35 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
 
-  const { data: c } = await supabase
+  // the sub-retos come embedded: one read, no extra round trip before the parallel batch
+  const { data: row } = await untypedDb(supabase) // TODO(sub-retos types)
     .from("challenges")
-    .select("*")
+    .select(`*,challenge_items(${ITEM_COLUMNS})`)
     .eq("id", id)
     .maybeSingle();
+  const c = row as ChallengeRow | null;
   if (!c) notFound();
   if (c.status === "proposed" || c.status === "declined") redirect("/retos");
 
   const mine = c.creator_id === user.id;
   const otherId = mine ? c.rival_id : c.creator_id;
-  const myHabitId = mine ? c.creator_habit_id : c.rival_habit_id;
-  const theirHabitId = mine ? c.rival_habit_id : c.creator_habit_id;
-  const habitIds = [myHabitId, theirHabitId].filter((x): x is string => !!x);
+  const allItems = c.challenge_items ?? [];
+  // live sub-retos (proposed or active), position order, habits oriented to the viewer
+  const views = itemViews(allItems, c, user.id);
+  const active = views.filter((v) => v.status === "active");
+  const pending = views.filter((v) => v.status === "proposed");
+  // the first one mirrors the legacy columns: it names the challenge and feeds the legacy history text
+  const first = views[0];
+  const myHabitId = first ? first.myHabitId : mine ? c.creator_habit_id : c.rival_habit_id;
+  const theirHabitId = first ? first.theirHabitId : mine ? c.rival_habit_id : c.creator_habit_id;
+  const habitIds = [
+    ...new Set([
+      ...[c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x),
+      ...itemHabitIds(allItems),
+    ]),
+  ];
 
-  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }, { data: me }] =
+  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }, { data: me }, itemResults] =
     await Promise.all([
       supabase.from("public_profiles").select("display_name,avatar_path,avatar_preset").eq("id", otherId).maybeSingle(),
       supabase.from("habits").select("id,name,color").in("id", habitIds),
@@ -84,27 +111,54 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       // the rival's check-ins are only readable while we are friends
       supabase.rpc("is_friend", { a: user.id, b: otherId }),
       supabase.from("profiles").select("avatar_path,avatar_updated_at,avatar_preset").eq("id", user.id).maybeSingle(),
+      // per sub-reto outcomes of closed periods (none for periods closed before sub-retos: legacy text)
+      fetchAll<unknown>((from, to) =>
+        untypedDb(supabase) // TODO(sub-retos types)
+          .from("challenge_item_results")
+          .select("period_start,item_id,player_id,met")
+          .eq("challenge_id", id)
+          .order("period_start")
+          .order("item_id")
+          .order("player_id")
+          .range(from, to),
+      ).then((rows) => rows as ItemResultRow[], (): ItemResultRow[] => []),
     ]);
 
   const other = firstName(profile?.display_name);
-  const myHabitName = (habits ?? []).find((h) => h.id === myHabitId)?.name ?? "Hábito";
-  const theirHabitName = (habits ?? []).find((h) => h.id === theirHabitId)?.name ?? myHabitName;
-  const myColor = toHabitColor((habits ?? []).find((h) => h.id === myHabitId)?.color);
-  const theirColor = toHabitColor((habits ?? []).find((h) => h.id === theirHabitId)?.color);
+  const habitRow = (habitId: string | null) => (habits ?? []).find((h) => h.id === habitId);
+  const myHabitName = habitRow(myHabitId)?.name ?? "Hábito";
+  const theirHabitName = habitRow(theirHabitId)?.name ?? myHabitName;
   const f = challengeFrequency(c);
   const now = new Date();
   const today = localDate(now, c.timezone);
   const st = periodStatus(c, today);
   const rows = checkins ?? [];
-  // same rule as the close-periods cron: a photo challenge only counts photo check-ins
-  const valid = rows.filter((k) => !k.rejected_at && (!c.requires_photo || k.photo_path));
-  const datesOf = (habitId: string | null) => valid.filter((k) => k.habit_id === habitId).map((k) => k.local_date);
-  const myDates = datesOf(myHabitId);
-  const theirDates = datesOf(theirHabitId);
-
-  const target = f.type === "weekly" ? f.target : 1;
-  const mineNow = st.state === "running" ? countDone(st.period, myDates) : 0;
-  const theirsNow = st.state === "running" ? countDone(st.period, theirDates) : 0;
+  // same rule as the close-periods cron, per sub-reto: from its start, and a photo sub-reto only counts photos
+  const datesFor = (habitId: string | null, v: { requiresPhoto: boolean; startsOn: string | null }) =>
+    habitId ? countingDates(rows, habitId, v.requiresPhoto, v.startsOn) : [];
+  const itemFreq = c.frequency_type === "weekly" ? "weekly" : "daily";
+  const bars = active.map((v) => {
+    const mineDates = datesFor(v.myHabitId, v);
+    const theirDates = datesFor(v.theirHabitId, v);
+    return {
+      v,
+      myName: habitRow(v.myHabitId)?.name ?? "Hábito",
+      theirName: habitRow(v.theirHabitId)?.name ?? "Hábito",
+      myColor: toHabitColor(habitRow(v.myHabitId)?.color),
+      theirColor: toHabitColor(habitRow(v.theirHabitId)?.color),
+      mineDates,
+      theirDates,
+      progress:
+        st.state === "running"
+          ? itemProgress(v, itemFreq, st.period, (h) => (h === v.myHabitId ? mineDates : theirDates))
+          : null,
+    };
+  });
+  // legacy history text (periods without item results) speaks of the first sub-reto
+  const firstBars = bars.find((b) => b.v.id === first?.id);
+  const myDates = firstBars?.mineDates ?? [];
+  const theirDates = firstBars?.theirDates ?? [];
+  const moreLabel = subRetosLabel(views.length);
 
   const subtitle = [
     st.state === "running"
@@ -119,13 +173,22 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   ].join(" · ");
 
   // photos
-  const rejectedMine = rows.filter((k) => k.habit_id === myHabitId && k.rejected_at);
+  const photoBars = bars.filter((b) => b.v.requiresPhoto);
+  const hasPhotos = photoBars.length > 0;
+  const myItemHabits = new Set(bars.flatMap((b) => (b.v.myHabitId ? [b.v.myHabitId] : [])));
+  const rejectedMine = rows.filter((k) => myItemHabits.has(k.habit_id) && k.rejected_at);
   // per-challenge counters: photos each player rejected, inside the challenge dates
   const rejectedByMe = rows.filter((k) => k.rejected_at && k.rejected_by === user.id).length;
   const rejectedByOther = rows.filter((k) => k.rejected_at && k.rejected_by === otherId).length;
-  const theirPhotos = valid.filter((k) => k.habit_id === theirHabitId && k.photo_path);
+  // their photos on any photo sub-reto (newest first, from the read), from the sub-reto start
+  const theirPhotos = rows.filter(
+    (k) =>
+      !k.rejected_at &&
+      k.photo_path &&
+      photoBars.some((b) => b.v.theirHabitId === k.habit_id && k.local_date >= (b.v.startsOn ?? "")),
+  );
   const inWindow = theirPhotos.filter((k) => canReject(new Date(k.created_at), now)).slice(0, 5);
-  const shown = c.requires_photo ? (inWindow.length > 0 ? inWindow : theirPhotos.slice(0, 1)) : [];
+  const shown = hasPhotos ? (inWindow.length > 0 ? inWindow : theirPhotos.slice(0, 1)) : [];
   const paths = shown.flatMap((k) => (k.photo_path ? [k.photo_path] : []));
   const signed = paths.length
     ? await supabase.storage.from("proofs").createSignedUrls(paths, SIGNED_SECONDS)
@@ -166,6 +229,8 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
     frequency: f,
     myDates,
     theirDates: friends === true ? theirDates : null,
+    itemResults,
+    itemNames: itemNamesOf(allItems, mine, (h) => habitRow(h)?.name),
   });
   const label = f.type === "weekly" ? "Semana" : "Día";
   // same outcome rule as the Retos list: the viewer won when the rival owes more than they do
@@ -191,6 +256,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       </Link>
       <h1 className="text-display font-semibold text-ink">
         {myHabitName} con {other}
+        {moreLabel ? <span className="text-muted"> {moreLabel}</span> : null}
       </h1>
       <div className="flex items-center gap-2">
         {statusPill}
@@ -204,39 +270,78 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       ) : null}
 
       <SectionHeader label={f.type === "weekly" ? "Esta semana" : "Hoy"} action={closesLabel} />
-      <Card accent className="flex flex-col gap-4 p-4 pl-[19px]">
-        {[
-          {
-            name: "Tú",
-            done: mineNow,
-            color: myColor,
-            src: avatarUrl(me?.avatar_path ?? null, me?.avatar_updated_at),
-            preset: me?.avatar_preset,
-          },
-          {
-            name: other,
-            done: theirsNow,
-            color: theirColor,
-            src: avatarUrl(profile?.avatar_path ?? null),
-            preset: profile?.avatar_preset,
-          },
-        ].map((row) => (
-          <div key={row.name} className="flex items-center gap-3">
-            <Avatar name={row.name} src={row.src} preset={row.preset} />
-            <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
-              <div className="flex items-center gap-2">
-                <p className="flex-1 text-body font-medium text-ink">{row.name}</p>
-                <p className="text-small text-muted">
-                  {row.done} de {target}
-                </p>
-              </div>
-              <Segments done={row.done} total={target} color={row.color} />
-            </div>
+      <Card accent className="flex flex-col gap-5 p-4 pl-[19px]">
+        {bars.map(({ v, myName, theirName, myColor: mc, theirColor: tc, progress }) => (
+          <div key={v.id} className="flex flex-col gap-4">
+            {bars.length > 1 ? (
+              <p className="text-small font-medium text-ink">
+                {myName === theirName ? myName : `${myName} · ${theirName}`}
+              </p>
+            ) : null}
+            {progress === null && v.startsOn && v.startsOn > today ? (
+              <p className="text-small text-muted">Empieza el {weekdayLabel(v.startsOn)}</p>
+            ) : (
+              [
+                {
+                  name: "Tú",
+                  done: progress?.type === "weekly" ? progress.you : progress?.youDone ? 1 : 0,
+                  color: mc,
+                  src: avatarUrl(me?.avatar_path ?? null, me?.avatar_updated_at),
+                  preset: me?.avatar_preset,
+                },
+                {
+                  name: other,
+                  done: progress?.type === "weekly" ? progress.them : progress?.themDone ? 1 : 0,
+                  color: tc,
+                  src: avatarUrl(profile?.avatar_path ?? null),
+                  preset: profile?.avatar_preset,
+                },
+              ].map((row) => (
+                <div key={row.name} className="flex items-center gap-3">
+                  <Avatar name={row.name} src={row.src} preset={row.preset} />
+                  <div className="flex min-w-0 flex-1 flex-col gap-[6px]">
+                    <div className="flex items-center gap-2">
+                      <p className="flex-1 text-body font-medium text-ink">{row.name}</p>
+                      <p className="text-small text-muted">
+                        {row.done} de {progress?.type === "weekly" ? progress.target : 1}
+                      </p>
+                    </div>
+                    <Segments done={row.done} total={progress?.type === "weekly" ? progress.target : 1} color={row.color} />
+                  </div>
+                </div>
+              ))
+            )}
           </div>
         ))}
+        {bars.length === 0 ? <p className="text-small text-muted">Sin sub-retos activos.</p> : null}
       </Card>
 
-      {c.requires_photo && c.status === "active" ? (
+      {pending.length > 0 ? (
+        <>
+          <SectionHeader label="Sub-retos pendientes" />
+          <Card className="divide-y divide-line px-4">
+            {pending.map((v) => {
+              const name = habitRow(v.myHabitId ?? v.theirHabitId)?.name ?? "Hábito";
+              return (
+                <p key={v.id} className="py-3 text-body text-ink">
+                  {name}
+                  <span className="text-small text-muted">
+                    {" "}
+                    · {v.pendingFor === "me" ? `${other} lo propone` : `esperando a ${other}`}
+                  </span>
+                </p>
+              );
+            })}
+          </Card>
+        </>
+      ) : null}
+      {c.status === "active" ? (
+        <Link href={`/retos/nuevo?reto=${c.id}`} className="text-small text-accent">
+          Agregar sub-reto
+        </Link>
+      ) : null}
+
+      {hasPhotos && c.status === "active" ? (
         <>
           <SectionHeader
             label={`${inWindow.length > 1 ? "Fotos" : "Última foto"} de ${other}`}
@@ -255,7 +360,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
                   <FeedItem
                     entry={{
                       id: k.id,
-                      who: theirHabitName,
+                      who: habitRow(k.habit_id)?.name ?? theirHabitName,
                       habit: when(k.created_at),
                       icon: "target",
                       when: "",
@@ -286,7 +391,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
           <p className="text-title font-semibold text-ink">{formatCLP(Math.abs(balance))}</p>
           <p className="text-small text-muted">{balanceCaption}</p>
         </Card>
-        {c.requires_photo ? (
+        {hasPhotos ? (
           <Card className="flex flex-1 flex-col gap-1 p-4">
             <p className="text-small text-muted">Fotos rechazadas</p>
             <p className="text-title font-semibold text-ink">{rejectedByMe + rejectedByOther}</p>

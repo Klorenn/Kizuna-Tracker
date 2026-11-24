@@ -318,3 +318,39 @@ describe('failureHistory with sub-reto results', () => {
     expect(rows[0].summary).toBe('Hiciste 0 de 3')
   })
 })
+
+import { countingDates, itemNamesOf } from '@/lib/challenge-view'
+
+describe('countingDates (what the cron counts for one sub-reto side)', () => {
+  const rows = [
+    { habit_id: 'a', local_date: '2026-11-09', photo_path: 'p1', rejected_at: null },
+    { habit_id: 'a', local_date: '2026-11-10', photo_path: null, rejected_at: null },
+    { habit_id: 'a', local_date: '2026-11-11', photo_path: 'p3', rejected_at: '2026-11-11T10:00:00Z' },
+    { habit_id: 'b', local_date: '2026-11-09', photo_path: 'p4', rejected_at: null },
+    { habit_id: 'a', local_date: '2026-11-01', photo_path: 'p5', rejected_at: null },
+  ]
+  it('drops rejected check-ins and dates before the sub-reto started', () => {
+    expect(countingDates(rows, 'a', false, '2026-11-02')).toEqual(['2026-11-09', '2026-11-10'])
+  })
+  it('a photo sub-reto only counts photo check-ins', () => {
+    expect(countingDates(rows, 'a', true, '2026-11-02')).toEqual(['2026-11-09'])
+  })
+  it('no start date means everything counts', () => {
+    expect(countingDates(rows, 'a', false, null)).toEqual(['2026-11-09', '2026-11-10', '2026-11-01'])
+  })
+})
+
+describe('itemNamesOf', () => {
+  const items = [
+    { id: 'i2', position: 2, creator_habit_id: 'c2', rival_habit_id: 'r2' },
+    { id: 'i1', position: 1, creator_habit_id: 'c1', rival_habit_id: null },
+  ]
+  const name = (id: string | null) => (id ? ({ c1: 'Agua', c2: 'Gym', r2: 'Pesas' } as Record<string, string>)[id] : undefined)
+  it('orients names to the viewer, in position order, with "" for an unknown habit', () => {
+    expect([...itemNamesOf(items, true, name)]).toEqual([
+      ['i1', { mine: 'Agua', theirs: '' }],
+      ['i2', { mine: 'Gym', theirs: 'Pesas' }],
+    ])
+    expect(itemNamesOf(items, false, name).get('i2')).toEqual({ mine: 'Pesas', theirs: 'Gym' })
+  })
+})
