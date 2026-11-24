@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 import { checkPushReceipts, RECEIPT_CHUNK, supabaseReceiptDeps, type ReceiptDeps } from '@/lib/push-receipts'
 
 const NOW = new Date('2026-11-24T12:00:00Z')
@@ -94,5 +94,21 @@ describe('supabaseReceiptDeps', () => {
   it('getReceipts throws on a non-2xx answer', async () => {
     const fetchFn = vi.fn(async () => ({ ok: false, status: 429, json: async () => ({}) }) as Response)
     await expect(supabaseReceiptDeps({}, fetchFn as unknown as typeof fetch).getReceipts(['a'])).rejects.toThrow('429')
+  })
+  describe('EXPO_ACCESS_TOKEN (Expo Enhanced Push Security)', () => {
+    afterEach(() => { vi.unstubAllEnvs() })
+    const ok = () => vi.fn(async () => ({ ok: true, status: 200, json: async () => ({ data: {} }) }) as Response)
+    it('is sent as a Bearer header when set', async () => {
+      vi.stubEnv('EXPO_ACCESS_TOKEN', 'secret-token')
+      const f = ok()
+      await supabaseReceiptDeps({}, f as unknown as typeof fetch).getReceipts(['a'])
+      expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>).authorization).toBe('Bearer secret-token')
+    })
+    it('is not sent when unset', async () => {
+      vi.stubEnv('EXPO_ACCESS_TOKEN', '')
+      const f = ok()
+      await supabaseReceiptDeps({}, f as unknown as typeof fetch).getReceipts(['a'])
+      expect(((f.mock.calls[0] as unknown as [string, RequestInit])[1].headers as Record<string, string>).authorization).toBeUndefined()
+    })
   })
 })

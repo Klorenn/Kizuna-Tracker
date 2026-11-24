@@ -17,6 +17,18 @@ function adminDeps(): PushTokenDeps {
         .upsert({ user_id: userId, token, last_seen_at: new Date().toISOString() }, { onConflict: "token" });
       if (error) throw error;
     },
+    async registerAttempt(key) {
+      const { data, error } = await db.rpc("register_login_attempt", { p_keys: [key] });
+      return !error && data === true; // fail closed
+    },
+    async trimTokens(userId, max) {
+      const { data, error } = await db.from("device_push_tokens").select("id").eq("user_id", userId).order("last_seen_at", { ascending: false });
+      if (error) throw error;
+      const extra = (data ?? []).slice(max).map((r) => r.id);
+      if (extra.length === 0) return;
+      const { error: delError } = await db.from("device_push_tokens").delete().in("id", extra);
+      if (delError) throw delError;
+    },
     async deleteToken(userId, token) {
       const { error } = await db.from("device_push_tokens").delete().eq("user_id", userId).eq("token", token);
       if (error) throw error;

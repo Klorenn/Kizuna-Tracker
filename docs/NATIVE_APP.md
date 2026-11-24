@@ -65,5 +65,6 @@ Publica en el canal `production`. Solo sirve para cambios de JS y assets. Si cam
 - Agregar `mobile/**` a los ignores de `eslint.config.*` raiz (el hook de proteccion de config lo impide al agente) y quitar el `it.todo` de `tests/unit/root-excludes-mobile.test.ts`.
 - Ejecutar `supabase db reset && supabase test db` cuando haya runtime de contenedores (la migracion y sus 38 asserts solo se corrieron en un Postgres 16 local).
 - Pegar la migracion `20261128090000_device_push_tokens.sql` en produccion antes de publicar.
-- `EXPO_ACCESS_TOKEN` en Vercel solo si activas "enhanced push security" en Expo.
+- Paso de rollout (antes de publicar): activar "Enhanced Push Security" en Expo (expo.dev, ajustes del proyecto), crear un access token y guardarlo como `EXPO_ACCESS_TOKEN` en Vercel (Production). El servidor lo envia como `Authorization: Bearer` al API de push y de receipts de Expo cuando la variable existe (`src/lib/push.ts`, `src/lib/push-receipts.ts`); sin ella los envios funcionan igual pero sin esa proteccion.
+- Limites de `/api/m/push-token`: el limitador `chk:push:<uid>` comparte el techo de la familia `chk:` (60 cada 15 min, falla cerrado) y se conservan como maximo 10 dispositivos por usuario (se borran los de `last_seen_at` mas antiguo).
 - Las comprobaciones en dispositivo de M0 a M4 y la beta con Maestro (tarea 5.4).

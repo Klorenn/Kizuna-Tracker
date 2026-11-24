@@ -1,10 +1,10 @@
 import { describe, expect, it, vi } from 'vitest'
-import { isExpoPushToken, registerPushToken, removePushToken, type PushTokenDeps } from '@/lib/push-token-api'
+import { isExpoPushToken, MAX_TOKENS_PER_USER, registerPushToken, removePushToken, type PushTokenDeps } from '@/lib/push-token-api'
 
 const TOKEN = 'ExponentPushToken[aaaaaaaaaaaaaaaaaaaaaa]'
 
 function deps(over: Partial<PushTokenDeps> = {}): PushTokenDeps {
-  return { upsertToken: vi.fn(async () => {}), deleteToken: vi.fn(async () => {}), ...over }
+  return { upsertToken: vi.fn(async () => {}), deleteToken: vi.fn(async () => {}), registerAttempt: vi.fn(async () => true), trimTokens: vi.fn(async () => {}), ...over }
 }
 
 describe('isExpoPushToken', () => {
@@ -46,6 +46,32 @@ describe('registerPushToken', () => {
     const d = deps({ upsertToken: vi.fn(async () => { throw new Error('db down secret') }) })
     const res = await registerPushToken({ body: { token: TOKEN }, userId: 'u1' }, d)
     expect(res).toEqual({ status: 500, body: { ok: false, error: 'unavailable' } })
+  })
+})
+
+describe('registerPushToken: abuse limits', () => {
+  it('is rate limited per user (fail closed) with the chk: key family, answering 429 and storing nothing', async () => {
+    const d = deps({ registerAttempt: vi.fn(async () => false) })
+    const res = await registerPushToken({ body: { token: TOKEN }, userId: 'u1' }, d)
+    expect(d.registerAttempt).toHaveBeenCalledWith('chk:push:u1')
+    expect(res).toMatchObject({ status: 429, retryAfter: 900 })
+    expect(d.upsertToken).not.toHaveBeenCalled()
+  })
+  it('an invalid token is refused before the limiter is touched', async () => {
+    const d = deps()
+    await registerPushToken({ body: { token: 'nope' }, userId: 'u1' }, d)
+    expect(d.registerAttempt).not.toHaveBeenCalled()
+  })
+  it('keeps at most 10 devices per user: after the upsert the oldest by last_seen_at go', async () => {
+    const d = deps()
+    await registerPushToken({ body: { token: TOKEN }, userId: 'u1' }, d)
+    expect(MAX_TOKENS_PER_USER).toBe(10)
+    expect(d.trimTokens).toHaveBeenCalledWith('u1', 10)
+    expect((d.upsertToken as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0]).toBeLessThan((d.trimTokens as ReturnType<typeof vi.fn>).mock.invocationCallOrder[0])
+  })
+  it('a trim failure is a 500 too (never silently unbounded)', async () => {
+    const d = deps({ trimTokens: vi.fn(async () => { throw new Error('x') }) })
+    expect((await registerPushToken({ body: { token: TOKEN }, userId: 'u1' }, d)).status).toBe(500)
   })
 })
 
