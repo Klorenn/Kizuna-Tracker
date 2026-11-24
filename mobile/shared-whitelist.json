@@ -1,0 +1,15 @@
+{
+  "files": [
+    "src/domain/**",
+    "src/lib/groups-contract.ts",
+    "src/lib/groups-copy.ts",
+    "src/lib/groups-fines-contract.ts",
+    "src/lib/groups-rpc.ts",
+    "src/lib/today-core.ts",
+    "src/lib/today-logs.ts",
+    "src/lib/checkin-dates.ts",
+    "src/lib/reading-books.ts",
+    "src/lib/supabase/database.types.ts"
+  ],
+  "externalPackages": ["date-fns", "@date-fns/tz", "@supabase/supabase-js"]
+}
