@@ -1,0 +1,12 @@
+[
+  {
+    "relation": ["delegate_permission/common.handle_all_urls"],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.kizunatracker.app",
+      "sha256_cert_fingerprints": [
+        "4A:89:D7:46:88:D5:26:1E:CF:45:1D:6E:34:09:17:25:B2:5C:17:66:9A:A7:17:62:5D:54:09:CF:13:FC:0B:D4"
+      ]
+    }
+  }
+]
