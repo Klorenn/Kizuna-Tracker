@@ -32,3 +32,13 @@ next-env.d.ts
 
 # database backups (pg_dump of production, Vercel env backups): never commit
 /backups/
+
+# native app (mobile/): installs, prebuild outputs and signing material
+/mobile/node_modules/
+/mobile/.expo/
+/mobile/android/
+/mobile/ios/
+/mobile/dist/
+/mobile/coverage/
+credentials.json
+google-services.json
