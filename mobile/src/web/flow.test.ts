@@ -9,7 +9,7 @@ function make(results: Res[]) {
   const request = jest.fn(async () => results[Math.min(i++, results.length - 1)]);
   return { request };
 }
-const run = (d: { request: jest.Mock }) => renderHook(() => useWebHandoff("/retos", d as never));
+const run = (d: { request: jest.Mock; direct?: () => string | null; onLinked?: () => void; onStale?: () => void }) => renderHook(() => useWebHandoff("/retos", d as never));
 
 describe("useWebHandoff", () => {
   it("asks for a link and is ready with it", async () => {
@@ -52,5 +52,31 @@ describe("useWebHandoff", () => {
     await act(async () => result.current.retry());
     expect(d.request).toHaveBeenCalledTimes(3);
     expect(result.current.state).toEqual({ kind: "ready", url: (link(3) as { url: string }).url });
+  });
+
+  describe("one handoff per app session", () => {
+    it("with a live web session the screen loads its url directly: no link is requested", async () => {
+      const d = { ...make([link(1)]), direct: () => "https://kizuna.example/retos" };
+      const { result } = await run(d);
+      await act(async () => undefined);
+      expect(d.request).not.toHaveBeenCalled();
+      expect(result.current.state).toEqual({ kind: "ready", url: "https://kizuna.example/retos" });
+    });
+    it("a successful handoff marks the session as linked", async () => {
+      const onLinked = jest.fn();
+      await run({ ...make([link(1)]), onLinked });
+      await act(async () => undefined);
+      expect(onLinked).toHaveBeenCalledTimes(1);
+    });
+    it("landing on /login in direct mode means the cookies are gone: forget the session and do a fresh handoff", async () => {
+      const onStale = jest.fn();
+      const d = { ...make([link(2)]), direct: () => "https://kizuna.example/retos", onStale };
+      const { result } = await run(d);
+      await act(async () => undefined);
+      await act(async () => result.current.onLoginLanding());
+      expect(onStale).toHaveBeenCalledTimes(1);
+      expect(d.request).toHaveBeenCalledTimes(1);
+      expect(result.current.state).toEqual({ kind: "ready", url: (link(2) as { url: string }).url });
+    });
   });
 });

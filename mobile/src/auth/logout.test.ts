@@ -1,4 +1,4 @@
-import { createLogout } from "./logout";
+import { createLogout, signOutEverywhere } from "./logout";
 
 function make(fail: string[] = []) {
   const calls: string[] = [];
@@ -37,5 +37,23 @@ describe("logout", () => {
     await Promise.all([logout(), logout()]);
     expect(deps.signOut).toHaveBeenCalledTimes(1);
     expect(deps.goToLogin).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe("signOutEverywhere", () => {
+  it("revokes the account's sessions server side (the handoff web sessions too), then clears this device", async () => {
+    const calls: string[] = [];
+    const auth = { signOut: jest.fn(async ({ scope }: { scope: "global" | "local" }) => { calls.push(scope); return { error: null }; }) };
+    await signOutEverywhere(auth);
+    expect(calls).toEqual(["global", "local"]);
+  });
+  it("offline or refused: the local sign-out still runs", async () => {
+    const calls: string[] = [];
+    const auth = { signOut: jest.fn(async ({ scope }: { scope: "global" | "local" }) => { calls.push(scope); return { error: scope === "global" ? { message: "offline" } : null }; }) };
+    await signOutEverywhere(auth);
+    expect(calls).toEqual(["global", "local"]);
+    const thrown = { signOut: jest.fn(async ({ scope }: { scope: "global" | "local" }) => { if (scope === "global") throw new Error("net"); return { error: null }; }) };
+    await signOutEverywhere(thrown);
+    expect(thrown.signOut).toHaveBeenLastCalledWith({ scope: "local" });
   });
 });

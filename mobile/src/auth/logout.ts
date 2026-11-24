@@ -3,7 +3,7 @@ export type LogoutDeps = {
   unregisterPush(): Promise<void>;
   /** Pomodoro notifications scheduled on this device */
   cancelScheduled(): Promise<void>;
-  /** local scope: this device only, never the account's other sessions */
+  /** revokes the web sessions the handoffs created (global), then this device (local) */
   signOut(): Promise<void>;
   clearQueries(): void;
   clearPersisted(): void;
@@ -38,4 +38,23 @@ export function createLogout(d: LogoutDeps): () => Promise<void> {
       d.goToLogin();
       running = null;
     })());
+}
+
+type AuthLike = { signOut(opts: { scope: "global" | "local" }): Promise<{ error: unknown }> };
+
+/**
+ * Every handoff mints a web session, so a local sign-out would leave them alive server side. Global revokes them all (and the
+ * account's other devices, which is the price of a robust logout); if that fails (offline) this device is still cleared locally.
+ */
+export async function signOutEverywhere(auth: AuthLike): Promise<void> {
+  try {
+    const { error } = await auth.signOut({ scope: "global" });
+    if (!error) {
+      await auth.signOut({ scope: "local" });
+      return;
+    }
+  } catch {
+    // fall through to the local sign-out
+  }
+  await auth.signOut({ scope: "local" });
 }

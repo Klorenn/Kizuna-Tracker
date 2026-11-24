@@ -9,6 +9,8 @@ import { supabase } from "../lib/supabase";
 import { requestWebSession } from "./handoff";
 import { nativeUserAgentName } from "./policy";
 import { useWebHandoff } from "./use-web-handoff";
+import { clearWebLinked, isWebLinked, markWebLinked } from "./web-session-state";
+import { useSession } from "../auth/session";
 import { WebScreenView } from "./WebScreenView";
 
 /** An authenticated screen of the web (retos, amigos, perfil...), signed in through the one-time handoff link. */
@@ -23,7 +25,14 @@ export function WebScreen({ path }: { path: string }) {
     const jwt = data.session?.access_token;
     return jwt ? requestWebSession(env().apiUrl, jwt, p) : ({ ok: false, reason: "unauthorized" } as const);
   }, []);
-  const { state, onLoginLanding, retry } = useWebHandoff(path, { request });
+  const userId = useSession().session?.user.id ?? "";
+  const { state, onLoginLanding, retry } = useWebHandoff(path, {
+    request,
+    // the WebView already holds this user's web session: no new handoff (each one mints a session on the server)
+    direct: () => (isWebLinked(userId) ? `${env().apiUrl}${path}` : null),
+    onLinked: () => markWebLinked(userId),
+    onStale: clearWebLinked,
+  });
 
   // the native session is not valid (refresh failed): the native login, never a web login
   useEffect(() => {

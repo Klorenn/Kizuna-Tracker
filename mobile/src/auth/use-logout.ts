@@ -8,7 +8,8 @@ import { authStorage } from "../lib/auth-storage";
 import { supabase } from "../lib/supabase";
 import { pushRegistrar } from "../push/wiring";
 import { wipeWebSession } from "../web/cookie-wiper";
-import { createLogout } from "./logout";
+import { clearWebLinked } from "../web/web-session-state";
+import { createLogout, signOutEverywhere } from "./logout";
 
 /**
  * Logout of the whole app: push token, scheduled notifications, session (this device only), query cache and its MMKV copy,
@@ -22,11 +23,14 @@ export function useLogout() {
       createLogout({
         unregisterPush: () => pushRegistrar.unregister(),
         cancelScheduled: () => Notifications.cancelAllScheduledNotificationsAsync(),
-        signOut: async () => void (await supabase().auth.signOut({ scope: "local" })),
+        signOut: () => signOutEverywhere(supabase().auth),
         clearQueries: () => queryClient.clear(),
         clearPersisted: () => clearPersistedCache(cacheKv),
         clearAuthStore: () => authStorage.clear(),
-        wipeWebSession,
+        wipeWebSession: async () => {
+          clearWebLinked();
+          await wipeWebSession();
+        },
         goToLogin: () => router.replace("/login"),
       }),
     [queryClient, router],
