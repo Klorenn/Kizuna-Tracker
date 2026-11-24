@@ -46,7 +46,7 @@ export interface DeleteAccountDeps {
   deleteRows(table: DeletableTable, userId: string): Promise<void>
   /** Cancels proposed and active challenges (a DB trigger stamps cancelled_at; ended periods still bill). */
   cancelChallenges(userId: string): Promise<void>
-  /** Friendships, invites, notifications and push subscriptions. */
+  /** Friendships, invites, notifications, push subscriptions, and widget tokens and pairing codes (a soft delete never fires the FK cascade). */
   purgeSocial(userId: string): Promise<void>
   scrubProfile(
     userId: string,

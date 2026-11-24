@@ -2321,6 +2321,90 @@ export type Database = {
           },
         ]
       }
+      widget_pairing_codes: {
+        Row: {
+          code_hash: string
+          created_at: string
+          expires_at: string
+          used_at: string | null
+          user_id: string
+        }
+        Insert: {
+          code_hash: string
+          created_at?: string
+          expires_at: string
+          used_at?: string | null
+          user_id: string
+        }
+        Update: {
+          code_hash?: string
+          created_at?: string
+          expires_at?: string
+          used_at?: string | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_pairing_codes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "widget_pairing_codes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      widget_tokens: {
+        Row: {
+          created_at: string
+          id: string
+          label: string
+          last_used_at: string | null
+          revoked_at: string | null
+          token_hash: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          label?: string
+          last_used_at?: string | null
+          revoked_at?: string | null
+          token_hash?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "widget_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "widget_tokens_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       workout_sessions: {
         Row: {
           checkin_id: string
@@ -2570,6 +2654,13 @@ export type Database = {
           created: boolean
         }[]
       }
+      create_checkin_as: {
+        Args: { p_habit_id: string; p_user_id: string }
+        Returns: {
+          checkin_id: string
+          created: boolean
+        }[]
+      }
       create_group: {
         Args: {
           p_color: string
@@ -2586,6 +2677,13 @@ export type Database = {
       }
       create_group_invite: { Args: { p_group_id: string }; Returns: string }
       create_invite: { Args: never; Returns: string }
+      create_widget_pairing_code: {
+        Args: never
+        Returns: {
+          code: string
+          expires_at: string
+        }[]
+      }
       cron_secret_valid: { Args: { p_secret: string }; Returns: boolean }
       delete_body_weight: { Args: { p_id: string }; Returns: boolean }
       delete_cardio_entry: { Args: { p_entry_id: string }; Returns: undefined }
@@ -2961,6 +3059,7 @@ export type Database = {
         Returns: string
       }
       revoke_group_invites: { Args: { p_group_id: string }; Returns: number }
+      revoke_widget_token: { Args: { p_token_id: string }; Returns: boolean }
       save_reading_entry: {
         Args: {
           p_book_id: string
@@ -3061,6 +3160,27 @@ export type Database = {
       vote_group_fine: {
         Args: { p_accept: boolean; p_fine_id: string }
         Returns: undefined
+      }
+      widget_auth: {
+        Args: { p_ip_key: string; p_scope: string; p_token_hash: string }
+        Returns: Json
+      }
+      widget_create_checkin: {
+        Args: { p_habit_id: string; p_user_id: string }
+        Returns: {
+          checkin_id: string
+          created: boolean
+        }[]
+      }
+      widget_pair: {
+        Args: {
+          p_code: string
+          p_ip_key: string
+          p_label: string
+          p_previous_token_hash: string
+          p_token_hash: string
+        }
+        Returns: Json
       }
       withdraw_challenge_item: { Args: { p_item_id: string }; Returns: string }
       workout_day_types_valid: {

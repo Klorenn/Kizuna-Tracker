@@ -152,4 +152,16 @@ describe('supabaseDeleteDeps', () => {
     await supabaseDeleteDeps(client as any, 'jwt-123').revokeSessions(UID)
     expect(auth.signOut).toHaveBeenCalledWith('jwt-123', 'global')
   })
+
+  test('purgeSocial borra tokens y códigos de emparejamiento del widget por user_id', async () => {
+    const { client, calls } = fakeAdmin()
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deps = supabaseDeleteDeps(client as any)
+    await deps.purgeSocial(UID)
+    for (const table of ['widget_tokens', 'widget_pairing_codes']) {
+      const del = calls.find((c) => c.table === table && c.op === 'delete')
+      expect(del, table).toBeDefined()
+      expect(del!.filters).toContainEqual(['eq', ['user_id', UID]])
+    }
+  })
 })

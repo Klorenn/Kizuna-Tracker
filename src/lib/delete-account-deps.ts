@@ -117,6 +117,9 @@ export function supabaseDeleteDeps(
       must((await admin.from("invites").delete().eq("inviter_id", userId)).error);
       must((await admin.from("notifications").delete().eq("user_id", userId)).error);
       must((await admin.from("push_subscriptions").delete().eq("user_id", userId)).error);
+      // a soft delete never fires the FK cascade: the widget tokens and pairing codes are purged explicitly
+      must((await admin.from("widget_tokens").delete().eq("user_id", userId)).error);
+      must((await admin.from("widget_pairing_codes").delete().eq("user_id", userId)).error);
     },
     async scrubProfile(userId, patch) {
       must((await admin.from("profiles").update(patch).eq("id", userId)).error);

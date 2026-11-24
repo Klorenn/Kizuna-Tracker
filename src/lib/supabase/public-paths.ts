@@ -1,5 +1,6 @@
 // /api/cron/* authenticate with their own bearer secret (pg_cron has no session).
-const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/api/health", "/serwist"];
+// /api/widget/* authenticate with their own bearer token (kzw_...), not a cookie session.
+const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/api/health", "/api/widget", "/serwist"];
 
 /**
  * The one public page under a new prefix: a group invitation, "/g/" and 8 characters of the code
