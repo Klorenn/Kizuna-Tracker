@@ -4,7 +4,7 @@ import { logSubtitle } from "@/domain/logs";
 import type { TodayItem, TodayRow } from "@/domain/today";
 import { useTheme } from "../theme/ThemeProvider";
 import type { HoyActions } from "./HoyView";
-import { rowAction } from "./row-action";
+import { LOG_ACTION_LABEL, isLogAction, rowAction } from "./row-action";
 
 type Props = { row: TodayRow | null; actions: Pick<HoyActions, "onCheck" | "onUndo" | "onItem"> & { onNavigate?: (path: string) => void }; onBack: () => void };
 
@@ -61,6 +61,14 @@ export function HabitDetail({ row, actions, onBack }: Props) {
           </Pressable>
           <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/pomodoro`)} style={[styles.cta, { backgroundColor: colors.surface, borderRadius: radius.md, borderColor: colors.line }]}>
             <Text style={{ color: colors.text, fontWeight: "600" }}>Iniciar Pomodoro</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {isLogAction(kind) ? (
+        <>
+          {row.log ? <Text style={{ color: colors.text, fontSize: 18 }}>{logSubtitle(row.log)}</Text> : null}
+          <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/${kind}`)} style={[styles.cta, { backgroundColor: colors.accent, borderRadius: radius.md, borderColor: colors.line }]}>
+            <Text style={{ color: colors.onAccent, fontWeight: "600" }}>{LOG_ACTION_LABEL[kind].button}</Text>
           </Pressable>
         </>
       ) : null}

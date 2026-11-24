@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import fixture from "../../../tests/fixtures/today-fixture.json";
 import { selectToday, type TodayRaw } from "../data/today";
 import { HoyView } from "./HoyView";
-import { m2View } from "./test-fixtures";
+import { m2View, m3Raw } from "./test-fixtures";
 
 const view = selectToday(fixture.raw as unknown as TodayRaw, new Date(fixture.nowIso));
 
@@ -78,7 +78,7 @@ describe("HoyView actions", () => {
   });
   it("unsupported rows say they are registered on the web and open the detail on tap", async () => {
     const a = actions();
-    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "reading" as const };
+    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "none" as const, requiresPhoto: true };
     await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [row] } }} onRetry={() => {}} actions={a} />);
     expect(screen.queryByLabelText("Marcar Agua")).toBeNull();
     expect(screen.getByText("Se registra desde la web")).toBeTruthy();
@@ -114,5 +114,25 @@ describe("HoyView quantity and time rows", () => {
   it("quantity and time rows no longer say they are registered from the web", async () => {
     await render(<HoyView state={ready} onRetry={() => {}} actions={actions()} />);
     expect(screen.queryByText("Se registra desde la web")).toBeNull();
+  });
+});
+
+describe("HoyView log rows (reading, workout, cardio, watch)", () => {
+  const view3 = selectToday(m3Raw(), new Date(fixture.nowIso));
+  const ready3 = { kind: "ready", view: view3 } as const;
+  it("no longer says they are registered from the web; each has its own button", async () => {
+    await render(<HoyView state={ready3} onRetry={() => {}} actions={{ onCheck: jest.fn(), onUndo: jest.fn(), onItem: jest.fn(), onOpen: jest.fn(), onLog: jest.fn() }} />);
+    expect(screen.queryByText("Se registra desde la web")).toBeNull();
+    expect(screen.getByText("26 páginas · Dune")).toBeTruthy();
+    expect(screen.getByLabelText("Registrar lectura de Lectura")).toBeTruthy();
+    expect(screen.getByLabelText("Registrar entrenamiento de Gym")).toBeTruthy();
+    expect(screen.getByLabelText("Registrar salida de Correr")).toBeTruthy();
+    expect(screen.getByLabelText("Registrar lo que viste de Series")).toBeTruthy();
+  });
+  it("the button opens the log screen of its type", async () => {
+    const onLog = jest.fn();
+    await render(<HoyView state={ready3} onRetry={() => {}} actions={{ onCheck: jest.fn(), onUndo: jest.fn(), onItem: jest.fn(), onOpen: jest.fn(), onLog }} />);
+    await fireEvent.press(screen.getByLabelText("Registrar entrenamiento de Gym"));
+    expect(onLog).toHaveBeenCalledWith(expect.objectContaining({ id: "hw" }), "workout");
   });
 });

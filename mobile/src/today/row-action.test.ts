@@ -12,10 +12,15 @@ describe("rowAction", () => {
     expect(rowAction({ ...base, logType: "quantity", quantity: { config: {} as never, total: 0, entries: [] } })).toBe("quantity");
     expect(rowAction({ ...base, logType: "time" })).toBe("time");
   });
-  it("other log types, photo habits and quantity/time with photo stay unsupported", () => {
-    expect(rowAction({ ...base, logType: "reading" })).toBe("unsupported");
+  it("photo habits and quantity/time with photo stay unsupported (M3 photo adds them separately)", () => {
     expect(rowAction({ ...base, requiresPhoto: true })).toBe("unsupported");
     expect(rowAction({ ...base, logType: "time", requiresPhoto: true })).toBe("unsupported");
     expect(rowAction({ ...base, logType: "quantity", requiresPhoto: true, quantity: { config: {} as never, total: 0, entries: [] } })).toBe("unsupported");
+  });
+  it("reading, workout, cardio and watch habits are native", () => {
+    for (const t of ["reading", "workout", "cardio", "watch"] as const) expect(rowAction({ ...base, logType: t })).toBe(t);
+  });
+  it("a reading habit that needs a photo or has steps is not the plain log screen", () => {
+    expect(rowAction({ ...base, logType: "reading", requiresPhoto: true })).toBe("unsupported");
   });
 });

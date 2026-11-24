@@ -28,3 +28,20 @@ export const m2Raw = (): TodayRaw => {
 
 export const m2View = () => selectToday(m2Raw(), new Date(fixture.nowIso));
 export const m2Row = (id: string) => m2View().rows.find((r) => r.id === id)!;
+
+const logHabit = (id: string, name: string, logType: string) => ({
+  id, name, icon: "book", color: "lavanda", visibility: "private", requires_photo: false, frequency_type: "daily", target_per_week: null, log_type: logType,
+});
+
+/** The shared Hoy fixture plus a reading habit (Lectura, 26 pages of Dune today) and workout, cardio and watch habits with nothing logged. */
+export const m3Raw = (): TodayRaw => {
+  const base = fixture.raw as unknown as TodayRaw;
+  return {
+    ...base,
+    habits: [...base.habits, logHabit("hr", "Lectura", "reading"), logHabit("hw", "Gym", "workout"), logHabit("hc", "Correr", "cardio"), logHabit("hv", "Series", "watch")] as never,
+    todayCheckins: [...base.todayCheckins, { id: "cr", habit_id: "hr" }],
+    todayLogs: { ...base.todayLogs, logs: { ...base.todayLogs.logs, hr: [{ kind: "reading", pages: 26, bookTitle: "Dune" }] } },
+  } as TodayRaw;
+};
+
+export const m3Row = (id: string) => selectToday(m3Raw(), new Date(fixture.nowIso)).rows.find((r) => r.id === id)!;

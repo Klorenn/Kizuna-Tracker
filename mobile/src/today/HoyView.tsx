@@ -4,7 +4,7 @@ import { logSubtitle } from "@/domain/logs";
 import type { TodayItem, TodayRow } from "@/domain/today";
 import type { TodayView } from "../data/today";
 import { useTheme } from "../theme/ThemeProvider";
-import { rowAction } from "./row-action";
+import { LOG_ACTION_LABEL, isLogAction, rowAction, type LogAction } from "./row-action";
 
 export type HoyState = { kind: "loading" } | { kind: "error"; offline: boolean } | { kind: "ready"; view: TodayView };
 
@@ -17,6 +17,8 @@ export type HoyActions = {
   onQuantity?: (row: TodayRow, amount: number) => void;
   /** open the time screen of a time habit */
   onTime?: (row: TodayRow) => void;
+  /** open the log screen of a reading, workout, cardio or watch habit */
+  onLog?: (row: TodayRow, type: LogAction) => void;
 };
 
 type Props = { state: HoyState; onRetry: () => void; actions?: HoyActions; errorMessage?: string | null; onDismissError?: () => void };
@@ -98,6 +100,14 @@ export function HoyView({ state, onRetry, actions, errorMessage, onDismissError 
                 <View style={[styles.rowHead, { marginLeft: space.lg }]}>
                   <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{row.log?.kind === "time" ? logSubtitle(row.log) : "Sin tiempo hoy"}</Text>
                   <Pressable accessibilityRole="button" accessibilityLabel={`Registrar tiempo de ${row.name}`} hitSlop={8} onPress={() => actions?.onTime?.(row)}>
+                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>Registrar</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {isLogAction(kind) ? (
+                <View style={[styles.rowHead, { marginLeft: space.lg }]}>
+                  <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{row.log ? logSubtitle(row.log) : "Sin registro hoy"}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`${LOG_ACTION_LABEL[kind].button} de ${row.name}`} hitSlop={8} onPress={() => actions?.onLog?.(row, kind)}>
                     <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>Registrar</Text>
                   </Pressable>
                 </View>

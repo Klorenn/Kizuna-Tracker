@@ -38,6 +38,7 @@ export function HoyContainer({ userId, client, onOpenHabit, onNavigate }: Props)
         onOpen: (row) => onOpenHabit(row.id),
         onQuantity: (row, amount) => track.addQuantity(row.id, amount),
         onTime: (row) => onNavigate?.(`/registros/${row.id}/time`),
+        onLog: (row, type) => onNavigate?.(`/registros/${row.id}/${type}`),
       }}
     />
   );

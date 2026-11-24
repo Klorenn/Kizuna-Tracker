@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import fixture from "../../../tests/fixtures/today-fixture.json";
 import { selectToday, type TodayRaw } from "../data/today";
 import { HabitDetail } from "./HabitDetail";
-import { m2Row } from "./test-fixtures";
+import { m2Row, m3Row } from "./test-fixtures";
 
 const view = selectToday(fixture.raw as unknown as TodayRaw, new Date(fixture.nowIso));
 const row = (id: string) => view.rows.find((r) => r.id === id)!;
@@ -53,5 +53,22 @@ describe("HabitDetail quantity and time", () => {
     expect(a.onNavigate).toHaveBeenCalledWith("/registros/ht/time");
     await fireEvent.press(screen.getByText("Iniciar Pomodoro"));
     expect(a.onNavigate).toHaveBeenCalledWith("/registros/ht/pomodoro");
+  });
+});
+
+describe("HabitDetail log habits", () => {
+  it("a reading habit shows today's reading and opens its screen", async () => {
+    const onNavigate = jest.fn();
+    await render(<HabitDetail row={m3Row("hr")} actions={{ ...actions(), onNavigate }} onBack={() => {}} />);
+    expect(screen.getByText("26 páginas · Dune")).toBeTruthy();
+    expect(screen.queryByText("Se registra desde la web")).toBeNull();
+    await fireEvent.press(screen.getByText("Registrar lectura"));
+    expect(onNavigate).toHaveBeenCalledWith("/registros/hr/reading");
+  });
+  it.each([["hw", "Registrar entrenamiento", "workout"], ["hc", "Registrar salida", "cardio"], ["hv", "Registrar lo que viste", "watch"]])("%s opens %s", async (id, label, screen_) => {
+    const onNavigate = jest.fn();
+    await render(<HabitDetail row={m3Row(id)} actions={{ ...actions(), onNavigate }} onBack={() => {}} />);
+    await fireEvent.press(screen.getByText(label));
+    expect(onNavigate).toHaveBeenCalledWith(`/registros/${id}/${screen_}`);
   });
 });
