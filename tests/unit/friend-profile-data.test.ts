@@ -13,12 +13,13 @@ const PRIVATE = { id: 'h-private', name: 'Secreto', color: 'sage', frequency_typ
 
 const select = (q: Recorded) => String(q.calls.find((c) => c.method === 'select')?.args[0] ?? '')
 
-type Over = Partial<Record<'habits' | 'challenges' | 'debts' | 'feed' | 'dates', { data: unknown; error?: { message: string } }>>
+type Over = Partial<Record<'habits' | 'named' | 'challenges' | 'debts' | 'feed' | 'dates', { data: unknown; error?: { message: string } }>>
 
 function load(over: Over = {}) {
   const f = fakeSupabase((q) => {
     const s = select(q)
     if (q.table === 'habits' && s.includes('visibility')) return over.habits ?? { data: [PUBLIC, PRIVATE] }
+    if (q.table === 'habits') return over.named ?? { data: [] }
     if (q.table === 'challenges') return over.challenges ?? { data: [] }
     if (q.table === 'debts') return over.debts ?? { data: [] }
     if (q.table === 'rpc:friend_feed') return over.feed ?? { data: [] }
@@ -87,6 +88,58 @@ describe('loadFriendProfile: what the friend view may contain', () => {
     const { data } = await load({ challenges: { data: [mine] } })
     expect(data.challenges.map((c) => c.id)).toEqual(['c1'])
     expect(data.failed).toEqual([])
+  })
+})
+
+describe('loadFriendProfile: sub-retos in the shared challenges', () => {
+  const base = {
+    id: 'c1', creator_id: ME, rival_id: FRIEND, creator_habit_id: 'a', rival_habit_id: 'b',
+    status: 'active', frequency_type: 'daily', target_per_week: null, weeks: 4, starts_on: '2026-11-16',
+    cancel_requested_by: null, created_at: '2026-11-15T00:00:00Z',
+  }
+  const item = (position: number, status: string, creator: string, rival: string | null) => ({
+    position, status, creator_habit_id: creator, rival_habit_id: rival,
+  })
+  const named = { data: [{ id: 'a', name: 'Gym' }, { id: 'b', name: 'Pesas' }, { id: 'c', name: 'Agua' }, { id: 'd', name: 'Beber' }] }
+
+  test('the title is the first live item plus "+N sub-retos"; non live items do not count', async () => {
+    const row = {
+      ...base,
+      challenge_items: [
+        item(3, 'proposed', 'x', null),
+        item(1, 'active', 'a', 'b'),
+        item(2, 'active', 'c', 'd'),
+        item(4, 'withdrawn', 'y', 'z'),
+      ],
+    }
+    const { data } = await load({ challenges: { data: [row] }, named })
+    expect(data.challenges[0].title).toBe('Gym vs Pesas +2 sub-retos')
+  })
+
+  test('the first item is the one shown even when it is the second to be listed', async () => {
+    const row = { ...base, challenge_items: [item(2, 'active', 'c', 'd'), item(1, 'active', 'a', 'b')] }
+    const { data } = await load({ challenges: { data: [row] }, named })
+    expect(data.challenges[0].title).toBe('Gym vs Pesas +1 sub-reto')
+  })
+
+  test('as the rival, my habit is the rival side', async () => {
+    const row = { ...base, creator_id: FRIEND, rival_id: ME, challenge_items: [item(1, 'active', 'a', 'b')] }
+    const { data } = await load({ challenges: { data: [row] }, named })
+    expect(data.challenges[0].title).toBe('Pesas vs Gym')
+  })
+
+  test('a challenge without items (legacy shape) keeps the legacy habit title', async () => {
+    const { data } = await load({ challenges: { data: [base] }, named })
+    expect(data.challenges[0].title).toBe('Gym vs Pesas')
+  })
+
+  test('items arrive embedded in the challenges read: no extra round trip, names read for every item habit', async () => {
+    const row = { ...base, challenge_items: [item(1, 'active', 'a', 'b'), item(2, 'active', 'c', 'd')] }
+    const { queries } = await load({ challenges: { data: [row] }, named })
+    expect(select(queries.find((q) => q.table === 'challenges')!)).toContain('challenge_items(')
+    expect(queries.filter((q) => q.table === 'challenge_items')).toEqual([])
+    const names = queries.find((q) => q.table === 'habits' && !select(q).includes('visibility'))!
+    expect(args(names, 'in')).toEqual([['id', ['a', 'b', 'c', 'd']]])
   })
 })
 

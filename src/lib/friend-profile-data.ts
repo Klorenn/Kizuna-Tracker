@@ -10,10 +10,12 @@ import {
   endsOn,
   frequencyLabel,
   periodStatus,
+  subRetosLabel,
   weekdayLabel,
 } from "@/lib/challenge-view";
 import type { FeedPage } from "@/lib/feed";
 import { pairRecord } from "@/lib/friend-view";
+import { untypedDb } from "@/lib/untyped-db";
 import { loadCheckinDates } from "@/lib/checkin-dates";
 import { fetchAll } from "@/lib/paginate";
 import { activityGrid, lastDays } from "@/lib/profile-view";
@@ -54,6 +56,29 @@ export type FriendProfileData = {
 export type FriendSection = "habits" | "challenges" | "latest";
 
 const LATEST = 10;
+
+/** The sub-retos embedded in each challenge (live ones are proposed or active). */
+type ItemEmbed = { position: number; status: string; creator_habit_id: string | null; rival_habit_id: string | null };
+type PairChallenge = {
+  id: string;
+  creator_id: string;
+  rival_id: string;
+  creator_habit_id: string;
+  rival_habit_id: string | null;
+  status: string;
+  frequency_type: string;
+  target_per_week: number | null;
+  weeks: number;
+  starts_on: string | null;
+  cancel_requested_by: string | null;
+  created_at: string;
+  challenge_items?: ItemEmbed[] | null;
+};
+
+const liveItems = (c: PairChallenge) =>
+  (c.challenge_items ?? [])
+    .filter((i) => i.status === "proposed" || i.status === "active")
+    .sort((a, b) => a.position - b.position);
 
 /** One section's reads: its value, or null when any of them failed (never throws). */
 async function attempt<T>(read: () => Promise<T>): Promise<T | null> {
@@ -103,12 +128,13 @@ export async function loadFriendProfile(
       return rows.map((h) => ({ ...h, dates: history.byHabit.get(h.id) ?? [] }));
     }),
     attempt(async () => {
-      const [challenges, debts] = await Promise.all([
-        fetchAll((a, b) =>
-          supabase
+      const [rows, debts] = await Promise.all([
+        fetchAll<unknown>((a, b) =>
+          // TODO(sub-retos types): challenge_items is not in the generated types yet
+          untypedDb(supabase)
             .from("challenges")
             .select(
-              "id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,frequency_type,target_per_week,weeks,starts_on,cancel_requested_by,created_at",
+              "id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,frequency_type,target_per_week,weeks,starts_on,cancel_requested_by,created_at,challenge_items(position,status,creator_habit_id,rival_habit_id)",
             )
             .or(pair)
             .order("created_at", { ascending: false })
@@ -126,8 +152,17 @@ export async function loadFriendProfile(
             .range(a, b),
         ),
       ]);
+      const challenges = rows as PairChallenge[];
       const habitIds = [
-        ...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id]).filter((x): x is string => !!x)),
+        ...new Set(
+          challenges
+            .flatMap((c) => [
+              c.creator_habit_id,
+              c.rival_habit_id,
+              ...(c.challenge_items ?? []).flatMap((i) => [i.creator_habit_id, i.rival_habit_id]),
+            ])
+            .filter((x): x is string => !!x),
+        ),
       ];
       const named = habitIds.length ? must(await supabase.from("habits").select("id,name").in("id", habitIds)) : [];
       return { challenges, debts, named };
@@ -148,11 +183,28 @@ export async function loadFriendProfile(
   const shared = challenges
     .filter((c) => c.status === "proposed" || c.status === "active" || c.status === "finished")
     .map((c): SharedChallenge => {
-      const mineId = c.creator_id === me ? c.creator_habit_id : c.rival_habit_id;
-      const theirsId = c.creator_id === me ? c.rival_habit_id : c.creator_habit_id;
+      // the first live sub-reto names the challenge; the legacy columns mirror it for old rows
+      const live = liveItems(c);
+      const first = live[0];
+      const iAmCreator = c.creator_id === me;
+      const mineId = first
+        ? iAmCreator
+          ? first.creator_habit_id
+          : first.rival_habit_id
+        : iAmCreator
+          ? c.creator_habit_id
+          : c.rival_habit_id;
+      const theirsId = first
+        ? iAmCreator
+          ? first.rival_habit_id
+          : first.creator_habit_id
+        : iAmCreator
+          ? c.rival_habit_id
+          : c.creator_habit_id;
       const mine = (mineId && nameOf.get(mineId)) || "Tu hábito";
       const theirs = theirsId ? nameOf.get(theirsId) : null;
-      const title = theirs ? `${mine} vs ${theirs}` : mine;
+      const more = subRetosLabel(live.length);
+      const title = [theirs ? `${mine} vs ${theirs}` : mine, more].filter(Boolean).join(" ");
       const f = challengeFrequency(c);
       if (c.status === "proposed") {
         return {

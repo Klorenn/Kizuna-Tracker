@@ -5,6 +5,7 @@ import { TopBar } from "@/components/ui/TopBar";
 import { toHabitColor } from "@/domain/habit-colors";
 import { quantityConfigOf } from "@/domain/today";
 import type { HabitDraft, IconKey, PresetKey, Visibility } from "@/domain/presets";
+import { habitInOpenChallenge } from "@/lib/habit-challenge-lock";
 import { read, readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/viewer";
@@ -36,14 +37,8 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
       .eq("habit_id", id)
       .is("archived_at", null)
       .order("position"),
-    // a quantity habit in a proposed or active challenge keeps its unit and cannot lower its goal
-    habit.log_type === "quantity"
-      ? supabase
-          .from("challenges")
-          .select("id", { count: "exact", head: true })
-          .in("status", ["proposed", "active"])
-          .or(`creator_habit_id.eq.${id},rival_habit_id.eq.${id}`)
-      : Promise.resolve({ count: 0 }),
+    // a quantity habit in a live sub-reto of a proposed or active challenge keeps its unit and cannot lower its goal
+    habit.log_type === "quantity" ? habitInOpenChallenge(supabase, id) : Promise.resolve(false),
   ]);
 
   const draft: HabitDraft = {
@@ -69,7 +64,7 @@ export default async function EditarHabitoPage({ params }: { params: Promise<{ i
       <HabitForm
         initial={draft}
         habitId={id}
-        quantityLockedReason={(inChallenge.count ?? 0) > 0 ? QUANTITY_LOCKED : null}
+        quantityLockedReason={inChallenge ? QUANTITY_LOCKED : null}
       />
     </main>
   );
