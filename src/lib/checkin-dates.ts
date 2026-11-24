@@ -1,7 +1,8 @@
 import { addDays, localDate } from "@/domain/dates";
-import type { createServerClient } from "@/lib/supabase/server";
+import type { SupabaseClient } from "@supabase/supabase-js";
+import type { Database } from "@/lib/supabase/database.types";
 
-type Supabase = Awaited<ReturnType<typeof createServerClient>>;
+type Supabase = SupabaseClient<Database>;
 
 /** Habit ids per `checkin_dates` call: the database refuses more than 500, and one row per habit stays under the API row cap. */
 export const DATES_CHUNK = 500;
