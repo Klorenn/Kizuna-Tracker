@@ -4,10 +4,18 @@ import { CaretRight, Check, Clock, Warning } from "@phosphor-icons/react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
-import { acceptChallengeWithNewHabit, requestCancel, respondChallenge } from "@/app/(app)/retos/actions";
+import { acceptChallengeWithHabits, requestCancel, respondChallenge } from "@/app/(app)/retos/actions";
 import { AcceptOptions, ProposalHabitLines } from "@/components/AcceptOptions";
 import type { IconKey } from "@/domain/presets";
-import { CREATE_NEW, defaultAcceptSelection } from "@/lib/challenge-accept";
+import { defaultAcceptSelection } from "@/lib/challenge-accept";
+import {
+  acceptSelectionReady,
+  eligibleFor,
+  initialItemSelection,
+  itemSummary,
+  toAcceptChoices,
+  type PendingItem,
+} from "@/lib/item-accept";
 import { formatCLP } from "@/domain/ledger";
 import type { CardItem } from "@/lib/retos-cards";
 import { Avatar } from "./ui/Avatar";
@@ -100,7 +108,9 @@ export type ChallengeCardData = {
   createSimple?: boolean;
   /** false when the proposer habit could not be read: "Crear" is not offered. */
   sourceReadable?: boolean;
-  /** Live sub-retos (proposed or active) in position order; the first one is the card title. Rendered in 5.2. */
+  /** "4 semanas": shown on each sub-reto line of a proposal. */
+  weeksLabel?: string;
+  /** Live sub-retos (proposed or active) in position order; the first one is the card title. */
   items?: CardItem[];
   /** "+2 sub-retos" when the challenge has more than one live item. */
   moreLabel?: string | null;
@@ -129,6 +139,8 @@ export function ChallengeCard({ data }: { data: ChallengeCardData }) {
 
 function ActiveCard({ data }: { data: ChallengeCardData }) {
   const p = data.progress;
+  const activeItems = (data.items ?? []).filter((i) => i.status === "active");
+  const multiActive = activeItems.length > 1;
   return (
     <Link href={`/retos/${data.id}`} className="block">
       <Card accent={p?.type === "weekly"} className="flex flex-col gap-3 p-4 pl-[19px]">
@@ -136,12 +148,19 @@ function ActiveCard({ data }: { data: ChallengeCardData }) {
           <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
             <p className="truncate text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-ink">
               {data.habitName} con {data.otherName}
+              {data.moreLabel ? <span className="font-normal text-muted"> {data.moreLabel}</span> : null}
             </p>
             <p className="truncate text-small text-muted">{data.summary}</p>
           </div>
           <CaretRight size={20} weight="light" className="shrink-0 text-muted" aria-hidden />
         </div>
-        {p?.type === "weekly" ? (
+        {multiActive ? (
+          <div className="flex flex-col gap-4">
+            {activeItems.map((i) => (
+              <ItemProgressBlock key={i.id} item={i} otherName={data.otherName} />
+            ))}
+          </div>
+        ) : p?.type === "weekly" ? (
           <>
             <ProgressRow label="Tú" value={p.you} target={p.target} you />
             <ProgressRow label={data.otherName} value={p.them} target={p.target} />
@@ -157,38 +176,70 @@ function ActiveCard({ data }: { data: ChallengeCardData }) {
   );
 }
 
+/** One active sub-reto of a card: its habits and each player's progress in the running period. */
+function ItemProgressBlock({ item, otherName }: { item: CardItem; otherName: string }) {
+  const p = item.progress;
+  const name = item.myHabit === item.theirHabit || !item.theirHabit ? item.myHabit : `${item.myHabit} · ${item.theirHabit}`;
+  return (
+    <div className="flex flex-col gap-2">
+      <p className="text-small font-medium text-ink">{name}</p>
+      {p?.type === "weekly" ? (
+        <>
+          <ProgressRow label="Tú" value={p.you} target={p.target} you />
+          <ProgressRow label={otherName} value={p.them} target={p.target} />
+        </>
+      ) : p?.type === "daily" ? (
+        <div className="flex flex-wrap gap-2">
+          <DonePill who="Tú" done={p.youDone} />
+          <DonePill who={otherName} done={p.themDone} />
+        </div>
+      ) : (
+        <p className="text-small text-muted">Empieza en el próximo período.</p>
+      )}
+    </div>
+  );
+}
+
+const LEGACY = "__legacy__";
+
 function IncomingCard({ data }: { data: ChallengeCardData }) {
   const [sheet, setSheet] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
-  const router = useRouter();
 
-  const choices = (data.habits ?? []).filter((h) => !data.requiresPhoto || h.requiresPhoto);
+  const habits = data.habits ?? [];
   const readable = data.sourceReadable ?? true;
-  const initial = readable
-    ? defaultAcceptSelection(data.habitName, choices)
-    : { selected: choices[0]?.id ?? "", canCreate: false };
-  const [choice, setChoice] = useState<string>(initial.selected);
+  // one entry per sub-reto to answer; a card without sub-retos data answers the single legacy proposal
+  const itemsToAnswer = (data.items ?? []).filter((i) => i.pendingFor === "me");
+  const legacy = itemsToAnswer.length === 0;
+  const pending: PendingItem[] = legacy
+    ? [{ id: LEGACY, theirHabit: data.habitName, requiresPhoto: data.requiresPhoto, sourceReadable: false }]
+    : itemsToAnswer.map((i) => ({
+        id: i.id,
+        theirHabit: i.theirHabit,
+        requiresPhoto: i.requiresPhoto,
+        sourceReadable: i.create?.sourceReadable ?? true,
+      }));
+  const [selection, setSelection] = useState(() => initialItemSelection(pending, habits));
 
+  // the actions revalidate /retos: no router refresh needed
   function decline() {
     start(async () => {
       setError(null);
       const r = await respondChallenge(data.id, false);
-      if (r.ok) router.refresh();
-      else setError(r.error);
+      if (!r.ok) setError(r.error);
     });
   }
   function accept() {
+    const ready = acceptSelectionReady(selection);
+    if (!ready.ok) return setError(ready.error);
     start(async () => {
       setError(null);
-      const r =
-        choice === CREATE_NEW && initial.canCreate
-          ? await acceptChallengeWithNewHabit(data.id)
-          : await respondChallenge(data.id, true, choice);
-      if (r.ok) {
-        setSheet(false);
-        router.refresh();
-      } else setError(r.error);
+      const r = legacy
+        ? await respondChallenge(data.id, true, selection[LEGACY])
+        : await acceptChallengeWithHabits(data.id, toAcceptChoices(selection));
+      if (r.ok) setSheet(false);
+      else setError(r.error);
     });
   }
 
@@ -197,7 +248,10 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
       <div className="flex items-center gap-3">
         <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <p className="text-body font-medium text-ink">{data.otherName} te propone un reto</p>
+          <p className="text-body font-medium text-ink">
+            {data.otherName} te propone un reto
+            {data.moreLabel ? <span className="font-normal text-muted"> {data.moreLabel}</span> : null}
+          </p>
           <ProposalSummary data={data} />
         </div>
       </div>
@@ -214,20 +268,34 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
           Aceptar
         </Button>
       </div>
-      <Sheet open={sheet} title="Elige tu hábito" onClose={() => setSheet(false)}>
-        <AcceptOptions
-          otherName={data.otherName}
-          proposedName={data.habitName}
-          createSubline={data.createSubline ?? ""}
-          createSimple={data.createSimple ?? false}
-          habits={choices}
-          canCreate={initial.canCreate}
-          sourceReadable={readable}
-          selected={choice}
-          onSelect={setChoice}
-        />
+      <Sheet open={sheet} title={pending.length > 1 ? "Elige tus hábitos" : "Elige tu hábito"} onClose={() => setSheet(false)}>
+        {pending.map((p, index) => {
+          const choices = eligibleFor(habits, p.requiresPhoto);
+          const source = itemsToAnswer.find((i) => i.id === p.id);
+          const canCreate = p.sourceReadable && defaultAcceptSelection(p.theirHabit, choices).canCreate;
+          return (
+            <div key={p.id} className="flex flex-col gap-2">
+              {pending.length > 1 ? (
+                <p className="text-small font-medium text-ink">
+                  Sub-reto {index + 1} de {pending.length}
+                </p>
+              ) : null}
+              <AcceptOptions
+                otherName={data.otherName}
+                proposedName={p.theirHabit}
+                createSubline={source?.create?.createSubline ?? data.createSubline ?? ""}
+                createSimple={source?.create?.createSimple ?? data.createSimple ?? false}
+                habits={choices}
+                canCreate={canCreate}
+                sourceReadable={legacy ? readable : p.sourceReadable}
+                selected={selection[p.id] ?? ""}
+                onSelect={(v) => setSelection((cur) => ({ ...cur, [p.id]: v }))}
+              />
+            </div>
+          );
+        })}
         {error ? <ErrorLine message={error} /> : null}
-        <Button disabled={busy || !choice} onClick={accept}>
+        <Button disabled={busy || Object.values(selection).some((v) => !v)} onClick={accept}>
           Aceptar reto
         </Button>
         <Button variant="ghost" onClick={() => setSheet(false)}>
@@ -238,16 +306,36 @@ function IncomingCard({ data }: { data: ChallengeCardData }) {
   );
 }
 
-/** Proposal lines: icon + habit · frequency · weeks, then the kind of record (and "Con foto"). */
+/**
+ * Proposal lines: icon + habit · frequency · weeks, then the kind of record (and "Con foto"). One block per sub-reto
+ * when the card carries them; the legacy single proposal otherwise.
+ */
 function ProposalSummary({ data }: { data: ChallengeCardData }) {
+  const items = data.items ?? [];
+  if (items.length === 0) {
+    return (
+      <ProposalHabitLines
+        icon={data.habitIcon ?? "target"}
+        name={data.habitName}
+        summary={data.summary}
+        kind={data.habitKind ?? "Solo marcar"}
+        requiresPhoto={data.requiresPhoto}
+      />
+    );
+  }
   return (
-    <ProposalHabitLines
-      icon={data.habitIcon ?? "target"}
-      name={data.habitName}
-      summary={data.summary}
-      kind={data.habitKind ?? "Solo marcar"}
-      requiresPhoto={data.requiresPhoto}
-    />
+    <>
+      {items.map((i) => (
+        <ProposalHabitLines
+          key={i.id}
+          icon={i.create?.habitIcon ?? data.habitIcon ?? "target"}
+          name={i.pendingFor === "me" ? i.theirHabit : i.myHabit || i.theirHabit}
+          summary={[itemSummary(i.target, false), data.weeksLabel].filter(Boolean).join(" · ")}
+          kind={i.create?.habitKind ?? data.habitKind ?? "Solo marcar"}
+          requiresPhoto={i.requiresPhoto}
+        />
+      ))}
+    </>
   );
 }
 
@@ -260,7 +348,10 @@ function OutgoingCard({ data }: { data: ChallengeCardData }) {
       <div className="flex items-center gap-3">
         <Avatar name={data.otherName} src={data.otherAvatar} preset={data.otherPreset} />
         <div className="flex min-w-0 flex-1 flex-col gap-[2px]">
-          <p className="text-body font-medium text-ink">Esperando a {data.otherName}</p>
+          <p className="text-body font-medium text-ink">
+            Esperando a {data.otherName}
+            {data.moreLabel ? <span className="font-normal text-muted"> {data.moreLabel}</span> : null}
+          </p>
           <ProposalSummary data={data} />
         </div>
       </div>

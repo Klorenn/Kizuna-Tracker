@@ -1,5 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
+  formModeFor,
+  termsFromExisting,
+  termsSummary,
   openTermsByRival,
   parseRetoParam,
   resolveAddMode,
@@ -168,5 +171,57 @@ describe('validateAddItemInput', () => {
   it('rejects ids that are not uuids', () => {
     expect(validateAddItemInput({ challengeId: 'x', habitId: H, target: null }, 'daily').ok).toBe(false)
     expect(validateAddItemInput({ challengeId: C, habitId: 'x,or(1)', target: null }, 'daily').ok).toBe(false)
+  })
+})
+
+describe('formModeFor', () => {
+  const t = (o = {}) => ({
+    id: 'c1',
+    status: 'active',
+    frequency: { type: 'daily' as const },
+    weeks: 4,
+    fineAmount: 1000,
+    startsOn: null,
+    timezone: 'America/Santiago',
+    canAdd: true,
+    ...o,
+  })
+  it('no rival or no open challenge: a new challenge', () => {
+    expect(formModeFor({}, '')).toEqual({ mode: 'new' })
+    expect(formModeFor({ ana: t() }, 'zed')).toEqual({ mode: 'new' })
+  })
+  it('an open challenge I can add to: add mode with its terms', () => {
+    expect(formModeFor({ ana: t() }, 'ana')).toEqual({ mode: 'add', terms: t() })
+  })
+  it('an open challenge I cannot add to: blocked, pointing at it', () => {
+    expect(formModeFor({ ana: t({ canAdd: false }) }, 'ana')).toEqual({ mode: 'blocked', challengeId: 'c1' })
+  })
+})
+
+describe('termsSummary', () => {
+  const t = (o = {}) => ({
+    id: 'c1',
+    status: 'active',
+    frequency: { type: 'weekly' as const, target: 3 },
+    weeks: 4,
+    fineAmount: 2500,
+    startsOn: null,
+    timezone: 'America/Santiago',
+    canAdd: true,
+    ...o,
+  })
+  it('weekly: frequency, weeks and fine', () => {
+    expect(termsSummary(t())).toEqual(['3 por semana', '4 semanas', '$2.500'])
+  })
+  it('daily, one week', () => {
+    expect(termsSummary(t({ frequency: { type: 'daily' }, weeks: 1 }))).toEqual(['Diario', '1 semana', '$2.500'])
+  })
+})
+
+describe('termsFromExisting', () => {
+  it('builds add terms from the server "exists" answer: only an active challenge accepts sub-retos', () => {
+    const terms = { status: 'active', frequency: { type: 'daily' as const }, weeks: 2, fineAmount: 1000 }
+    expect(termsFromExisting('c9', terms)).toMatchObject({ id: 'c9', status: 'active', weeks: 2, canAdd: true })
+    expect(termsFromExisting('c9', { ...terms, status: 'proposed' }).canAdd).toBe(false)
   })
 })

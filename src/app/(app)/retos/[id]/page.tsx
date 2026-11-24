@@ -6,6 +6,7 @@ import { CatJump } from "@/components/brand/CatJump";
 import { CancelChallengeButton, Pill } from "@/components/ChallengeCard";
 import { FeedItem } from "@/components/FeedItem";
 import { RejectPhotoButton } from "@/components/RejectSheet";
+import { ChallengeItemRow } from "@/components/ChallengeItemRow";
 import { Avatar } from "@/components/ui/Avatar";
 import { avatarUrl } from "@/lib/avatar";
 import { Card } from "@/components/ui/Card";
@@ -93,7 +94,9 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
     ]),
   ];
 
-  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }, { data: me }, itemResults] =
+  // my habits that can answer a sub-reto proposed to me (only read when there is one to answer)
+  const answering = c.status === "active" && pending.some((v) => v.pendingFor === "me");
+  const [{ data: profile }, { data: habits }, { data: checkins }, { data: debts }, { data: closed }, { data: friends }, { data: me }, itemResults, { data: myHabits }] =
     await Promise.all([
       supabase.from("public_profiles").select("display_name,avatar_path,avatar_preset").eq("id", otherId).maybeSingle(),
       supabase.from("habits").select("id,name,color").in("id", habitIds),
@@ -122,6 +125,15 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
           .order("player_id")
           .range(from, to),
       ).then((rows) => rows as ItemResultRow[], (): ItemResultRow[] => []),
+      answering
+        ? supabase
+            .from("habits")
+            .select("id,name,requires_photo")
+            .eq("user_id", user.id)
+            .is("archived_at", null)
+            .neq("visibility", "private")
+            .order("created_at")
+        : Promise.resolve({ data: [] as { id: string; name: string; requires_photo: boolean }[] }),
     ]);
 
   const other = firstName(profile?.display_name);
@@ -316,22 +328,27 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
         {bars.length === 0 ? <p className="text-small text-muted">Sin sub-retos activos.</p> : null}
       </Card>
 
-      {pending.length > 0 ? (
+      {pending.length > 0 && c.status === "active" ? (
         <>
           <SectionHeader label="Sub-retos pendientes" />
           <Card className="divide-y divide-line px-4">
-            {pending.map((v) => {
-              const name = habitRow(v.myHabitId ?? v.theirHabitId)?.name ?? "Hábito";
-              return (
-                <p key={v.id} className="py-3 text-body text-ink">
-                  {name}
-                  <span className="text-small text-muted">
-                    {" "}
-                    · {v.pendingFor === "me" ? `${other} lo propone` : `esperando a ${other}`}
-                  </span>
-                </p>
-              );
-            })}
+            {pending.map((v) => (
+              <ChallengeItemRow
+                key={v.id}
+                otherName={other}
+                habits={(myHabits ?? []).map((h) => ({ id: h.id, name: h.name, requiresPhoto: h.requires_photo }))}
+                item={{
+                  id: v.id,
+                  status: "proposed",
+                  pendingFor: v.pendingFor,
+                  myName: v.myHabitId ? (habitRow(v.myHabitId)?.name ?? "Hábito") : "",
+                  theirName: v.theirHabitId ? (habitRow(v.theirHabitId)?.name ?? "Hábito") : "",
+                  target: v.target,
+                  requiresPhoto: v.requiresPhoto,
+                  startsOn: v.startsOn,
+                }}
+              />
+            ))}
           </Card>
         </>
       ) : null}

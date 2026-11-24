@@ -3,10 +3,18 @@
 import { ArrowRight, Lock, Minus, Plus, Receipt, Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { proposeChallenge } from "@/app/(app)/retos/actions";
+import { addChallengeItem, proposeChallenge } from "@/app/(app)/retos/actions";
 import { formatCLP } from "@/domain/ledger";
 import type { IconKey } from "@/domain/presets";
-import { MAX_FINE, validateChallengeInput, type OpenTerms } from "@/lib/challenge-form";
+import {
+  formModeFor,
+  MAX_FINE,
+  termsFromExisting,
+  termsSummary,
+  validateAddItemInput,
+  validateChallengeInput,
+  type OpenTerms,
+} from "@/lib/challenge-form";
 import { ExistingChallengeNotice } from "./ExistingChallengeNotice";
 import { HabitIcon } from "./habit-icon";
 import { Button } from "./ui/Button";
@@ -57,6 +65,8 @@ export function ChallengeForm({
   habitLocked,
   initialRivalId = null,
   openByRival = {},
+  openTerms = {},
+  addMode = null,
 }: {
   friends: FriendOption[];
   habits: HabitOption[];
@@ -68,28 +78,38 @@ export function ChallengeForm({
   openByRival?: Record<string, string>;
   /**
    * Terms of the open challenge per friend, and the challenge this visit adds a sub-reto to
-   * (`?reto=` or a preselected friend with one). Read by the form in add mode (Batch 5, 5.3).
+   * (`?reto=` or a preselected friend with one). With an open challenge the form adds a sub-reto to it.
    */
   openTerms?: Record<string, OpenTerms>;
   addMode?: { rivalId: string; terms: OpenTerms } | null;
 }) {
-  const [rivalId, setRivalId] = useState(
-    initialRivalId && friends.some((f) => f.id === initialRivalId) ? initialRivalId : "",
-  );
+  const startRival = initialRivalId ?? addMode?.rivalId ?? null;
+  const [rivalId, setRivalId] = useState(startRival && friends.some((f) => f.id === startRival) ? startRival : "");
   const [habitId, setHabitId] = useState(initialHabitId ?? "");
   const [type, setType] = useState<"daily" | "weekly">("weekly");
-  const [target, setTarget] = useState(4);
+  const [target, setTarget] = useState(addMode?.terms.frequency.type === "weekly" ? addMode.terms.frequency.target : 4);
   const [weeks, setWeeks] = useState(4);
   const [fine, setFine] = useState("");
   const [error, setError] = useState<string | null>(null);
   // learned from the server when it refuses a duplicate that the page-load snapshot did not know about
   const [found, setFound] = useState<Record<string, string | null>>({});
+  const [foundTerms, setFoundTerms] = useState<Record<string, OpenTerms>>({});
   const [busy, start] = useTransition();
   const router = useRouter();
 
   const rival = friends.find((f) => f.id === rivalId);
-  const existing = rivalId && rivalId in found ? found[rivalId] : (openByRival[rivalId] ?? undefined);
-  const hasExisting = existing !== undefined;
+  const mode = formModeFor({ ...openTerms, ...foundTerms }, rivalId);
+  const adding = mode.mode === "add";
+  // an open challenge that cannot take a sub-reto (or one only the unique index knew about) just blocks
+  const existing =
+    mode.mode === "blocked"
+      ? mode.challengeId
+      : rivalId && rivalId in found && !adding
+        ? found[rivalId]
+        : adding
+          ? undefined
+          : (openByRival[rivalId] ?? undefined);
+  const hasExisting = !adding && existing !== undefined;
   const habit = habits.find((h) => h.id === habitId);
   const fineAmount = fine ? Number(fine) : 0;
   const frequency = type === "daily" ? ({ type: "daily" } as const) : ({ type: "weekly", target } as const);
@@ -97,13 +117,33 @@ export function ChallengeForm({
   const fineShown = fineAmount > 0 ? formatCLP(fineAmount) : "la multa";
   const who = rival?.name.split(" ")[0] ?? "tu amigo";
 
+  const addTarget = mode.mode === "add" && mode.terms.frequency.type === "weekly" ? target : null;
+  const addValid =
+    mode.mode === "add" &&
+    validateAddItemInput(
+      { challengeId: mode.terms.id, habitId, target: addTarget },
+      mode.terms.frequency.type === "weekly" ? "weekly" : "daily",
+    ).ok;
+
   function submit() {
     start(async () => {
       setError(null);
+      if (mode.mode === "add") {
+        const r = await addChallengeItem({ challengeId: mode.terms.id, habitId, target: addTarget });
+        if (r.ok) router.replace(`/retos/${mode.terms.id}`);
+        else setError(r.error);
+        return;
+      }
       const r = await proposeChallenge({ rivalId, habitId, frequency, weeks, fineAmount });
       if (r.ok) router.replace("/retos");
-      else if (r.code === "exists") setFound((f) => ({ ...f, [rivalId]: r.existingId ?? null }));
-      else setError(r.error);
+      else if (r.code === "exists") {
+        setFound((f) => ({ ...f, [rivalId]: r.existingId ?? null }));
+        if (r.existingId && r.terms) {
+          const terms = termsFromExisting(r.existingId, r.terms);
+          setFoundTerms((t) => ({ ...t, [rivalId]: terms }));
+          if (terms.frequency.type === "weekly") setTarget(terms.frequency.target);
+        }
+      } else setError(r.error);
     });
   }
 
@@ -112,7 +152,7 @@ export function ChallengeForm({
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid && !busy && !hasExisting) submit();
+        if ((adding ? addValid : valid) && !busy && !hasExisting) submit();
       }}
     >
       {habitLocked && habit ? (
@@ -126,7 +166,9 @@ export function ChallengeForm({
             </p>
             <Lock size={16} weight="light" className="shrink-0 text-muted" aria-label="Bloqueado" />
           </div>
-          <p className="text-small text-muted">Viene de tu hábito. Tu amigo elige el suyo al aceptar.</p>
+          <p className="text-small text-muted">
+            {adding ? "Viene de tu hábito." : "Viene de tu hábito. Tu amigo elige el suyo al aceptar."}
+          </p>
         </div>
       ) : null}
 
@@ -142,6 +184,11 @@ export function ChallengeForm({
             </option>
           ))}
         </select>
+        {adding ? (
+          <p className="text-small text-ink">
+            Agregar sub-reto a tu reto con @{rival?.username ?? "tu amigo"}
+          </p>
+        ) : null}
         {hasExisting ? <ExistingChallengeNotice username={rival?.username ?? null} challengeId={existing} /> : null}
       </div>
 
@@ -162,11 +209,32 @@ export function ChallengeForm({
           <p className="text-small text-muted">
             {habit?.requiresPhoto
               ? "Tu amigo debe elegir un hábito con foto en vivo."
-              : `${who === "tu amigo" ? "Tu amigo" : who} elige el suyo al aceptar.`}
+              : adding && mode.mode === "add" && mode.terms.status === "active"
+                ? `${who === "tu amigo" ? "Tu amigo" : who} elige el suyo si acepta.`
+                : `${who === "tu amigo" ? "Tu amigo" : who} elige el suyo al aceptar.`}
           </p>
         </div>
       ) : null}
 
+      {mode.mode === "add" ? (
+        <>
+          <div className="flex flex-col gap-2">
+            <p className="text-small text-ink">Condiciones del reto</p>
+            <ul className="flex flex-col gap-1 rounded-md bg-field px-4 py-3 text-body text-ink">
+              {termsSummary(mode.terms).map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+            <p className="text-small text-muted">
+              El sub-reto usa las mismas semanas y multa. Si fallas cualquiera, cuenta como una sola falla del período.
+            </p>
+          </div>
+          {mode.terms.frequency.type === "weekly" ? (
+            <Stepper label="Veces por semana" value={target} min={1} max={7} onChange={setTarget} />
+          ) : null}
+        </>
+      ) : (
+        <>
       <div className="flex flex-col gap-2">
         <p className="text-small text-ink">Frecuencia</p>
         <Segmented
@@ -209,6 +277,9 @@ export function ChallengeForm({
         </p>
       </div>
 
+        </>
+      )}
+
       {error ? (
         <p role="alert" className="flex items-start gap-[6px] text-small text-ink">
           <Warning size={16} weight="light" className="mt-px shrink-0 text-alert" aria-hidden />
@@ -216,9 +287,9 @@ export function ChallengeForm({
         </p>
       ) : null}
 
-      <Button type="submit" disabled={!valid || busy || hasExisting}>
-        {valid ? <ArrowRight size={20} weight="light" aria-hidden /> : null}
-        {valid ? `Enviar reto a ${who}` : "Enviar reto"}
+      <Button type="submit" disabled={!(adding ? addValid : valid) || busy || hasExisting}>
+        {(adding ? addValid : valid) ? <ArrowRight size={20} weight="light" aria-hidden /> : null}
+        {adding ? "Agregar sub-reto" : valid ? `Enviar reto a ${who}` : "Enviar reto"}
       </Button>
     </form>
   );

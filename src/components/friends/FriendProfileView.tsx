@@ -75,7 +75,7 @@ export function FriendProfileView({
           </div>
         </div>
         <div className="flex gap-2">
-          <RetarAction friendId={friend.id} openChallengeId={challengesFailed ? null : (open[0]?.id ?? null)} />
+          <RetarAction friendId={friend.id} openChallenge={challengesFailed || !open[0] ? null : { id: open[0].id, canAdd: open[0].canAdd }} />
           <FriendOverflow userId={friend.id} firstName={first} />
         </div>
       </header>

@@ -57,14 +57,14 @@ describe('ExistingChallengeNotice', () => {
 
 describe('RetarAction', () => {
   it('offers Retar towards the form when there is no open challenge', () => {
-    const html = renderToStaticMarkup(createElement(RetarAction, { friendId: 'f1', openChallengeId: null }))
+    const html = renderToStaticMarkup(createElement(RetarAction, { friendId: 'f1', openChallenge: null }))
     expect(html).toContain('href="/retos/nuevo?amigo=f1"')
     expect(html).toContain('Retar')
     expect(html).not.toContain('Ver reto')
   })
 
   it('offers Ver reto towards the open challenge', () => {
-    const html = renderToStaticMarkup(createElement(RetarAction, { friendId: 'f1', openChallengeId: 'c9' }))
+    const html = renderToStaticMarkup(createElement(RetarAction, { friendId: 'f1', openChallenge: { id: 'c9', canAdd: false } }))
     expect(html).toContain('href="/retos/c9"')
     expect(html).toContain('Ver reto')
     expect(html).not.toContain('/retos/nuevo')

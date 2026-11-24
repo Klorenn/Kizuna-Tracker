@@ -1,3 +1,4 @@
+import { formatCLP } from '@/domain/ledger'
 import type { Frequency } from '@/domain/types'
 
 export type RejectReason = 'not_habit' | 'duplicate' | 'unclear' | 'other'
@@ -162,4 +163,36 @@ export function validateAddItemInput(
     return { ok: false, error: 'Este reto es diario: el sub-reto no lleva días por semana.' }
   }
   return { ok: true }
+}
+
+export type FormMode =
+  | { mode: 'new' }
+  | { mode: 'add'; terms: OpenTerms }
+  | { mode: 'blocked'; challengeId: string }
+
+/** What the form does for the chosen friend: start a challenge, add a sub-reto to the open one, or point at it. */
+export function formModeFor(termsByRival: Record<string, OpenTerms>, rivalId: string): FormMode {
+  const terms = rivalId ? termsByRival[rivalId] : undefined
+  if (!terms) return { mode: 'new' }
+  return terms.canAdd ? { mode: 'add', terms } : { mode: 'blocked', challengeId: terms.id }
+}
+
+/** "3 por semana", "4 semanas", "$2.500": the inherited terms, as read-only lines of the add form. */
+export function termsSummary(t: OpenTerms): string[] {
+  return [
+    t.frequency.type === 'weekly' ? `${t.frequency.target} por semana` : 'Diario',
+    `${t.weeks} ${t.weeks === 1 ? 'semana' : 'semanas'}`,
+    formatCLP(t.fineAmount),
+  ]
+}
+
+/**
+ * Terms from the server's "a challenge already exists" answer. It does not say who created it, so only an active
+ * challenge (either player adds) is treated as open to sub-retos; a proposed one just points at it.
+ */
+export function termsFromExisting(
+  id: string,
+  t: { status: string; frequency: Frequency; weeks: number; fineAmount: number },
+): OpenTerms {
+  return { id, ...t, startsOn: null, timezone: '', canAdd: t.status === 'active' }
 }

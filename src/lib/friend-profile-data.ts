@@ -38,6 +38,8 @@ export type SharedChallenge = {
   summary: string;
   state: "open" | "done";
   outcome: string | null;
+  /** Open challenge only: this viewer may add a sub-reto (active: either player; proposed: its creator). */
+  canAdd: boolean;
   /** List order: 0 proposed, 1 active, 2 finished. */
   rank: number;
 };
@@ -213,6 +215,7 @@ export async function loadFriendProfile(
           summary: c.creator_id === me ? "Esperando su respuesta" : "Te propuso este reto",
           state: "open",
           outcome: null,
+          canAdd: c.creator_id === me,
           rank: 0,
         };
       }
@@ -226,7 +229,7 @@ export async function loadFriendProfile(
               : f.type === "weekly"
                 ? `Semana ${st.index} de ${st.total} · ${frequencyLabel(f).toLowerCase()}`
                 : `Diario · día ${st.index} de ${st.total}`;
-        return { id: c.id, title, summary, state: "open", outcome: null, rank: 1 };
+        return { id: c.id, title, summary, state: "open", outcome: null, canAdd: true, rank: 1 };
       }
       const owed = debts.filter((d) => d.challenge_id === c.id);
       const iOwe = owed.filter((d) => d.debtor_id === me).reduce((s, d) => s + d.amount, 0);
@@ -237,6 +240,7 @@ export async function loadFriendProfile(
         title,
         summary: closing ? `Terminó el ${dayMonthLabel(closing)}` : cancelledLabel(c),
         state: "done",
+        canAdd: false,
         outcome: theyOwe > iOwe ? "Ganaste" : theyOwe < iOwe ? "Perdiste" : "Empate",
         rank: 2,
       };

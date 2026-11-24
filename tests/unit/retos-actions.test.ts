@@ -353,4 +353,67 @@ describe('acceptChallengeWithHabits', () => {
     expect(r).toEqual({ ok: true, habitIds: { [I1]: 'new-habit', [I2]: H1 } })
     expect(deletes).toHaveLength(0)
   })
+
+  // carried over from the single-habit accept action this one replaces
+  it.each(['active', 'cancelled', 'finished', 'declined'])('refuses a challenge that is %s, creating nothing', async (status) => {
+    reads['challenges.select'] = { data: { ...challenge.data, status }, error: null }
+    await expect(acceptChallengeWithHabits(C1, { [I1]: 'create' })).resolves.toEqual({
+      ok: false,
+      error: 'Este reto ya fue respondido.',
+    })
+    expect(createHabit).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('says the challenge no longer exists when the row is not visible', async () => {
+    reads['challenges.select'] = { data: null, error: null }
+    await expect(acceptChallengeWithHabits(C1, { [I1]: 'create' })).resolves.toEqual({
+      ok: false,
+      error: 'Este reto ya no existe.',
+    })
+    expect(createHabit).not.toHaveBeenCalled()
+  })
+
+  it('refuses when a proposer habit is not readable, creating nothing', async () => {
+    reads['challenges.select'] = challenge
+    reads['challenge_items.select'] = items
+    reads['habits.select'] = { data: null, error: null }
+    const r = await acceptChallengeWithHabits(C1, { [I1]: 'create', [I2]: { habitId: H1 } })
+    expect(r).toEqual({ ok: false, error: 'El hábito de este reto ya no está disponible.' })
+    expect(createHabit).not.toHaveBeenCalled()
+    expect(rpc).not.toHaveBeenCalled()
+  })
+
+  it('falls back to "Solo marcar" when the log type cannot be used with the photo requirement', async () => {
+    reads['challenges.select'] = challenge
+    reads['challenge_items.select'] = { data: [items.data[1]], error: null }
+    reads['habits.select'] = { data: { ...habitRow.data, log_type: 'time' }, error: null }
+    createHabit.mockResolvedValue({ ok: true, id: 'new-habit' })
+    rpc.mockResolvedValue({ error: null })
+    await acceptChallengeWithHabits(C1, { [I2]: 'create' })
+    expect(createHabit.mock.calls[0][0]).toMatchObject({ logType: 'none', requiresPhoto: true })
+  })
+
+  it('maps a friendship that ended and still removes the created habit', async () => {
+    reads['challenges.select'] = challenge
+    reads['challenge_items.select'] = { data: [items.data[0]], error: null }
+    reads['habits.select'] = habitRow
+    createHabit.mockResolvedValue({ ok: true, id: 'new-habit' })
+    rpc.mockResolvedValue({ error: { message: 'not_friends' } })
+    await expect(acceptChallengeWithHabits(C1, { [I1]: 'create' })).resolves.toEqual({
+      ok: false,
+      error: 'Solo puedes retar a tus amigos.',
+    })
+    expect(deletes).toHaveLength(1)
+  })
+
+  it('clean-up delete is filtered by exactly the created habit id and the caller id', async () => {
+    reads['challenges.select'] = challenge
+    reads['challenge_items.select'] = { data: [items.data[0]], error: null }
+    reads['habits.select'] = habitRow
+    createHabit.mockResolvedValue({ ok: true, id: 'new-habit' })
+    rpc.mockResolvedValue({ error: { message: 'challenge_not_proposed' } })
+    await acceptChallengeWithHabits(C1, { [I1]: 'create' })
+    expect(deletes[0].filters).toEqual([['id', 'new-habit'], ['user_id', ME]])
+  })
 })

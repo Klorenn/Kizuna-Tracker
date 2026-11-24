@@ -180,6 +180,7 @@ export default async function RetosPage() {
         datesOf: (habitId) => datesByHabit.get(habitId) ?? [],
       }),
       moreLabel: subRetosLabel(views.length),
+      weeksLabel: `${c.weeks} ${c.weeks === 1 ? "semana" : "semanas"}`,
       otherName: other,
       otherAvatar: avatarUrl(avatarOf.get(otherOf(c))?.avatar_path ?? null),
       otherPreset: avatarOf.get(otherOf(c))?.avatar_preset ?? null,

@@ -128,6 +128,25 @@ describe('loadFriendProfile: sub-retos in the shared challenges', () => {
     expect(data.challenges[0].title).toBe('Pesas vs Gym')
   })
 
+  test('canAdd: an active challenge accepts sub-retos from either player', async () => {
+    const mine = await load({ challenges: { data: [base] }, named })
+    expect(mine.data.challenges[0].canAdd).toBe(true)
+    const theirs = await load({ challenges: { data: [{ ...base, creator_id: FRIEND, rival_id: ME }] }, named })
+    expect(theirs.data.challenges[0].canAdd).toBe(true)
+  })
+
+  test('canAdd: a proposed challenge only from its creator; finished never', async () => {
+    const mineProposed = await load({ challenges: { data: [{ ...base, status: 'proposed' }] }, named })
+    expect(mineProposed.data.challenges[0].canAdd).toBe(true)
+    const theirsProposed = await load({
+      challenges: { data: [{ ...base, status: 'proposed', creator_id: FRIEND, rival_id: ME }] },
+      named,
+    })
+    expect(theirsProposed.data.challenges[0].canAdd).toBe(false)
+    const done = await load({ challenges: { data: [{ ...base, status: 'finished' }] }, named })
+    expect(done.data.challenges[0].canAdd).toBe(false)
+  })
+
   test('a challenge without items (legacy shape) keeps the legacy habit title', async () => {
     const { data } = await load({ challenges: { data: [base] }, named })
     expect(data.challenges[0].title).toBe('Gym vs Pesas')
