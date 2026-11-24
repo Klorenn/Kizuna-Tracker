@@ -61,7 +61,7 @@ public class KizunaWidgetProvider extends AppWidgetProvider {
             return;
         }
         final WidgetStateReducer.State start = s;
-        WidgetExecutor.run(pending, new Runnable() {
+        WidgetExecutor.run("refresh", pending, new Runnable() {
             @Override public void run() {
                 WidgetStateReducer.State next = start;
                 try {
@@ -69,7 +69,7 @@ public class KizunaWidgetProvider extends AppWidgetProvider {
                     if (r.ok()) {
                         next = WidgetStateReducer.reduce(start, WidgetStateReducer.Event.loaded(PayloadParser.parse(r.body)));
                     } else if (r.status == 401) {
-                        tokens.clear();
+                        if (!tokens.clearIf(token)) return; // re-paired meanwhile: this 401 is about the old token
                         cache.clear();
                         next = WidgetStateReducer.reduce(start, WidgetStateReducer.Event.unauthorized());
                     } else {
@@ -108,7 +108,7 @@ public class KizunaWidgetProvider extends AppWidgetProvider {
                         next = WidgetStateReducer.reduce(start,
                                 WidgetStateReducer.Event.toggleOk(habitId, PayloadParser.parseCheckin(r.body)));
                     } else if (r.status == 401) {
-                        tokens.clear();
+                        if (!tokens.clearIf(token)) return; // re-paired meanwhile: this 401 is about the old token
                         cache.clear();
                         next = WidgetStateReducer.reduce(start, WidgetStateReducer.Event.unauthorized());
                     } else if (r.status == 422) {

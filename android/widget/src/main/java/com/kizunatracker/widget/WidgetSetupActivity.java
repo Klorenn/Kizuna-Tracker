@@ -72,6 +72,7 @@ public class WidgetSetupActivity extends Activity {
 
         connect = new Button(this);
         connect.setText(R.string.kz_widget_connect);
+        connect.setFilterTouchesWhenObscured(true); // tapjacking: ignore taps while another window covers the button
         connect.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { onConnect(); }
         });

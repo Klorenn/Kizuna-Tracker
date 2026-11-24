@@ -70,6 +70,13 @@ final class TokenStore {
         prefs.edit().remove(PREF_TOKEN).apply();
     }
 
+    /** Clears only if the stored token is still {@code used}; a stale 401 must not wipe a newly paired token. */
+    boolean clearIf(String used) {
+        if (!TokenGuard.shouldClear(get(), used)) return false;
+        clear();
+        return true;
+    }
+
     private static SecretKey key(boolean createIfMissing) throws Exception {
         KeyStore ks = KeyStore.getInstance("AndroidKeyStore");
         ks.load(null);

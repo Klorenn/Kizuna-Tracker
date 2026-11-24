@@ -14,6 +14,8 @@ import org.json.JSONObject;
 final class WidgetApi {
     private static final int CONNECT_TIMEOUT_MS = 4000;
     private static final int READ_TIMEOUT_MS = 5000;
+    /** Pairing is the one call that must not be abandoned early: a lost response leaves an orphan token server-side. */
+    static final int PAIR_READ_TIMEOUT_MS = 15000;
     private static final int MAX_BODY_BYTES = 64 * 1024;
     private static final String USER_AGENT = "KizunaWidget/1";
 
@@ -45,12 +47,12 @@ final class WidgetApi {
     }
 
     Result today(String token) throws IOException {
-        return call("GET", "/api/widget/today", token, null);
+        return call("GET", "/api/widget/today", token, null, READ_TIMEOUT_MS);
     }
 
     Result checkin(String token, String habitId) throws IOException {
         try {
-            return call("POST", "/api/widget/checkin", token, new JSONObject().put("habitId", habitId).toString());
+            return call("POST", "/api/widget/checkin", token, new JSONObject().put("habitId", habitId).toString(), READ_TIMEOUT_MS);
         } catch (JSONException e) {
             throw new IOException(e);
         }
@@ -60,19 +62,19 @@ final class WidgetApi {
         try {
             JSONObject body = new JSONObject().put("code", code).put("label", label);
             if (previousToken != null) body.put("previousToken", previousToken);
-            return call("POST", "/api/widget/pair", null, body.toString());
+            return call("POST", "/api/widget/pair", null, body.toString(), PAIR_READ_TIMEOUT_MS);
         } catch (JSONException e) {
             throw new IOException(e);
         }
     }
 
-    private Result call(String method, String path, String token, String jsonBody) throws IOException {
+    private Result call(String method, String path, String token, String jsonBody, int readTimeoutMs) throws IOException {
         if (!baseUrl.startsWith("https://")) throw new IOException("refusing non-https base url");
         HttpURLConnection c = (HttpURLConnection) new URL(baseUrl + path).openConnection();
         try {
             c.setRequestMethod(method);
             c.setConnectTimeout(CONNECT_TIMEOUT_MS);
-            c.setReadTimeout(READ_TIMEOUT_MS);
+            c.setReadTimeout(readTimeoutMs);
             c.setInstanceFollowRedirects(false);
             c.setRequestProperty("User-Agent", USER_AGENT);
             c.setRequestProperty("Accept", "application/json");
