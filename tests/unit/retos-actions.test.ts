@@ -132,7 +132,7 @@ describe('addChallengeItem', () => {
     reads['challenges.select'] = { data: { ...activeWeekly, frequency_type: 'daily', status: 'proposed' }, error: null }
     rpc.mockResolvedValue({ data: I1, error: null })
     await addChallengeItem({ challengeId: C1, habitId: H1, target: null })
-    expect(rpc).toHaveBeenCalledWith('add_challenge_item', { p_challenge_id: C1, p_habit_id: H1, p_target_per_week: null })
+    expect(rpc).toHaveBeenCalledWith('add_challenge_item', { p_challenge_id: C1, p_habit_id: H1 })
   })
 
   it.each([
@@ -188,7 +188,7 @@ describe('respondChallengeItem', () => {
     reads['habits.select'] = { data: { name: 'Agua' }, error: null }
     rpc.mockResolvedValue({ data: C1, error: null })
     await expect(respondChallengeItem(I1, false)).resolves.toEqual({ ok: true })
-    expect(rpc).toHaveBeenCalledWith('respond_challenge_item', { p_item_id: I1, p_accept: false, p_habit_id: null })
+    expect(rpc).toHaveBeenCalledWith('respond_challenge_item', { p_item_id: I1, p_accept: false })
     expect(notify.mock.calls[0][1]).toBe('challenge_item_declined')
   })
 

@@ -1,7 +1,6 @@
 import "server-only";
 import type { DeletableTable, DeleteAccountDeps } from "@/lib/delete-account";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { untypedDb } from "@/lib/untyped-db";
 
 const CHUNK = 500;
 export const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
@@ -46,8 +45,7 @@ export function supabaseDeleteDeps(
     // item references is still held by its foreign key. Independent reads, one round trip.
     const [{ data }, { data: itemRows }] = await Promise.all([
       admin.from("challenges").select("creator_habit_id,rival_habit_id").or(filter),
-      // TODO(sub-retos types): challenge_items is not in the generated types yet
-      untypedDb(admin).from("challenge_items").select("creator_habit_id,rival_habit_id").or(filter),
+      admin.from("challenge_items").select("creator_habit_id,rival_habit_id").or(filter),
     ]);
     const used = new Set<string | null>([
       ...(data ?? []).flatMap((c) => [c.creator_habit_id, c.rival_habit_id]),

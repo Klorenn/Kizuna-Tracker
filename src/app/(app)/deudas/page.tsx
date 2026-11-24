@@ -15,7 +15,6 @@ import { debtReason, type FailedItemRow } from "@/lib/debt-reason";
 import { fetchAll } from "@/lib/paginate";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
-import { untypedDb } from "@/lib/untyped-db";
 import { loadMyFundDebts } from "@/lib/groups-fines-data";
 import { getSessionUser } from "@/lib/viewer";
 import { fundDebtsForSection } from "./fund-debts";
@@ -68,7 +67,7 @@ export default async function DeudasPage() {
     // sub-reto outcomes behind each debt (periods closed before sub-retos have none: legacy reason)
     challengeIds.length
       ? fetchAll<unknown>((from, to) =>
-          untypedDb(supabase) // TODO(sub-retos types)
+          supabase
             .from("challenge_item_results")
             .select(
               "challenge_id,period_start,player_id,item:challenge_items(creator_habit:habits!creator_habit_id(name),rival_habit:habits!rival_habit_id(name))",

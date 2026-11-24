@@ -15,7 +15,6 @@ import {
 } from "@/lib/challenge-view";
 import type { FeedPage } from "@/lib/feed";
 import { pairRecord } from "@/lib/friend-view";
-import { untypedDb } from "@/lib/untyped-db";
 import { loadCheckinDates } from "@/lib/checkin-dates";
 import { fetchAll } from "@/lib/paginate";
 import { activityGrid, lastDays } from "@/lib/profile-view";
@@ -132,8 +131,7 @@ export async function loadFriendProfile(
     attempt(async () => {
       const [rows, debts] = await Promise.all([
         fetchAll<unknown>((a, b) =>
-          // TODO(sub-retos types): challenge_items is not in the generated types yet
-          untypedDb(supabase)
+          supabase
             .from("challenges")
             .select(
               "id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,frequency_type,target_per_week,weeks,starts_on,cancel_requested_by,created_at,challenge_items(position,status,creator_habit_id,rival_habit_id)",

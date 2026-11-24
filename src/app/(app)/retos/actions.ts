@@ -33,13 +33,6 @@ const PRIVATE_HABIT = "Este hábito es solo para ti. Cámbialo a Amigos o Públi
 const ERRORS = CHALLENGE_ERRORS;
 const mapError = mapChallengeError;
 
-// TODO(sub-retos types): challenge_items and the sub-reto RPCs are not in database.types.ts until it is regenerated (batch 6)
-type UntypedClient = {
-  from: (table: string) => any; // eslint-disable-line @typescript-eslint/no-explicit-any
-  rpc: (fn: string, args: Record<string, unknown>) => PromiseLike<{ data: unknown; error: { message: string } | null }>;
-};
-const untyped = (c: unknown) => c as UntypedClient;
-
 async function currentUser() {
   const supabase = await createServerClient();
   const { data } = await supabase.auth.getUser();
@@ -203,7 +196,7 @@ export async function acceptChallengeWithHabits(
     target_per_week: number | null;
     requires_photo: boolean;
   };
-  const { data: itemRows, error: itemsError } = await untyped(supabase)
+  const { data: itemRows, error: itemsError } = await supabase
     .from("challenge_items")
     .select("id,position,creator_habit_id,target_per_week,requires_photo,status")
     .eq("challenge_id", id)
@@ -267,7 +260,7 @@ export async function acceptChallengeWithHabits(
       .select("status")
       .eq("id", id)
       .maybeSingle();
-    const { data: nowItems, error: nowItemsError } = await untyped(supabase)
+    const { data: nowItems, error: nowItemsError } = await supabase
       .from("challenge_items")
       .select("id,rival_habit_id,status")
       .eq("challenge_id", id)
@@ -364,10 +357,11 @@ export async function addChallengeItem(input: {
   );
   if (!valid.ok) return valid;
 
-  const { data, error } = await untyped(supabase).rpc("add_challenge_item", {
+  const { data, error } = await supabase.rpc("add_challenge_item", {
     p_challenge_id: input.challengeId,
     p_habit_id: input.habitId,
-    p_target_per_week: target,
+    // the database default (null) is daily
+    ...(target === null ? {} : { p_target_per_week: target }),
   });
   if (error) return { ok: false, error: mapError(error.message), code: ADD_CODES[error.message] };
   const itemId = typeof data === "string" ? data : "";
@@ -399,16 +393,16 @@ export async function respondChallengeItem(itemId: string, accept: boolean, habi
   if (!uid) return { ok: false, error: NOT_AUTH };
 
   // read before answering: once accepted the proposer's habit is no longer the only one on the row
-  const { data: item } = await untyped(supabase)
+  const { data: item } = await supabase
     .from("challenge_items")
     .select("proposed_by,creator_habit_id,rival_habit_id")
     .eq("id", itemId)
     .maybeSingle();
 
-  const { data, error } = await untyped(supabase).rpc("respond_challenge_item", {
+  const { data, error } = await supabase.rpc("respond_challenge_item", {
     p_item_id: itemId,
     p_accept: accept,
-    p_habit_id: accept ? (habitId ?? null) : null,
+    ...(accept && habitId ? { p_habit_id: habitId } : {}),
   });
   if (error) return { ok: false, error: mapError(error.message) };
   const challengeId = typeof data === "string" ? data : undefined;
@@ -436,7 +430,7 @@ export async function withdrawChallengeItem(itemId: string): Promise<Result> {
   if (typeof itemId !== "string" || !UUID.test(itemId)) return { ok: false, error: ERRORS.item_not_found };
   const { supabase, uid } = await currentUser();
   if (!uid) return { ok: false, error: NOT_AUTH };
-  const { data, error } = await untyped(supabase).rpc("withdraw_challenge_item", { p_item_id: itemId });
+  const { data, error } = await supabase.rpc("withdraw_challenge_item", { p_item_id: itemId });
   if (error) return { ok: false, error: mapError(error.message) };
   refresh(typeof data === "string" ? data : undefined);
   return { ok: true };

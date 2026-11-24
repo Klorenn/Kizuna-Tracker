@@ -38,7 +38,6 @@ import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
 import { itemHabitIds } from "@/lib/retos-cards";
-import { untypedDb } from "@/lib/untyped-db";
 
 type ChallengeRow = Database["public"]["Tables"]["challenges"]["Row"] & { challenge_items: ItemRow[] | null };
 const ITEM_COLUMNS = "id,position,status,creator_habit_id,rival_habit_id,target_per_week,requires_photo,proposed_by,starts_on";
@@ -67,7 +66,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
   if (!user) redirect("/bienvenida");
 
   // the sub-retos come embedded: one read, no extra round trip before the parallel batch
-  const { data: row } = await untypedDb(supabase) // TODO(sub-retos types)
+  const { data: row } = await supabase
     .from("challenges")
     .select(`*,challenge_items(${ITEM_COLUMNS})`)
     .eq("id", id)
@@ -116,7 +115,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       supabase.from("profiles").select("avatar_path,avatar_updated_at,avatar_preset").eq("id", user.id).maybeSingle(),
       // per sub-reto outcomes of closed periods (none for periods closed before sub-retos: legacy text)
       fetchAll<unknown>((from, to) =>
-        untypedDb(supabase) // TODO(sub-retos types)
+        supabase
           .from("challenge_item_results")
           .select("period_start,item_id,player_id,met")
           .eq("challenge_id", id)

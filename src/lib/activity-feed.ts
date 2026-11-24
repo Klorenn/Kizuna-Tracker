@@ -17,7 +17,6 @@ import {
   type FeedPage,
   type ReviewItemRow,
 } from "@/lib/feed";
-import { untypedDb } from "@/lib/untyped-db";
 import type { Database } from "@/lib/supabase/database.types";
 import type { createServerClient } from "@/lib/supabase/server";
 
@@ -91,7 +90,7 @@ export async function loadFeedPage(
     supabase.from("checkin_items").select("habit_id,local_date").in("habit_id", habitIds).in("local_date", [...new Set(days)]).limit(1000),
     // active photo sub-retos of active challenges: the unit reject_checkin resolves a photo through
     reviewable
-      ? untypedDb(supabase) // TODO(sub-retos types)
+      ? supabase
           .from("challenge_items")
           .select(
             "creator_habit_id,rival_habit_id,requires_photo,starts_on,challenges!inner(id,creator_id,rival_id,starts_on,weeks)",

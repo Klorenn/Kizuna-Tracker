@@ -6,9 +6,6 @@ import type { ActiveChallenge, ClosePeriodsRepo } from '@/lib/close-periods'
 import { fetchAll } from '@/lib/paginate'
 import type { Database, Json } from '@/lib/supabase/database.types'
 
-// TODO(sub-retos types): drop these casts once database.types.ts knows challenge_items / challenge_item_results.
-const untyped = (db: SupabaseClient<Database>) => db as unknown as SupabaseClient
-
 type ItemRow = {
   id: string
   creator_habit_id: string | null
@@ -29,15 +26,6 @@ type ChallengeRow = {
   timezone: string
   cancelled_at: string | null
   challenge_items: ItemRow[]
-}
-type ItemsQuery = {
-  select(columns: string): ItemsQuery
-  eq(column: string, value: string): ItemsQuery
-  or(filter: string): ItemsQuery
-  is(column: string, value: null): ItemsQuery
-  not(column: string, op: string, value: null): ItemsQuery
-  order(column: string): ItemsQuery
-  range(from: number, to: number): PromiseLike<{ data: ChallengeRow[] | null; error: { message: string } | null }>
 }
 
 /**
@@ -87,8 +75,8 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
     async activeChallenges() {
       // paged: a single select stops at max_rows and would silently skip challenges (and debts)
       const data = await fetchAll((from, to) =>
-        // TODO(sub-retos types): challenge_items is not in database.types.ts until it is regenerated (batch 6)
-        (untyped(db).from('challenges') as unknown as ItemsQuery)
+        db
+          .from('challenges')
           .select(
             'id,creator_id,rival_id,frequency_type,weeks,fine_amount,starts_on,timezone,cancelled_at,challenge_items!inner(id,creator_habit_id,rival_habit_id,target_per_week,requires_photo,starts_on,status)',
           )
@@ -139,8 +127,7 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
 
     async insertItemResults(rows) {
       if (rows.length === 0) return
-      // TODO(sub-retos types): challenge_item_results is not in database.types.ts until it is regenerated (batch 6)
-      const { error } = await untyped(db)
+      const { error } = await db
         .from('challenge_item_results')
         .upsert(
           rows.map((r) => ({

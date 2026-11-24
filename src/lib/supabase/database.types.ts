@@ -195,6 +195,152 @@ export type Database = {
           },
         ]
       }
+      challenge_item_results: {
+        Row: {
+          challenge_id: string
+          created_at: string
+          done: number
+          id: string
+          item_id: string
+          met: boolean
+          needed: number
+          period_start: string
+          player_id: string
+        }
+        Insert: {
+          challenge_id: string
+          created_at?: string
+          done: number
+          id?: string
+          item_id: string
+          met: boolean
+          needed: number
+          period_start: string
+          player_id: string
+        }
+        Update: {
+          challenge_id?: string
+          created_at?: string
+          done?: number
+          id?: string
+          item_id?: string
+          met?: boolean
+          needed?: number
+          period_start?: string
+          player_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenge_item_results_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_item_results_item_id_fkey"
+            columns: ["item_id"]
+            isOneToOne: false
+            referencedRelation: "challenge_items"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_item_results_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_item_results_player_id_fkey"
+            columns: ["player_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      challenge_items: {
+        Row: {
+          accepted_at: string | null
+          challenge_id: string
+          created_at: string
+          creator_habit_id: string | null
+          id: string
+          position: number
+          proposed_by: string
+          requires_photo: boolean
+          rival_habit_id: string | null
+          starts_on: string | null
+          status: string
+          target_per_week: number | null
+        }
+        Insert: {
+          accepted_at?: string | null
+          challenge_id: string
+          created_at?: string
+          creator_habit_id?: string | null
+          id?: string
+          position: number
+          proposed_by: string
+          requires_photo?: boolean
+          rival_habit_id?: string | null
+          starts_on?: string | null
+          status?: string
+          target_per_week?: number | null
+        }
+        Update: {
+          accepted_at?: string | null
+          challenge_id?: string
+          created_at?: string
+          creator_habit_id?: string | null
+          id?: string
+          position?: number
+          proposed_by?: string
+          requires_photo?: boolean
+          rival_habit_id?: string | null
+          starts_on?: string | null
+          status?: string
+          target_per_week?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "challenge_items_challenge_id_fkey"
+            columns: ["challenge_id"]
+            isOneToOne: false
+            referencedRelation: "challenges"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_creator_habit_id_fkey"
+            columns: ["creator_habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "challenge_items_rival_habit_id_fkey"
+            columns: ["rival_habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       challenge_periods: {
         Row: {
           challenge_id: string
@@ -2305,6 +2451,14 @@ export type Database = {
         }
         Returns: string
       }
+      add_challenge_item: {
+        Args: {
+          p_challenge_id: string
+          p_habit_id: string
+          p_target_per_week?: number
+        }
+        Returns: string
+      }
       add_pomodoro_block: {
         Args: {
           p_block_id: string
@@ -2341,6 +2495,10 @@ export type Database = {
       call_cron_endpoints: { Args: never; Returns: undefined }
       cancel_challenges_between: {
         Args: { p_other: string }
+        Returns: undefined
+      }
+      challenge_items_seed: {
+        Args: { c: Database["public"]["Tables"]["challenges"]["Row"] }
         Returns: undefined
       }
       check_item: {
@@ -2690,6 +2848,10 @@ export type Database = {
           target_per_week: number
         }[]
       }
+      next_item_start: {
+        Args: { c: Database["public"]["Tables"]["challenges"]["Row"] }
+        Returns: string
+      }
       propose_group_fine: {
         Args: { p_amount: number; p_group_id: string; p_purpose: string }
         Returns: string
@@ -2737,8 +2899,17 @@ export type Database = {
       }
       request_cancel: { Args: { p_id: string }; Returns: boolean }
       respond_challenge: {
-        Args: { p_accept: boolean; p_id: string; p_rival_habit_id?: string }
+        Args: {
+          p_accept: boolean
+          p_id: string
+          p_item_habits?: Json
+          p_rival_habit_id?: string
+        }
         Returns: undefined
+      }
+      respond_challenge_item: {
+        Args: { p_accept: boolean; p_habit_id?: string; p_item_id: string }
+        Returns: string
       }
       revoke_group_invites: { Args: { p_group_id: string }; Returns: number }
       save_reading_entry: {
@@ -2842,6 +3013,7 @@ export type Database = {
         Args: { p_accept: boolean; p_fine_id: string }
         Returns: undefined
       }
+      withdraw_challenge_item: { Args: { p_item_id: string }; Returns: string }
       workout_day_types_valid: {
         Args: { p_day_types: string[] }
         Returns: boolean

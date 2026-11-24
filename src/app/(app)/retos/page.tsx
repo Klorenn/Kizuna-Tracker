@@ -34,7 +34,6 @@ import {
 } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
 import { buildCardItems, itemHabitIds, type HabitRow } from "@/lib/retos-cards";
-import { untypedDb } from "@/lib/untyped-db";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/viewer";
 
@@ -69,8 +68,7 @@ export default async function RetosPage() {
 
   // every list here grows with time: read past the 1000-row cap instead of truncating
   const challenges = (await fetchAll<unknown>((from, to) =>
-    // TODO(sub-retos types): challenge_items is not in the generated types yet
-    untypedDb(supabase)
+    supabase
       .from("challenges")
       .select(
         `id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at,challenge_items(${ITEM_COLUMNS})`,
