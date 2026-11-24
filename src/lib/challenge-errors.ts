@@ -47,6 +47,8 @@ const KEYS_LONGEST_FIRST = Object.keys(CHALLENGE_ERRORS).sort((a, b) => b.length
 export function mapChallengeError(message: string | undefined): string {
   if (!message) return GENERIC_ERROR
   if (Object.hasOwn(CHALLENGE_ERRORS, message)) return CHALLENGE_ERRORS[message]
+  // two players racing for the same habit: the unique index answers (23505) before the RPC's own check
+  if (message.includes('challenge_items_live_')) return CHALLENGE_ERRORS.habit_already_in_challenge
   const key = KEYS_LONGEST_FIRST.find((k) => message.includes(k))
   return key ? CHALLENGE_ERRORS[key] : GENERIC_ERROR
 }

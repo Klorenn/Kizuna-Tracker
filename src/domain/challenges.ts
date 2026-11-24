@@ -99,30 +99,6 @@ function daysBetween(from: LocalDate, to: LocalDate): number {
   return Math.round((t(to) - t(from)) / 86_400_000)
 }
 
-/**
- * First period boundary strictly after `today` (the challenge's local date), never before the challenge start; null
- * when no whole period is left. Mirror of the SQL `next_item_start(challenge)`; keep both in sync.
- * Daily: tomorrow (the last day is the latest start). Weekly: the next Monday-aligned period start.
- */
-export function nextItemStart(
-  startsOn: LocalDate,
-  weeks: number,
-  type: Frequency['type'],
-  today: LocalDate,
-): LocalDate | null {
-  let start: LocalDate
-  let last: LocalDate
-  if (type === 'daily') {
-    start = addDays(today, 1)
-    last = addDays(startsOn, weeks * 7 - 1)
-  } else {
-    start = addDays(startsOn, 7 * Math.ceil(Math.max(daysBetween(startsOn, addDays(today, 1)), 0) / 7))
-    last = addDays(startsOn, (weeks - 1) * 7)
-  }
-  if (start < startsOn) start = startsOn
-  return start > last ? null : start
-}
-
 export function isPeriodClosable(
   period: Period,
   tz: string,

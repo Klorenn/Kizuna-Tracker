@@ -1,7 +1,7 @@
 import { describe, expect, test } from 'vitest'
 import {
   challengeStartDate, periodsFor, evaluatePeriod, isPeriodClosable, canReject,
-  evaluateItems, itemAppliesTo, nextItemStart, type ChallengeItemSpec,
+  evaluateItems, itemAppliesTo, type ChallengeItemSpec,
 } from '@/domain/challenges'
 
 describe('challenges', () => {
@@ -137,24 +137,3 @@ describe('itemAppliesTo', () => {
   })
 })
 
-describe('nextItemStart (espejo de next_item_start en SQL)', () => {
-  const daily = (today: string, startsOn = '2026-11-10', weeks = 2) => nextItemStart(startsOn, weeks, 'daily', today)
-  const weekly = (today: string, startsOn = '2026-11-10', weeks = 4) => nextItemStart(startsOn, weeks, 'weekly', today)
-  test('diario: mañana', () => expect(daily('2026-11-12')).toBe('2026-11-13'))
-  test('diario antes del inicio: el inicio', () => expect(daily('2026-11-01')).toBe('2026-11-10'))
-  test('diario: el día antes del inicio también es el inicio', () => expect(daily('2026-11-09')).toBe('2026-11-10'))
-  test('diario: último día del reto no deja período', () => {
-    expect(daily('2026-11-23')).toBeNull() // last day is 11-23 (start + 14 - 1): tomorrow is past it
-    expect(daily('2026-11-22')).toBe('2026-11-23')
-  })
-  test('semanal: el inicio del siguiente período', () => expect(weekly('2026-11-12')).toBe('2026-11-17'))
-  test('semanal: el primer día del período 1 salta al período 2', () => expect(weekly('2026-11-10')).toBe('2026-11-17'))
-  test('semanal: el día antes del inicio es el inicio', () => expect(weekly('2026-11-09')).toBe('2026-11-10'))
-  test('semanal: el último día de un período (domingo) apunta al lunes siguiente', () => expect(weekly('2026-11-16')).toBe('2026-11-17'))
-  test('semanal antes del inicio: el inicio', () => expect(weekly('2026-10-01')).toBe('2026-11-10'))
-  test('semanal: en el último período no queda lugar', () => {
-    expect(weekly('2026-12-01')).toBeNull() // period 4 starts 12-01
-    expect(weekly('2026-11-24')).toBe('2026-12-01')
-  })
-  test('semanal: reto terminado', () => expect(weekly('2027-02-01')).toBeNull())
-})

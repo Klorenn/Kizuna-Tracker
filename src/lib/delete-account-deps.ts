@@ -49,7 +49,7 @@ export function supabaseDeleteDeps(
     ]);
     const used = new Set<string | null>([
       ...(data ?? []).flatMap((c) => [c.creator_habit_id, c.rival_habit_id]),
-      ...((itemRows ?? []) as { creator_habit_id: string | null; rival_habit_id: string | null }[]).flatMap((i) => [
+      ...(itemRows ?? []).flatMap((i) => [
         i.creator_habit_id,
         i.rival_habit_id,
       ]),

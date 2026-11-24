@@ -346,7 +346,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
           </Card>
         </>
       ) : null}
-      {c.status === "active" ? (
+      {c.status === "active" && !c.cancel_requested_by ? (
         <Link href={`/retos/nuevo?reto=${c.id}`} className="text-small text-accent">
           Agregar sub-reto
         </Link>

@@ -8,6 +8,9 @@
 --  * challenge_item_results stores one row per closed period, item and player (met, done, needed).
 --  * Rollout: apply this migration BEFORE deploying the code that uses it. See docs/CHALLENGE_ITEMS.md.
 
+-- One transaction: a failure half way leaves nothing behind (re-run is safe either way, everything is idempotent).
+begin;
+
 -- ============================================================ a. tables
 create table if not exists public.challenge_items (
   id uuid primary key default gen_random_uuid(),
@@ -934,3 +937,5 @@ grant execute on function public.respond_challenge(uuid, boolean, uuid, jsonb) t
 grant execute on function public.add_challenge_item(uuid, uuid, int) to authenticated;
 grant execute on function public.respond_challenge_item(uuid, boolean, uuid) to authenticated;
 grant execute on function public.withdraw_challenge_item(uuid) to authenticated;
+
+commit;

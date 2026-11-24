@@ -59,12 +59,15 @@ The Spanish copy for every code lives in `src/lib/challenge-errors.ts` (`mapChal
 
 ## Rollout order
 
+**The migration must reach production BEFORE `git push`: Vercel deploys `main` on every push, so a push without the migration puts the new code on the old database.**
+
 The new code against the old database is NOT safe. The old code against the new database is safe (seed trigger, 3-argument `respond_challenge`, mirrored columns). So:
 
 1. Take a fresh production dump (`pg_dump`, schema and data). Do not rely on the `konjo-pre-0025*` files.
-2. Apply `20261125120000_challenge_items_expand.sql` to production, as the `postgres` role, in the SQL editor or with `psql`. Never `supabase db reset --linked` or `db push --include-seed`.
+2. Apply `20261125120000_challenge_items_expand.sql` to production, as the `postgres` role. The file is wrapped in `begin; ... commit;`, so with `psql` use `psql -v ON_ERROR_STOP=1 -f 20261125120000_challenge_items_expand.sql` (a failure rolls everything back and stops). Never `supabase db reset --linked` or `db push --include-seed`.
+   After it succeeds, record it so a later `supabase db push` does not try to apply it again: `supabase migration repair --status applied 20261125120000`.
 3. Verify: `select count(*) from challenge_items` equals `select count(*) from challenges`; the legacy columns equal item 1 (`select count(*) from challenges c join challenge_items i on i.challenge_id = c.id and i.position = 1 where c.creator_habit_id is distinct from i.creator_habit_id`, expect 0).
-4. Deploy the code (Vercel).
+4. Only now `git push` (Vercel deploys the code).
 5. Verify: run the cron by hand (it should close nothing new or produce the same debts), add and accept a sub-reto between two test accounts, check that a guard fires from the UI (for example the visibility change of a habit used by item 2).
 6. Watch at least one cron cycle (15 minutes) and the next period close.
 

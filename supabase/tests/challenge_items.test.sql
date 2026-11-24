@@ -6,7 +6,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(158);
+select plan(160);
 
 -- ------------------------------------------------------------------ helpers
 -- ids are derived from small numbers: tests.u(n) user, tests.h(n, k) habit k of user n, tests.c(s) challenge,
@@ -498,6 +498,20 @@ select tests.act(19);
 select lives_ok($$ select public.withdraw_challenge_item(tests.item(20, 2)) $$, 'withdraw an item of a proposed challenge');
 select lives_ok($$ select public.withdraw_challenge_item(tests.item(20, 3)) $$, 'and another');
 select throws_ok($$ select public.withdraw_challenge_item(tests.item(20, 1)) $$, 'P0001', 'last_item', 'a challenge keeps at least one live item');
+
+-- a closing challenge (cancel requested, or cancelled) takes no answers
+reset role;
+select tests.mk_item(24, 6, 'proposed', 27, 6, null, null, 27);
+update public.challenges set cancel_requested_by = tests.u(27) where id = tests.c(24);
+select tests.act(28);
+select throws_ok($$ select public.respond_challenge_item(tests.i(24, 6), true, tests.h(28, 6)) $$, 'P0001', 'challenge_not_active', 'a pending cancel blocks answering an item');
+reset role;
+update public.challenges set cancel_requested_by = null, status = 'cancelled' where id = tests.c(24);
+select tests.act(28);
+select throws_ok($$ select public.respond_challenge_item(tests.i(24, 6), true, tests.h(28, 6)) $$, 'P0001', 'challenge_not_active', 'a cancelled challenge blocks answering an item');
+reset role;
+update public.challenges set status = 'active' where id = tests.c(24);
+delete from public.challenge_items where id = tests.i(24, 6);
 
 -- ============================================================ 1.10 cascades (no edits to remove_friend / cancel)
 reset role;

@@ -29,7 +29,7 @@ database has no tables yet (migrations not applied) or cannot be reached.
 
 ## 2. Database
 
-Apply `supabase/migrations/0001` to `0021` in order, as the `postgres` role, to an empty project.
+Apply every file in `supabase/migrations/` in filename order (`0001` to `0025`, then the timestamped ones such as `20261125120000`), as the `postgres` role, to an empty project.
 
 Releases that change the schema may carry their own rollout order. Sub-retos (`challenge_items`, migration
 `20261125120000`) must be applied BEFORE the code deploy: see `docs/CHALLENGE_ITEMS.md`.
@@ -46,7 +46,7 @@ After the migrations:
 select vault.create_secret('https://your-domain.example', 'app_url');
 
 -- checks
-select count(*) from supabase_migrations.schema_migrations;          -- 21
+select count(*) from supabase_migrations.schema_migrations;          -- one row per applied migration file (count the files in supabase/migrations)
 select jobname, schedule, active from cron.job;                       -- kizuna-cron, every 15 minutes, active
 select id, public from storage.buckets;                               -- avatars (public), proofs (private)
 select count(*) from vault.secrets where name in ('app_url', 'cron_secret');  -- 2

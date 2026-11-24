@@ -109,6 +109,8 @@ describe('addChallengeItem', () => {
       { defer: true },
     )
     expect(revalidated()).toEqual(expect.arrayContaining(['/retos', `/retos/${C1}`]))
+    expect(revalidatePath).toHaveBeenCalledWith('/u/[username]', 'page')
+    expect(revalidated()).toContain('/')
   })
 
   it('notifies the creator when the rival adds the item', async () => {
@@ -158,6 +160,28 @@ describe('addChallengeItem', () => {
   })
 })
 
+describe('a race on the live-habit unique index (23505)', () => {
+  const activeWeekly = { status: 'active', creator_id: ME, rival_id: OTHER, frequency_type: 'weekly' }
+  const proposed = { data: { proposed_by: OTHER, creator_habit_id: null, rival_habit_id: H2 }, error: null }
+  const dup = { code: '23505', message: 'duplicate key value violates unique constraint "challenge_items_live_creator_habit"' }
+
+  it('addChallengeItem answers with the "habit already in the challenge" copy and the duplicate code', async () => {
+    reads['challenges.select'] = { data: activeWeekly, error: null }
+    rpc.mockResolvedValue({ data: null, error: dup })
+    await expect(addChallengeItem({ challengeId: C1, habitId: H1, target: 3 })).resolves.toEqual({
+      ok: false,
+      error: 'Ese hábito ya está en este reto.',
+      code: 'duplicate',
+    })
+  })
+
+  it('respondChallengeItem answers with the same copy', async () => {
+    reads['challenge_items.select'] = proposed
+    rpc.mockResolvedValue({ data: null, error: { ...dup, message: dup.message.replace('creator', 'rival') } })
+    await expect(respondChallengeItem(I1, true, H1)).resolves.toEqual({ ok: false, error: 'Ese hábito ya está en este reto.' })
+  })
+})
+
 describe('respondChallengeItem', () => {
   const proposed = { data: { proposed_by: OTHER, creator_habit_id: null, rival_habit_id: H2 }, error: null }
 
@@ -180,6 +204,8 @@ describe('respondChallengeItem', () => {
       { defer: true },
     )
     expect(revalidated()).toEqual(expect.arrayContaining(['/retos', `/retos/${C1}`]))
+    expect(revalidatePath).toHaveBeenCalledWith('/u/[username]', 'page')
+    expect(revalidated()).toContain('/')
   })
 
   it('declines with the declined type and no habit', async () => {
@@ -216,6 +242,8 @@ describe('withdrawChallengeItem', () => {
     expect(rpc).toHaveBeenCalledWith('withdraw_challenge_item', { p_item_id: I1 })
     expect(notify).not.toHaveBeenCalled()
     expect(revalidated()).toEqual(expect.arrayContaining(['/retos', `/retos/${C1}`]))
+    expect(revalidatePath).toHaveBeenCalledWith('/u/[username]', 'page')
+    expect(revalidated()).toContain('/')
   })
 
   it('maps last_item', async () => {

@@ -44,6 +44,13 @@ function refresh(id?: string) {
   if (id) revalidatePath(`/retos/${id}`);
 }
 
+/** Sub-reto changes also show on the friend profile (the "Agregar sub-reto" / "Ver reto" action) and on Hoy. */
+function refreshWithProfile(id?: string) {
+  refresh(id);
+  revalidatePath("/u/[username]", "page");
+  revalidatePath("/");
+}
+
 const EXISTS = "Ya tienes un reto con esta persona.";
 
 /** Terms of the open challenge a "new" challenge collided with: the form switches to "add sub-reto" with them. */
@@ -300,6 +307,7 @@ export type AddItemResult =
   | { ok: true; itemId: string }
   | { ok: false; error: string; code?: "ending" | "duplicate" | "too_many" };
 
+const LIVE_HABIT_INDEX = "challenge_items_live_";
 const ADD_CODES: Record<string, "ending" | "duplicate" | "too_many"> = {
   challenge_ending: "ending",
   habit_already_in_challenge: "duplicate",
@@ -363,7 +371,11 @@ export async function addChallengeItem(input: {
     // the database default (null) is daily
     ...(target === null ? {} : { p_target_per_week: target }),
   });
-  if (error) return { ok: false, error: mapError(error.message), code: ADD_CODES[error.message] };
+  if (error) {
+    // a race on the live-habit unique index surfaces as 23505, not as the RPC's own code
+    const code = ADD_CODES[error.message] ?? (error.message?.includes(LIVE_HABIT_INDEX) ? "duplicate" : undefined);
+    return { ok: false, error: mapError(error.message), code };
+  }
   const itemId = typeof data === "string" ? data : "";
 
   if (ch.status === "active") {
@@ -378,7 +390,7 @@ export async function addChallengeItem(input: {
       target,
     }, { defer: true });
   }
-  refresh(input.challengeId);
+  refreshWithProfile(input.challengeId);
   return { ok: true, itemId };
 }
 
@@ -421,7 +433,7 @@ export async function respondChallengeItem(itemId: string, accept: boolean, habi
       habit_name: habit,
     }, { defer: true });
   }
-  refresh(challengeId);
+  refreshWithProfile(challengeId);
   return { ok: true };
 }
 
@@ -432,7 +444,7 @@ export async function withdrawChallengeItem(itemId: string): Promise<Result> {
   if (!uid) return { ok: false, error: NOT_AUTH };
   const { data, error } = await supabase.rpc("withdraw_challenge_item", { p_item_id: itemId });
   if (error) return { ok: false, error: mapError(error.message) };
-  refresh(typeof data === "string" ? data : undefined);
+  refreshWithProfile(typeof data === "string" ? data : undefined);
   return { ok: true };
 }
 
