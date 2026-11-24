@@ -5,7 +5,15 @@ import { redirect } from "next/navigation";
 import { ChallengeForm } from "@/components/ChallengeForm";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
-import { OPEN_CHALLENGE_STATUSES, openChallengeByRival, parseNewChallengeParams, parseRivalParam } from "@/lib/challenge-form";
+import {
+  OPEN_CHALLENGE_STATUSES,
+  openChallengeByRival,
+  openTermsByRival,
+  parseNewChallengeParams,
+  parseRetoParam,
+  parseRivalParam,
+  resolveAddMode,
+} from "@/lib/challenge-form";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Nuevo reto" };
@@ -13,9 +21,9 @@ export const metadata: Metadata = { title: "Nuevo reto" };
 export default async function NuevoRetoPage({
   searchParams,
 }: {
-  searchParams: Promise<{ habito?: string; amigo?: string }>;
+  searchParams: Promise<{ habito?: string; amigo?: string; reto?: string }>;
 }) {
-  const { habito, amigo } = await searchParams;
+  const { habito, amigo, reto } = await searchParams;
   const rivalParam = parseRivalParam(amigo);
   const supabase = await createServerClient();
   const {
@@ -36,11 +44,14 @@ export default async function NuevoRetoPage({
       .order("created_at"),
     supabase
       .from("challenges")
-      .select("id,creator_id,rival_id,status")
+      .select("id,creator_id,rival_id,status,frequency_type,target_per_week,weeks,fine_amount,starts_on,timezone")
       .in("status", [...OPEN_CHALLENGE_STATUSES])
       .order("created_at", { ascending: false }),
   ]);
   const openByRival = openChallengeByRival(openRows ?? [], user.id);
+  // add mode: a sub-reto for the open challenge (?reto=, or a friend who already has one with me)
+  const openTerms = openTermsByRival(openRows ?? [], user.id);
+  const addMode = resolveAddMode(openTerms, { reto: parseRetoParam(reto), rival: rivalParam });
 
   const friendIds = (friendships ?? []).map((f) => (f.requester_id === user.id ? f.addressee_id : f.requester_id));
   const { data: people } = friendIds.length
@@ -53,8 +64,10 @@ export default async function NuevoRetoPage({
   const all = habits ?? [];
   const params = parseNewChallengeParams(new URLSearchParams(habito ? { habito } : {}));
   const fromHabit = params.habitId ? all.find((h) => h.id === params.habitId) : undefined;
-  const fromFriend = rivalParam ? friends.find((f) => f.id === rivalParam) : undefined;
-  const back = fromHabit
+  const fromFriend = (addMode?.rivalId ?? rivalParam) ? friends.find((f) => f.id === (addMode?.rivalId ?? rivalParam)) : undefined;
+  const back = addMode
+    ? { href: `/retos/${addMode.terms.id}`, label: "Reto" }
+    : fromHabit
     ? { href: `/habitos/${fromHabit.id}`, label: fromHabit.name }
     : fromFriend
       ? { href: `/@${fromFriend.username}`, label: fromFriend.name.split(" ")[0] }
@@ -70,7 +83,13 @@ export default async function NuevoRetoPage({
         {back.label}
       </Link>
       <h1 className="text-display font-semibold text-ink">
-        {fromFriend ? `Retar a ${fromFriend.name.split(" ")[0]}` : fromHabit ? "Retar a un amigo" : "Nuevo reto"}
+        {addMode
+          ? "Agregar sub-reto"
+          : fromFriend
+            ? `Retar a ${fromFriend.name.split(" ")[0]}`
+            : fromHabit
+              ? "Retar a un amigo"
+              : "Nuevo reto"}
       </h1>
 
       {fromHabit?.visibility === "private" ? (
@@ -106,6 +125,8 @@ export default async function NuevoRetoPage({
           habitLocked={Boolean(fromHabit)}
           initialRivalId={fromFriend?.id ?? null}
           openByRival={openByRival}
+          openTerms={openTerms}
+          addMode={addMode}
         />
       )}
     </main>

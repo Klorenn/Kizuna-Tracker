@@ -98,6 +98,8 @@ export type OpenTerms = {
   fineAmount: number
   startsOn: string | null
   timezone: string
+  /** Active: either player adds a sub-reto. Proposed: only the creator (the rival answers the whole challenge). */
+  canAdd: boolean
 }
 
 /** Other person -> terms of the open challenge shared with them. Rows newest first: the first per person wins. */
@@ -116,9 +118,31 @@ export function openTermsByRival(rows: OpenTermsRow[], me: string): Record<strin
       fineAmount: r.fine_amount,
       startsOn: r.starts_on,
       timezone: r.timezone,
+      canAdd: r.status === 'active' || r.creator_id === me,
     }
   }
   return out
+}
+
+/** `/retos/nuevo?reto=<id>` (from a challenge): the challenge to add a sub-reto to, uuid only. */
+export function parseRetoParam(value: unknown): string | null {
+  return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null
+}
+
+/**
+ * Add mode of the new-challenge form: `?reto=` names the challenge, otherwise a preselected friend
+ * with an open challenge does. The terms (frequency, weeks, fine) are the challenge's, not the form's.
+ */
+export function resolveAddMode(
+  termsByRival: Record<string, OpenTerms>,
+  params: { reto: string | null; rival: string | null },
+): { rivalId: string; terms: OpenTerms } | null {
+  const hit = params.reto
+    ? Object.entries(termsByRival).find(([, t]) => t.id === params.reto)
+    : params.rival && params.rival in termsByRival
+      ? ([params.rival, termsByRival[params.rival]] as const)
+      : undefined
+  return hit && hit[1].canAdd ? { rivalId: hit[0], terms: hit[1] } : null
 }
 
 export type AddItemInput = { challengeId: string; habitId: string; target: number | null }

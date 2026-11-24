@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import {
   openTermsByRival,
+  parseRetoParam,
+  resolveAddMode,
   parseNewChallengeParams,
   parseRivalParam,
   validateAddItemInput,
@@ -95,6 +97,7 @@ describe('openTermsByRival', () => {
       fineAmount: 4500,
       startsOn: '2026-11-30',
       timezone: 'America/Santiago',
+      canAdd: true,
     })
     expect(out.zed.frequency).toEqual({ type: 'daily' })
   })
@@ -105,6 +108,47 @@ describe('openTermsByRival', () => {
 
   it('keeps a null starts_on for a proposed challenge', () => {
     expect(openTermsByRival([row({ status: 'proposed', starts_on: null })], 'me').ana.startsOn).toBeNull()
+  })
+})
+
+describe('openTermsByRival canAdd', () => {
+  it('active: either player adds', () => {
+    expect(openTermsByRival([row({ creator_id: 'ana', rival_id: 'me' })], 'me').ana.canAdd).toBe(true)
+  })
+  it('proposed: only the creator adds (add_challenge_item raises not_creator for the rival)', () => {
+    expect(openTermsByRival([row({ status: 'proposed' })], 'me').ana.canAdd).toBe(true)
+    expect(openTermsByRival([row({ status: 'proposed', creator_id: 'ana', rival_id: 'me' })], 'me').ana.canAdd).toBe(false)
+  })
+})
+
+describe('parseRetoParam', () => {
+  it('accepts a uuid, lowercased, and nothing else', () => {
+    expect(parseRetoParam('A0000000-0000-4000-8000-00000000000C')).toBe('a0000000-0000-4000-8000-00000000000c')
+    expect(parseRetoParam('x,or(1)')).toBeNull()
+    expect(parseRetoParam(undefined)).toBeNull()
+    expect(parseRetoParam(['a'])).toBeNull()
+  })
+})
+
+describe('resolveAddMode (?reto= or a friend with an open challenge)', () => {
+  const terms = openTermsByRival([row({ id: 'c1' }), row({ id: 'c2', rival_id: 'zed' })], 'me')
+  it('?reto= picks that challenge and its rival', () => {
+    expect(resolveAddMode(terms, { reto: 'c2', rival: null })).toEqual({ rivalId: 'zed', terms: terms.zed })
+  })
+  it('?reto= wins over ?amigo=', () => {
+    expect(resolveAddMode(terms, { reto: 'c2', rival: 'ana' })?.rivalId).toBe('zed')
+  })
+  it('a friend with an open challenge is add mode too', () => {
+    expect(resolveAddMode(terms, { reto: null, rival: 'ana' })).toEqual({ rivalId: 'ana', terms: terms.ana })
+  })
+  it('unknown challenge, closed challenge or no open challenge: normal mode', () => {
+    expect(resolveAddMode(terms, { reto: 'nope', rival: null })).toBeNull()
+    expect(resolveAddMode(terms, { reto: null, rival: 'other' })).toBeNull()
+    expect(resolveAddMode(terms, { reto: null, rival: null })).toBeNull()
+  })
+  it('a challenge the viewer cannot add to (proposed by the other) is not add mode', () => {
+    const t = openTermsByRival([row({ status: 'proposed', creator_id: 'ana', rival_id: 'me' })], 'me')
+    expect(resolveAddMode(t, { reto: 'c1', rival: null })).toBeNull()
   })
 })
 

@@ -6,7 +6,7 @@ import { useState, useTransition } from "react";
 import { proposeChallenge } from "@/app/(app)/retos/actions";
 import { formatCLP } from "@/domain/ledger";
 import type { IconKey } from "@/domain/presets";
-import { MAX_FINE, validateChallengeInput } from "@/lib/challenge-form";
+import { MAX_FINE, validateChallengeInput, type OpenTerms } from "@/lib/challenge-form";
 import { ExistingChallengeNotice } from "./ExistingChallengeNotice";
 import { HabitIcon } from "./habit-icon";
 import { Button } from "./ui/Button";
@@ -66,6 +66,12 @@ export function ChallengeForm({
   initialRivalId?: string | null;
   /** friend id -> id of the proposed/active challenge already shared with them (server-read at page load). */
   openByRival?: Record<string, string>;
+  /**
+   * Terms of the open challenge per friend, and the challenge this visit adds a sub-reto to
+   * (`?reto=` or a preselected friend with one). Read by the form in add mode (Batch 5, 5.3).
+   */
+  openTerms?: Record<string, OpenTerms>;
+  addMode?: { rivalId: string; terms: OpenTerms } | null;
 }) {
   const [rivalId, setRivalId] = useState(
     initialRivalId && friends.some((f) => f.id === initialRivalId) ? initialRivalId : "",
