@@ -1,84 +1,31 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CARDIO_KINDS, validateCardioInput, type CardioKind } from "@/domain/cardio";
+import { CARDIO_KINDS, type CardioKind } from "@/domain/cardio";
+import {
+  CARDIO_OUTING_LOST,
+  cardioFields,
+  cardioMessageFor,
+  checkCardio,
+  type CardioInput,
+} from "@/lib/cardio-copy";
 import { requireUser } from "@/lib/require-user";
 
 // Distance outings (cardio). Every write goes through the RPCs of 0018; none touches the check-in.
 
-export type CardioInput = {
-  kind: CardioKind;
-  distanceM: number;
-  durationS: number;
-  effort: number | null;
-  note: string | null;
-};
+export type { CardioInput };
 type Result = { ok: true } | { ok: false; error: string };
 
-const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
-const OUTING_LOST = "Marcamos el hábito, pero no guardamos la salida. Inténtalo de nuevo.";
-const INVALID = "Revisa la distancia y el tiempo.";
-const MAX_NOTE = 60;
-const ERRORS: Record<string, string> = {
-  invalid_cardio: INVALID,
-  too_many_entries: "Puedes registrar hasta 10 salidas por día.",
-  entry_not_found: "No encontramos esa salida.",
-  checkin_not_found: "Ese día no tiene check-in.",
-  log_type_mismatch: "Este hábito no lleva ese tipo de registro.",
-  habit_not_found: "No encontramos ese hábito.",
-  photo_required: "Este hábito pide una foto de prueba.",
-  habit_has_items: "Este hábito se completa marcando sus pasos.",
-  not_authenticated: "Inicia sesión para continuar.",
-};
-
-function messageFor(raw: string | undefined, fallback = GENERIC): string {
-  if (!raw) return fallback;
-  const key = Object.keys(ERRORS).find((k) => raw.includes(k));
-  return key ? ERRORS[key] : fallback;
-}
+const OUTING_LOST = CARDIO_OUTING_LOST;
+const messageFor = cardioMessageFor;
+const check = checkCardio;
+const fields = cardioFields;
 
 function refresh() {
   revalidatePath("/");
   revalidatePath("/resumen");
   revalidatePath("/habitos/[id]", "page");
   revalidatePath("/habitos/[id]/distancia", "page");
-}
-
-/** The checks the database repeats, so the sheet can answer before any round trip. */
-function check(entry: CardioInput): { ok: true; note: string | null } | { ok: false; error: string } {
-  // a fractional amount is a format problem, not an out-of-range one: it gets its own copy
-  if (Number.isFinite(entry.distanceM) && entry.distanceM > 0 && !Number.isInteger(entry.distanceM)) {
-    return { ok: false, error: "La distancia debe ser un número entero de metros." };
-  }
-  if (Number.isFinite(entry.durationS) && entry.durationS > 0 && !Number.isInteger(entry.durationS)) {
-    return { ok: false, error: "El tiempo debe ser un número entero de segundos." };
-  }
-  // 0 (or a non-number) means "nothing typed": the same copy as an empty field
-  const valid = validateCardioInput({
-    kind: entry.kind,
-    distanceM: Number.isFinite(entry.distanceM) && entry.distanceM > 0 ? entry.distanceM : null,
-    durationS: Number.isFinite(entry.durationS) && entry.durationS > 0 ? entry.durationS : null,
-  });
-  if (!valid.ok) return valid;
-  if (entry.effort !== null && (!Number.isInteger(entry.effort) || entry.effort < 1 || entry.effort > 5)) {
-    return { ok: false, error: INVALID };
-  }
-  const note = entry.note?.trim() ? entry.note.trim() : null;
-  if (note !== null && note.length > MAX_NOTE) {
-    return { ok: false, error: `La nota puede tener hasta ${MAX_NOTE} caracteres.` };
-  }
-  return { ok: true, note };
-}
-
-// effort and note are SQL defaults: PostgREST takes null, the generated types only say "omitted"
-function fields(entry: CardioInput, note: string | null) {
-  return {
-    p_kind: entry.kind,
-    p_distance_m: entry.distanceM,
-    p_duration_s: entry.durationS,
-    p_effort: entry.effort as number,
-    p_note: note as string,
-  };
 }
 
 /**

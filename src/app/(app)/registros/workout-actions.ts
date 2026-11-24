@@ -9,52 +9,22 @@ import {
   type WorkoutDraft,
 } from "@/domain/logs";
 import { requireUser } from "@/lib/require-user";
+import {
+  EXERCISE_NOT_FOUND,
+  WORKOUT_GENERIC,
+  validateExerciseName,
+  workoutMessageFor,
+} from "@/lib/workout-copy";
 
 type Result = { ok: true } | { ok: false; error: string };
 
-const GENERIC = "No pudimos guardar el entrenamiento. Inténtalo de nuevo.";
-const SETS = "Revisa las series del entrenamiento.";
-const DUPLICATE = "Ya tienes un ejercicio con ese nombre.";
-const NOT_AUTHENTICATED = "Inicia sesión para continuar.";
-const EXERCISE_NOT_FOUND = "No encontramos ese ejercicio.";
-const MAX_EXERCISE_NAME = 60;
-
-const ERRORS: Record<string, string> = {
-  checkin_not_found: "Ese día no tiene check-in.",
-  log_type_mismatch: "Este hábito no lleva ese tipo de registro.",
-  exercise_not_found: EXERCISE_NOT_FOUND,
-  invalid_set: SETS,
-  invalid_day_types: SETS,
-  too_many_sets: SETS,
-  too_many_exercises: "Puedes registrar hasta 20 ejercicios.",
-  exercise_name_catalog: "Ese ejercicio ya está en el catálogo.",
-  exercise_limit: "Puedes tener hasta 100 ejercicios propios. Archiva alguno para crear otro.",
-  not_authenticated: NOT_AUTHENTICATED,
-};
-
-type DbError = { message?: string; code?: string } | null | undefined;
-
-function messageFor(error: DbError): string {
-  if (error?.code === "23505") return DUPLICATE;
-  const raw = error?.message;
-  if (!raw) return GENERIC;
-  const key = Object.keys(ERRORS).find((k) => raw.includes(k));
-  return key ? ERRORS[key] : GENERIC;
-}
+const GENERIC = WORKOUT_GENERIC;
+const messageFor = workoutMessageFor;
 
 function refresh() {
   revalidatePath("/");
   revalidatePath("/habitos/[id]", "page");
   revalidatePath("/resumen");
-}
-
-function validateExerciseName(raw: string): { ok: true; name: string } | { ok: false; error: string } {
-  const name = raw.trim();
-  if (name.length === 0) return { ok: false, error: "Ponle un nombre al ejercicio." };
-  if (name.length > MAX_EXERCISE_NAME) {
-    return { ok: false, error: `El nombre puede tener hasta ${MAX_EXERCISE_NAME} caracteres.` };
-  }
-  return { ok: true, name };
 }
 
 export async function saveWorkout(checkinId: string, draft: WorkoutDraft): Promise<Result> {

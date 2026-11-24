@@ -2,61 +2,40 @@
 
 import { revalidatePath } from "next/cache";
 import { localDate } from "@/domain/dates";
-import { validateBook, validateReadingInput, type BookInput } from "@/domain/logs";
+import { validateBook, type BookInput } from "@/domain/logs";
 import type { LocalDate } from "@/domain/types";
 import { isLocalDate } from "@/lib/log-date";
+import {
+  READING_ERRORS,
+  READING_FUTURE,
+  READING_GENERIC,
+  READING_LOST,
+  READING_NOT_AUTHENTICATED,
+  checkReadingPages as checkPages,
+  readingArgs,
+  readingMessageFor,
+  type ReadingInput,
+} from "@/lib/reading-copy";
 import { requireUser } from "@/lib/require-user";
 import type { createServerClient } from "@/lib/supabase/server";
 
 // Reading and books. Workout actions live in ./workout-actions.ts (Gym area).
 
-export type ReadingInput = { bookId: string; fromPage: number; toPage: number; finished: boolean };
+export type { ReadingInput };
 type Result = { ok: true } | { ok: false; error: string };
 type Client = Awaited<ReturnType<typeof createServerClient>>;
 
-const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
-const READING_LOST = "Marcamos el hábito, pero no guardamos la lectura. Inténtalo de nuevo.";
-const FUTURE = "La fecha no puede ser futura.";
-const NOT_AUTHENTICATED = "Inicia sesión para continuar.";
-const ERRORS: Record<string, string> = {
-  invalid_pages: "Revisa las páginas: la final no puede ser menor que la inicial.",
-  log_type_mismatch: "Este hábito no lleva ese tipo de registro.",
-  checkin_not_found: "Ese día no tiene check-in.",
-  book_not_found: "No encontramos ese libro.",
-  invalid_finished_on: FUTURE,
-  // same copy as habitos/actions.ts
-  habit_not_found: "No encontramos ese hábito.",
-  photo_required: "Este hábito pide una foto de prueba.",
-  habit_has_items: "Este hábito se completa marcando sus pasos.",
-  not_authenticated: NOT_AUTHENTICATED,
-};
-
-function messageFor(raw: string | undefined, fallback = GENERIC): string {
-  if (!raw) return fallback;
-  const key = Object.keys(ERRORS).find((k) => raw.includes(k));
-  return key ? ERRORS[key] : fallback;
-}
+const GENERIC = READING_GENERIC;
+const FUTURE = READING_FUTURE;
+const NOT_AUTHENTICATED = READING_NOT_AUTHENTICATED;
+const ERRORS = READING_ERRORS;
+const messageFor = readingMessageFor;
 
 function refresh() {
   revalidatePath("/");
   revalidatePath("/libros");
   revalidatePath("/habitos/[id]", "page");
   revalidatePath("/habitos/[id]/lectura", "page");
-}
-
-/** Page checks the database repeats, so the sheet can answer before any round trip. */
-function checkPages(entry: ReadingInput): Result {
-  return validateReadingInput({ fromPage: entry.fromPage, toPage: entry.toPage, totalPages: null });
-}
-
-function readingArgs(checkinId: string, entry: ReadingInput) {
-  return {
-    p_checkin_id: checkinId,
-    p_book_id: entry.bookId,
-    p_from_page: entry.fromPage,
-    p_to_page: entry.toPage,
-    p_finished: entry.finished,
-  };
 }
 
 /**

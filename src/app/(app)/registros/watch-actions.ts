@@ -6,47 +6,29 @@ import type { LocalDate } from "@/domain/types";
 import { validateMedia, validateWatchInput, type MediaInput } from "@/domain/watch";
 import { isLocalDate } from "@/lib/log-date";
 import { requireUser } from "@/lib/require-user";
+import {
+  WATCH_ERRORS,
+  WATCH_FUTURE,
+  WATCH_LOST,
+  WATCH_NOT_AUTHENTICATED,
+  checkWatchShape,
+  watchArgs,
+  watchMessageFor,
+  type WatchInput,
+} from "@/lib/watch-copy";
 import type { createServerClient } from "@/lib/supabase/server";
 import { loggedCoverage } from "@/lib/watch-coverage";
-import type { Database } from "@/lib/supabase/database.types";
 
 // Series and movies: the titles library and the watch entry of a check-in. Every write of an
 // entry goes through the RPCs of 0018; titles use their own table with column grants.
 
-export type WatchInput = {
-  mediaId: string;
-  episodes: number | null;
-  season: number | null;
-  episodeTo: number | null;
-  minutes: number | null;
-  completed: boolean;
-  finished: boolean;
-};
+export type { WatchInput };
 type Result = { ok: true } | { ok: false; error: string };
 
-const GENERIC = "No pudimos guardar los cambios. Inténtalo de nuevo.";
-const WATCH_LOST = "Marcamos el hábito, pero no guardamos lo que viste. Inténtalo de nuevo.";
-const FUTURE = "La fecha no puede ser futura.";
-const NOT_AUTHENTICATED = "Inicia sesión para continuar.";
-const MOVIE_NEEDS = "Indica los minutos o marca que la viste completa.";
-const ERRORS: Record<string, string> = {
-  invalid_watch: "Revisa lo que viste: episodios, temporada o minutos.",
-  media_not_found: "No encontramos ese título.",
-  log_type_mismatch: "Este hábito no lleva ese tipo de registro.",
-  checkin_not_found: "Ese día no tiene check-in.",
-  invalid_finished_on: FUTURE,
-  // same copy as registros/actions.ts and habitos/actions.ts
-  habit_not_found: "No encontramos ese hábito.",
-  photo_required: "Este hábito pide una foto de prueba.",
-  habit_has_items: "Este hábito se completa marcando sus pasos.",
-  not_authenticated: NOT_AUTHENTICATED,
-};
-
-function messageFor(raw: string | undefined, fallback = GENERIC): string {
-  if (!raw) return fallback;
-  const key = Object.keys(ERRORS).find((k) => raw.includes(k));
-  return key ? ERRORS[key] : fallback;
-}
+const FUTURE = WATCH_FUTURE;
+const NOT_AUTHENTICATED = WATCH_NOT_AUTHENTICATED;
+const ERRORS = WATCH_ERRORS;
+const messageFor = watchMessageFor;
 
 function refresh() {
   revalidatePath("/");
@@ -55,15 +37,7 @@ function refresh() {
   revalidatePath("/habitos/[id]/visto", "page");
 }
 
-/**
- * What the database repeats without knowing the title's kind: an entry with no episodes, no
- * minutes and not completed is a movie missing its data (a series always has episodes). The sheet
- * runs the full `validateWatchInput` with the title at hand; the RPC stays the authority.
- */
-function checkShape(entry: WatchInput): Result {
-  if (entry.episodes === null && entry.minutes === null && !entry.completed) return { ok: false, error: MOVIE_NEEDS };
-  return { ok: true };
-}
+const checkShape = checkWatchShape;
 
 type Client = Awaited<ReturnType<typeof createServerClient>>;
 
@@ -101,23 +75,6 @@ async function checkAgainstTitle(supabase: Client, entry: WatchInput): Promise<R
       finishedOn: null,
     },
   );
-}
-
-// The generated types mark every argument of save_watch_entry as non-null; the SQL accepts null for
-// episodes, season, episode and minutes (a movie has no episodes), so the nulls are cast through (one cast: a wrong key still fails to compile).
-type SaveWatchArgs = Database["public"]["Functions"]["save_watch_entry"]["Args"];
-
-function watchArgs(checkinId: string, entry: WatchInput): SaveWatchArgs {
-  return {
-    p_checkin_id: checkinId,
-    p_media_id: entry.mediaId,
-    p_episodes: entry.episodes,
-    p_season: entry.season,
-    p_episode_to: entry.episodeTo,
-    p_minutes: entry.minutes,
-    p_completed: entry.completed,
-    p_finished: entry.finished,
-  } as SaveWatchArgs;
 }
 
 /**
