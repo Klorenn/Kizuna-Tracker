@@ -25,6 +25,8 @@ const ICONS = {
   photo_rejected: Warning,
   new_debt: Receipt,
   reminder: Bell,
+  streak_risk: Bell,
+  weekly_summary: Bell,
   group_week_closed: Users,
   group_member_joined: Users,
 } as const;

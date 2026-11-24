@@ -16,6 +16,8 @@ export type NotificationType =
   | 'photo_rejected'
   | 'new_debt'
   | 'reminder'
+  | 'streak_risk'
+  | 'weekly_summary'
   | 'group_week_closed'
   | 'group_member_joined'
 
@@ -113,6 +115,39 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         body: 'Marca lo que ya hiciste antes de que termine el día.',
         url: '/',
       }
+    case 'streak_risk': {
+      const name = str(payload.habit_name)
+      const streak = typeof payload.streak === 'number' && Number.isInteger(payload.streak) && payload.streak > 0 ? payload.streak : null
+      const more = typeof payload.more === 'number' && Number.isInteger(payload.more) && payload.more > 0 ? payload.more : 0
+      return {
+        title: name && streak ? `Tu racha de ${streak} ${streak === 1 ? 'día' : 'días'} en ${name} está en peligro 🔥` : 'Tu racha está en peligro 🔥',
+        body: `${more ? `+${more} más. ` : ''}Márcalo antes de que termine el día.`,
+        url: '/',
+      }
+    }
+    case 'weekly_summary': {
+      const count = (v: unknown): number | null => (typeof v === 'number' && Number.isInteger(v) && v >= 0 ? v : null)
+      const done = count(payload.done)
+      const due = count(payload.due)
+      if (done === null || due === null) return { title: 'Tu resumen de la semana', body: 'Mira cómo te fue en Kizuna.', url: '/resumen' }
+      const streak = count(payload.best_streak)
+      const habit = str(payload.best_habit)
+      const won = count(payload.won) ?? 0
+      const lost = count(payload.lost) ?? 0
+      const balance = typeof payload.balance === 'number' && Number.isInteger(payload.balance) ? payload.balance : 0
+      const retos = (n: number) => `${n} ${n === 1 ? 'reto' : 'retos'}`
+      const parts = [
+        streak && habit ? `mejor racha ${streak} ${streak === 1 ? 'día' : 'días'} en ${habit}` : null,
+        won ? `ganaste ${retos(won)}` : null,
+        lost ? `perdiste ${retos(lost)}` : null,
+        balance < 0 ? `debes ${formatCLP(-balance)}` : balance > 0 ? `te deben ${formatCLP(balance)}` : null,
+      ].filter(Boolean)
+      return {
+        title: `Semana: ${done}/${due} hábitos ✅`,
+        body: parts.length ? parts.join(' · ') : 'Mira el detalle en tu resumen.',
+        url: '/resumen',
+      }
+    }
     case 'group_week_closed': {
       const group = str(payload.group_name)
       const counts =
