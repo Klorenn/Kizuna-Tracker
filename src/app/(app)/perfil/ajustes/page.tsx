@@ -10,13 +10,16 @@ import { AccountRows, PreferenceRows } from "@/components/SettingsRows";
 import { SignOutButton } from "@/components/SignOutButton";
 import { ListRow, ListSection } from "@/components/ui/ListRow";
 import { avatarUrl } from "@/lib/avatar";
+import { deviceMeta } from "@/domain/widget-code";
 import { loadDiscoverable, loadNotifyPrefs } from "@/lib/discover-data";
+import { loadWidgetDevices } from "@/lib/widget-devices";
 import { createServerClient } from "@/lib/supabase/server";
 import { timezoneLock } from "@/lib/profile-view";
 import { getSessionUser, getViewerProfile, viewerMissingDestination } from "@/lib/viewer";
 import { COLOR_COOKIE, THEME_COOKIE, parseColor, parseTheme } from "@/lib/theme";
 import { DiscoverableSwitch } from "./DiscoverableSwitch";
 import { NotifyPrefSwitches } from "./NotifyPrefSwitches";
+import { WidgetSection } from "./WidgetSection";
 
 export const metadata: Metadata = { title: "Ajustes" };
 
@@ -25,7 +28,7 @@ export default async function AjustesPage() {
   const session = await getSessionUser();
   // the privacy switch is not part of the shared viewer read: its own query, started together with
   // the profile (null = the read failed)
-  const [profile, discoverable, notifyPrefs] = await Promise.all([
+  const [profile, discoverable, notifyPrefs, widgetDevices] = await Promise.all([
     getViewerProfile(),
     session
       ? createServerClient()
@@ -35,6 +38,11 @@ export default async function AjustesPage() {
     session
       ? createServerClient()
           .then((supabase) => loadNotifyPrefs(supabase, session.id))
+          .catch((): null => null)
+      : Promise.resolve(null),
+    session
+      ? createServerClient()
+          .then((supabase) => loadWidgetDevices(supabase, session.id))
           .catch((): null => null)
       : Promise.resolve(null),
   ]);
@@ -88,6 +96,18 @@ export default async function AjustesPage() {
           </div>
         ) : (
           <NotifyPrefSwitches streakRisk={notifyPrefs.streakRisk} weeklySummary={notifyPrefs.weeklySummary} />
+        )}
+      </ListSection>
+
+      <ListSection id="ajustes-widget" label="Widget de Android">
+        {widgetDevices === null ? (
+          <div className="border-b border-line px-4 py-3">
+            <LoadFailed href="/perfil/ajustes" />
+          </div>
+        ) : (
+          <WidgetSection
+            devices={widgetDevices.map((d) => ({ id: d.id, label: d.label, meta: deviceMeta(d.createdAt, d.lastUsedAt, new Date()) }))}
+          />
         )}
       </ListSection>
 

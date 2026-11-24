@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { deleteAccountWith } from "@/lib/delete-account";
 import { supabaseDeleteDeps } from "@/lib/delete-account-deps";
 import { processAvatar } from "@/lib/avatar";
+import { isUuid } from "@/domain/groups";
 import { parseNotifyPref } from "@/lib/notify-prefs";
 import { requireUser } from "@/lib/require-user";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -109,6 +110,31 @@ export async function setNotifyPref(kind: string, value: boolean): Promise<Resul
     .eq("id", auth.userId)
     .select("id");
   if (error || !data || data.length === 0) return { ok: false, error: GENERIC };
+  revalidatePath("/perfil/ajustes");
+  return { ok: true };
+}
+
+const WIDGET_CODE_LIMIT = "Pediste demasiados códigos. Inténtalo de nuevo en un rato.";
+
+/** Ajustes > Widget de Android: a one-time pairing code (5 minutes, one live code per person). */
+export async function createWidgetCode(): Promise<{ ok: true; code: string; expiresAt: string } | { ok: false; error: string }> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { data, error } = await auth.supabase.rpc("create_widget_pairing_code");
+  if (error) return { ok: false, error: error.message === "rate_limited" ? WIDGET_CODE_LIMIT : GENERIC };
+  const row = data?.[0];
+  if (!row) return { ok: false, error: GENERIC };
+  revalidatePath("/perfil/ajustes");
+  return { ok: true, code: row.code, expiresAt: row.expires_at };
+}
+
+/** Ajustes > Widget de Android: disconnects a device (its next refresh is unauthorized). Revoking one already revoked is fine. */
+export async function revokeWidgetDevice(id: string): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  if (!isUuid(id)) return { ok: false, error: GENERIC };
+  const { error } = await auth.supabase.rpc("revoke_widget_token", { p_token_id: id });
+  if (error) return { ok: false, error: GENERIC };
   revalidatePath("/perfil/ajustes");
   return { ok: true };
 }
