@@ -6,6 +6,7 @@
     "src/lib/groups-fines-contract.ts",
     "src/lib/groups-rpc.ts",
     "src/lib/stale-day.ts",
+    "src/lib/quantity-input.ts",
     "src/lib/quantity-copy.ts",
     "src/lib/time-copy.ts",
     "src/lib/tracking-copy.ts",
