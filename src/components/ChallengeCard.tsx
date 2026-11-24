@@ -9,6 +9,7 @@ import { AcceptOptions, ProposalHabitLines } from "@/components/AcceptOptions";
 import type { IconKey } from "@/domain/presets";
 import { CREATE_NEW, defaultAcceptSelection } from "@/lib/challenge-accept";
 import { formatCLP } from "@/domain/ledger";
+import type { CardItem } from "@/lib/retos-cards";
 import { Avatar } from "./ui/Avatar";
 import { Button } from "./ui/Button";
 import { Card } from "./ui/Card";
@@ -99,6 +100,10 @@ export type ChallengeCardData = {
   createSimple?: boolean;
   /** false when the proposer habit could not be read: "Crear" is not offered. */
   sourceReadable?: boolean;
+  /** Live sub-retos (proposed or active) in position order; the first one is the card title. Rendered in 5.2. */
+  items?: CardItem[];
+  /** "+2 sub-retos" when the challenge has more than one live item. */
+  moreLabel?: string | null;
 };
 
 export function ChallengeCard({ data }: { data: ChallengeCardData }) {

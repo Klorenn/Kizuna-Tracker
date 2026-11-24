@@ -26,14 +26,41 @@ import {
   endsOn,
   firstName,
   frequencyLabel,
+  itemViews,
   periodStatus,
+  subRetosLabel,
   weekdayLabel,
+  type ItemRow,
 } from "@/lib/challenge-view";
 import { fetchAll } from "@/lib/paginate";
+import { buildCardItems, itemHabitIds, type HabitRow } from "@/lib/retos-cards";
+import { untypedDb } from "@/lib/untyped-db";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser } from "@/lib/viewer";
 
 export const metadata: Metadata = { title: "Retos" };
+
+/** A challenge with its sub-retos embedded (one read; challenge_items is not in the generated types yet). */
+type ChallengeListRow = {
+  id: string;
+  creator_id: string;
+  rival_id: string;
+  creator_habit_id: string;
+  rival_habit_id: string | null;
+  cancel_requested_by: string | null;
+  frequency_type: string;
+  target_per_week: number | null;
+  requires_photo: boolean;
+  weeks: number;
+  fine_amount: number;
+  timezone: string;
+  status: string;
+  starts_on: string | null;
+  created_at: string;
+  challenge_items: ItemRow[] | null;
+};
+
+const ITEM_COLUMNS = "id,position,status,creator_habit_id,rival_habit_id,target_per_week,requires_photo,proposed_by,starts_on";
 
 export default async function RetosPage() {
   const viewer = await getSessionUser();
@@ -41,24 +68,30 @@ export default async function RetosPage() {
   const supabase = await createServerClient();
 
   // every list here grows with time: read past the 1000-row cap instead of truncating
-  const challenges = await fetchAll((from, to) =>
-    supabase
+  const challenges = (await fetchAll<unknown>((from, to) =>
+    // TODO(sub-retos types): challenge_items is not in the generated types yet
+    untypedDb(supabase)
       .from("challenges")
       .select(
-        "id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at",
+        `id,creator_id,rival_id,creator_habit_id,rival_habit_id,cancel_requested_by,frequency_type,target_per_week,requires_photo,weeks,fine_amount,timezone,status,starts_on,created_at,challenge_items(${ITEM_COLUMNS})`,
       )
       .in("status", ["proposed", "active", "finished", "cancelled"])
       .order("created_at", { ascending: false })
       .order("id")
       .range(from, to),
-  );
+  )) as ChallengeListRow[];
+  // live sub-retos per challenge, oriented to the viewer
+  const itemsOf = (c: ChallengeListRow) => itemViews(c.challenge_items ?? [], c, viewer.id);
   const now = new Date();
 
   const otherOf = (c: { creator_id: string; rival_id: string }) =>
     c.creator_id === viewer.id ? c.rival_id : c.creator_id;
   const people = [...new Set(challenges.map(otherOf))];
   const habitIds = [
-    ...new Set(challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
+    ...new Set([
+      ...challenges.flatMap((c) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x)),
+      ...itemHabitIds(challenges.flatMap((c) => c.challenge_items ?? [])),
+    ]),
   ];
   // progress is only shown for the period running now: read just those days, not every check-in
   const running = challenges.flatMap((c) => {
@@ -67,7 +100,12 @@ export default async function RetosPage() {
     return st.state === "running" ? [{ c, start: st.period.start }] : [];
   });
   const runningHabitIds = [
-    ...new Set(running.flatMap(({ c }) => [c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x))),
+    ...new Set(
+      running.flatMap(({ c }) => [
+        ...[c.creator_habit_id, c.rival_habit_id].filter((x): x is string => !!x),
+        ...itemHabitIds((c.challenge_items ?? []).filter((i) => i.status === "active")),
+      ]),
+    ),
   ];
   const since = running.reduce<string | null>((min, r) => (min === null || r.start < min ? r.start : min), null);
 
@@ -116,6 +154,7 @@ export default async function RetosPage() {
   const habitName = new Map((habits ?? []).map((h) => [h.id, h.name]));
   const habitById = new Map((habits ?? []).map((h) => [h.id, h]));
   const eligible = (myHabits ?? []).map((h) => ({ id: h.id, name: h.name, requiresPhoto: h.requires_photo }));
+  const habitRows = new Map((habits ?? []).map((h) => [h.id, h as unknown as HabitRow]));
   const datesByHabit = new Map<string, string[]>();
   for (const k of checkins) datesByHabit.set(k.habit_id, [...(datesByHabit.get(k.habit_id) ?? []), k.local_date]);
 
@@ -128,8 +167,19 @@ export default async function RetosPage() {
     const theirHabitId = mine ? c.rival_habit_id : c.creator_habit_id;
     const myHabitId = mine ? c.creator_habit_id : c.rival_habit_id;
     const f = challengeFrequency(c);
+    const views = itemsOf(c);
+    const runningNow = c.status === "active" ? periodStatus(c, localDate(now, c.timezone)) : null;
     const base = {
       id: c.id,
+      // sub-retos: the first one names the card, the rest show as "+N sub-retos"
+      items: buildCardItems({
+        items: views,
+        frequencyType: c.frequency_type === "weekly" ? "weekly" : "daily",
+        habitById: habitRows,
+        period: runningNow?.state === "running" ? runningNow.period : null,
+        datesOf: (habitId) => datesByHabit.get(habitId) ?? [],
+      }),
+      moreLabel: subRetosLabel(views.length),
       otherName: other,
       otherAvatar: avatarUrl(avatarOf.get(otherOf(c))?.avatar_path ?? null),
       otherPreset: avatarOf.get(otherOf(c))?.avatar_preset ?? null,
