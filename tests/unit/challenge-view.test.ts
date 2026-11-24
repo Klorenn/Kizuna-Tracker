@@ -165,3 +165,156 @@ describe('failureHistory (built from debts, readable by both players)', () => {
     expect(rows[0]).toMatchObject({ start: '2026-11-15', n: 14 })
   })
 })
+
+import { itemProgress, itemViews, subRetosLabel } from '@/lib/challenge-view'
+
+describe('itemViews (live sub-retos seen from one player)', () => {
+  const ME = 'me'
+  const row = (o: Partial<Parameters<typeof itemViews>[0][number]>) => ({
+    id: 'i1',
+    position: 1,
+    status: 'active',
+    creator_habit_id: 'hc',
+    rival_habit_id: 'hr',
+    target_per_week: 3,
+    requires_photo: false,
+    proposed_by: 'me',
+    starts_on: '2026-11-02',
+    ...o,
+  })
+
+  it('keeps only live items in position order and orients habits to the viewer', () => {
+    const items = [
+      row({ id: 'i3', position: 3, status: 'withdrawn' }),
+      row({ id: 'i2', position: 2, status: 'proposed', creator_habit_id: 'hc2', rival_habit_id: null, proposed_by: 'them' }),
+      row({ id: 'i1', position: 1 }),
+      row({ id: 'i4', position: 4, status: 'declined' }),
+    ]
+    const asCreator = itemViews(items, { creator_id: ME }, ME)
+    expect(asCreator.map((i) => i.id)).toEqual(['i1', 'i2'])
+    expect(asCreator[0]).toMatchObject({ myHabitId: 'hc', theirHabitId: 'hr', pendingFor: null })
+    const asRival = itemViews(items, { creator_id: 'them' }, ME)
+    expect(asRival[0]).toMatchObject({ myHabitId: 'hr', theirHabitId: 'hc' })
+  })
+
+  it('says who must answer a proposed item: the non-proposer', () => {
+    const proposedByMe = row({ status: 'proposed', rival_habit_id: null, proposed_by: ME })
+    const proposedByThem = row({ id: 'i2', position: 2, status: 'proposed', rival_habit_id: null, proposed_by: 'them' })
+    const [a, b] = itemViews([proposedByMe, proposedByThem], { creator_id: ME }, ME)
+    expect(a.pendingFor).toBe('them')
+    expect(b.pendingFor).toBe('me')
+  })
+})
+
+describe('itemProgress', () => {
+  const period = { start: '2026-11-09', end: '2026-11-15' }
+  const view = (o = {}) => ({
+    id: 'i1',
+    position: 1,
+    status: 'active' as const,
+    myHabitId: 'a',
+    theirHabitId: 'b',
+    target: 3,
+    requiresPhoto: false,
+    startsOn: '2026-11-02',
+    pendingFor: null,
+    ...o,
+  })
+  const dates = (h: string) => ({ a: ['2026-11-09', '2026-11-10', '2026-11-03'], b: ['2026-11-11'] })[h] ?? []
+
+  it('counts each side inside the running period against the item target', () => {
+    expect(itemProgress(view(), 'weekly', period, dates)).toEqual({ type: 'weekly', target: 3, you: 2, them: 1 })
+  })
+
+  it('daily items are a done / not done pair', () => {
+    expect(itemProgress(view({ target: null }), 'daily', { start: '2026-11-10', end: '2026-11-10' }, dates)).toEqual({
+      type: 'daily',
+      youDone: true,
+      themDone: false,
+    })
+  })
+
+  it('is null for an item that has not started in this period or is not active', () => {
+    expect(itemProgress(view({ startsOn: '2026-11-16' }), 'weekly', period, dates)).toBeNull()
+    expect(itemProgress(view({ status: 'proposed', startsOn: null }), 'weekly', period, dates)).toBeNull()
+  })
+})
+
+describe('subRetosLabel', () => {
+  it('shows nothing for one item and "+N" for the rest', () => {
+    expect(subRetosLabel(1)).toBeNull()
+    expect(subRetosLabel(2)).toBe('+1 sub-reto')
+    expect(subRetosLabel(4)).toBe('+3 sub-retos')
+  })
+})
+
+describe('failureHistory with sub-reto results', () => {
+  const ME = 'me'
+  const THEM = 'them'
+  const weekly = { type: 'weekly' as const, target: 3 }
+  const periods = periodsFor('2026-11-02', 4, weekly)
+  const debt = (period_start: string, debtor_id: string) => ({ period_start, debtor_id, amount: 2500, paid_at: null })
+  const names = new Map([
+    ['i1', { mine: 'Agua', theirs: 'Beber' }],
+    ['i2', { mine: 'Gym', theirs: 'Pesas' }],
+  ])
+  const base = {
+    periods,
+    closedStarts: ['2026-11-02'],
+    otherName: 'Ana',
+    frequency: weekly,
+    myId: ME,
+    myDates: [],
+    theirDates: null,
+    itemNames: names,
+  }
+
+  it('names the sub-retos I failed', () => {
+    const rows = failureHistory({
+      ...base,
+      debts: [debt('2026-11-02', ME)],
+      itemResults: [
+        { period_start: '2026-11-02', item_id: 'i1', player_id: ME, met: false },
+        { period_start: '2026-11-02', item_id: 'i2', player_id: ME, met: false },
+        { period_start: '2026-11-02', item_id: 'i1', player_id: THEM, met: true },
+      ],
+    })
+    expect(rows[0].summary).toBe('No cumpliste: Agua, Gym')
+    expect(rows[0].debt).toEqual({ amount: 2500, paid: false })
+  })
+
+  it('names the sub-retos the rival failed, with their habit names', () => {
+    const rows = failureHistory({
+      ...base,
+      debts: [debt('2026-11-02', THEM)],
+      itemResults: [
+        { period_start: '2026-11-02', item_id: 'i2', player_id: THEM, met: false },
+        { period_start: '2026-11-02', item_id: 'i2', player_id: ME, met: true },
+      ],
+    })
+    expect(rows[0].summary).toBe('Ana no cumplió: Pesas')
+  })
+
+  it('falls back to the legacy text for periods without result rows', () => {
+    const rows = failureHistory({
+      ...base,
+      debts: [debt('2026-11-02', ME)],
+      itemResults: [{ period_start: '2026-11-09', item_id: 'i1', player_id: ME, met: false }],
+    })
+    expect(rows[0].summary).toBe('Hiciste 0 de 3')
+  })
+
+  it('keeps the compensation text when both failed', () => {
+    const rows = failureHistory({
+      ...base,
+      debts: [debt('2026-11-02', ME), debt('2026-11-02', THEM)],
+      itemResults: [{ period_start: '2026-11-02', item_id: 'i1', player_id: ME, met: false }],
+    })
+    expect(rows[0].summary).toBe('Fallaron los dos · se compensa')
+  })
+
+  it('works unchanged when no itemResults are given', () => {
+    const rows = failureHistory({ ...base, itemNames: undefined, debts: [debt('2026-11-02', ME)] })
+    expect(rows[0].summary).toBe('Hiciste 0 de 3')
+  })
+})

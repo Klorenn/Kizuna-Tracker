@@ -1,6 +1,7 @@
 import "server-only";
 import type { DeletableTable, DeleteAccountDeps } from "@/lib/delete-account";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { untypedDb } from "@/lib/untyped-db";
 
 const CHUNK = 500;
 export const OWN_ROWS: ReadonlySet<DeletableTable> = new Set([
@@ -40,11 +41,21 @@ export function supabaseDeleteDeps(
     const ids = (mine ?? []).map((h) => h.id);
     if (ids.length === 0) return [];
     const list = ids.join(",");
-    const { data } = await admin
-      .from("challenges")
-      .select("creator_habit_id,rival_habit_id")
-      .or(`creator_habit_id.in.(${list}),rival_habit_id.in.(${list})`);
-    const used = new Set((data ?? []).flatMap((c) => [c.creator_habit_id, c.rival_habit_id]));
+    const filter = `creator_habit_id.in.(${list}),rival_habit_id.in.(${list})`;
+    // legacy columns (mirrored from the first sub-reto) and every sub-reto: a habit that only an
+    // item references is still held by its foreign key. Independent reads, one round trip.
+    const [{ data }, { data: itemRows }] = await Promise.all([
+      admin.from("challenges").select("creator_habit_id,rival_habit_id").or(filter),
+      // TODO(sub-retos types): challenge_items is not in the generated types yet
+      untypedDb(admin).from("challenge_items").select("creator_habit_id,rival_habit_id").or(filter),
+    ]);
+    const used = new Set<string | null>([
+      ...(data ?? []).flatMap((c) => [c.creator_habit_id, c.rival_habit_id]),
+      ...((itemRows ?? []) as { creator_habit_id: string | null; rival_habit_id: string | null }[]).flatMap((i) => [
+        i.creator_habit_id,
+        i.rival_habit_id,
+      ]),
+    ]);
     return ids.filter((id) => used.has(id));
   }
 

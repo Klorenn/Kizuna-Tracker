@@ -6,6 +6,7 @@ import { loadCheckinDates } from "@/lib/checkin-dates";
 import { challengeFrequency } from "@/lib/challenge-view";
 import {
   actionCopy,
+  reviewItemsOf,
   reviewStatus,
   STREAK_LOOKBACK_DAYS,
   streakContext,
@@ -14,7 +15,9 @@ import {
   type FeedEntry,
   type FeedFilter,
   type FeedPage,
+  type ReviewItemRow,
 } from "@/lib/feed";
+import { untypedDb } from "@/lib/untyped-db";
 import type { Database } from "@/lib/supabase/database.types";
 import type { createServerClient } from "@/lib/supabase/server";
 
@@ -79,19 +82,23 @@ export async function loadFeedPage(
   const photoPaths = rows.flatMap((r) => (r.photo_path ? [r.photo_path] : []));
 
   // everything the page needs besides the rows, in one parallel batch
-  const [{ data: people }, history, { data: items }, { data: done }, { data: challenges }, signed] = await Promise.all([
+  const [{ data: people }, history, { data: items }, { data: done }, { data: reviewRows }, signed] = await Promise.all([
     supabase.from("public_profiles").select("id,username,display_name,avatar_path,avatar_preset").in("id", userIds),
     // streak context: one row per habit with its dates since `from` (no row cap to page past)
     loadCheckinDates(supabase, habitIds, from),
     supabase.from("habit_items").select("habit_id").in("habit_id", habitIds).is("archived_at", null).limit(1000),
     // item check-ins of the days on the page: only habits made of items use them below
     supabase.from("checkin_items").select("habit_id,local_date").in("habit_id", habitIds).in("local_date", [...new Set(days)]).limit(1000),
+    // active photo sub-retos of active challenges: the unit reject_checkin resolves a photo through
     reviewable
-      ? supabase
-          .from("challenges")
-          .select("id,creator_id,rival_id,creator_habit_id,rival_habit_id,status,requires_photo,starts_on,weeks")
+      ? untypedDb(supabase) // TODO(sub-retos types)
+          .from("challenge_items")
+          .select(
+            "creator_habit_id,rival_habit_id,requires_photo,starts_on,challenges!inner(id,creator_id,rival_id,starts_on,weeks)",
+          )
           .eq("status", "active")
           .eq("requires_photo", true)
+          .eq("challenges.status", "active")
           .limit(1000)
       : Promise.resolve({ data: [] }),
     photoPaths.length
@@ -110,6 +117,7 @@ export async function loadFeedPage(
     itemDone.set(key, (itemDone.get(key) ?? 0) + 1);
   }
 
+  const reviewItems = (reviewRows ?? []) as unknown as ReviewItemRow[];
   const byId = new Map((people ?? []).map((p) => [p.id, p]));
   // oldest first and up to the newest day on the page, as the streak context expects
   const datesByHabit = new Map<string, string[]>(
@@ -157,7 +165,7 @@ export async function loadFeedPage(
               challengeFrequency({ frequency_type: r.habit_frequency_type ?? "daily", target_per_week: r.habit_target_per_week }),
               from,
             ),
-      status: reviewStatus(r, me, challenges ?? [], now),
+      status: reviewStatus(r, me, reviewItemsOf(reviewItems), now),
     };
   });
   const last = rows[rows.length - 1];

@@ -66,7 +66,7 @@ describe('loadFeedPage: round trips', () => {
     expect(trips[0]).toBe('rpc:friend_feed')
     // no table read of the checkins feed, no per-habit or follow-up serial query
     expect(trips.filter((t) => t === 'checkins')).toEqual([])
-    expect(trips.slice(1).sort()).toEqual(['challenges', 'checkin_items', 'habit_items', 'public_profiles', 'rpc:checkin_dates'].sort())
+    expect(trips.slice(1).sort()).toEqual(['challenge_items', 'checkin_items', 'habit_items', 'public_profiles', 'rpc:checkin_dates'].sort())
   })
 
   test('the streak history is one checkin_dates call for the habits on the page', async () => {
@@ -89,5 +89,20 @@ describe('loadFeedPage: timezone only matters for formatting', () => {
     const page = await pending
     const reference = await run({}, FIXTURE)
     expect(page.items.map((i) => i.time)).toEqual(reference.page.items.map((i) => i.time))
+  })
+})
+
+describe('loadFeedPage: review status comes from the photo sub-retos (challenge_items)', () => {
+  test("a friend's photo on an active photo sub-reto is pending my review", async () => {
+    const { page } = await run()
+    const photo = page.items.find((i) => i.hasPhoto)!
+    expect(photo.status).toMatchObject({ kind: 'pending', challengeId: 'ch1' })
+  })
+
+  test('the item read filters on item status, photo and challenge status in the database', async () => {
+    const f = feedClient()
+    await loadFeedPage(f.client, ME, { now: NOW, timezone: 'UTC' })
+    expect(f.trips).toContain('challenge_items')
+    expect(f.trips).not.toContain('challenges')
   })
 })

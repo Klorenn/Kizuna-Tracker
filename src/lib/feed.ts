@@ -107,16 +107,54 @@ type ReviewCheckin = {
   rejected_at: string | null
   rejected_by: string | null
 }
-type ReviewChallenge = {
-  id: string
+/**
+ * One active photo sub-reto of an active challenge: the unit reject_checkin resolves a photo
+ * through. `starts_on` is the item's (a later sub-reto starts after the challenge), `ends_on` is
+ * the challenge's last day.
+ */
+export type ReviewItem = {
+  challenge_id: string
   creator_id: string
   rival_id: string
-  creator_habit_id: string
+  creator_habit_id: string | null
   rival_habit_id: string | null
-  status: string
   requires_photo: boolean
   starts_on: string | null
-  weeks: number
+  ends_on: string
+}
+
+/** Embedded `challenge_items` rows (with their challenge) as review items. */
+export type ReviewItemRow = {
+  creator_habit_id: string | null
+  rival_habit_id: string | null
+  requires_photo: boolean
+  starts_on: string | null
+  challenges: {
+    id: string
+    creator_id: string
+    rival_id: string
+    starts_on: string | null
+    weeks: number
+  }
+}
+
+export function reviewItemsOf(rows: ReviewItemRow[]): ReviewItem[] {
+  return rows.flatMap((r) =>
+    r.challenges.starts_on
+      ? [
+          {
+            challenge_id: r.challenges.id,
+            creator_id: r.challenges.creator_id,
+            rival_id: r.challenges.rival_id,
+            creator_habit_id: r.creator_habit_id,
+            rival_habit_id: r.rival_habit_id,
+            requires_photo: r.requires_photo,
+            starts_on: r.starts_on,
+            ends_on: addDays(r.challenges.starts_on, r.challenges.weeks * 7 - 1),
+          },
+        ]
+      : [],
+  )
 }
 
 export type ReviewStatus =
@@ -126,30 +164,29 @@ export type ReviewStatus =
 
 /**
  * Status chip of a check-in for this viewer. "Se aprueba sola en N h" only when the viewer can
- * still reject the photo (mirror of reject_checkin: active photo challenge, viewer is the owner's
- * rival on that habit, inside the challenge dates, under 24 h old).
+ * still reject the photo (mirror of reject_checkin: an active photo sub-reto of an active challenge,
+ * viewer is the owner's rival on that habit, from the item start to the challenge end, under 24 h old).
  */
 export function reviewStatus(
   k: ReviewCheckin,
   me: string,
-  challenges: ReviewChallenge[],
+  items: ReviewItem[],
   now: Date,
 ): ReviewStatus {
   if (k.rejected_at) return { kind: 'rejected', byMe: k.rejected_by === me }
   if (!k.photo_path || k.user_id === me) return null
   const left = new Date(k.created_at).getTime() + REVIEW_WINDOW_MS - now.getTime()
   if (!(left > 0)) return null
-  const c = challenges.find(
-    (c) =>
-      c.status === 'active' &&
-      c.requires_photo &&
-      c.starts_on !== null &&
-      ((c.creator_id === me && c.rival_id === k.user_id && c.rival_habit_id === k.habit_id) ||
-        (c.rival_id === me && c.creator_id === k.user_id && c.creator_habit_id === k.habit_id)) &&
-      k.local_date >= c.starts_on &&
-      k.local_date <= addDays(c.starts_on, c.weeks * 7 - 1),
+  const c = items.find(
+    (i) =>
+      i.requires_photo &&
+      i.starts_on !== null &&
+      ((i.creator_id === me && i.rival_id === k.user_id && i.rival_habit_id === k.habit_id) ||
+        (i.rival_id === me && i.creator_id === k.user_id && i.creator_habit_id === k.habit_id)) &&
+      k.local_date >= i.starts_on &&
+      k.local_date <= i.ends_on,
   )
-  return c ? { kind: 'pending', hours: Math.ceil(left / 3_600_000), challengeId: c.id } : null
+  return c ? { kind: 'pending', hours: Math.ceil(left / 3_600_000), challengeId: c.challenge_id } : null
 }
 
 /**

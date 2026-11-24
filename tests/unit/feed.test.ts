@@ -5,6 +5,7 @@ import {
   groupByDay,
   isMilestone,
   parseCursor,
+  reviewItemsOf,
   reviewStatus,
   streakContext,
 } from '@/lib/feed'
@@ -131,16 +132,16 @@ describe('streakContext with a bounded history window', () => {
 
 describe('reviewStatus', () => {
   const me = 'me'
-  const challenge = {
-    id: 'c1',
+  // one row per active photo sub-reto of an active challenge (item starts_on, challenge end)
+  const item = {
+    challenge_id: 'c1',
     creator_id: 'me',
     rival_id: 'beto',
     creator_habit_id: 'h-me',
     rival_habit_id: 'h-beto',
-    status: 'active',
     requires_photo: true,
     starts_on: '2026-11-16',
-    weeks: 2,
+    ends_on: '2026-11-29',
   }
   const now = new Date('2026-11-22T12:00:00Z')
   const checkin = {
@@ -153,21 +154,30 @@ describe('reviewStatus', () => {
     rejected_by: null,
   }
   test('foto de mi rival dentro del reto y de las 24 h: se aprueba sola en N h', () => {
-    expect(reviewStatus(checkin, me, [challenge], now)).toEqual({ kind: 'pending', hours: 22, challengeId: 'c1' })
+    expect(reviewStatus(checkin, me, [item], now)).toEqual({ kind: 'pending', hours: 22, challengeId: 'c1' })
   })
-  test('no aplica si no soy su rival en un reto con foto', () => {
-    expect(reviewStatus(checkin, me, [{ ...challenge, requires_photo: false }], now)).toBeNull()
-    expect(reviewStatus(checkin, me, [{ ...challenge, rival_habit_id: 'otro' }], now)).toBeNull()
-    expect(reviewStatus(checkin, me, [{ ...challenge, status: 'finished' }], now)).toBeNull()
-    expect(reviewStatus({ ...checkin, photo_path: null }, me, [challenge], now)).toBeNull()
+  test('un segundo sub-reto con foto también cuenta (hábito solo en el ítem 2)', () => {
+    const item2 = { ...item, creator_habit_id: 'h-me-2', rival_habit_id: 'h-beto-2' }
+    const k = { ...checkin, habit_id: 'h-beto-2' }
+    expect(reviewStatus(k, me, [item, item2], now)).toEqual({ kind: 'pending', hours: 22, challengeId: 'c1' })
+  })
+  test('el ítem empieza más tarde que el reto: antes de su inicio no aplica', () => {
+    expect(reviewStatus({ ...checkin, local_date: '2026-11-22' }, me, [{ ...item, starts_on: '2026-11-23' }], now)).toBeNull()
+  })
+  test('no aplica si no soy su rival en un sub-reto con foto', () => {
+    expect(reviewStatus(checkin, me, [{ ...item, requires_photo: false }], now)).toBeNull()
+    expect(reviewStatus(checkin, me, [{ ...item, rival_habit_id: 'otro' }], now)).toBeNull()
+    expect(reviewStatus(checkin, me, [], now)).toBeNull()
+    expect(reviewStatus({ ...checkin, photo_path: null }, me, [item], now)).toBeNull()
   })
   test('fuera de la ventana de 24 h o fuera de las fechas del reto', () => {
-    expect(reviewStatus({ ...checkin, created_at: '2026-11-21T11:00:00Z' }, me, [challenge], now)).toBeNull()
-    expect(reviewStatus({ ...checkin, local_date: '2026-11-15' }, me, [challenge], now)).toBeNull()
+    expect(reviewStatus({ ...checkin, created_at: '2026-11-21T11:00:00Z' }, me, [item], now)).toBeNull()
+    expect(reviewStatus({ ...checkin, local_date: '2026-11-15' }, me, [item], now)).toBeNull()
+    expect(reviewStatus({ ...checkin, local_date: '2026-11-30' }, me, [item], now)).toBeNull()
   })
   test('rechazada', () => {
     expect(
-      reviewStatus({ ...checkin, rejected_at: '2026-11-22T10:00:00Z', rejected_by: 'me' }, me, [challenge], now),
+      reviewStatus({ ...checkin, rejected_at: '2026-11-22T10:00:00Z', rejected_by: 'me' }, me, [item], now),
     ).toEqual({ kind: 'rejected', byMe: true })
     expect(
       reviewStatus({ ...checkin, rejected_at: '2026-11-22T10:00:00Z', rejected_by: 'otro' }, me, [], now),
@@ -187,5 +197,44 @@ describe('parseCursor', () => {
     expect(parseCursor({ day: '2026-11-22', at: '2026-11-22T13:45:01Z', id: 'nope' })).toBeNull()
     expect(parseCursor({ day: '22-11-2026', at: '2026-11-22T13:45:01Z', id })).toBeNull()
     expect(parseCursor({ at: '2026-11-22T13:45:01Z', id })).toBeNull()
+  })
+})
+
+describe('reviewItemsOf', () => {
+  test('un ítem embebido con su reto: el fin sale del reto, el inicio del ítem', () => {
+    const out = reviewItemsOf([
+      {
+        creator_habit_id: 'a',
+        rival_habit_id: 'b',
+        requires_photo: true,
+        starts_on: '2026-11-23',
+        challenges: { id: 'c1', creator_id: 'x', rival_id: 'y', starts_on: '2026-11-16', weeks: 2 },
+      },
+    ])
+    expect(out).toEqual([
+      {
+        challenge_id: 'c1',
+        creator_id: 'x',
+        rival_id: 'y',
+        creator_habit_id: 'a',
+        rival_habit_id: 'b',
+        requires_photo: true,
+        starts_on: '2026-11-23',
+        ends_on: '2026-11-29',
+      },
+    ])
+  })
+  test('un reto sin fecha de inicio no genera ítems', () => {
+    expect(
+      reviewItemsOf([
+        {
+          creator_habit_id: 'a',
+          rival_habit_id: 'b',
+          requires_photo: true,
+          starts_on: null,
+          challenges: { id: 'c1', creator_id: 'x', rival_id: 'y', starts_on: null, weeks: 2 },
+        },
+      ]),
+    ).toEqual([])
   })
 })

@@ -60,7 +60,86 @@ export function endsOn(c: ScheduleRow): LocalDate | null {
 export const firstName = (displayName: string | null | undefined, fallback = 'Tu amigo') =>
   displayName?.trim().split(/\s+/)[0] || fallback
 
+export type ItemRow = {
+  id: string
+  position: number
+  status: string
+  creator_habit_id: string | null
+  rival_habit_id: string | null
+  target_per_week: number | null
+  requires_photo: boolean
+  proposed_by: string
+  starts_on: string | null
+}
+
+/** A live sub-reto (proposed or active) as one player sees it. */
+export type ItemView = {
+  id: string
+  position: number
+  status: 'proposed' | 'active'
+  myHabitId: string | null
+  theirHabitId: string | null
+  /** null = daily (the challenge frequency has no per-item target) */
+  target: number | null
+  requiresPhoto: boolean
+  startsOn: LocalDate | null
+  /** Who has to answer a proposed item: the player who did not propose it. */
+  pendingFor: 'me' | 'them' | null
+}
+
+/** Live items in position order, with the habits oriented to `me` (item columns are creator/rival side). */
+export function itemViews(items: ItemRow[], c: { creator_id: string }, me: string): ItemView[] {
+  const iAmCreator = c.creator_id === me
+  return items
+    .filter((i): i is ItemRow & { status: 'proposed' | 'active' } => i.status === 'proposed' || i.status === 'active')
+    .sort((a, b) => a.position - b.position)
+    .map((i) => ({
+      id: i.id,
+      position: i.position,
+      status: i.status,
+      myHabitId: iAmCreator ? i.creator_habit_id : i.rival_habit_id,
+      theirHabitId: iAmCreator ? i.rival_habit_id : i.creator_habit_id,
+      target: i.target_per_week,
+      requiresPhoto: i.requires_photo,
+      startsOn: i.starts_on,
+      pendingFor: i.status === 'proposed' ? (i.proposed_by === me ? 'them' : 'me') : null,
+    }))
+}
+
+export type ItemProgress =
+  | { type: 'weekly'; target: number; you: number; them: number }
+  | { type: 'daily'; youDone: boolean; themDone: boolean }
+
+/**
+ * Progress of one active item in the running period; null while the item is not counting yet
+ * (not active, or it starts after this period began).
+ */
+export function itemProgress(
+  item: ItemView,
+  frequencyType: 'daily' | 'weekly',
+  period: Period,
+  datesOf: (habitId: string) => LocalDate[],
+): ItemProgress | null {
+  if (item.status !== 'active' || !item.startsOn || item.startsOn > period.start) return null
+  const mine = item.myHabitId ? countDone(period, datesOf(item.myHabitId)) : 0
+  const theirs = item.theirHabitId ? countDone(period, datesOf(item.theirHabitId)) : 0
+  return frequencyType === 'weekly'
+    ? { type: 'weekly', target: item.target ?? 1, you: mine, them: theirs }
+    : { type: 'daily', youDone: mine > 0, themDone: theirs > 0 }
+}
+
+/** "+2 sub-retos" next to the first item's name; null when the challenge has a single item. */
+export function subRetosLabel(count: number): string | null {
+  if (count <= 1) return null
+  const extra = count - 1
+  return `+${extra} ${extra === 1 ? 'sub-reto' : 'sub-retos'}`
+}
+
 export type HistoryDebt = { period_start: string; debtor_id: string; amount: number; paid_at: string | null }
+
+export type ItemResultRow = { period_start: string; item_id: string; player_id: string; met: boolean }
+/** Habit names of an item from each player's side, relative to the viewer. */
+export type ItemNames = Map<string, { mine: string; theirs: string }>
 
 export type FailureRow = {
   start: LocalDate
@@ -87,9 +166,24 @@ export function failureHistory(args: {
   frequency: Frequency
   myDates: LocalDate[]
   theirDates: LocalDate[] | null
+  /** Per-item outcomes of closed periods. Periods closed before sub-retos have none: legacy text. */
+  itemResults?: ItemResultRow[]
+  itemNames?: ItemNames
   limit?: number
 }): FailureRow[] {
   const { periods, debts, myId, otherName, frequency, myDates, theirDates, limit = 12 } = args
+  const itemResults = args.itemResults ?? []
+  const itemNames = args.itemNames
+  /** Sub-retos a player failed in the period, by the failing player's habit; null with no result rows. */
+  const failedItems = (start: LocalDate, player: string, mineSide: boolean): string[] | null => {
+    const rows = itemResults.filter((r) => r.period_start === start)
+    if (rows.length === 0 || !itemNames) return null
+    const failed = new Set(rows.filter((r) => r.player_id === player && !r.met).map((r) => r.item_id))
+    if (failed.size === 0) return null
+    return [...itemNames]
+      .filter(([id]) => failed.has(id))
+      .map(([, n]) => (mineSide ? n.mine : n.theirs) || 'Sub-reto')
+  }
   const shown = new Set([...args.closedStarts, ...debts.map((d) => d.period_start)])
   const need = frequency.type === 'weekly' ? frequency.target : 1
   const counted = (p: Period, dates: LocalDate[] | null) => {
@@ -110,13 +204,18 @@ export function failureHistory(args: {
       if (!owed) return { start: p.start, n, summary: 'Los dos cumplieron', debt: null }
       if (mine && theirs) return { start: p.start, n, summary: 'Fallaron los dos · se compensa', debt: null }
       const done = counted(p, mine ? myDates : theirDates)
-      const summary = mine
-        ? done === null
-          ? 'No cumpliste'
-          : `Hiciste ${done} de ${need}`
-        : done === null
-          ? `${otherName} no cumplió`
-          : `${otherName} hizo ${done} de ${need}`
+      const named = failedItems(p.start, mine ? myId : (theirs as HistoryDebt).debtor_id, Boolean(mine))
+      const summary = named
+        ? mine
+          ? `No cumpliste: ${named.join(', ')}`
+          : `${otherName} no cumplió: ${named.join(', ')}`
+        : mine
+          ? done === null
+            ? 'No cumpliste'
+            : `Hiciste ${done} de ${need}`
+          : done === null
+            ? `${otherName} no cumplió`
+            : `${otherName} hizo ${done} de ${need}`
       return { start: p.start, n, summary, debt: { amount: owed.amount, paid: owed.paid_at !== null } }
     })
 }

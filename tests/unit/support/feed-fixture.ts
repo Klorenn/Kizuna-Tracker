@@ -127,7 +127,15 @@ export function feedClient(db: Db = FIXTURE) {
       return db.checkinItems.filter(
         (i) => (inCol('habit_id') ?? []).includes(i.habit_id) && (inCol('local_date') ?? []).includes(i.local_date),
       )
-    if (name === 'challenges') return db.challenges
+    // active photo sub-retos of active challenges, embedded with their challenge (one item per fixture challenge)
+    if (name === 'challenge_items')
+      return db.challenges.map((c) => ({
+        creator_habit_id: c.creator_habit_id,
+        rival_habit_id: c.rival_habit_id,
+        requires_photo: c.requires_photo,
+        starts_on: c.starts_on,
+        challenges: { id: c.id, creator_id: c.creator_id, rival_id: c.rival_id, starts_on: c.starts_on, weeks: c.weeks },
+      }))
     if (name === 'public_profiles') return db.profiles.filter((p) => (inCol('id') ?? []).includes(p.id))
     return []
   }

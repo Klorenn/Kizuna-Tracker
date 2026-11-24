@@ -65,6 +65,35 @@ describe('supabaseDeleteDeps', () => {
     expect(upd.filters).toContainEqual(['in', ['id', ['h1']]])
   })
 
+  test('un hábito que solo está en un sub-reto (ítem 2) también se conserva archivado', async () => {
+    const { client, calls } = fakeAdmin({
+      'habits.select': [{ id: 'h1' }, { id: 'h2' }, { id: 'h3' }],
+      'challenges.select': [{ creator_habit_id: 'h1', rival_habit_id: 'x' }],
+      'challenge_items.select': [{ creator_habit_id: 'y', rival_habit_id: 'h2' }],
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const deps = supabaseDeleteDeps(client as any)
+    await deps.deleteRows('habits', UID)
+    const del = calls.find((c) => c.table === 'habits' && c.op === 'delete')!
+    expect(del.filters).toContainEqual(['not', ['id', 'in', '(h1,h2)']])
+    const upd = calls.find((c) => c.table === 'habits' && c.op === 'update')!
+    expect(upd.filters).toContainEqual(['in', ['id', ['h1', 'h2']]])
+    // the item read is scoped to the user's habits, both sides
+    const q = calls.find((c) => c.table === 'challenge_items' && c.op === 'select')!
+    expect(q.filters).toContainEqual(['or', ['creator_habit_id.in.(h1,h2,h3),rival_habit_id.in.(h1,h2,h3)']])
+  })
+
+  test('los check-ins de hábitos solo presentes en un sub-reto no se borran', async () => {
+    const { client, calls } = fakeAdmin({
+      'habits.select': [{ id: 'h2' }],
+      'challenge_items.select': [{ creator_habit_id: null, rival_habit_id: 'h2' }],
+    })
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    await supabaseDeleteDeps(client as any).deleteRows('checkins', UID)
+    const del = calls.find((c) => c.table === 'checkins' && c.op === 'delete')!
+    expect(del.filters).toContainEqual(['not', ['habit_id', 'in', '(h2)']])
+  })
+
   test('borra las filas propias de registros detallados y peso por user_id', async () => {
     const { client, calls } = fakeAdmin()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
