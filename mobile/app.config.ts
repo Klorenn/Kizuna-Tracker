@@ -39,6 +39,12 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // kizuna:// only. No https filter and no autoVerify: https links stay with the TWA/browser during the transition.
     intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: SCHEME }] }],
   },
-  plugins: ["expo-router", "expo-secure-store", "./plugins/with-kizuna-widget"],
+  plugins: [
+    "expo-router",
+    "expo-secure-store",
+    "./plugins/with-kizuna-widget",
+    // the camera only (proof photos): no gallery, no microphone
+    ["expo-image-picker", { cameraPermission: "Kizuna usa la cámara para tus fotos de prueba.", photosPermission: false, microphonePermission: false }],
+  ],
   extra: { eas: { projectId: process.env.EAS_PROJECT_ID ?? EAS_PROJECT_ID } },
 });

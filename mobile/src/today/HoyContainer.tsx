@@ -39,6 +39,7 @@ export function HoyContainer({ userId, client, onOpenHabit, onNavigate }: Props)
         onQuantity: (row, amount) => track.addQuantity(row.id, amount),
         onTime: (row) => onNavigate?.(`/registros/${row.id}/time`),
         onLog: (row, type) => onNavigate?.(`/registros/${row.id}/${type}`),
+        onPhoto: (row, itemId) => onNavigate?.(`/registros/${row.id}/photo${itemId ? `?itemId=${itemId}` : ""}`),
       }}
     />
   );

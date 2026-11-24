@@ -19,6 +19,8 @@ export type HoyActions = {
   onTime?: (row: TodayRow) => void;
   /** open the log screen of a reading, workout, cardio or watch habit */
   onLog?: (row: TodayRow, type: LogAction) => void;
+  /** open the camera screen of a habit (`itemId` null) or of one of its steps */
+  onPhoto?: (row: TodayRow, itemId: string | null) => void;
 };
 
 type Props = { state: HoyState; onRetry: () => void; actions?: HoyActions; errorMessage?: string | null; onDismissError?: () => void };
@@ -112,14 +114,31 @@ export function HoyView({ state, onRetry, actions, errorMessage, onDismissError 
                   </Pressable>
                 </View>
               ) : null}
+              {kind === "photo" ? (
+                <View style={[styles.rowHead, { marginLeft: space.lg }]}>
+                  <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>Pide una foto de prueba</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Tomar foto de ${row.name}`} hitSlop={8} onPress={() => actions?.onPhoto?.(row, null)}>
+                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>Tomar foto</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {kind === "unsupported" ? <Text style={{ color: colors.muted, fontSize: 12, marginLeft: space.lg }}>Se registra desde la web</Text> : null}
-              {row.items.map((item) => (
-                <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} disabled={kind !== "items"} onPress={() => actions?.onItem(row, item)}>
-                  <Text style={{ color: item.checked ? colors.text : colors.muted, fontSize: 13, marginLeft: space.lg }}>
-                    {item.checked && item.time ? `${item.label} · ${item.time}` : item.label}
-                  </Text>
-                </Pressable>
-              ))}
+              {row.items.map((item) =>
+                kind === "items" && item.requiresPhoto && !item.checked ? (
+                  <View key={item.id} style={[styles.rowHead, { marginLeft: space.lg }]}>
+                    <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{item.label}</Text>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Tomar foto de ${item.label}`} hitSlop={8} onPress={() => actions?.onPhoto?.(row, item.id)}>
+                      <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>Tomar foto</Text>
+                    </Pressable>
+                  </View>
+                ) : (
+                  <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} disabled={kind !== "items"} onPress={() => actions?.onItem(row, item)}>
+                    <Text style={{ color: item.checked ? colors.text : colors.muted, fontSize: 13, marginLeft: space.lg }}>
+                      {item.checked && item.time ? `${item.label} · ${item.time}` : item.label}
+                    </Text>
+                  </Pressable>
+                ),
+              )}
             </View>
           );
         })

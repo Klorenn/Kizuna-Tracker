@@ -78,7 +78,7 @@ describe("HoyView actions", () => {
   });
   it("unsupported rows say they are registered on the web and open the detail on tap", async () => {
     const a = actions();
-    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "none" as const, requiresPhoto: true };
+    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "quantity" as const, requiresPhoto: true, quantity: { config: {} as never, total: 0, entries: [] } };
     await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [row] } }} onRetry={() => {}} actions={a} />);
     expect(screen.queryByLabelText("Marcar Agua")).toBeNull();
     expect(screen.getByText("Se registra desde la web")).toBeTruthy();
@@ -134,5 +134,28 @@ describe("HoyView log rows (reading, workout, cardio, watch)", () => {
     await render(<HoyView state={ready3} onRetry={() => {}} actions={{ onCheck: jest.fn(), onUndo: jest.fn(), onItem: jest.fn(), onOpen: jest.fn(), onLog }} />);
     await fireEvent.press(screen.getByLabelText("Registrar entrenamiento de Gym"));
     expect(onLog).toHaveBeenCalledWith(expect.objectContaining({ id: "hw" }), "workout");
+  });
+});
+
+describe("HoyView photo", () => {
+  const photoRow = (over = {}) => ({ ...selectToday(m3Raw(), new Date(fixture.nowIso)).rows[0], id: "p1", name: "Foto diaria", logType: "none" as const, requiresPhoto: true, done: false, items: [], ...over });
+  const a = () => ({ onCheck: jest.fn(), onUndo: jest.fn(), onItem: jest.fn(), onOpen: jest.fn(), onPhoto: jest.fn() });
+  it("a habit that needs a photo has a camera button, no one-tap check and no web copy", async () => {
+    const act = a();
+    await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [photoRow()] } }} onRetry={() => {}} actions={act} />);
+    expect(screen.queryByLabelText("Marcar Foto diaria")).toBeNull();
+    expect(screen.queryByText("Se registra desde la web")).toBeNull();
+    await fireEvent.press(screen.getByLabelText("Tomar foto de Foto diaria"));
+    expect(act.onPhoto).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }), null);
+  });
+  it("a step that needs a photo opens the camera for that step, other steps still tick", async () => {
+    const act = a();
+    const row = photoRow({ requiresPhoto: false, items: [{ id: "i1", label: "Plato", requiresPhoto: true, checked: false, time: null }, { id: "i2", label: "Agua", requiresPhoto: false, checked: false, time: null }] });
+    await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [row] } }} onRetry={() => {}} actions={act} />);
+    await fireEvent.press(screen.getByLabelText("Tomar foto de Plato"));
+    expect(act.onPhoto).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }), "i1");
+    expect(act.onItem).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText("Agua"));
+    expect(act.onItem).toHaveBeenCalledWith(expect.objectContaining({ id: "p1" }), expect.objectContaining({ id: "i2" }));
   });
 });

@@ -72,3 +72,14 @@ describe("HabitDetail log habits", () => {
     expect(onNavigate).toHaveBeenCalledWith(`/registros/${id}/${screen_}`);
   });
 });
+
+describe("HabitDetail photo", () => {
+  it("a habit that needs a photo opens the camera screen", async () => {
+    const onNavigate = jest.fn();
+    const row = { ...m3Row("hv"), id: "p1", logType: "none" as const, requiresPhoto: true, done: false };
+    await render(<HabitDetail row={row} actions={{ ...actions(), onNavigate }} onBack={() => {}} />);
+    expect(screen.queryByText("Se registra desde la web")).toBeNull();
+    await fireEvent.press(screen.getByText("Tomar foto"));
+    expect(onNavigate).toHaveBeenCalledWith("/registros/p1/photo");
+  });
+});

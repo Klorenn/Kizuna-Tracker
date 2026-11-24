@@ -24,6 +24,13 @@ describe("app.config", () => {
     expect(expo.plugins).toContain("expo-secure-store");
     expect(expo.plugins).toContain("./plugins/with-kizuna-widget");
   });
+  it("declares the camera permission for the proof photos, with Spanish copy, and nothing for the gallery", () => {
+    const entry = (expo.plugins as unknown[]).find((p) => Array.isArray(p) && p[0] === "expo-image-picker") as [string, Record<string, unknown>] | undefined;
+    expect(entry).toBeTruthy();
+    expect(entry![1].cameraPermission).toMatch(/cámara/);
+    expect(entry![1].photosPermission).toBe(false);
+    expect(entry![1].microphonePermission).toBe(false);
+  });
   it("reads secrets from the environment, never from the file", () => {
     const prev = process.env.GOOGLE_SERVICES_JSON;
     process.env.GOOGLE_SERVICES_JSON = "./google-services.json";

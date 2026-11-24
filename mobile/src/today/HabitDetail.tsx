@@ -41,7 +41,7 @@ export function HabitDetail({ row, actions, onBack }: Props) {
         </Pressable>
       ) : null}
       {kind === "items" ? row.items.map((item) => (
-        <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} onPress={() => toggle(item)}>
+        <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} onPress={() => (item.requiresPhoto && !item.checked ? actions.onNavigate?.(`/registros/${row.id}/photo?itemId=${item.id}`) : toggle(item))}>
           <Text style={{ color: item.checked ? colors.text : colors.muted, fontSize: 15 }}>{item.checked && item.time ? `${item.label} · ${item.time}` : item.label}</Text>
         </Pressable>
       )) : null}
@@ -69,6 +69,14 @@ export function HabitDetail({ row, actions, onBack }: Props) {
           {row.log ? <Text style={{ color: colors.text, fontSize: 18 }}>{logSubtitle(row.log)}</Text> : null}
           <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/${kind}`)} style={[styles.cta, { backgroundColor: colors.accent, borderRadius: radius.md, borderColor: colors.line }]}>
             <Text style={{ color: colors.onAccent, fontWeight: "600" }}>{LOG_ACTION_LABEL[kind].button}</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {kind === "photo" ? (
+        <>
+          <Text style={{ color: colors.muted, fontSize: 14 }}>Este hábito pide una foto de prueba.</Text>
+          <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/photo`)} style={[styles.cta, { backgroundColor: colors.accent, borderRadius: radius.md, borderColor: colors.line }]}>
+            <Text style={{ color: colors.onAccent, fontWeight: "600" }}>Tomar foto</Text>
           </Pressable>
         </>
       ) : null}
