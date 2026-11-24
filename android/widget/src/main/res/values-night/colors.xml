@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kz_widget_surface">#161618</color>
+    <color name="kz_widget_ink">#EDEDED</color>
+    <color name="kz_widget_muted">#9A9AA0</color>
+    <color name="kz_widget_accent">#5A5AC2</color>
+</resources>

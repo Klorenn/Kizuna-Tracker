@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="kz_widget_surface">#FFFFFF</color>
+    <color name="kz_widget_ink">#111111</color>
+    <color name="kz_widget_muted">#6F6F6F</color>
+    <!-- Brand color: identical in light and dark. -->
+    <color name="kz_widget_accent">#5A5AC2</color>
+</resources>

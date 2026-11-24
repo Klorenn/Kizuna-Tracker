@@ -20,6 +20,7 @@ next-env.d.ts
 
 # android (TWA / Bubblewrap): build outputs and signing material
 /android/app/build/
+/android/widget/build/
 /android/.gradle/
 /android/build/
 /android/local.properties

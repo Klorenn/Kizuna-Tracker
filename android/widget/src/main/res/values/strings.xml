@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="kz_widget_label">Kizuna: Hoy</string>
+    <string name="kz_widget_description">Tus hábitos de hoy, a un toque.</string>
+    <string name="kz_widget_base_url" translatable="false">https://kizuna-tracker.vercel.app</string>
+
+    <string name="kz_widget_today">Hoy</string>
+    <string name="kz_widget_loading">Cargando…</string>
+    <string name="kz_widget_connect_prompt">Toca para conectar tu cuenta</string>
+    <string name="kz_widget_all_done">Todo listo</string>
+    <string name="kz_widget_empty">Sin hábitos hoy</string>
+    <string name="kz_widget_more">+%1$d más</string>
+    <string name="kz_widget_stale">Sin conexión</string>
+    <string name="kz_widget_offline_empty">Sin conexión. Toca para reintentar</string>
+    <string name="kz_widget_update_app">Actualiza la app</string>
+    <string name="kz_widget_err_toggle">No se pudo marcar. Inténtalo de nuevo</string>
+    <string name="kz_widget_err_open_app">Ábrelo en Kizuna para marcarlo</string>
+    <string name="kz_widget_err_rate">Demasiados intentos. Espera un momento</string>
+
+    <string name="kz_widget_setup_title">Conectar widget</string>
+    <string name="kz_widget_setup_hint">Escribe el código que ves en Ajustes, en Kizuna.</string>
+    <string name="kz_widget_code_hint">ABCD-EFGH</string>
+    <string name="kz_widget_connect">Conectar</string>
+    <string name="kz_widget_connecting">Conectando…</string>
+    <string name="kz_widget_connected_as">Conectado como @%1$s</string>
+    <string name="kz_widget_open_app">Abrir Kizuna</string>
+    <string name="kz_widget_err_code_shape">El código tiene 8 letras o números, por ejemplo ABCD-EFGH.</string>
+    <string name="kz_widget_err_code_invalid">Código inválido, vencido o ya usado. Genera uno nuevo en Ajustes.</string>
+    <string name="kz_widget_err_cap">Ya tienes 3 dispositivos conectados. Desconecta uno en Ajustes y vuelve a intentarlo.</string>
+    <string name="kz_widget_err_connect">No se pudo conectar. Revisa tu conexión e inténtalo de nuevo.</string>
+    <string name="kz_widget_err_store">No se pudo guardar la conexión de forma segura en este teléfono.</string>
+</resources>

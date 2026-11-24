@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="utf-8"?>
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+
+    <uses-permission android:name="android.permission.INTERNET" />
+
+    <application>
+
+        <!-- Not exported: the system delivers widget broadcasts to its own app widget providers. -->
+        <receiver
+            android:name="com.kizunatracker.widget.KizunaWidgetProvider"
+            android:exported="false"
+            android:label="@string/kz_widget_label">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/kz_widget_info" />
+        </receiver>
+
+        <!-- Exported for the kizuna://widget/pair deep link. It only PREFILLS the code; the user must tap "Conectar". -->
+        <activity
+            android:name="com.kizunatracker.widget.WidgetSetupActivity"
+            android:exported="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@style/KzWidget.Setup">
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="kizuna" android:host="widget" android:path="/pair" />
+            </intent-filter>
+        </activity>
+
+        <activity
+            android:name="com.kizunatracker.widget.WidgetOpenActivity"
+            android:exported="false"
+            android:noHistory="true"
+            android:excludeFromRecents="true"
+            android:taskAffinity=""
+            android:theme="@android:style/Theme.NoDisplay" />
+
+    </application>
+</manifest>
