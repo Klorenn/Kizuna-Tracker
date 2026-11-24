@@ -2,7 +2,7 @@ begin;
 -- Group fines (0025): proposal and vote, who is bound, fund debts, paid marks, photo rejection by admins, the closing of
 -- weeks with fines, the reads and the notifications. Own fixtures. Everything is rolled back.
 create extension if not exists pgtap with schema extensions;
-select plan(378);
+select plan(382);
 
 create schema tests;
 -- ids: users e3900000-...-0000000000NN, habits b3900000-...-<user>-<k>, check-ins c3900000-..., groups d3900000-...
@@ -352,12 +352,12 @@ select is((select count(*)::int from public.group_fine_votes where fine_id = tes
 select tests.as(2);
 select throws_ok($$ select public.propose_group_fine(tests.gid(1), 1000, 'Otra') $$, 'P0001', 'fine_pending', 'C12 a second open proposal is refused');
 reset role;
-select is((select count(*)::int from public.notifications where type = 'group_fine_proposed'), 5, 'C13 the proposal notifies the 5 other active members once');
-select is((select array_agg(user_id order by user_id) from public.notifications where type = 'group_fine_proposed'),
+select is((select count(*)::int from public.notifications where type = 'group_fine_proposed' and payload->>'group_id' = tests.gid(1)::text), 5, 'C13 the proposal notifies the 5 other active members once');
+select is((select array_agg(user_id order by user_id) from public.notifications where type = 'group_fine_proposed' and payload->>'group_id' = tests.gid(1)::text),
   array[tests.u(2), tests.u(3), tests.u(4), tests.u(5), tests.u(6)], 'C14 not the proposer, not someone who left or was removed');
-select is((select string_agg(k, ',' order by k collate "C") from (select distinct jsonb_object_keys(payload) k from public.notifications where type = 'group_fine_proposed') s),
+select is((select string_agg(k, ',' order by k collate "C") from (select distinct jsonb_object_keys(payload) k from public.notifications where type = 'group_fine_proposed' and payload->>'group_id' = tests.gid(1)::text) s),
   'amount,group_id,group_name,purpose', 'C15 the payload has exactly group_id, group_name, amount and purpose');
-select is((select payload->>'amount' || '/' || (payload->>'purpose') from public.notifications where type = 'group_fine_proposed' limit 1), '2500/Asado de fin de mes', 'C16 and the right values');
+select is((select payload->>'amount' || '/' || (payload->>'purpose') from public.notifications where type = 'group_fine_proposed' and payload->>'group_id' = tests.gid(1)::text limit 1), '2500/Asado de fin de mes', 'C16 and the right values');
 -- archived group
 update public.groups set archived_at = now() where id = tests.gid(23);
 select tests.as(64);
@@ -725,6 +725,14 @@ select throws_ok($$ select public.vote_group_fine(tests.gid(127), true) $$, 'P00
 select throws_ok($$ select public.accept_group_fine(tests.gid(24)) $$, 'P0001', 'group_archived', 'F38 accepting stays refused');
 select throws_ok($$ select public.leave_group_fine(tests.gid(24)) $$, 'P0001', 'group_archived', 'F39 stepping out stays refused');
 reset role;
+select tests.as(68);
+select lives_ok($$ select public.leave_group(tests.gid(24)) $$, 'F40 the archived group admin can leave');
+reset role;
+select is((select role from public.group_members where group_id = tests.gid(24) and user_id = tests.u(69) and left_at is null), 'admin', 'F41 the longest-standing active member succeeds the departing admin');
+select tests.as(69);
+select lives_ok($$ select public.set_group_debt_paid(tests.gid(212), true) $$, 'F42 the successor can mark their own debt when the archived group has no alternate admin');
+reset role;
+select is((select paid_by from public.group_fund_debts where id = tests.gid(212)), tests.u(69), 'F43 the debt records the successor who marked it');
 
 -- ===================================================== G. reads of the fund
 select tests.as(63);
@@ -863,9 +871,9 @@ select public.reject_group_checkin(tests.gid(31), tests.c(83, 1), '  Foto borros
 select is(tests.val($$ select row(rejected_by, reject_reason)::text from public.checkins where id = tests.c(83, 1) $$), row(tests.u(81), 'other')::text,
   'H15 rejecting sets the existing rejected_* columns (the enum reason is "other"; the words live in the group table)');
 select is(tests.val($$ select reason from public.group_checkin_rejections where checkin_id = tests.c(83, 1) $$), 'Foto borrosa', 'H16 the trimmed reason is kept apart');
-select is(tests.val($$ select count(*) from public.notifications where type = 'group_photo_rejected' $$), '1', 'H17 the owner is notified once');
-select is(tests.val($$ select user_id::text from public.notifications where type = 'group_photo_rejected' $$), tests.u(83)::text, 'H18 and only the owner');
-select is(tests.val($$ select string_agg(k, ',' order by k collate "C") from (select distinct jsonb_object_keys(payload) k from public.notifications where type = 'group_photo_rejected') s $$),
+select is(tests.val($$ select count(*) from public.notifications where type = 'group_photo_rejected' and payload->>'group_id' = tests.gid(31)::text $$), '1', 'H17 the owner is notified once');
+select is(tests.val($$ select user_id::text from public.notifications where type = 'group_photo_rejected' and payload->>'group_id' = tests.gid(31)::text $$), tests.u(83)::text, 'H18 and only the owner');
+select is(tests.val($$ select string_agg(k, ',' order by k collate "C") from (select distinct jsonb_object_keys(payload) k from public.notifications where type = 'group_photo_rejected' and payload->>'group_id' = tests.gid(31)::text) s $$),
   'group_id,group_name,local_date,reason', 'H19 with exactly group_id, group_name, local_date and reason');
 select throws_ok($$ select public.reject_group_checkin(tests.gid(31), tests.c(83, 1), 'Otra vez') $$, 'P0001', 'checkin_not_found', 'H20 rejecting it again is checkin_not_found');
 select tests.as(84);
@@ -923,8 +931,8 @@ select throws_ok($$ select * from public.group_rejected_checkins(tests.gid(31)) 
 select tests.as(81);
 select is((select c.rejected_by_name from public.group_rejected_checkins(tests.gid(31)) c where c.checkin_id = tests.c(83, 1)), (select display_name from public.profiles where id = tests.u(81)), 'H44 the list names who rejected');
 reset role;
-select is((select count(*)::int from public.notifications where type = 'group_photo_rejected' and user_id not in (tests.u(83), tests.u(81), tests.u(84), tests.u(86))), 0, 'H45 only owners were notified');
-select is((select count(*)::int from public.notifications where payload::text like '%Foto borrosa%' and user_id <> tests.u(83)), 0, 'H46 a reason reaches no one but the photo''s owner');
+select is((select count(*)::int from public.notifications where type = 'group_photo_rejected' and payload->>'group_id' = tests.gid(31)::text and user_id not in (tests.u(83), tests.u(81), tests.u(84), tests.u(86))), 0, 'H45 only owners were notified');
+select is((select count(*)::int from public.notifications where payload->>'group_id' = tests.gid(31)::text and payload::text like '%Foto borrosa%' and user_id <> tests.u(83)), 0, 'H46 a reason reaches no one but the photo''s owner');
 
 
 -- ===================================================== H2. admins read a rejected photo while it can still be undone (storage policy)
@@ -1046,26 +1054,26 @@ select is((select array_agg(coalesce(fine_amount, 0) order by week_start) from p
   'J2 each closed week snapshots the amount of the fine in force that week (a superseded fine''s amount does not leak into later weeks)');
 select is((select array_agg(fine_id order by week_start) from public.group_weeks where group_id = tests.gid(41)), array[null, tests.gid(141), tests.gid(141), tests.gid(142)]::uuid[],
   'J3 and which fine it was');
-select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 7, 'J4 seven debts in all');
+select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 8, 'J4 eight debts, including a removed member who was still bound');
 select is((select array_agg(debtor_id::text || '/' || amount order by debtor_id) from public.group_fund_debts where group_id = tests.gid(41) and week_start = date '2026-11-02'),
-  array[tests.u(102)::text || '/500', tests.u(104)::text || '/500'], 'J5 week 11-02: who failed and was bound (101 and 107 complied, 106 failed but was not bound, 105 was removed)');
+  array[tests.u(102)::text || '/500', tests.u(104)::text || '/500', tests.u(105)::text || '/500'], 'J5 week 11-02 includes removed member 105, who was bound and failed');
 select is((select array_agg(debtor_id::text || '/' || amount order by debtor_id) from public.group_fund_debts where group_id = tests.gid(41) and week_start = date '2026-11-09'),
   array[tests.u(102)::text || '/500', tests.u(103)::text || '/500', tests.u(104)::text || '/500'],
   'J6 week 11-09: 103 joined on a Wednesday, counts from this Monday and is bound for the whole week; 104 left on the 12th but is still evaluated');
 select is((select array_agg(debtor_id::text || '/' || amount order by debtor_id) from public.group_fund_debts where group_id = tests.gid(41) and week_start = date '2026-11-16'),
   array[tests.u(101)::text || '/1500', tests.u(107)::text || '/1500'],
   'J7 week 11-16: the new amount; 102 did not accept it; 106 accepts from 11-23 so is bound only part of that week; 107 left on the 18th but is bound until 11-23');
-select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41) and debtor_id = tests.u(105)), 0, 'J8 a member removed by an admin has no debt');
+select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41) and debtor_id = tests.u(105)), 1, 'J8 a member removed by an admin still owes the fine they accepted');
 select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41) and debtor_id = tests.u(106)), 0, 'J9 someone not bound for the whole week has no debt');
 select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41) and week_start = date '2026-10-26'), 0, 'J10 a week before any fine began creates no debt');
 select is((select counted from public.group_week_results where group_id = tests.gid(41) and week_start = date '2026-11-09' and user_id = tests.u(104)), false,
   'J11 the leaver''s row is uncounted (0023 behaviour) and it is the row the debt came from');
 select is((select row(members_counted, members_complied)::text from public.group_weeks where group_id = tests.gid(41) and week_start = date '2026-11-09'),
   row(5, 2)::text, 'J12 the leaver stays out of the week''s counts, as in 0023');
-select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 7, 'J14 one notification per debt');
+select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 8, 'J14 one notification per debt');
 select is((select string_agg(k, ',' order by k collate "C") from (select distinct jsonb_object_keys(payload) k from public.notifications where type = 'group_fund_debt') s),
   'amount,group_id,group_name,week_start', 'J15 with exactly group_id, group_name, week_start and amount');
-select is((select count(*)::int from public.notifications where type = 'group_fund_debt' and user_id = tests.u(105)), 0, 'J16 nothing to someone who has no debt');
+select is((select count(*)::int from public.notifications where type = 'group_fund_debt' and user_id = tests.u(105)), 1, 'J16 the removed debtor is told about their debt');
 select is((select status from public.group_fines where id = tests.gid(143)), 'expired', 'J17 the closing run expired the stale proposal');
 select is((select status from public.group_fines where id = tests.gid(144)), 'proposed', 'J18 and left the one that is still open');
 select is((select count(*)::int from public.notifications where type = 'group_fine_expired' and payload->>'group_id' = tests.gid(42)::text), 2, 'J19 the expiry told both members once');
@@ -1079,17 +1087,17 @@ reset role;
 select is((select n from t_n where k = 'run2'), 0, 'J21 a second run closes nothing');
 select is((select md5(string_agg(row(d.*)::text, '|' order by d.group_id, d.week_start, d.debtor_id)) from public.group_fund_debts d where d.group_id = tests.gid(41)), (select v from t_snap where k = 'debts'), 'J22 and changes no debt');
 select is((select md5(string_agg(row(w.*)::text, '|' order by w.group_id, w.week_start)) from public.group_weeks w where w.group_id = tests.gid(41)), (select v from t_snap where k = 'weeks'), 'J23 nor any week');
-select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 7, 'J24 nor sends a notification again');
+select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 8, 'J24 nor sends a notification again');
 select is((select count(*)::int from public.notifications where type = 'group_fine_expired' and payload->>'group_id' = tests.gid(42)::text), 2, 'J25 nor expires again');
 -- the second of two concurrent runs, as it behaves once the first has committed: the week function called again for a closed week
 select lives_ok($$ select public.groups_close_week(tests.gid(41), date '2026-11-09', now()) $$, 'J26 closing an already closed week again is harmless');
-select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 7, 'J27 and creates no second debt');
-select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 7, 'J28 nor a second notification');
+select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 8, 'J27 and creates no second debt');
+select is((select count(*)::int from public.notifications where type = 'group_fund_debt'), 8, 'J28 nor a second notification');
 select throws_ok($$ insert into public.group_fund_debts (group_id, fine_id, week_start, debtor_id, amount) values (tests.gid(41), tests.gid(142), date '2026-11-16', tests.u(101), 1500) $$,
   '23505', null, 'J29 and even a racing writer is stopped by the unique key');
 -- the group totals of that fund
 select tests.as(102);
-select is(public.group_fund(tests.gid(41))->'totals', '{"registered": 5500, "paid": 0, "pending": 5500}'::jsonb, 'J30 the fund totals are exactly the seven debts');
+select is(public.group_fund(tests.gid(41))->'totals', '{"registered": 6000, "paid": 0, "pending": 6000}'::jsonb, 'J30 the fund totals include the removed member''s debt');
 reset role;
 
 -- M5: each result row says who the fine bound that week; a later change of the bindings never alters a closed week
@@ -1103,7 +1111,7 @@ delete from public.group_fine_members where fine_id = tests.gid(142) and user_id
 select lives_ok($$ select public.groups_close_week(tests.gid(41), date '2026-11-09', now()) $$, 'J35 closing a closed week again after the bindings changed');
 select is((select md5(string_agg(row(r.*)::text, '|' order by r.week_start, r.user_id)) from public.group_week_results r where r.group_id = tests.gid(41)), (select v from t_snap where k = 'rows'),
   'J36 changes no result row, so a later binding change cannot rewrite a closed week');
-select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 7, 'J37 nor its debts');
+select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(41)), 8, 'J37 nor its debts');
 
 -- deleting an account ends its binding and keeps its debts
 update public.profiles set deleted_at = now() where id = tests.u(103);
@@ -1146,18 +1154,18 @@ set local role service_role;
 insert into t_n select 'run4', public.close_due_group_weeks(timestamptz '2026-11-10 12:00 America/Santiago');
 reset role;
 select is((select array_agg(user_id order by user_id) from public.group_week_results where group_id = tests.gid(45) and week_start = date '2026-11-02'),
-  array[tests.u(151), tests.u(152), tests.u(154), tests.u(156), tests.u(157)],
-  'J38 anyone removed by an admin inside the week has no row (153 left, came back, was removed; 155 was removed and invited again)');
+  array[tests.u(151), tests.u(152), tests.u(153), tests.u(154), tests.u(155), tests.u(156), tests.u(157)],
+  'J38 removed members retain an uncounted row for evaluating any fine they accepted');
 select is((select row(done, complied, counted)::text from public.group_week_results where group_id = tests.gid(45) and week_start = date '2026-11-02' and user_id = tests.u(152)),
   row(3, true, false)::text, 'J39 who left and came back the same week is evaluated on all their check-ins, before and after');
 select is((select array_agg(debtor_id::text || '/' || amount order by debtor_id) from public.group_fund_debts where group_id = tests.gid(45)),
-  array[tests.u(154)::text || '/1500', tests.u(156)::text || '/1500'],
-  'J40 only those who really failed owe: not the removed ones (153, 155), not the one who came back and complied');
+  array[tests.u(154)::text || '/1500', tests.u(155)::text || '/1500', tests.u(156)::text || '/1500'],
+  'J40 removed member 155 still owes, while 153 complied and 152 came back and complied');
 select is((select row(done, complied)::text from public.group_week_results where group_id = tests.gid(45) and week_start = date '2026-11-02' and user_id = tests.u(156)),
   row(1, false)::text, 'J41 three habits on ONE day are one day, so a bound member cannot reach the target by leaving and coming back with other habits');
 select is((select row(done, complied)::text from public.group_week_results where group_id = tests.gid(45) and week_start = date '2026-11-02' and user_id = tests.u(157)),
   row(2, true)::text, 'J42 while two real days with two habits still count as two');
-select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(45) and debtor_id = tests.u(155)), 0, 'J43 someone removed and invited again the same week owes nothing for it');
+select is((select count(*)::int from public.group_fund_debts where group_id = tests.gid(45) and debtor_id = tests.u(155)), 1, 'J43 removal and reinvitation cannot evade the weekly fine');
 
 -- ===================================================== K. a rejected photo counts nowhere, an undone one counts again (real week)
 -- GPR: photo group, target 1, created last week. fine of 800 active from this Monday. 131 and 132 admins, 133 and 134 members.

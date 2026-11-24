@@ -893,7 +893,7 @@ select is((select array_agg(row(week_start, commitment_name, target_per_week, re
 select is((select array_agg(row(week_start, user_id, done, target, complied, counted)::text order by week_start, user_id)
   from public.group_week_results where group_id = 'd3600000-0000-0000-0000-0000000000c1'),
   array[row(date '2026-11-02', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-02', tests.u(102), 2, 3, false, true)::text, row(date '2026-11-02', tests.u(104), 3, 3, true, true)::text,
-        row(date '2026-11-09', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-09', tests.u(102), 3, 3, true, true)::text,
+        row(date '2026-11-02', tests.u(105), 3, 3, true, false)::text, row(date '2026-11-09', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-09', tests.u(102), 3, 3, true, true)::text,
         row(date '2026-11-09', tests.u(103), 1, 3, false, true)::text, row(date '2026-11-09', tests.u(104), 1, 3, false, false)::text,
         row(date '2026-11-16', tests.u(101), 3, 3, true, true)::text, row(date '2026-11-16', tests.u(102), 0, 3, false, true)::text, row(date '2026-11-16', tests.u(103), 3, 3, true, true)::text],
   'N15 Gc results are exact: a leaver keeps a row with counted = false and only the check-ins up to the day they left (the one of the 13th is ignored); other habits, pre-joined weeks and a rejected check-in are ignored');

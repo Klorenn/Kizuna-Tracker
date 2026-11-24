@@ -715,6 +715,301 @@ export type Database = {
           },
         ]
       }
+      group_checkin_rejections: {
+        Row: {
+          checkin_id: string
+          group_id: string
+          reason: string
+          rejected_at: string
+          rejected_by: string
+        }
+        Insert: {
+          checkin_id: string
+          group_id: string
+          reason: string
+          rejected_at?: string
+          rejected_by: string
+        }
+        Update: {
+          checkin_id?: string
+          group_id?: string
+          reason?: string
+          rejected_at?: string
+          rejected_by?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_checkin_rejections_checkin_id_fkey"
+            columns: ["checkin_id"]
+            isOneToOne: true
+            referencedRelation: "checkins"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_checkin_rejections_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_checkin_rejections_rejected_by_fkey"
+            columns: ["rejected_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_checkin_rejections_rejected_by_fkey"
+            columns: ["rejected_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_fine_members: {
+        Row: {
+          bound_from: string
+          bound_until: string | null
+          fine_id: string
+          group_id: string
+          user_id: string
+        }
+        Insert: {
+          bound_from: string
+          bound_until?: string | null
+          fine_id: string
+          group_id: string
+          user_id: string
+        }
+        Update: {
+          bound_from?: string
+          bound_until?: string | null
+          fine_id?: string
+          group_id?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_fine_members_fine_id_fkey"
+            columns: ["fine_id"]
+            isOneToOne: false
+            referencedRelation: "group_fines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fine_members_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fine_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fine_members_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_fine_votes: {
+        Row: {
+          accepted: boolean
+          fine_id: string
+          user_id: string
+          voted_at: string
+        }
+        Insert: {
+          accepted: boolean
+          fine_id: string
+          user_id: string
+          voted_at?: string
+        }
+        Update: {
+          accepted?: boolean
+          fine_id?: string
+          user_id?: string
+          voted_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_fine_votes_fine_id_fkey"
+            columns: ["fine_id"]
+            isOneToOne: false
+            referencedRelation: "group_fines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fine_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fine_votes_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_fines: {
+        Row: {
+          amount: number
+          decided_at: string | null
+          eligible_count: number
+          ends_on: string | null
+          expires_at: string
+          group_id: string
+          id: string
+          proposed_at: string
+          proposed_by: string
+          purpose: string
+          starts_on: string | null
+          status: string
+        }
+        Insert: {
+          amount: number
+          decided_at?: string | null
+          eligible_count: number
+          ends_on?: string | null
+          expires_at?: string
+          group_id: string
+          id?: string
+          proposed_at?: string
+          proposed_by: string
+          purpose: string
+          starts_on?: string | null
+          status?: string
+        }
+        Update: {
+          amount?: number
+          decided_at?: string | null
+          eligible_count?: number
+          ends_on?: string | null
+          expires_at?: string
+          group_id?: string
+          id?: string
+          proposed_at?: string
+          proposed_by?: string
+          purpose?: string
+          starts_on?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_fines_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fines_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fines_proposed_by_fkey"
+            columns: ["proposed_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      group_fund_debts: {
+        Row: {
+          amount: number
+          created_at: string
+          debtor_id: string
+          fine_id: string
+          group_id: string
+          id: string
+          paid_at: string | null
+          paid_by: string | null
+          week_start: string
+        }
+        Insert: {
+          amount: number
+          created_at?: string
+          debtor_id: string
+          fine_id: string
+          group_id: string
+          id?: string
+          paid_at?: string | null
+          paid_by?: string | null
+          week_start: string
+        }
+        Update: {
+          amount?: number
+          created_at?: string
+          debtor_id?: string
+          fine_id?: string
+          group_id?: string
+          id?: string
+          paid_at?: string | null
+          paid_by?: string | null
+          week_start?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "group_fund_debts_debtor_id_fkey"
+            columns: ["debtor_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fund_debts_debtor_id_fkey"
+            columns: ["debtor_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fund_debts_fine_id_fkey"
+            columns: ["fine_id"]
+            isOneToOne: false
+            referencedRelation: "group_fines"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fund_debts_group_id_fkey"
+            columns: ["group_id"]
+            isOneToOne: false
+            referencedRelation: "groups"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fund_debts_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "group_fund_debts_paid_by_fkey"
+            columns: ["paid_by"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       group_invites: {
         Row: {
           code: string
@@ -870,6 +1165,7 @@ export type Database = {
       }
       group_week_results: {
         Row: {
+          bound: boolean
           complied: boolean
           counted: boolean
           done: number
@@ -879,6 +1175,7 @@ export type Database = {
           week_start: string
         }
         Insert: {
+          bound?: boolean
           complied: boolean
           counted?: boolean
           done: number
@@ -888,6 +1185,7 @@ export type Database = {
           week_start: string
         }
         Update: {
+          bound?: boolean
           complied?: boolean
           counted?: boolean
           done?: number
@@ -924,6 +1222,8 @@ export type Database = {
         Row: {
           closed_at: string
           commitment_name: string
+          fine_amount: number | null
+          fine_id: string | null
           group_id: string
           members_complied: number
           members_counted: number
@@ -934,6 +1234,8 @@ export type Database = {
         Insert: {
           closed_at: string
           commitment_name: string
+          fine_amount?: number | null
+          fine_id?: string | null
           group_id: string
           members_complied: number
           members_counted: number
@@ -944,6 +1246,8 @@ export type Database = {
         Update: {
           closed_at?: string
           commitment_name?: string
+          fine_amount?: number | null
+          fine_id?: string | null
           group_id?: string
           members_complied?: number
           members_counted?: number
@@ -952,6 +1256,13 @@ export type Database = {
           week_start?: string
         }
         Relationships: [
+          {
+            foreignKeyName: "group_weeks_fine_id_fkey"
+            columns: ["fine_id"]
+            isOneToOne: false
+            referencedRelation: "group_fines"
+            referencedColumns: ["id"]
+          },
           {
             foreignKeyName: "group_weeks_group_id_fkey"
             columns: ["group_id"]
@@ -963,6 +1274,7 @@ export type Database = {
       }
       groups: {
         Row: {
+          admin_reduced_at: string | null
           archived_at: string | null
           color: string
           commitment_icon: string
@@ -983,6 +1295,7 @@ export type Database = {
           timezone: string
         }
         Insert: {
+          admin_reduced_at?: string | null
           archived_at?: string | null
           color: string
           commitment_icon: string
@@ -1003,6 +1316,7 @@ export type Database = {
           timezone: string
         }
         Update: {
+          admin_reduced_at?: string | null
           archived_at?: string | null
           color?: string
           commitment_icon?: string
@@ -1544,6 +1858,21 @@ export type Database = {
           },
         ]
       }
+      rate_limit_events: {
+        Row: {
+          at: string
+          key_hash: string
+        }
+        Insert: {
+          at?: string
+          key_hash: string
+        }
+        Update: {
+          at?: string
+          key_hash?: string
+        }
+        Relationships: []
+      }
       reading_entries: {
         Row: {
           book_id: string
@@ -1618,21 +1947,6 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
-      }
-      rate_limit_events: {
-        Row: {
-          at: string
-          key_hash: string
-        }
-        Insert: {
-          at?: string
-          key_hash: string
-        }
-        Update: {
-          at?: string
-          key_hash?: string
-        }
-        Relationships: []
       }
       reminder_log: {
         Row: {
@@ -1971,6 +2285,7 @@ export type Database = {
       }
     }
     Functions: {
+      accept_group_fine: { Args: { p_group_id: string }; Returns: undefined }
       accept_invite: { Args: { p_code: string }; Returns: string }
       account_for_login: {
         Args: { p_kind: string; p_value: string }
@@ -2096,6 +2411,7 @@ export type Database = {
         }[]
       }
       email_for_username: { Args: { p_username: string }; Returns: string }
+      end_group_fine: { Args: { p_group_id: string }; Returns: undefined }
       ensure_cron_secret: { Args: never; Returns: undefined }
       friend_feed: {
         Args: {
@@ -2147,7 +2463,7 @@ export type Database = {
           icon: string
           id: string
           member_count: number
-          my_habit_id: string | null
+          my_habit_id: string
           my_role: string
           name: string
           next_commitment_icon: string
@@ -2161,6 +2477,8 @@ export type Database = {
           timezone: string
         }[]
       }
+      group_fine_state: { Args: { p_group_id: string }; Returns: Json }
+      group_fund: { Args: { p_group_id: string }; Returns: Json }
       group_history: {
         Args: { p_group_id: string; p_limit?: number }
         Returns: {
@@ -2189,6 +2507,22 @@ export type Database = {
         Returns: Json
       }
       group_proof_readable: { Args: { p_name: string }; Returns: boolean }
+      group_rejected_checkins: {
+        Args: { p_group_id: string }
+        Returns: {
+          avatar_path: string
+          avatar_preset: number
+          checkin_id: string
+          display_name: string
+          local_date: string
+          photo_path: string
+          reason: string
+          rejected_at: string
+          rejected_by_name: string
+          user_id: string
+          username: string
+        }[]
+      }
       group_wall: {
         Args: {
           p_before?: string
@@ -2239,9 +2573,48 @@ export type Database = {
         Returns: undefined
       }
       groups_counts_from: { Args: { p_joined_on: string }; Returns: string }
+      groups_expire_fines: {
+        Args: { p_group_id: string; p_now: string }
+        Returns: undefined
+      }
+      groups_fine_accepted: { Args: { p_fine_id: string }; Returns: number }
+      groups_fine_activate: {
+        Args: { p_fine_id: string; p_now: string }
+        Returns: undefined
+      }
+      groups_fine_for_week: {
+        Args: { p_group_id: string; p_week: string }
+        Returns: string
+      }
       groups_lock_admin: {
         Args: { p_group_id: string; p_uid: string }
-        Returns: Database["public"]["Tables"]["groups"]["Row"]
+        Returns: {
+          admin_reduced_at: string | null
+          archived_at: string | null
+          color: string
+          commitment_icon: string
+          commitment_name: string
+          created_at: string
+          created_by: string
+          description: string | null
+          icon: string
+          id: string
+          name: string
+          next_commitment_icon: string | null
+          next_commitment_name: string | null
+          next_effective_from: string | null
+          next_requires_photo: boolean | null
+          next_target_per_week: number | null
+          requires_photo: boolean
+          target_per_week: number
+          timezone: string
+        }
+        SetofOptions: {
+          from: "*"
+          to: "groups"
+          isOneToOne: true
+          isSetofReturn: false
+        }
       }
       groups_member_role: {
         Args: { p_group_id: string; p_uid: string }
@@ -2289,10 +2662,12 @@ export type Database = {
         Returns: string
       }
       leave_group: { Args: { p_group_id: string }; Returns: undefined }
+      leave_group_fine: { Args: { p_group_id: string }; Returns: undefined }
       log_body_weight: {
         Args: { p_date?: string; p_kg: number }
         Returns: string
       }
+      my_fund_debts: { Args: never; Returns: Json }
       my_groups: {
         Args: never
         Returns: {
@@ -2307,7 +2682,7 @@ export type Database = {
           member_count: number
           my_counts: boolean
           my_done: number
-          my_habit_id: string | null
+          my_habit_id: string
           name: string
           requires_photo: boolean
           role: string
@@ -2315,10 +2690,27 @@ export type Database = {
           target_per_week: number
         }[]
       }
+      propose_group_fine: {
+        Args: { p_amount: number; p_group_id: string; p_purpose: string }
+        Returns: string
+      }
       public_profile: { Args: { p_username: string }; Returns: Json }
+      rate_limit: {
+        Args: {
+          p_key: string
+          p_limit: number
+          p_record: boolean
+          p_window_seconds: number
+        }
+        Returns: boolean
+      }
       register_login_attempt: { Args: { p_keys: string[] }; Returns: boolean }
       reject_checkin: {
         Args: { p_checkin_id: string; p_reason: string }
+        Returns: undefined
+      }
+      reject_group_checkin: {
+        Args: { p_checkin_id: string; p_group_id: string; p_reason: string }
         Returns: undefined
       }
       reminder_candidates: {
@@ -2331,15 +2723,6 @@ export type Database = {
         }[]
       }
       remove_friend: { Args: { p_other: string }; Returns: boolean }
-      rate_limit: {
-        Args: {
-          p_key: string
-          p_limit: number
-          p_record: boolean
-          p_window_seconds: number
-        }
-        Returns: boolean
-      }
       remove_group_member: {
         Args: { p_group_id: string; p_user_id: string }
         Returns: undefined
@@ -2400,6 +2783,10 @@ export type Database = {
         }
         Returns: string
       }
+      set_group_debt_paid: {
+        Args: { p_debt_id: string; p_paid: boolean }
+        Returns: undefined
+      }
       set_height: { Args: { p_cm: number }; Returns: undefined }
       set_time_entry: {
         Args: { p_checkin_id: string; p_minutes: number; p_topic: string }
@@ -2407,6 +2794,10 @@ export type Database = {
       }
       set_timezone: { Args: { p_tz: string }; Returns: undefined }
       uncheck_item: { Args: { p_item_id: string }; Returns: undefined }
+      undo_group_checkin_rejection: {
+        Args: { p_checkin_id: string; p_group_id: string }
+        Returns: undefined
+      }
       update_cardio_entry: {
         Args: {
           p_distance_m: number
@@ -2447,6 +2838,10 @@ export type Database = {
         Returns: string
       }
       v4_topic: { Args: { p_topic: string }; Returns: string }
+      vote_group_fine: {
+        Args: { p_accept: boolean; p_fine_id: string }
+        Returns: undefined
+      }
       workout_day_types_valid: {
         Args: { p_day_types: string[] }
         Returns: boolean
