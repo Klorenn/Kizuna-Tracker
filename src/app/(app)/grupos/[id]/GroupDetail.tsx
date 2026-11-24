@@ -31,6 +31,10 @@ export function GroupDetail(props: {
   justJoined: boolean;
   myUserId: string;
   today: string;
+  /** Wall photo URLs signed on the server (path -> URL). */
+  signedUrls?: Record<string, string>;
+  /** Date.now() when the server signed them. */
+  signedAt?: number;
 }) {
   const router = useRouter();
   const { fineState, fund, rejected, now, ...rest } = props;

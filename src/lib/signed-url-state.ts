@@ -14,3 +14,6 @@ export function mergeSignedUrls(
   }
   return out
 }
+
+/** Signed URLs for the private `proofs` bucket last 300 s (server and browser signing share it). */
+export const PROOF_SIGNED_SECONDS = 300

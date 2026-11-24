@@ -6,6 +6,7 @@ import Loading from "@/app/(app)/loading";
 import LoggerLoading from "@/app/(app)/habitos/[id]/entrenamiento/loading";
 import { habitStreak } from "@/app/(app)/habitos/[id]/foto/actions";
 import { localDate } from "@/domain/dates";
+import { leaveAfterWrite } from "@/lib/leave-navigation";
 import { celebrateKeyAndClaim } from "@/lib/celebrate-once";
 import { celebrationFor } from "@/lib/checkins";
 import type { LogType } from "@/domain/logs";
@@ -42,14 +43,14 @@ export function PhotoCheckinFlow({
   const [leaving, setLeaving] = useState<string | null>(null);
   const left = useRef(false);
 
-  // replace("/") already renders Hoy fresh (dynamic pages are not cached on the client), so there is
-  // no router.refresh() on top of it. replace, not push: the camera page of a checked-in habit must
-  // not stay in the history.
+  // The photo is saved by a route handler (no revalidatePath), and the client router cache (staleTimes) and the prefetched
+  // tabs would show Hoy without the check-in: leaveAfterWrite replaces AND refreshes. replace, not push: the camera page
+  // of a checked-in habit must not stay in the history.
   const goTo = useCallback((href: string) => {
     if (left.current) return;
     left.current = true;
     setLeaving(href);
-    router.replace(href);
+    leaveAfterWrite(router, href);
   }, [router]);
   const leave = useCallback(() => goTo("/"), [goTo]);
 

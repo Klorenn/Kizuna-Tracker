@@ -29,6 +29,8 @@ export function BottomNav() {
             <li key={href} className="flex-1">
               <Link
                 href={href}
+                // full RSC payload (the default for dynamic routes stops at loading.tsx)
+                prefetch={true}
                 aria-current={active ? "page" : undefined}
                 className="flex min-h-14 min-w-11 flex-col items-center justify-center gap-1 py-2 text-[12px] focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-accent"
               >

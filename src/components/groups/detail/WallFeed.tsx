@@ -22,7 +22,7 @@ import { toHabitColor } from "@/domain/habit-colors";
 import { groupByDay } from "@/lib/feed";
 import type { GroupActions, GroupResult, GroupWallCursor, GroupWallItem, GroupWallPage } from "@/lib/groups-contract";
 import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
-import { useSignedUrls } from "@/lib/use-signed-urls";
+import { resignProof, useSignedUrls } from "@/lib/use-signed-urls";
 import type { GroupFineActions } from "@/lib/groups-fines-contract";
 import { RejectPhotoButton } from "../reject/RejectPhotoButton";
 import { rejectButtonProps, type RejectContext } from "./fines-wiring";
@@ -43,7 +43,11 @@ export async function fetchMoreWall(
 }
 
 /** The photo of a check-in: a fixed frame (no layout shift) on the dark media surface. */
-function Photo({ url, name }: { url: string | null | undefined; name: string }) {
+function Photo({ url: initial, name, path }: { url: string | null | undefined; name: string; path: string }) {
+  // an <img> that fails (expired signed URL) is re-signed once; a second failure shows "Foto no disponible" (no loops)
+  const [override, setOverride] = useState<{ from: string; url: string | null } | null>(null);
+  const tried = useRef(false);
+  const url = override && override.from === initial ? override.url : initial;
   return (
     <div
       aria-busy={url === undefined}
@@ -57,6 +61,11 @@ function Photo({ url, name }: { url: string | null | undefined; name: string }) 
           alt={`Foto de ${name}`}
           loading="lazy"
           decoding="async"
+          onError={() => {
+            if (tried.current) return setOverride({ from: initial ?? "", url: null });
+            tried.current = true;
+            void resignProof(path).then((u) => setOverride({ from: initial ?? "", url: u }));
+          }}
           className="absolute inset-0 size-full object-cover"
         />
       ) : url === null ? (
@@ -81,7 +90,7 @@ function WallEntry({ item, url, reject }: { item: GroupWallItem; url: string | n
         <PersonLink person={item} />
         <span className="shrink-0 text-small text-muted">{item.photoPath ? "Subió su foto" : "Registró"}</span>
       </div>
-      {item.photoPath ? <Photo url={url} name={item.displayName} /> : null}
+      {item.photoPath ? <Photo url={url} name={item.displayName} path={item.photoPath} /> : null}
       {item.photoPath && reject ? (
         <RejectPhotoButton {...rejectButtonProps(item, reject)} actions={reject.actions} onRejected={reject.onRejected} />
       ) : null}
@@ -98,14 +107,19 @@ export const WallChunk = memo(function WallChunk({
   today,
   continuesFrom,
   reject,
+  signedUrls,
+  signedAt,
 }: {
   items: GroupWallItem[];
+  signedAt?: number;
+  /** URLs the server signed with the page (paths it lacks are signed in the browser). */
+  signedUrls?: Record<string, string>;
   reject?: WallReject;
   /** The viewer's date, or null while unknown (plain dates then). */
   today: string | null;
   continuesFrom: string | null;
 }) {
-  const urls = useSignedUrls(items.flatMap((i) => (i.photoPath ? [i.photoPath] : [])));
+  const urls = useSignedUrls(items.flatMap((i) => (i.photoPath ? [i.photoPath] : [])), signedUrls, signedAt);
   return groupByDay(items, today ?? "0000-01-01", continuesFrom).map((g) => {
     const label = today === null ? plainDayLabel(g.date) : g.label;
     return (
@@ -142,8 +156,14 @@ export function WallFeed({
   retryHref,
   color,
   reject,
+  signedUrls,
+  signedAt,
 }: {
   groupId: string;
+  /** When the server signed `signedUrls` (Date.now()). */
+  signedAt?: number;
+  /** Photo URLs signed on the server with the page, so the first paint has them. */
+  signedUrls?: Record<string, string>;
   /** Optional: with it each photo gets `RejectPhotoButton` (which decides from the real values whether to show). */
   reject?: WallReject;
   wall: GroupWallPage | null;
@@ -194,6 +214,8 @@ export function WallFeed({
               today={day}
               continuesFrom={prev ? prev[prev.length - 1].localDate : null}
               reject={reject}
+              signedUrls={signedUrls}
+              signedAt={signedAt}
             />
           );
         })

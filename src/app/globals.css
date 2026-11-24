@@ -49,6 +49,15 @@
   --habit-soft: var(--habit-indigo-soft);
 }
 
+/* App feel (Android TWA / installed PWA only): no Chrome pull-to-refresh or overscroll bounce.
+   Plain mobile browser tabs keep pull-to-refresh. */
+@media (display-mode: standalone) {
+  html,
+  body {
+    overscroll-behavior-y: none;
+  }
+}
+
 body {
   background: var(--color-paper);
   color: var(--color-ink);

@@ -7,7 +7,13 @@ import { SECURITY_HEADERS } from "./src/lib/security-headers";
 const PUBLIC_ART_CACHE = "public, max-age=604800, stale-while-revalidate=2592000";
 
 const nextConfig: NextConfig = {
-  experimental: { optimizePackageImports: ["@phosphor-icons/react"] },
+  experimental: {
+    optimizePackageImports: ["@phosphor-icons/react"],
+    // Client Router Cache: revisiting a tab within 30 s reuses the loaded RSC payload (instant, no ~150-200 ms round trip to
+    // Oregon). `static` (180 s) applies to links with prefetch={true}. Server actions that call revalidatePath/revalidateTag
+    // or cookies.set clear this cache, and router.refresh() bypasses it, so writes still show up.
+    staleTimes: { dynamic: 30, static: 180 },
+  },
   // The route folder cannot start with "@" (Next treats it as a parallel slot).
   async rewrites() {
     return [{ source: "/@:username", destination: "/u/:username" }];

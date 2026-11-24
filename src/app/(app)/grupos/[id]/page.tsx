@@ -8,6 +8,7 @@ import { groupPageNotFound } from "@/domain/group-invite";
 import { initialSection, isJustJoined } from "@/components/groups/detail/fines-wiring";
 import { loadGroupBoard, loadGroupDetail, loadGroupHistory, loadGroupWall } from "@/lib/groups-data";
 import { loadGroupFineState, loadGroupFund, loadGroupRejected } from "@/lib/groups-fines-data";
+import { signProofUrls } from "@/lib/sign-proofs";
 import { createServerClient } from "@/lib/supabase/server";
 import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 import { GroupDetail } from "./GroupDetail";
@@ -29,15 +30,24 @@ export default async function GrupoPage({
 
   // one round, seven reads: each section of the view handles its own failed read. The fine's reads never decide the 404
   // (the four group reads do): a failed fine read is an error inside "Fondo" only.
-  const [detail, board, wall, history, fineState, fund, rejected] = await Promise.all([
+  // The photo signing chains off the wall read inside the same round (one batched, user-scoped call, so storage RLS applies):
+  // it adds no serial step. A failed wall read signs nothing, so a stranger's 404 is unchanged.
+  const [detail, board, wallSigned, history, fineState, fund, rejected] = await Promise.all([
     loadGroupDetail(id, supabase),
     loadGroupBoard(id, supabase),
-    loadGroupWall(id, null, undefined, supabase),
+    loadGroupWall(id, null, undefined, supabase).then(async (wall) => ({
+      wall,
+      signedUrls: wall.ok
+        ? await signProofUrls(supabase, wall.data.items.flatMap((i) => (i.photoPath ? [i.photoPath] : [])))
+        : {},
+      signedAt: Date.now(),
+    })),
     loadGroupHistory(id, undefined, supabase),
     loadGroupFineState(id, supabase),
     loadGroupFund(id, supabase),
     loadGroupRejected(id, supabase),
   ]);
+  const { wall, signedUrls, signedAt } = wallSigned;
   // a stranger (or an id that is not a group) gets the same 404 whichever read answered first
   if (groupPageNotFound([detail, board, wall, history])) notFound();
 
@@ -61,6 +71,8 @@ export default async function GrupoPage({
           justJoined={isJustJoined(unido)}
           myUserId={viewer.id}
           today={localDate(new Date(), viewer.timezone)}
+          signedUrls={signedUrls}
+          signedAt={signedAt}
         />
       ) : (
         <LoadFailed href={`/grupos/${id}`} />

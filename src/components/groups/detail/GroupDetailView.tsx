@@ -137,7 +137,12 @@ export function GroupDetailView({
   fines,
   initialSection = "board",
   justJoined = false,
+  signedUrls,
+  signedAt,
 }: {
+  signedAt?: number;
+  /** Wall photo URLs signed on the server (path -> URL). */
+  signedUrls?: Record<string, string>;
   detail: GroupDetail;
   board: GroupBoardRow[] | null;
   wall: GroupWallPage | null;
@@ -229,6 +234,8 @@ export function GroupDetailView({
           retryHref={retryHref}
           color={view.color}
           reject={reject}
+          signedUrls={signedUrls}
+          signedAt={signedAt}
         />
       </div>
 
