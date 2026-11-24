@@ -12,7 +12,7 @@ import { clearWebLinked } from "../web/web-session-state";
 import { createLogout, signOutEverywhere } from "./logout";
 
 /**
- * Logout of the whole app: push token, scheduled notifications, session (this device only), query cache and its MMKV copy,
+ * Logout of the whole app: push token, scheduled notifications, session (global: revokes the web sessions the handoffs created, and the account's other devices; local fallback when offline), query cache and its MMKV copy,
  * the encrypted auth store, the WebView cookies, then the native login. The web's sign-out lands here too.
  */
 export function useLogout() {

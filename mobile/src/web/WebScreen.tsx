@@ -26,7 +26,7 @@ export function WebScreen({ path }: { path: string }) {
     return jwt ? requestWebSession(env().apiUrl, jwt, p) : ({ ok: false, reason: "unauthorized" } as const);
   }, []);
   const userId = useSession().session?.user.id ?? "";
-  const { state, onLoginLanding, retry } = useWebHandoff(path, {
+  const { state, onLoginLanding, onWebSignedOut, onPage, retry } = useWebHandoff(path, {
     request,
     // the WebView already holds this user's web session: no new handoff (each one mints a session on the server)
     direct: () => (isWebLinked(userId) ? `${env().apiUrl}${path}` : null),
@@ -61,7 +61,8 @@ export function WebScreen({ path }: { path: string }) {
       onPair={(url) => void Linking.openURL(url).catch(() => undefined)}
       onNative={(href) => router.push(href as never)}
       onLoginLanding={onLoginLanding}
-      onSignedOut={() => void logout()}
+      onSignedOut={() => onWebSignedOut() || void logout()}
+      onNavigate={onPage}
       onCanGoBack={setCanGoBack}
     />
   );

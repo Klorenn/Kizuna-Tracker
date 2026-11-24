@@ -57,15 +57,28 @@ export function useWebHandoff(
     };
   }, [fetchLink]);
 
+  const staleDirect = () => {
+    direct.current = false;
+    depsRef.current.onStale?.();
+    links.current = 0;
+    void fetchLink();
+  };
+
   return {
     state,
+    /** a real page rendered: from here a /bienvenida landing is the user's own web sign-out */
+    onPage: () => {
+      direct.current = false;
+    },
+    /** true when the /bienvenida landing was stale cookies on a direct load (handled with one fresh handoff, no logout) */
+    onWebSignedOut: () => {
+      if (!direct.current) return false;
+      staleDirect();
+      return true;
+    },
     onLoginLanding: () => {
-      if (direct.current) {
-        direct.current = false;
-        depsRef.current.onStale?.();
-        links.current = 0;
-        void fetchLink();
-      } else if (links.current < MAX_LINKS) void fetchLink();
+      if (direct.current) staleDirect();
+      else if (links.current < MAX_LINKS) void fetchLink();
       else setState({ kind: "expired" });
     },
     retry: () => {

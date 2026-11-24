@@ -79,4 +79,37 @@ describe("useWebHandoff", () => {
       expect(result.current.state).toEqual({ kind: "ready", url: (link(2) as { url: string }).url });
     });
   });
+
+  describe("a stale direct load of / (middleware sends anonymous / to /bienvenida)", () => {
+    const direct = { direct: () => "https://kizuna.example/" };
+    it("landing on /bienvenida as the first page of a direct load is stale cookies, not a sign-out: one fresh handoff, no logout", async () => {
+      const onStale = jest.fn();
+      const d = { ...make([link(2)]), ...direct, onStale };
+      const { result } = await run(d);
+      await act(async () => undefined);
+      let handled = false;
+      await act(async () => { handled = result.current.onWebSignedOut(); });
+      expect(handled).toBe(true);
+      expect(onStale).toHaveBeenCalledTimes(1);
+      expect(d.request).toHaveBeenCalledTimes(1);
+    });
+    it("after a real page rendered, /bienvenida is the user's own web sign-out: not handled, so the app logs out", async () => {
+      const d = { ...make([link(2)]), ...direct };
+      const { result } = await run(d);
+      await act(async () => undefined);
+      await act(async () => result.current.onPage());
+      let handled = true;
+      await act(async () => { handled = result.current.onWebSignedOut(); });
+      expect(handled).toBe(false);
+      expect(d.request).not.toHaveBeenCalled();
+    });
+    it("after an explicit handoff /bienvenida is a sign-out (not handled)", async () => {
+      const d = make([link(1)]);
+      const { result } = await run(d);
+      await act(async () => undefined);
+      let handled = true;
+      await act(async () => { handled = result.current.onWebSignedOut(); });
+      expect(handled).toBe(false);
+    });
+  });
 });
