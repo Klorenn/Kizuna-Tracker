@@ -34,9 +34,11 @@ describe('isNativeUA', () => {
 describe('HideInNative', () => {
   const child = createElement('span', null, 'push prompt')
   it('renders its children in a normal browser', () => {
+    // eslint-disable-next-line react/no-children-prop
     expect(renderToStaticMarkup(createElement(NativeShellProvider, { native: false, children: createElement(HideInNative, null, child) }))).toBe('<span>push prompt</span>')
   })
   it('renders nothing inside the native app', () => {
+    // eslint-disable-next-line react/no-children-prop
     expect(renderToStaticMarkup(createElement(NativeShellProvider, { native: true, children: createElement(HideInNative, null, child) }))).toBe('')
   })
   it('renders its children with no provider at all (the default is the web)', () => {
