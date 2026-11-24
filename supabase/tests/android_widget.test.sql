@@ -274,7 +274,7 @@ select set_config('request.jwt.claims', '{"role":"service_role"}', true);
 select is((select count(*)::int from generate_series(1, 30) g
   where public.widget_auth(tests.h('tokNOPE'), 'wauth:addr:t-android-widget', 'today') ->> 'status' = 'invalid'), 30, 'thirty bad tokens from one address are answered invalid');
 select is((select public.widget_auth(tests.h('tokNOPE'), 'wauth:addr:t-android-widget', 'today') ->> 'status'), 'limited', 'the thirty-first is limited');
-select is((select public.widget_auth(tests.h('tokC'), 'wauth:addr:t-android-widget', 'today') ->> 'status'), 'limited', 'a good token from that address is limited too');
+select is((select public.widget_auth(tests.h('tokC'), 'wauth:addr:t-android-widget', 'today') ->> 'status'), 'ok', 'a valid token still authenticates when its address bucket is exhausted (shared NAT)');
 select is((select count(*)::int from generate_series(1, 120) g where public.widget_auth(tests.h('tokD'), null, 'today') ->> 'status' = 'ok'), 120, 'a token reads today 120 times an hour');
 select is((select public.widget_auth(tests.h('tokD'), null, 'today') ->> 'status'), 'limited', 'the 121st read is limited');
 select is((select public.widget_auth(tests.h('tokD'), null, 'checkin') ->> 'status'), 'ok', 'the checkin budget is separate from the today budget');

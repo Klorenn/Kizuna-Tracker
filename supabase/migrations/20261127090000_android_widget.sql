@@ -223,14 +223,17 @@ begin
   if p_scope not in ('today', 'checkin') then
     raise exception 'invalid_scope';
   end if;
-  if p_ip_key is not null and public.rate_limit(p_ip_key, 30, 900, false) then
-    return jsonb_build_object('status', 'limited');
-  end if;
+  -- Look the token up FIRST: a live token (256 random bits, not guessable) never touches the address bucket, so
+  -- bogus tokens from a shared NAT / IPv6 /64 cannot lock out the valid widgets behind the same address.
   select t.id, t.user_id, p.timezone, t.last_used_at into v_id, v_uid, v_tz, v_last
   from public.widget_tokens t
   join public.profiles p on p.id = t.user_id and p.deleted_at is null
   where t.token_hash = p_token_hash and t.revoked_at is null;
   if not found then
+    -- Only the failure path is counted against the address (and throttled by it).
+    if p_ip_key is not null and public.rate_limit(p_ip_key, 30, 900, false) then
+      return jsonb_build_object('status', 'limited');
+    end if;
     if p_ip_key is not null then
       perform public.rate_limit(p_ip_key, 30, 900, true);
     end if;
