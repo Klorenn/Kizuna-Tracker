@@ -5,8 +5,9 @@ const expo = config({ config: {} } as never);
 describe("app.config", () => {
   it("keeps the TWA identity so the APK installs as an update over it", () => {
     expect(expo.android?.package).toBe("com.kizunatracker.app");
-    expect(expo.android?.versionCode).toBe(4);
-    expect(expo.version).toBe("1.1.0");
+    // 1.1.0 / versionCode 4 is already published: bump by patch only
+    expect(expo.android?.versionCode).toBe(5);
+    expect(expo.version).toBe("1.1.1");
   });
   it("registers the kizuna:// scheme and a VIEW intent filter for it, with no https filter", () => {
     expect(expo.scheme).toBe("kizuna");
