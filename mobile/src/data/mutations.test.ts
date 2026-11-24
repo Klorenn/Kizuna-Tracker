@@ -3,6 +3,7 @@ import fixture from "../../../tests/fixtures/today-fixture.json";
 import { createQueryClient } from "./query-client";
 import { StaleDayError, TrackingError } from "./mutations";
 import { selectToday, type TodayRaw } from "./today";
+import { m2Raw } from "../today/test-fixtures";
 
 jest.mock("@/lib/tracking-rpc");
 import * as rpc from "@/lib/tracking-rpc";
@@ -118,5 +119,88 @@ describe("tracking mutations", () => {
     const qc = setup().qc;
     const retry = qc.getMutationDefaults(["track", "checkin"]).retry as (n: number, e: Error) => boolean;
     expect(retry(0, new StaleDayError())).toBe(false);
+  });
+});
+
+describe("quantity, time and pomodoro mutations", () => {
+  const hq = "hq";
+  const ht = "ht";
+  function setup2() {
+    const errors: string[] = [];
+    const qc: QueryClient = createQueryClient({ client: () => ({}) as never, reportError: (m) => errors.push(m) });
+    clients.push(qc);
+    qc.setQueryData(KEY, m2Raw());
+    const run = (op: string, v: object) => new MutationObserver<unknown, Error, object>(qc, { mutationKey: ["track", op] }).mutate({ ...vars, ...v });
+    const view = () => selectToday(qc.getQueryData<TodayRaw>(KEY)!, new Date(fixture.nowIso));
+    const row = (id: string) => view().rows.find((r) => r.id === id)!;
+    return { qc, run, row, errors };
+  }
+
+  it("quantityAdd is optimistic and sends the client id as the idempotent entry id", async () => {
+    mocked.addQuantityRpc.mockResolvedValue({ ok: true, total: 1000, target: 2000, done: false });
+    const { run, row } = setup2();
+    await run("quantityAdd", { habitId: hq, amount: 250 });
+    expect(mocked.addQuantityRpc).toHaveBeenCalledWith(expect.anything(), hq, "c-1", 250);
+    expect(row(hq).quantity!.total).toBe(1000);
+  });
+  it("quantityAdd rolls back and reports a refusal; a network failure is retryable", async () => {
+    mocked.addQuantityRpc.mockResolvedValue({ ok: false, error: "Es demasiado para un día.", retry: false });
+    const { run, row, errors, qc } = setup2();
+    await run("quantityAdd", { habitId: hq, amount: 250 }).catch(() => undefined);
+    expect(row(hq).quantity!.total).toBe(750);
+    expect(errors).toEqual(["Es demasiado para un día."]);
+    const retry = qc.getMutationDefaults(["track", "quantityAdd"]).retry as (n: number, e: Error) => boolean;
+    expect(retry(0, new TrackingError("Sin conexión.", true))).toBe(true);
+    expect(retry(0, new TrackingError("Es demasiado para un día."))).toBe(false);
+  });
+  it("quantityRemove drops the entry", async () => {
+    mocked.removeQuantityRpc.mockResolvedValue({ ok: true, total: 250, target: 2000, done: false });
+    const { run, row } = setup2();
+    await run("quantityRemove", { entryId: "e1" });
+    expect(mocked.removeQuantityRpc).toHaveBeenCalledWith(expect.anything(), "e1");
+    expect(row(hq).quantity!.total).toBe(250);
+  });
+  it("timeAdd adds minutes optimistically", async () => {
+    mocked.addTimeRpc.mockResolvedValue({ ok: true, totalMinutes: 55, checkedIn: false });
+    const { run, row } = setup2();
+    await run("timeAdd", { habitId: ht, minutes: 25, topic: null });
+    expect(mocked.addTimeRpc).toHaveBeenCalledWith(expect.anything(), ht, 25, null);
+    expect(row(ht).log).toMatchObject({ kind: "time", minutes: 55 });
+  });
+  it("timeSet and timeDelete resolve today's check-in from the cache", async () => {
+    mocked.setTimeEntryRpc.mockResolvedValue({ ok: true });
+    mocked.deleteTimeEntryRpc.mockResolvedValue({ ok: true });
+    const { run, row } = setup2();
+    await run("timeSet", { habitId: ht, minutes: 50, topic: null });
+    expect(mocked.setTimeEntryRpc).toHaveBeenCalledWith(expect.anything(), "ct", 50, null);
+    expect(row(ht).log).toMatchObject({ minutes: 50 });
+    await run("timeDelete", { habitId: ht });
+    expect(mocked.deleteTimeEntryRpc).toHaveBeenCalledWith(expect.anything(), "ct");
+    expect(row(ht).log).toBeNull();
+  });
+  it("timeSet with no check-in today reports the web copy", async () => {
+    const { run, errors } = setup2();
+    await run("timeSet", { habitId: "other", minutes: 5, topic: null }).catch(() => undefined);
+    expect(mocked.setTimeEntryRpc).not.toHaveBeenCalled();
+    expect(errors).toEqual(["Ese día no tiene check-in."]);
+  });
+  it("pomodoro credits the block with its id and end instant; an expired block is a final refusal", async () => {
+    mocked.addPomodoroBlockRpc.mockResolvedValue({ ok: true, credited: true, totalMinutes: 55 });
+    const { run, row } = setup2();
+    await run("pomodoro", { habitId: ht, minutes: 25, endedAt: 1000, topic: null });
+    expect(mocked.addPomodoroBlockRpc).toHaveBeenCalledWith(expect.anything(), ht, { blockId: "c-1", minutes: 25, endedAt: 1000 }, null);
+    expect(row(ht).log).toMatchObject({ minutes: 55 });
+    mocked.addPomodoroBlockRpc.mockResolvedValue({ ok: false, error: "Un bloque terminó ayer y ya no se puede sumar.", retry: false, code: "block_expired" });
+    const { run: run2, errors } = setup2();
+    await run2("pomodoro", { habitId: ht, minutes: 25, endedAt: 1000, topic: null }).catch(() => undefined);
+    expect(errors).toEqual(["Un bloque terminó ayer y ya no se puede sumar."]);
+  });
+  it("a stale quantity or pomodoro tap is dropped before any request", async () => {
+    const { run, errors } = setup2();
+    await run("quantityAdd", { habitId: hq, amount: 250, day: "2000-01-01" }).catch(() => undefined);
+    await run("pomodoro", { habitId: ht, minutes: 25, endedAt: 1, topic: null, day: "2000-01-01" }).catch(() => undefined);
+    expect(mocked.addQuantityRpc).not.toHaveBeenCalled();
+    expect(mocked.addPomodoroBlockRpc).not.toHaveBeenCalled();
+    expect(errors.length).toBeGreaterThan(0);
   });
 });

@@ -6,6 +6,7 @@ import { createQueryClient } from "../data/query-client";
 import { reportTrackingError } from "../data/errors";
 import type { TodayRaw } from "../data/today";
 import { HoyContainer } from "./HoyContainer";
+import { m2Raw } from "./test-fixtures";
 
 jest.mock("@/lib/tracking-rpc");
 jest.mock("../data/ids", () => ({ newClientId: () => "cid-1" }));
@@ -15,12 +16,12 @@ import * as rpc from "@/lib/tracking-rpc";
 const mocked = rpc as jest.Mocked<typeof rpc>;
 const raw = fixture.raw as unknown as TodayRaw;
 
-async function mount() {
+async function mount(data: TodayRaw = raw, onNavigate: (path: string) => void = () => {}) {
   const qc = createQueryClient({ client: () => ({}) as never, reportError: reportTrackingError });
-  qc.setQueryData(["today", "u1"], raw);
+  qc.setQueryData(["today", "u1"], data);
   await render(
     <QueryClientProvider client={qc}>
-      <HoyContainer userId="u1" client={() => ({}) as never} onOpenHabit={() => {}} />
+      <HoyContainer userId="u1" client={() => ({}) as never} onOpenHabit={() => {}} onNavigate={onNavigate} />
     </QueryClientProvider>,
   );
   return qc;
@@ -66,6 +67,24 @@ describe("HoyContainer", () => {
     const qc = await mount();
     await fireEvent.press(screen.getByText("Sentarse"));
     await waitFor(() => expect(screen.getByText("2 de 3")).toBeTruthy());
+    qc.clear();
+  });
+
+  it("the quick add on a quantity row is optimistic and sends the step", async () => {
+    mocked.addQuantityRpc.mockReturnValue(new Promise(() => {}));
+    const qc = await mount(m2Raw());
+    expect(screen.getByText("750 de 2.000 ml")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Sumar 250 ml a Agua"));
+    await waitFor(() => expect(screen.getByText("1.000 de 2.000 ml")).toBeTruthy());
+    expect(mocked.addQuantityRpc).toHaveBeenCalledWith(expect.anything(), "hq", "cid-1", 250);
+    qc.clear();
+  });
+
+  it("Registrar on a time row opens the time screen", async () => {
+    const onNavigate = jest.fn();
+    const qc = await mount(m2Raw(), onNavigate);
+    await fireEvent.press(screen.getByLabelText("Registrar tiempo de Estudio"));
+    expect(onNavigate).toHaveBeenCalledWith("/registros/ht/time");
     qc.clear();
   });
 });

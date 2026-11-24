@@ -1,10 +1,12 @@
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { progressLabel } from "@/domain/quantity";
+import { logSubtitle } from "@/domain/logs";
 import type { TodayItem, TodayRow } from "@/domain/today";
 import { useTheme } from "../theme/ThemeProvider";
 import type { HoyActions } from "./HoyView";
 import { rowAction } from "./row-action";
 
-type Props = { row: TodayRow | null; actions: Pick<HoyActions, "onCheck" | "onUndo" | "onItem">; onBack: () => void };
+type Props = { row: TodayRow | null; actions: Pick<HoyActions, "onCheck" | "onUndo" | "onItem"> & { onNavigate?: (path: string) => void }; onBack: () => void };
 
 /** One habit: its streak and week, and the same tap actions as the Hoy row. */
 export function HabitDetail({ row, actions, onBack }: Props) {
@@ -43,6 +45,25 @@ export function HabitDetail({ row, actions, onBack }: Props) {
           <Text style={{ color: item.checked ? colors.text : colors.muted, fontSize: 15 }}>{item.checked && item.time ? `${item.label} · ${item.time}` : item.label}</Text>
         </Pressable>
       )) : null}
+      {kind === "quantity" && row.quantity ? (
+        <>
+          <Text style={{ color: colors.text, fontSize: 18 }}>{progressLabel(row.quantity.total, row.quantity.config)}</Text>
+          <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/quantity`)} style={[styles.cta, { backgroundColor: colors.accent, borderRadius: radius.md, borderColor: colors.line }]}>
+            <Text style={{ color: colors.onAccent, fontWeight: "600" }}>Sumar cantidad</Text>
+          </Pressable>
+        </>
+      ) : null}
+      {kind === "time" ? (
+        <>
+          {row.log?.kind === "time" ? <Text style={{ color: colors.text, fontSize: 18 }}>{logSubtitle(row.log)}</Text> : null}
+          <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/time`)} style={[styles.cta, { backgroundColor: colors.accent, borderRadius: radius.md, borderColor: colors.line }]}>
+            <Text style={{ color: colors.onAccent, fontWeight: "600" }}>Registrar tiempo</Text>
+          </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => actions.onNavigate?.(`/registros/${row.id}/pomodoro`)} style={[styles.cta, { backgroundColor: colors.surface, borderRadius: radius.md, borderColor: colors.line }]}>
+            <Text style={{ color: colors.text, fontWeight: "600" }}>Iniciar Pomodoro</Text>
+          </Pressable>
+        </>
+      ) : null}
       {kind === "unsupported" ? <Text style={{ color: colors.muted, fontSize: 14 }}>Se registra desde la web</Text> : null}
     </ScrollView>
   );

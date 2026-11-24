@@ -1,4 +1,6 @@
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { formatAmount, progressLabel } from "@/domain/quantity";
+import { logSubtitle } from "@/domain/logs";
 import type { TodayItem, TodayRow } from "@/domain/today";
 import type { TodayView } from "../data/today";
 import { useTheme } from "../theme/ThemeProvider";
@@ -11,6 +13,10 @@ export type HoyActions = {
   onUndo: (row: TodayRow) => void;
   onItem: (row: TodayRow, item: TodayItem) => void;
   onOpen: (row: TodayRow) => void;
+  /** quick add of `amount` (one step) to a quantity habit */
+  onQuantity?: (row: TodayRow, amount: number) => void;
+  /** open the time screen of a time habit */
+  onTime?: (row: TodayRow) => void;
 };
 
 type Props = { state: HoyState; onRetry: () => void; actions?: HoyActions; errorMessage?: string | null; onDismissError?: () => void };
@@ -75,6 +81,27 @@ export function HoyView({ state, onRetry, actions, errorMessage, onDismissError 
                   </Pressable>
                 ) : null}
               </View>
+              {kind === "quantity" && row.quantity ? (
+                <View style={[styles.rowHead, { marginLeft: space.lg }]}>
+                  <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{progressLabel(row.quantity.total, row.quantity.config)}</Text>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Sumar ${formatAmount(row.quantity.config.step, row.quantity.config)} a ${row.name}`}
+                    hitSlop={8}
+                    onPress={() => actions?.onQuantity?.(row, row.quantity!.config.step)}
+                  >
+                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>{`+ ${formatAmount(row.quantity.config.step, row.quantity.config)}`}</Text>
+                  </Pressable>
+                </View>
+              ) : null}
+              {kind === "time" ? (
+                <View style={[styles.rowHead, { marginLeft: space.lg }]}>
+                  <Text style={{ color: colors.muted, fontSize: 13, flex: 1 }}>{row.log?.kind === "time" ? logSubtitle(row.log) : "Sin tiempo hoy"}</Text>
+                  <Pressable accessibilityRole="button" accessibilityLabel={`Registrar tiempo de ${row.name}`} hitSlop={8} onPress={() => actions?.onTime?.(row)}>
+                    <Text style={{ color: colors.accent, fontSize: 13, fontWeight: "600" }}>Registrar</Text>
+                  </Pressable>
+                </View>
+              ) : null}
               {kind === "unsupported" ? <Text style={{ color: colors.muted, fontSize: 12, marginLeft: space.lg }}>Se registra desde la web</Text> : null}
               {row.items.map((item) => (
                 <Pressable key={item.id} accessibilityRole="checkbox" accessibilityState={{ checked: item.checked }} disabled={kind !== "items"} onPress={() => actions?.onItem(row, item)}>

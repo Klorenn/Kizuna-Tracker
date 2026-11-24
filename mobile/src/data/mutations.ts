@@ -1,14 +1,44 @@
 import type { QueryClient } from "@tanstack/react-query";
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { applyCheckin, applyItem, removeCheckin, removeItem } from "@/domain/today-optimistic";
+import {
+  applyCheckin,
+  applyItem,
+  applyQuantityEntry,
+  applyTime,
+  removeCheckin,
+  removeItem,
+  removeQuantityEntry,
+  removeTimeLog,
+  setTimeLog,
+} from "@/domain/today-optimistic";
 import { isStaleTap, staleDayNotice } from "@/lib/stale-day";
 import { GENERIC } from "@/lib/tracking-copy";
-import { checkInRpc, checkItemRpc, uncheckItemRpc, undoCheckInRpc } from "@/lib/tracking-rpc";
+import { TIME_ERRORS } from "@/lib/time-copy";
+import {
+  addPomodoroBlockRpc,
+  addQuantityRpc,
+  addTimeRpc,
+  checkInRpc,
+  checkItemRpc,
+  deleteTimeEntryRpc,
+  removeQuantityRpc,
+  setTimeEntryRpc,
+  uncheckItemRpc,
+  undoCheckInRpc,
+} from "@/lib/tracking-rpc";
 import type { Database } from "@/lib/supabase/database.types";
 import type { TodayRaw } from "./today";
 
 /** A refusal or failure from a tracking RPC, carrying the Spanish copy to show. */
-export class TrackingError extends Error {}
+export class TrackingError extends Error {
+  /** true when nothing was confirmed (network): the same call is safe to repeat (every RPC is idempotent) */
+  constructor(
+    message: string,
+    readonly transient = false,
+  ) {
+    super(message);
+  }
+}
 
 /** A queued tap whose local day was over at replay: never sent, never retried, reported as one counted notice. */
 export class StaleDayError extends Error {
@@ -21,6 +51,14 @@ export class StaleDayError extends Error {
 export type TrackVars = { userId: string; clientId: string; day: string; zone: string };
 export type CheckinVars = TrackVars & { habitId: string };
 export type ItemVars = TrackVars & { itemId: string };
+/** `clientId` is the idempotent entry id of the sum */
+export type QuantityAddVars = TrackVars & { habitId: string; amount: number };
+export type QuantityRemoveVars = TrackVars & { entryId: string };
+export type TimeAddVars = TrackVars & { habitId: string; minutes: number; topic: string | null };
+export type TimeSetVars = TimeAddVars;
+export type TimeDeleteVars = TrackVars & { habitId: string };
+/** `clientId` is the block id; `endedAt` is the instant the focus block ended (the server refuses a block of an earlier day) */
+export type PomodoroVars = TrackVars & { habitId: string; minutes: number; endedAt: number; topic: string | null };
 
 type Deps = { client: () => SupabaseClient<Database>; reportError: (message: string) => void };
 type Ctx = { previous: TodayRaw | undefined };
@@ -28,7 +66,7 @@ type Ctx = { previous: TodayRaw | undefined };
 const todayKey = (userId: string) => ["today", userId];
 
 /** The generic failure may be transient; a specific server refusal is definitive. */
-const retryable = (n: number, e: unknown) => n < 3 && !(e instanceof StaleDayError) && e instanceof TrackingError && e.message === GENERIC;
+const retryable = (n: number, e: unknown) => n < 3 && !(e instanceof StaleDayError) && e instanceof TrackingError && (e.transient || e.message === GENERIC);
 
 function unwrap(r: { ok: true } | { ok: false; error: string }) {
   if (!r.ok) throw new TrackingError(r.error);
@@ -110,5 +148,58 @@ export function registerTrackingMutations(qc: QueryClient, deps: Deps) {
     "uncheckItem",
     async (v) => unwrap(await uncheckItemRpc(deps.client(), v.itemId)),
     (s, v) => removeItem(s, v.itemId),
+  );
+
+  define<QuantityAddVars>(
+    "quantityAdd",
+    async (v) => {
+      const r = await addQuantityRpc(deps.client(), v.habitId, v.clientId, v.amount);
+      if (!r.ok) throw new TrackingError(r.error, r.retry);
+      return r;
+    },
+    (s, v) => applyQuantityEntry(s, v.habitId, v.clientId, v.amount, new Date().toISOString()),
+  );
+  define<QuantityRemoveVars>(
+    "quantityRemove",
+    async (v) => {
+      const r = await removeQuantityRpc(deps.client(), v.entryId);
+      if (!r.ok) throw new TrackingError(r.error);
+      return r;
+    },
+    (s, v) => removeQuantityEntry(s, v.entryId),
+  );
+  define<TimeAddVars>(
+    "timeAdd",
+    async (v) => {
+      const r = await addTimeRpc(deps.client(), v.habitId, v.minutes, v.topic);
+      if (!r.ok) throw new TrackingError(r.error);
+      return r;
+    },
+    (s, v) => applyTime(s, v.habitId, v.minutes, v.topic, `optimistic-${v.clientId}`),
+  );
+  // set and delete address the habit's check-in of today, read from the cached Hoy
+  const checkinOf = (v: TrackVars & { habitId: string }) => {
+    const id = qc.getQueryData<TodayRaw>(todayKey(v.userId))?.todayCheckins.find((c) => c.habit_id === v.habitId)?.id;
+    if (!id) throw new TrackingError(TIME_ERRORS.checkin_not_found);
+    return id;
+  };
+  define<TimeSetVars>(
+    "timeSet",
+    async (v) => unwrap(await setTimeEntryRpc(deps.client(), checkinOf(v), v.minutes, v.topic)),
+    (s, v) => setTimeLog(s, v.habitId, v.minutes, v.topic),
+  );
+  define<TimeDeleteVars>(
+    "timeDelete",
+    async (v) => unwrap(await deleteTimeEntryRpc(deps.client(), checkinOf(v))),
+    (s, v) => removeTimeLog(s, v.habitId),
+  );
+  define<PomodoroVars>(
+    "pomodoro",
+    async (v) => {
+      const r = await addPomodoroBlockRpc(deps.client(), v.habitId, { blockId: v.clientId, minutes: v.minutes, endedAt: v.endedAt }, v.topic);
+      if (!r.ok) throw new TrackingError(r.error, r.retry);
+      return r;
+    },
+    (s, v) => applyTime(s, v.habitId, v.minutes, v.topic, `optimistic-${v.clientId}`),
   );
 }

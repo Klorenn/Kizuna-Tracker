@@ -2,6 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react-native";
 import fixture from "../../../tests/fixtures/today-fixture.json";
 import { selectToday, type TodayRaw } from "../data/today";
 import { HoyView } from "./HoyView";
+import { m2View } from "./test-fixtures";
 
 const view = selectToday(fixture.raw as unknown as TodayRaw, new Date(fixture.nowIso));
 
@@ -77,7 +78,7 @@ describe("HoyView actions", () => {
   });
   it("unsupported rows say they are registered on the web and open the detail on tap", async () => {
     const a = actions();
-    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "time" as const };
+    const row = { ...view.rows[1], id: "q1", name: "Agua", logType: "reading" as const };
     await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [row] } }} onRetry={() => {}} actions={a} />);
     expect(screen.queryByLabelText("Marcar Agua")).toBeNull();
     expect(screen.getByText("Se registra desde la web")).toBeTruthy();
@@ -89,5 +90,29 @@ describe("HoyView actions", () => {
     await render(<HoyView state={ready} onRetry={() => {}} actions={actions()} errorMessage="Este hábito pide una foto de prueba." onDismissError={onDismissError} />);
     await fireEvent.press(screen.getByText("Este hábito pide una foto de prueba."));
     expect(onDismissError).toHaveBeenCalled();
+  });
+});
+
+describe("HoyView quantity and time rows", () => {
+  const ready = { kind: "ready", view: m2View() } as const;
+  const actions = () => ({ onCheck: jest.fn(), onUndo: jest.fn(), onItem: jest.fn(), onOpen: jest.fn(), onQuantity: jest.fn(), onTime: jest.fn() });
+
+  it("a quantity row shows its progress and adds one step with the quick button", async () => {
+    const a = actions();
+    await render(<HoyView state={ready} onRetry={() => {}} actions={a} />);
+    expect(screen.getByText("750 de 2.000 ml")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Sumar 250 ml a Agua"));
+    expect(a.onQuantity).toHaveBeenCalledWith(expect.objectContaining({ id: "hq" }), 250);
+  });
+  it("a time row shows today's time and opens the time screen", async () => {
+    const a = actions();
+    await render(<HoyView state={ready} onRetry={() => {}} actions={a} />);
+    expect(screen.getByText("30 min · inglés")).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText("Registrar tiempo de Estudio"));
+    expect(a.onTime).toHaveBeenCalledWith(expect.objectContaining({ id: "ht" }));
+  });
+  it("quantity and time rows no longer say they are registered from the web", async () => {
+    await render(<HoyView state={ready} onRetry={() => {}} actions={actions()} />);
+    expect(screen.queryByText("Se registra desde la web")).toBeNull();
   });
 });

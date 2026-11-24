@@ -8,10 +8,14 @@ describe("rowAction", () => {
     expect(rowAction({ ...base, items: [{ id: "i", label: "a", requiresPhoto: false, checked: false, time: null }] })).toBe("items"));
   it("steps that need a photo are unsupported until photos land", () =>
     expect(rowAction({ ...base, items: [{ id: "i", label: "a", requiresPhoto: true, checked: false, time: null }] })).toBe("unsupported"));
-  it("detailed log types and photo habits are unsupported", () => {
-    expect(rowAction({ ...base, logType: "time" })).toBe("unsupported");
+  it("quantity and time habits are native", () => {
+    expect(rowAction({ ...base, logType: "quantity", quantity: { config: {} as never, total: 0, entries: [] } })).toBe("quantity");
+    expect(rowAction({ ...base, logType: "time" })).toBe("time");
+  });
+  it("other log types, photo habits and quantity/time with photo stay unsupported", () => {
     expect(rowAction({ ...base, logType: "reading" })).toBe("unsupported");
     expect(rowAction({ ...base, requiresPhoto: true })).toBe("unsupported");
-    expect(rowAction({ ...base, quantity: { config: {} as never, total: 0, entries: [] } })).toBe("unsupported");
+    expect(rowAction({ ...base, logType: "time", requiresPhoto: true })).toBe("unsupported");
+    expect(rowAction({ ...base, logType: "quantity", requiresPhoto: true, quantity: { config: {} as never, total: 0, entries: [] } })).toBe("unsupported");
   });
 });

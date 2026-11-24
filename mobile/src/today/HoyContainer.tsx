@@ -8,10 +8,10 @@ import { HoyView, type HoyState } from "./HoyView";
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/supabase/database.types";
 
-type Props = { userId: string; client: () => SupabaseClient<Database>; onOpenHabit: (id: string) => void };
+type Props = { userId: string; client: () => SupabaseClient<Database>; onOpenHabit: (id: string) => void; onNavigate?: (path: string) => void };
 
 /** Hoy with data and taps: the shared reads, optimistic mutations, and the error banner. */
-export function HoyContainer({ userId, client, onOpenHabit }: Props) {
+export function HoyContainer({ userId, client, onOpenHabit, onNavigate }: Props) {
   const [offline, setOffline] = useState(false);
   useEffect(() => NetInfo.addEventListener((s) => setOffline(s.isConnected === false)), []);
 
@@ -31,7 +31,14 @@ export function HoyContainer({ userId, client, onOpenHabit }: Props) {
       onRetry={() => void q.refetch()}
       errorMessage={errorMessage}
       onDismissError={clearTrackingError}
-      actions={{ onCheck: track.check, onUndo: track.undo, onItem: track.toggleItem, onOpen: (row) => onOpenHabit(row.id) }}
+      actions={{
+        onCheck: track.check,
+        onUndo: track.undo,
+        onItem: track.toggleItem,
+        onOpen: (row) => onOpenHabit(row.id),
+        onQuantity: (row, amount) => track.addQuantity(row.id, amount),
+        onTime: (row) => onNavigate?.(`/registros/${row.id}/time`),
+      }}
     />
   );
 }

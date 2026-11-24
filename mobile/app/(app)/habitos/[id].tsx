@@ -18,5 +18,5 @@ export default function HabitScreen() {
   });
   const track = useTrack(userId, q.data);
   const row = q.data?.rows.find((r) => r.id === id) ?? null;
-  return <HabitDetail row={row} actions={{ onCheck: track.check, onUndo: track.undo, onItem: track.toggleItem }} onBack={() => router.back()} />;
+  return <HabitDetail row={row} actions={{ onCheck: track.check, onUndo: track.undo, onItem: track.toggleItem, onNavigate: (path) => router.push(path as never) }} onBack={() => router.back()} />;
 }
