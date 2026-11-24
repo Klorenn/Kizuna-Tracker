@@ -5,7 +5,7 @@ import { useEffect, useRef } from "react";
 import { AVATAR_PRESETS, presetUrl } from "@/lib/avatar-presets";
 
 /**
- * The eight cat avatars as a radio group (arrow keys move the selection, one tab stop). The
+ * The bundled profile avatars as a radio group (arrow keys move the selection, one tab stop). The
  * selected one gets a ring and a check badge, so the state never relies on color alone.
  * `row` is a horizontal snap scroller for the compact signup step; `grid` is 4 x 2 for the sheet.
  */

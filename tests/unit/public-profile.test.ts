@@ -65,10 +65,10 @@ describe('public profile view', () => {
     expect(toPublicProfileView(row as never, '2026-11-23').avatarUpdatedAt).toBe(null)
   })
 
-  it('keeps the avatar preset (1..8) and drops anything else', () => {
+  it('keeps the avatar preset (1..197) and drops anything else', () => {
     expect(toPublicProfileView({ ...row, avatarPreset: 6 } as never, '2026-11-23').avatarPreset).toBe(6)
     expect(toPublicProfileView(row as never, '2026-11-23').avatarPreset).toBe(null)
-    expect(toPublicProfileView({ ...row, avatarPreset: 42 } as never, '2026-11-23').avatarPreset).toBe(null)
+    expect(toPublicProfileView({ ...row, avatarPreset: 198 } as never, '2026-11-23').avatarPreset).toBe(null)
   })
 
   it('builds the share url', () => {

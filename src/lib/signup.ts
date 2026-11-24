@@ -12,7 +12,7 @@ export type SignupInput = {
   passwordConfirm: string
   acceptTerms: boolean
   timezone: string
-  /** Optional cat avatar (1..8) chosen in step 3; missing means the database picks one at random. */
+  /** Optional profile avatar (1..197) chosen in step 3; missing means the database picks one at random. */
   avatarPreset?: number
 }
 

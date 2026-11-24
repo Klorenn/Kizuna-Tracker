@@ -11,7 +11,7 @@ export type PublicProfileRow = {
   avatarPath: string | null;
   /** Cache-buster for the public avatar URL (0013); older rows may lack it. */
   avatarUpdatedAt?: string | null;
-  /** Bundled cat avatar 1..8 (0016); older rows may lack it. */
+  /** Bundled profile avatar 1..197 (0016 and expanded preset migration); older rows may lack it. */
   avatarPreset?: number | null;
   habits: {
     name: string;

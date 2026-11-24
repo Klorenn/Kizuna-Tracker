@@ -37,7 +37,7 @@ test("signup step 3: random preselection that survives back/forward, pick avatar
   await signupUntilStep3(page, handle);
 
   const group = page.getByRole("radiogroup", { name: "Elige tu avatar" });
-  await expect(group.getByRole("radio")).toHaveCount(8);
+  await expect(group.getByRole("radio")).toHaveCount(197);
   await expect(group.getByRole("radio", { checked: true })).toHaveCount(1);
 
   // the random preselection is stable when going back and forward
@@ -49,15 +49,21 @@ test("signup step 3: random preselection that survives back/forward, pick avatar
   await expect(group.getByRole("radio", { checked: true })).toHaveAttribute("aria-label", before!);
 
   // tapping picks, the arrow keys move the selection, and the preview follows
-  await group.getByRole("radio", { name: "Avatar 3" }).click();
-  await expect(group.getByRole("radio", { name: "Avatar 3" })).toHaveAttribute("aria-checked", "true");
+  await group.getByRole("radio", { name: "Avatar 3", exact: true }).click();
+  await expect(group.getByRole("radio", { name: "Avatar 3", exact: true })).toHaveAttribute("aria-checked", "true");
   const preview = page.locator("div", { has: page.getByText("Así te verán tus amigos") }).last();
   await expect(preview.locator(`img[src$="${preset(3)}"]`)).toBeVisible();
   await page.keyboard.press("ArrowRight");
-  await expect(group.getByRole("radio", { name: "Avatar 4" })).toHaveAttribute("aria-checked", "true");
+  await expect(group.getByRole("radio", { name: "Avatar 4", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(preview.locator(`img[src$="${preset(4)}"]`)).toBeVisible();
   await page.keyboard.press("ArrowLeft");
-  await expect(group.getByRole("radio", { name: "Avatar 3" })).toHaveAttribute("aria-checked", "true");
+  await expect(group.getByRole("radio", { name: "Avatar 3", exact: true })).toHaveAttribute("aria-checked", "true");
+  await page.keyboard.press("End");
+  await expect(group.getByRole("radio", { name: "Avatar 197", exact: true })).toHaveAttribute("aria-checked", "true");
+  await expect(preview.locator(`img[src$="${preset(197)}"]`)).toBeVisible();
+  await page.keyboard.press("Home");
+  await expect(group.getByRole("radio", { name: "Avatar 1", exact: true })).toHaveAttribute("aria-checked", "true");
+  await group.getByRole("radio", { name: "Avatar 3", exact: true }).click();
 
   expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
 
@@ -73,36 +79,36 @@ test("signup step 3: random preselection that survives back/forward, pick avatar
 test("Ajustes: change the preset in the photo sheet, it persists after reload", async ({ page }) => {
   const handle = randomHandle("avb");
   await signupUntilStep3(page, handle);
-  await page.getByRole("radio", { name: "Avatar 2" }).click();
+  await page.getByRole("radio", { name: "Avatar 2", exact: true }).click();
   await finishSignup(page, handle);
   await page.goto("/perfil/ajustes");
 
   await page.getByRole("button", { name: /Foto de perfil/ }).click();
   const sheet = page.getByRole("dialog", { name: "Foto de perfil" });
   await expect(sheet.getByRole("button", { name: "Subir foto" })).toBeVisible();
-  await expect(sheet.getByRole("radio")).toHaveCount(8);
-  await expect(sheet.getByRole("radio", { name: "Avatar 2" })).toHaveAttribute("aria-checked", "true");
+  await expect(sheet.getByRole("radio")).toHaveCount(197);
+  await expect(sheet.getByRole("radio", { name: "Avatar 2", exact: true })).toHaveAttribute("aria-checked", "true");
   // no uploaded photo: nothing to remove
   await expect(sheet.getByRole("button", { name: "Quitar foto" })).toHaveCount(0);
 
-  await sheet.getByRole("radio", { name: "Avatar 6" }).click();
-  await expect(sheet.getByRole("radio", { name: "Avatar 6" })).toHaveAttribute("aria-checked", "true");
+  await sheet.getByRole("radio", { name: "Avatar 197", exact: true }).click();
+  await expect(sheet.getByRole("radio", { name: "Avatar 197", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(page.getByText("Avatar actualizado")).toBeVisible();
 
   await page.reload();
   await page.getByRole("button", { name: /Foto de perfil/ }).click();
-  await expect(page.getByRole("dialog", { name: "Foto de perfil" }).getByRole("radio", { name: "Avatar 6" })).toHaveAttribute(
+  await expect(page.getByRole("dialog", { name: "Foto de perfil" }).getByRole("radio", { name: "Avatar 197", exact: true })).toHaveAttribute(
     "aria-checked",
     "true",
   );
   await page.goto("/perfil");
-  await expect(presetImg(page, 6)).toBeVisible();
+  await expect(presetImg(page, 197)).toBeVisible();
 });
 
 test("Ajustes: with a photo, a cat keeps the photo (hint); only Quitar foto, confirmed, deletes it", async ({ page }) => {
   const handle = randomHandle("avp");
   await signupUntilStep3(page, handle);
-  await page.getByRole("radio", { name: "Avatar 2" }).click();
+  await page.getByRole("radio", { name: "Avatar 2", exact: true }).click();
   await finishSignup(page, handle);
   await page.goto("/perfil/ajustes");
   const jpeg = await page.evaluate(() => {
@@ -131,9 +137,9 @@ test("Ajustes: with a photo, a cat keeps the photo (hint); only Quitar foto, con
   await expect(sheet.getByText(hint)).toBeVisible();
 
   // a cat is saved as the fallback; the photo stays
-  await sheet.getByRole("radio", { name: "Avatar 5" }).click();
+  await sheet.getByRole("radio", { name: "Avatar 5", exact: true }).click();
   await expect(page.getByText("Avatar actualizado")).toBeVisible();
-  await expect(sheet.getByRole("radio", { name: "Avatar 5" })).toHaveAttribute("aria-checked", "true");
+  await expect(sheet.getByRole("radio", { name: "Avatar 5", exact: true })).toHaveAttribute("aria-checked", "true");
   await expect(sheet.getByRole("button", { name: "Quitar foto" })).toBeVisible();
   await page.reload();
   await page.goto("/perfil");

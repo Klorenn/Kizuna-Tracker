@@ -89,7 +89,7 @@ select is((select d.relation from public.discover_people() d where d.username = 
 select is((select d.relation from public.discover_people() d where d.username = 'jose_n'), 'none', 'relation none');
 select is((select count(*)::int from public.discover_people() d where d.username in ('ana', 'bruno_b', 'dani_d', 'gone_g', 'hidden_h')), 0,
   'caller, accepted friends, deleted and hidden people are absent');
-select ok((select d.avatar_preset between 1 and 8 from public.discover_people() d where d.username = 'jose_n'), 'avatar preset is returned');
+select ok((select d.avatar_preset between 1 and 197 from public.discover_people() d where d.username = 'jose_n'), 'avatar preset is returned');
 
 -- ===== discoverable = false: exact username only =====
 select is((select d.username from public.discover_people('hidden_h') d), 'hidden_h', 'hidden profile is found by its exact username');

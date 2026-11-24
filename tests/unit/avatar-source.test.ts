@@ -8,9 +8,9 @@ import {
 } from '@/lib/avatar-presets'
 
 describe('isAvatarPreset', () => {
-  it('accepts the integers 1..8 only', () => {
-    for (let n = 1; n <= 8; n++) expect(isAvatarPreset(n)).toBe(true)
-    for (const bad of [0, 9, -1, 2.5, NaN, Infinity, '3', null, undefined, {}]) {
+  it('accepts the integers 1..197 only', () => {
+    for (let n = 1; n <= 197; n++) expect(isAvatarPreset(n)).toBe(true)
+    for (const bad of [0, 198, -1, 2.5, NaN, Infinity, '3', null, undefined, {}]) {
       expect(isAvatarPreset(bad)).toBe(false)
     }
   })
@@ -19,7 +19,7 @@ describe('isAvatarPreset', () => {
 describe('presetUrl', () => {
   it('points at the bundled webp', () => {
     expect(presetUrl(3)).toBe('/avatars/preset-3.webp')
-    expect(AVATAR_PRESET_COUNT).toBe(8)
+    expect(AVATAR_PRESET_COUNT).toBe(197)
   })
 })
 
@@ -39,7 +39,7 @@ describe('resolveAvatarSource', () => {
     expect(resolveAvatarSource({})).toEqual({ kind: 'initials' })
     expect(resolveAvatarSource({ photo: null, preset: null })).toEqual({ kind: 'initials' })
     expect(resolveAvatarSource({ preset: 0 })).toEqual({ kind: 'initials' })
-    expect(resolveAvatarSource({ preset: 9 })).toEqual({ kind: 'initials' })
+    expect(resolveAvatarSource({ preset: 198 })).toEqual({ kind: 'initials' })
   })
 
   it('shows initials for deleted accounts whatever they carry', () => {
@@ -48,10 +48,10 @@ describe('resolveAvatarSource', () => {
 })
 
 describe('pickRandomPreset', () => {
-  it('maps a unit random to 1..8', () => {
+  it('maps a unit random to 1..197', () => {
     expect(pickRandomPreset(() => 0)).toBe(1)
-    expect(pickRandomPreset(() => 0.999999)).toBe(8)
-    expect(pickRandomPreset(() => 0.5)).toBe(5)
+    expect(pickRandomPreset(() => 0.999999)).toBe(197)
+    expect(pickRandomPreset(() => 0.5)).toBe(99)
   })
   it('stays within range for the default generator', () => {
     for (let i = 0; i < 200; i++) expect(isAvatarPreset(pickRandomPreset())).toBe(true)

@@ -1,9 +1,9 @@
-/** Eight bundled cat avatars: public/avatars/preset-1.webp ... preset-8.webp (256 px). */
-export const AVATAR_PRESET_COUNT = 8;
+/** 197 bundled profile avatars: public/avatars/preset-1.webp ... preset-197.webp (256 px). */
+export const AVATAR_PRESET_COUNT = 197;
 
 export const AVATAR_PRESETS: readonly number[] = Array.from({ length: AVATAR_PRESET_COUNT }, (_, i) => i + 1);
 
-/** True for the integers 1..8 (what the database column and the signup metadata accept). */
+/** True for the integers 1..197 (the database column and signup metadata range). */
 export function isAvatarPreset(v: unknown): v is number {
   return typeof v === "number" && Number.isInteger(v) && v >= 1 && v <= AVATAR_PRESET_COUNT;
 }

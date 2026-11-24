@@ -33,12 +33,12 @@ beforeEach(() => {
 
 describe('setAvatarPreset', () => {
   it('calls the RPC with a valid preset', async () => {
-    await expect(setAvatarPreset(5)).resolves.toEqual({ ok: true })
-    expect(rpc).toHaveBeenCalledWith('set_avatar_preset', { p_preset: 5 })
+    await expect(setAvatarPreset(197)).resolves.toEqual({ ok: true })
+    expect(rpc).toHaveBeenCalledWith('set_avatar_preset', { p_preset: 197 })
   })
 
   it('refuses out-of-range or non-integer values without calling the database', async () => {
-    for (const bad of [0, 9, 2.5, NaN, '3' as unknown as number, null as unknown as number]) {
+    for (const bad of [0, 198, 2.5, NaN, '3' as unknown as number, null as unknown as number]) {
       await expect(setAvatarPreset(bad)).resolves.toMatchObject({ ok: false })
     }
     expect(rpc).not.toHaveBeenCalled()

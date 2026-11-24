@@ -3,7 +3,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(39);
+select plan(40);
 
 -- ===== schema =====
 select col_type_is('public', 'profiles', 'avatar_preset', 'smallint', 'profiles.avatar_preset is a smallint');
@@ -19,7 +19,7 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('a1700000-0000-0000-0000-000000000002', 'ava2@kizuna.app',
    '{"first_name":"Beto","last_name":"Dos","birth_date":"1990-01-01","username":"ava_two","timezone":"UTC","terms_accepted":true}'),
   ('a1700000-0000-0000-0000-000000000003', 'ava3@kizuna.app',
-   '{"first_name":"Cami","last_name":"Tres","birth_date":"1990-01-01","username":"ava_three","timezone":"UTC","terms_accepted":true,"avatar_preset":9}'),
+   '{"first_name":"Cami","last_name":"Tres","birth_date":"1990-01-01","username":"ava_three","timezone":"UTC","terms_accepted":true,"avatar_preset":198}'),
   ('a1700000-0000-0000-0000-000000000004', 'ava4@kizuna.app',
    '{"first_name":"Dani","last_name":"Cuatro","birth_date":"1990-01-01","username":"ava_four","timezone":"UTC","terms_accepted":true,"avatar_preset":"3"}'),
   ('a1700000-0000-0000-0000-000000000005', 'ava5@kizuna.app',
@@ -29,29 +29,33 @@ insert into auth.users (id, email, raw_user_meta_data) values
   ('a1700000-0000-0000-0000-000000000007', 'ava7@kizuna.app',
    '{"first_name":"Gus","last_name":"Siete","birth_date":"1990-01-01","username":"ava_seven","timezone":"UTC","terms_accepted":true,"avatar_preset":8}'),
   ('a1700000-0000-0000-0000-000000000008', 'ava8@kizuna.app',
-   '{"first_name":"Hugo","last_name":"Ocho","birth_date":"1990-01-01","username":"ava_eight","timezone":"UTC","terms_accepted":true,"avatar_preset":null}');
+   '{"first_name":"Hugo","last_name":"Ocho","birth_date":"1990-01-01","username":"ava_eight","timezone":"UTC","terms_accepted":true,"avatar_preset":null}'),
+  ('a1700000-0000-0000-0000-000000000009', 'ava9@kizuna.app',
+   '{"first_name":"Iris","last_name":"Nueve","birth_date":"1990-01-01","username":"ava_nine","timezone":"UTC","terms_accepted":true,"avatar_preset":197}');
 
 select is((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000001'), 3::smallint,
   'the trigger honors a valid avatar_preset from the signup metadata');
 select is((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000007'), 8::smallint,
-  'the upper bound 8 is honored');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000002') between 1 and 8,
-  'a signup without avatar_preset gets a random preset within 1..8');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000003') between 1 and 8,
-  'an out-of-range metadata value (9) is ignored and the random default applies');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000004') between 1 and 8,
+  'the existing upper bound 8 is honored');
+select is((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000009'), 197::smallint,
+  'the expanded upper bound 197 is honored');
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000002') between 1 and 197,
+  'a signup without avatar_preset gets a random preset within 1..197');
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000003') between 1 and 197,
+  'an out-of-range metadata value (198) is ignored and the random default applies');
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000004') between 1 and 197,
   'a non-integer metadata value (string) falls back to a random preset');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000005') between 1 and 8,
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000005') between 1 and 197,
   'zero is ignored and a random preset applies');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000006') between 1 and 8,
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000006') between 1 and 197,
   'a fractional value is ignored and a random preset applies');
-select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000008') between 1 and 8,
+select ok((select avatar_preset from public.profiles where id = 'a1700000-0000-0000-0000-000000000008') between 1 and 197,
   'a null metadata value falls back to a random preset');
-select is((select count(*)::int from public.profiles where avatar_preset is null or avatar_preset not between 1 and 8), 0,
-  'every profile holds a preset within 1..8');
+select is((select count(*)::int from public.profiles where avatar_preset is null or avatar_preset not between 1 and 197), 0,
+  'every profile holds a preset within 1..197');
 select throws_ok(
-  $$ update public.profiles set avatar_preset = 9 where id = 'a1700000-0000-0000-0000-000000000001' $$,
-  '23514', null, 'the check constraint refuses 9');
+  $$ update public.profiles set avatar_preset = 198 where id = 'a1700000-0000-0000-0000-000000000001' $$,
+  '23514', null, 'the check constraint refuses 198');
 select throws_ok(
   $$ update public.profiles set avatar_preset = 0 where id = 'a1700000-0000-0000-0000-000000000001' $$,
   '23514', null, 'the check constraint refuses 0');
@@ -82,18 +86,18 @@ select ok(has_table_privilege('authenticated', 'public.public_profiles', 'SELECT
 set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a1700000-0000-0000-0000-000000000001","role":"authenticated"}', true);
 
-select lives_ok($$ select public.set_avatar_preset(5) $$, 'a user can set their own preset');
-select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000001'), 5::smallint,
-  'the new preset is stored on the own row');
-select throws_ok($$ select public.set_avatar_preset(9) $$, 'P0001', 'invalid_avatar_preset', 'out-of-range presets are rejected (9)');
+select lives_ok($$ select public.set_avatar_preset(197) $$, 'a user can set their own preset');
+select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000001'), 197::smallint,
+  'the new upper-bound preset is stored on the own row');
+select throws_ok($$ select public.set_avatar_preset(198) $$, 'P0001', 'invalid_avatar_preset', 'out-of-range presets are rejected (198)');
 select throws_ok($$ select public.set_avatar_preset(0) $$, 'P0001', 'invalid_avatar_preset', 'out-of-range presets are rejected (0)');
 select throws_ok($$ select public.set_avatar_preset(null) $$, 'P0001', 'invalid_avatar_preset', 'null presets are rejected');
 select throws_ok($$ update public.profiles set avatar_preset = 2 where id = 'a1700000-0000-0000-0000-000000000001' $$,
   '42501', null, 'a direct UPDATE of the column is denied');
-select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000001'), 5::smallint,
+select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000001'), 197::smallint,
   'the failed direct UPDATE changed nothing');
-select is(public.invite_preview('ava_code')->>'avatarPreset', '5', 'invite_preview returns the inviter preset');
-select is(public.public_profile('ava_one')->>'avatarPreset', '5', 'public_profile() carries avatarPreset');
+select is(public.invite_preview('ava_code')->>'avatarPreset', '197', 'invite_preview returns the inviter preset');
+select is(public.public_profile('ava_one')->>'avatarPreset', '197', 'public_profile() carries avatarPreset');
 
 -- ===== set_avatar_preset only changes the caller row =====
 select is((select avatar_preset from public.public_profiles where id = 'a1700000-0000-0000-0000-000000000007'), 8::smallint,

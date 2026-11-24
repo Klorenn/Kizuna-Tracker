@@ -23,7 +23,7 @@ const INITIALS: Record<Size, string> = {
 };
 
 /**
- * Person avatar: uploaded photo (`src`), else the bundled cat `preset` (1..8), else initials.
+ * Person avatar: uploaded photo (`src`), else the bundled cat `preset` (1..197), else initials.
  * Decorative by default (the name is always next to it); pass `decorative={false}` to expose the
  * name as alt text. `deleted` forces initials. S = 32, M = 40, L = 72, XL = 88. Lazy by default;
  * `priority` loads it eagerly for above-the-fold headers (Perfil XL, /u/<usuario>).
