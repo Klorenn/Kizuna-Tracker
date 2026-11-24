@@ -21,6 +21,7 @@ describe("app.config", () => {
     expect(expo.runtimeVersion).toEqual({ policy: "fingerprint" });
     expect(expo.plugins).toContain("expo-router");
     expect(expo.plugins).toContain("expo-secure-store");
+    expect(expo.plugins).toContain("./plugins/with-kizuna-widget");
   });
   it("reads secrets from the environment, never from the file", () => {
     const prev = process.env.GOOGLE_SERVICES_JSON;

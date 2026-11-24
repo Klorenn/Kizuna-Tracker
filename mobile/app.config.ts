@@ -29,6 +29,6 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     // kizuna:// only. No https filter and no autoVerify: https links stay with the TWA/browser during the transition.
     intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: "kizuna" }] }],
   },
-  plugins: ["expo-router", "expo-secure-store"],
+  plugins: ["expo-router", "expo-secure-store", "./plugins/with-kizuna-widget"],
   extra: { eas: { projectId: process.env.EAS_PROJECT_ID } },
 });
