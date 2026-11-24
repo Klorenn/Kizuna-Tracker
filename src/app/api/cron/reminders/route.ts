@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server'
 import { authorizeCronRequest } from '@/lib/cron-auth'
 import { notify, pushPendingNotifications } from '@/lib/notify'
+import { checkPushReceipts, supabaseReceiptDeps } from '@/lib/push-receipts'
 import { dueReminderEntries } from '@/lib/reminders'
 import { claimReminders, loadReminderCandidates } from '@/lib/reminders-repo'
 import { runScheduledNotifications } from '@/lib/scheduled-notifications'
@@ -25,7 +26,12 @@ export async function POST(request: Request) {
     }
     // 3) evening pushes: streak at risk (daily 20:00 local) and weekly summary (Sunday 21:00 local)
     const scheduled = await runScheduledNotifications(db, now)
-    return NextResponse.json({ swept, reminded: targets.length, ...scheduled })
+    // 4) Expo receipts of the tickets sent 15+ minutes ago (dead tokens are deleted); never fails the cron
+    const receipts = await checkPushReceipts(supabaseReceiptDeps(db)).catch((e) => {
+      console.error('receipts failed', e)
+      return null
+    })
+    return NextResponse.json({ swept, reminded: targets.length, ...scheduled, receipts })
   } catch (e) {
     console.error('reminders failed', e)
     return NextResponse.json({ error: 'failed' }, { status: 500 })

@@ -69,3 +69,34 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
     expect((await post(`Bearer ${HEX}`)).status).toBe(401)
   })
 })
+
+describe('POST /api/cron/reminders: Expo receipts', () => {
+  beforeEach(() => {
+    vi.resetModules()
+    vi.spyOn(console, 'error').mockImplementation(() => {})
+    vi.doMock('@/lib/supabase/admin', () => ({ createAdminClient: () => ({ rpc }) }))
+    vi.doMock('@/lib/notify', () => ({ notify: async () => {}, pushPendingNotifications: async () => 0 }))
+    vi.doMock('@/lib/reminders', () => ({ dueReminderEntries: () => [] }))
+    vi.doMock('@/lib/reminders-repo', () => ({ loadReminderCandidates: async () => [], claimReminders: async () => [] }))
+    vi.doMock('@/lib/scheduled-notifications', () => ({ runScheduledNotifications: async () => ({ streakRisk: 0, weeklySummary: 0 }) }))
+    process.env.CRON_SECRET = 'env-secret'
+  })
+  const call = async () => {
+    const { POST } = await import('@/app/api/cron/reminders/route')
+    return POST(new Request('http://x/api/cron/reminders', { method: 'POST', headers: { authorization: 'Bearer env-secret' } }))
+  }
+
+  it('checks the receipts and reports how many tickets it processed', async () => {
+    const check = vi.fn(async () => ({ checked: 4, tokensRemoved: 1, ticketsRemoved: 3 }))
+    vi.doMock('@/lib/push-receipts', () => ({ checkPushReceipts: check, supabaseReceiptDeps: () => ({}) }))
+    const res = await call()
+    expect(check).toHaveBeenCalledOnce()
+    expect(await res.json()).toMatchObject({ receipts: { checked: 4, tokensRemoved: 1, ticketsRemoved: 3 } })
+  })
+  it('a receipts failure never fails the cron', async () => {
+    vi.doMock('@/lib/push-receipts', () => ({ checkPushReceipts: async () => { throw new Error('boom') }, supabaseReceiptDeps: () => ({}) }))
+    const res = await call()
+    expect(res.status).toBe(200)
+    expect(await res.json()).toMatchObject({ receipts: null })
+  })
+})
