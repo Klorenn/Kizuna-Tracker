@@ -37,4 +37,17 @@ describe("LoginForm", () => {
     await fireEvent.press(screen.getByText("Entrar"));
     expect(onSubmit).not.toHaveBeenCalled();
   });
+  it("Crear cuenta opens the registration (the web /registro in the WebView)", async () => {
+    const onCreateAccount = jest.fn();
+    await render(<LoginForm onSubmit={jest.fn()} onCreateAccount={onCreateAccount} />);
+    await fireEvent.press(screen.getByText("Crear cuenta"));
+    expect(onCreateAccount).toHaveBeenCalledTimes(1);
+  });
+  it("has no Crear cuenta without a handler, and shows the notice it is given", async () => {
+    const plain = await render(<LoginForm onSubmit={jest.fn()} />);
+    expect(screen.queryByText("Crear cuenta")).toBeNull();
+    plain.unmount();
+    await render(<LoginForm onSubmit={jest.fn()} notice="Cuenta creada. Inicia sesión." />);
+    expect(screen.getByText("Cuenta creada. Inicia sesión.")).toBeTruthy();
+  });
 });

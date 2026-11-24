@@ -8,6 +8,10 @@ describe("mapWebPath", () => {
     expect(mapWebPath("/registros/ht/quantity")).toBe("/registros/ht/quantity");
     expect(mapWebPath("/registros/ht/watch")).toBe("/registros/ht/watch");
   });
+  it("the four web tabs open the native tab (a WebView inside it)", () => {
+    for (const tab of ["/amigos", "/retos", "/resumen", "/perfil"]) expect(mapWebPath(tab)).toBe(tab);
+    expect(mapWebPath("/retos?x=1")).toBe("/web?path=%2Fretos%3Fx%3D1");
+  });
   it("sends everything else to the WebView screen with the path encoded", () => {
     expect(mapWebPath("/retos/123")).toBe("/web?path=%2Fretos%2F123");
     expect(mapWebPath("/deudas")).toBe("/web?path=%2Fdeudas");

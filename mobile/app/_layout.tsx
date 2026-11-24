@@ -7,6 +7,7 @@ import { reportTrackingError } from "../src/data/errors";
 import { createQueryClient } from "../src/data/query-client";
 import { persist } from "../src/data/wiring";
 import { supabase } from "../src/lib/supabase";
+import { WebSessionWiper } from "../src/web/cookie-wiper";
 import { ThemeProvider } from "../src/theme/ThemeProvider";
 
 export default function RootLayout() {
@@ -22,6 +23,7 @@ export default function RootLayout() {
         <SessionProvider>
           <StatusBar style="auto" />
           <Slot />
+          <WebSessionWiper />
         </SessionProvider>
       </ThemeProvider>
     </PersistQueryClientProvider>

@@ -1,11 +1,11 @@
 import { useRouter } from "expo-router";
 import { View } from "react-native";
-import { useSession } from "../../src/auth/session";
-import { useCachedToday } from "../../src/data/use-cached-today";
-import { supabase } from "../../src/lib/supabase";
-import { PushPrompt } from "../../src/push/PushPrompt";
-import { useReconcilePomodoroBlocks } from "../../src/pomodoro/use-reconcile-blocks";
-import { HoyContainer } from "../../src/today/HoyContainer";
+import { useSession } from "../../../src/auth/session";
+import { useCachedToday } from "../../../src/data/use-cached-today";
+import { supabase } from "../../../src/lib/supabase";
+import { PushPrompt } from "../../../src/push/PushPrompt";
+import { useReconcilePomodoroBlocks } from "../../../src/pomodoro/use-reconcile-blocks";
+import { HoyContainer } from "../../../src/today/HoyContainer";
 
 /** Hoy: the shared reads, optimistic taps (boolean, steps, quantity, undo) and the rest opens the habit page. */
 export default function Hoy() {

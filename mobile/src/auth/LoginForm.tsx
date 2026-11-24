@@ -4,7 +4,15 @@ import { useTheme } from "../theme/ThemeProvider";
 
 export type SubmitResult = { ok: true } | { ok: false; error: string };
 
-export function LoginForm({ onSubmit }: { onSubmit: (identifier: string, password: string) => Promise<SubmitResult> }) {
+type Props = {
+  onSubmit: (identifier: string, password: string) => Promise<SubmitResult>;
+  /** "Crear cuenta": opens the web registration (the app has no native sign-up) */
+  onCreateAccount?: () => void;
+  /** shown above the form (for example after a registration) */
+  notice?: string;
+};
+
+export function LoginForm({ onSubmit, onCreateAccount, notice }: Props) {
   const { colors, radius, space } = useTheme();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -23,6 +31,7 @@ export function LoginForm({ onSubmit }: { onSubmit: (identifier: string, passwor
   const input = [styles.input, { backgroundColor: colors.field, color: colors.text, borderRadius: radius.md, borderColor: colors.line }];
   return (
     <View style={{ gap: space.md }}>
+      {notice ? <Text style={{ color: colors.text, fontSize: 14 }}>{notice}</Text> : null}
       <TextInput
         style={input}
         placeholder="Correo o @usuario"
@@ -57,11 +66,17 @@ export function LoginForm({ onSubmit }: { onSubmit: (identifier: string, passwor
       >
         {busy ? <ActivityIndicator color={colors.onAccent} /> : <Text style={{ color: colors.onAccent, fontWeight: "600", fontSize: 15 }}>Entrar</Text>}
       </Pressable>
+      {onCreateAccount ? (
+        <Pressable accessibilityRole="link" onPress={onCreateAccount} style={styles.link}>
+          <Text style={{ color: colors.accent, fontWeight: "600", fontSize: 14 }}>Crear cuenta</Text>
+        </Pressable>
+      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   input: { borderWidth: 1, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15 },
+  link: { alignItems: "center", paddingVertical: 10 },
   button: { alignItems: "center", justifyContent: "center", paddingVertical: 14, minHeight: 48 },
 });
