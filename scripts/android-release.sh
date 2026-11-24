@@ -72,6 +72,15 @@ export BUBBLEWRAP_KEYSTORE_PASSWORD BUBBLEWRAP_KEY_PASSWORD
 echo "==> Regenerating Gradle project"
 npx --yes "$BUBBLEWRAP" update --skipVersionUpgrade --manifest="./$MANIFEST" </dev/null
 
+# `update` rewrites settings.gradle and app/build.gradle: link the widget module back in, then prove it.
+echo "==> Linking the widget module"
+[[ -f widget/build.gradle && -f widget/src/main/AndroidManifest.xml ]] || die "android/widget module missing"
+node "$ROOT/scripts/android-widget-patch.mjs" settings.gradle app/build.gradle \
+  || die "widget patch failed (did Bubblewrap change its layout?)"
+rg -q -x "include ':app'" settings.gradle || die "settings.gradle: unexpected Bubblewrap layout (include ':app' missing)"
+[[ "$(rg -c -x "include ':widget'" settings.gradle)" == "1" ]] || die "settings.gradle: include ':widget' must appear exactly once"
+[[ "$(rg -c -F "implementation project(':widget')" app/build.gradle)" == "1" ]] || die "app/build.gradle: widget dependency must appear exactly once"
+
 echo "==> Building and signing"
 rm -f app-release-signed.apk app-release-bundle.aab
 npx --yes "$BUBBLEWRAP" build --manifest="./$MANIFEST" \
@@ -87,6 +96,28 @@ if [[ "${ANDROID_RELEASE_SKIP_FINGERPRINT:-0}" == "1" ]]; then
   echo "WARNING: fingerprint check skipped (ANDROID_RELEASE_SKIP_FINGERPRINT=1, test only). Got: $ACTUAL"
 elif [[ "$ACTUAL" != "$EXPECTED_SHA256" ]]; then
   die "certificate SHA-256 mismatch (wrong keystore?). Expected $EXPECTED_SHA256, got '$ACTUAL'. Aborting: this key would break updates and assetlinks."
+fi
+
+# The widget must survive the merge and R8. Runs in --dry-run too (before the APK is copied out).
+echo "==> Verifying the widget is in the APK"
+AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
+DEXDUMP="$SDK_ROOT/build-tools/$BUILD_TOOLS/dexdump"
+[[ -x "$AAPT2" && -x "$DEXDUMP" ]] || die "aapt2/dexdump not found in build-tools $BUILD_TOOLS"
+MERGED_XML="$("$AAPT2" dump xmltree --file AndroidManifest.xml app-release-signed.apk)" || die "aapt2 could not read the APK manifest"
+for pat in \
+  'name\(0x01010003\)="com\.kizunatracker\.widget\.KizunaWidgetProvider"' \
+  '"android\.appwidget\.action\.APPWIDGET_UPDATE"' \
+  '"android\.appwidget\.provider"' \
+  'name\(0x01010003\)="com\.kizunatracker\.widget\.WidgetSetupActivity"' \
+  'name\(0x01010003\)="android\.permission\.INTERNET"'; do
+  rg -q -- "$pat" <<<"$MERGED_XML" || die "merged manifest lacks: $pat"
+done
+# Capture first: `dexdump | rg -q` would die of SIGPIPE under pipefail.
+DEX_CLASSES="$("$DEXDUMP" app-release-signed.apk 2>/dev/null || true)"
+if ! rg -q "Class descriptor\\s+: 'Lcom/kizunatracker/widget/KizunaWidgetProvider;'" <<<"$DEX_CLASSES"; then
+  # dexdump may stop at the first dex of a multi-dex APK: scan every classes*.dex as a fallback.
+  unzip -p app-release-signed.apk 'classes*.dex' | rg -a -q 'Lcom/kizunatracker/widget/KizunaWidgetProvider;' \
+    || die "R8 removed the widget provider (check consumer-rules.pro)"
 fi
 
 cp app-release-signed.apk "$ROOT/$APK_NAME"

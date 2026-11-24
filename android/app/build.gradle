@@ -206,5 +206,6 @@ dependencies {
     implementation fileTree(include: ['*.jar'], dir: 'libs')
     
         implementation 'com.google.androidbrowserhelper:androidbrowserhelper:2.7.4'
+    implementation project(':widget')
     
 }

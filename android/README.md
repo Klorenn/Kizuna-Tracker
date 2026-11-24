@@ -21,6 +21,18 @@ El script valida el semver y `gh`, sube `appVersionName` y suma 1 a `appVersionC
 - `--dry-run`: compila y verifica, pero no hace commit, tag, push ni release (y restaura el manifest).
 - `android/` debe estar sin cambios sin commitear antes de publicar.
 
+## Widget "Hoy" (modulo `android/widget`)
+
+Widget de pantalla de inicio (4x2, redimensionable) con los habitos pendientes de hoy. Es un modulo Gradle de libreria en Java plano; `bubblewrap update` regenera `app/`, `settings.gradle` y `build.gradle`, pero nunca toca `android/widget/`.
+
+- **Enlace al proyecto**: `scripts/android-release.sh` ejecuta `scripts/android-widget-patch.mjs` justo despues de `bubblewrap update`. Agrega `include ':widget'` a `settings.gradle` y `implementation project(':widget')` a `app/build.gradle`. Es idempotente (la segunda pasada no cambia nada) y falla con exit 1 si Bubblewrap cambia el layout y desaparecen los anclajes.
+- **Verificacion del APK**: antes de copiar el APK, el script usa `aapt2 dump xmltree` y `dexdump` (build-tools 36.1.0) para comprobar que el manifest fusionado trae el receiver, el `APPWIDGET_UPDATE`, el `android.appwidget.provider`, `WidgetSetupActivity` y el permiso `INTERNET`, y que R8 no elimino `KizunaWidgetProvider`. Corre tambien con `--dry-run`.
+- **Emparejamiento**: Ajustes > Widget de Android genera un codigo `ABCD-EFGH` (vence en 5 minutos, un solo uso). En Android se abre `kizuna://widget/pair?code=...`, que solo RELLENA el codigo: hay que tocar "Conectar". Tambien se puede pegar el codigo a mano en la pantalla de conexion del widget.
+- **Token**: se guarda cifrado (AES-GCM, clave en el Android Keystore, alias `kizuna_widget_token_v1`). No cambies el alias ni el `applicationId`: un APK nuevo sobre el anterior conserva el token y el widget sigue funcionando sin volver a emparejar.
+- **Limite y rotacion**: maximo 3 dispositivos conectados por cuenta. Para liberar un cupo, "Desconectar" en Ajustes y volver a emparejar. Al re-emparejar el mismo telefono, el token anterior se revoca solo y no consume cupo.
+- **Pruebas unitarias**: `cd android && JAVA_HOME=/opt/homebrew/opt/openjdk@17/libexec/openjdk.jdk/Contents/Home ANDROID_HOME=/opt/homebrew/share/android-commandlinetools ./gradlew :widget:testDebugUnitTest` (logica pura: `PayloadParser`, `WidgetStateReducer`, `RolloverClock`, `PairingCode`).
+- **Compilar sin firmar** (para validar que todo enlaza): `./gradlew :app:assembleRelease` genera `app/build/outputs/apk/release/app-release-unsigned.apk`.
+
 ## Reglas para que un APK actualice al anterior
 
 1. Mismo `packageId` (`com.kizunatracker.app`).
