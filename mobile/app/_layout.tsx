@@ -6,11 +6,9 @@ import { SessionProvider } from "../src/auth/session";
 import { reportTrackingError } from "../src/data/errors";
 import { createQueryClient } from "../src/data/query-client";
 import { supabase } from "../src/lib/supabase";
-import { useOpenPomodoroFromNotification } from "../src/pomodoro/use-open-from-notification";
 import { ThemeProvider } from "../src/theme/ThemeProvider";
 
 export default function RootLayout() {
-  useOpenPomodoroFromNotification();
   const [queryClient] = useState(() => createQueryClient({ client: supabase, reportError: reportTrackingError }));
   return (
     <QueryClientProvider client={queryClient}>

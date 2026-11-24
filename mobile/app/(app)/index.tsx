@@ -1,7 +1,9 @@
 import { useRouter } from "expo-router";
+import { View } from "react-native";
 import { useSession } from "../../src/auth/session";
 import { useCachedToday } from "../../src/data/use-cached-today";
 import { supabase } from "../../src/lib/supabase";
+import { PushPrompt } from "../../src/push/PushPrompt";
 import { useReconcilePomodoroBlocks } from "../../src/pomodoro/use-reconcile-blocks";
 import { HoyContainer } from "../../src/today/HoyContainer";
 
@@ -13,5 +15,10 @@ export default function Hoy() {
   const { view } = useCachedToday();
   // Pomodoro blocks that finished while the app was killed are credited when Hoy opens
   useReconcilePomodoroBlocks({ userId, client: supabase, timeZone: view?.timeZone });
-  return <HoyContainer userId={userId} client={supabase} onOpenHabit={(id) => router.push(`/habitos/${id}`)} onNavigate={(path) => router.push(path as never)} />;
+  return (
+    <View style={{ flex: 1 }}>
+      <PushPrompt />
+      <HoyContainer userId={userId} client={supabase} onOpenHabit={(id) => router.push(`/habitos/${id}`)} onNavigate={(path) => router.push(path as never)} />
+    </View>
+  );
 }
