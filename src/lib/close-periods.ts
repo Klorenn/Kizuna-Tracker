@@ -119,17 +119,17 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     datesByItem: Map<string, { creator: LocalDate[]; rival: LocalDate[] }>
     photos: { habitId: string; localDate: LocalDate; createdAt: Date }[]
   }
+  // only the periods this run can still close: ended, before any cancel, not closed yet. Reads never start
+  // before the first of them, so a long challenge does not re-read its whole history every day.
+  const open = periods.filter((p) => today > p.end && (cutoff === null || p.end < cutoff) && !done.has(p.start))
   let loaded: Loaded | null = null
   const load = async (): Promise<Loaded> => {
     if (loaded) return loaded
-    const from = periods[0].start
-    const to = periods[periods.length - 1].end
-    // one photo read for every habit of every item; photo items are counted from it
-    const photos = await repo.photoCheckins(
-      c.items.flatMap((i) => [i.creatorHabitId, i.rivalHabitId]),
-      from,
-      to,
-    )
+    const from = open[0].start
+    const to = open[open.length - 1].end
+    // a rival can only reject the photos of a photo item, so only those habits hold a period open
+    const photoHabits = c.items.filter((i) => i.requiresPhoto).flatMap((i) => [i.creatorHabitId, i.rivalHabitId])
+    const photos = photoHabits.length > 0 ? await repo.photoCheckins(photoHabits, from, to) : []
     const datesOf = (habitId: string) => photos.filter((k) => k.habitId === habitId).map((k) => k.localDate)
     const datesByItem = new Map<string, { creator: LocalDate[]; rival: LocalDate[] }>()
     for (const i of c.items) {

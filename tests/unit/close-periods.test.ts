@@ -61,17 +61,20 @@ function memoryRepo(challenges: ActiveChallenge[], checkins: Checkin[]) {
   const settled: string[] = []
   const itemResults = new Map<string, NewItemResult>()
   const events: string[] = []
-  const calls = { photo: 0 }
+  const calls = { photo: 0, photoArgs: [] as { habitIds: string[]; from: string; to: string }[], dateArgs: [] as { habitId: string; from: string; to: string }[] }
   const repo: ClosePeriodsRepo = {
     activeChallenges: async () => challenges.filter((c) => !finished.includes(c.id) && !settled.includes(c.id)),
     closedPeriodStarts: async (id) =>
       [...periods].filter((k) => k.startsWith(`${id}|`)).map((k) => k.split('|')[1]),
-    checkinDates: async (habitId, from, to) =>
-      checkins
+    checkinDates: async (habitId, from, to) => {
+      calls.dateArgs.push({ habitId, from, to })
+      return checkins
         .filter((k) => k.habitId === habitId && !k.rejected && k.localDate >= from && k.localDate <= to)
-        .map((k) => k.localDate),
+        .map((k) => k.localDate)
+    },
     photoCheckins: async (habitIds, from, to) => {
       calls.photo++
+      calls.photoArgs.push({ habitIds, from, to })
       return checkins
         .filter((k) => habitIds.includes(k.habitId) && k.photo && !k.rejected && k.localDate >= from && k.localDate <= to)
         .map((k) => ({ habitId: k.habitId, localDate: k.localDate, createdAt: k.createdAt }))
@@ -151,7 +154,7 @@ describe('closeDuePeriods', () => {
 
   it('does not close while a photo can still be rejected', async () => {
     const photo = days('hr', ['2026-11-29'], { photo: true, createdAt: new Date('2026-11-30T23:00:00Z') })
-    const m = memoryRepo([challenge()], [...photo])
+    const m = memoryRepo([challenge({ requiresPhoto: true })], [...photo])
     await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 0 })
     expect(m.periods.size).toBe(0)
   })
@@ -218,7 +221,7 @@ describe('cancelled challenges', () => {
   })
 
   it('settles once nothing is left to bill, so later runs skip it', async () => {
-    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-30T15:00:00Z') })], [])
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-11-30T15:00:00Z'), requiresPhoto: true })], [])
     await closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))
     expect(m.settled).toEqual([CH])
     await expect(closeDuePeriods(m.repo, new Date('2026-12-21T12:00:00Z'))).resolves.toEqual({ closed: 0, debtsCreated: 0 })
@@ -228,7 +231,7 @@ describe('cancelled challenges', () => {
   it('does not settle while an ended period still waits for the photo window', async () => {
     // cancelled 1 dec 08:00 Santiago: week 1 is billable, but a photo of 29 nov is still rejectable
     const photo = days('hr', ['2026-11-29'], { photo: true, createdAt: new Date('2026-11-30T23:00:00Z') })
-    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-12-01T11:00:00Z') })], photo)
+    const m = memoryRepo([challenge({ cancelledAt: new Date('2026-12-01T11:00:00Z'), requiresPhoto: true })], photo)
     await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 0 })
     expect(m.settled).toEqual([])
   })
@@ -268,7 +271,7 @@ describe('cron cost and isolation', () => {
   })
 
   it('fetches check-ins and photos once per challenge', async () => {
-    const m = memoryRepo([challenge()], [])
+    const m = memoryRepo([challenge({ requiresPhoto: true })], [])
     await closeDuePeriods(m.repo, new Date('2026-12-20T12:00:00Z'))
     expect(m.calls.photo).toBe(1)
   })
@@ -480,5 +483,28 @@ describe('sub-retos (several items)', () => {
     const m = memoryRepo([challenge({ items: [] })], [])
     await expect(closeDuePeriods(m.repo, NOW)).resolves.toEqual({ closed: 0, debtsCreated: 0 })
     expect(m.finished).toEqual([])
+  })
+})
+
+describe('cron reads are narrowed (PostgREST max_rows)', () => {
+  const items = [item('i1', { requiresPhoto: true }), item('i2')]
+
+  it('reads photos only for the habits of photo items, and only the window of periods still open', async () => {
+    const m = memoryRepo([challenge({ items })], [])
+    await closeDuePeriods(m.repo, NOW) // closes week 1
+    m.calls.photoArgs.length = 0
+    m.calls.dateArgs.length = 0
+    await closeDuePeriods(m.repo, new Date('2026-12-09T12:00:00Z')) // week 2 is the first open one; week 3 has not ended
+    expect(m.calls.photoArgs).toEqual([{ habitIds: ['hc', 'hr'], from: '2026-11-30', to: '2026-12-06' }])
+    expect(m.calls.dateArgs.map((a) => [a.from, a.to])).toEqual([
+      ['2026-11-30', '2026-12-06'],
+      ['2026-11-30', '2026-12-06'],
+    ])
+  })
+
+  it('does not read photos at all when no item asks for photos', async () => {
+    const m = memoryRepo([challenge({ items: [item('i1')] })], [])
+    await closeDuePeriods(m.repo, NOW)
+    expect(m.calls.photo).toBe(0)
   })
 })

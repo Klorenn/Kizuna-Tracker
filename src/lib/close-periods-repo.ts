@@ -101,28 +101,38 @@ export function createClosePeriodsRepo(db: SupabaseClient<Database>): ClosePerio
     },
 
     async checkinDates(habitId, from, to) {
-      const { data, error } = await db
-        .from('checkins')
-        .select('local_date')
-        .eq('habit_id', habitId)
-        .is('rejected_at', null)
-        .gte('local_date', from)
-        .lte('local_date', to)
-      if (error) fail('checkinDates', error)
-      return (data ?? []).map((k) => k.local_date)
+      // paged: a busy habit over a long window can pass max_rows, and a silent cut would bill a debt that is not owed
+      const data = await fetchAll((f, t) =>
+        db
+          .from('checkins')
+          .select('local_date')
+          .eq('habit_id', habitId)
+          .is('rejected_at', null)
+          .gte('local_date', from)
+          .lte('local_date', to)
+          .order('local_date')
+          .order('id')
+          .range(f, t),
+      ).catch((e: Error) => fail('checkinDates', e))
+      return data.map((k) => k.local_date)
     },
 
     async photoCheckins(habitIds, from, to) {
-      const { data, error } = await db
-        .from('checkins')
-        .select('habit_id,local_date,created_at')
-        .in('habit_id', habitIds)
-        .is('rejected_at', null)
-        .not('photo_path', 'is', null)
-        .gte('local_date', from)
-        .lte('local_date', to)
-      if (error) fail('photoCheckins', error)
-      return (data ?? []).map((k) => ({ habitId: k.habit_id, localDate: k.local_date, createdAt: new Date(k.created_at) }))
+      const data = await fetchAll((f, t) =>
+        db
+          .from('checkins')
+          .select('habit_id,local_date,created_at')
+          .in('habit_id', habitIds)
+          .is('rejected_at', null)
+          .not('photo_path', 'is', null)
+          .gte('local_date', from)
+          .lte('local_date', to)
+          .order('habit_id')
+          .order('local_date')
+          .order('id')
+          .range(f, t),
+      ).catch((e: Error) => fail('photoCheckins', e))
+      return data.map((k) => ({ habitId: k.habit_id, localDate: k.local_date, createdAt: new Date(k.created_at) }))
     },
 
     async insertItemResults(rows) {
