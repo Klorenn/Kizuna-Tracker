@@ -55,3 +55,10 @@ export function cleanTopic(topic: string | null): string | null {
   const t = (topic ?? "").trim();
   return t === "" ? null : t;
 }
+
+/** The bounds the RPCs enforce, checked before any request: whole minutes from 1 to 24 hours, topic up to 60 characters. */
+export function checkTimeInput(minutes: number, topic: string | null): { ok: true } | { ok: false; error: string } {
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 1440) return { ok: false, error: INVALID_MINUTES };
+  if (topic !== null && topic.length > 60) return { ok: false, error: INVALID_TOPIC };
+  return { ok: true };
+}

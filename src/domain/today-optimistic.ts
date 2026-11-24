@@ -1,4 +1,5 @@
 import type { CheckinInput, HabitInput, ItemCheckInput, ItemInput } from './today'
+import type { TodayLog } from './logs'
 import type { LocalDate } from './types'
 
 /**
@@ -12,7 +13,13 @@ export type OptimisticState = {
   itemChecks: ItemCheckInput[]
   todayCheckins: { id: string; habit_id: string }[]
   checkins: CheckinInput[]
+  /** today's logs by habit and today's quantity sums (the optimistic quantity and time reducers edit them) */
+  todayLogs?: { logs: Record<string, TodayLog[]>; quantity: Record<string, QuantityEntry[]> }
 }
+
+type QuantityEntry = { id: string; amount: number; at: string }
+
+const logsOf = (s: OptimisticState) => s.todayLogs ?? { logs: {}, quantity: {} }
 
 const doneToday = (s: OptimisticState, habitId: string) =>
   s.todayCheckins.some((c) => c.habit_id === habitId) ||
@@ -70,4 +77,65 @@ export function removeItem<T extends OptimisticState>(state: T, itemId: string):
     itemChecks: state.itemChecks.filter((c) => !(c.item_id === itemId && c.local_date === state.today)),
   }
   return removeCheckin(without, item.habit_id)
+}
+
+/**
+ * Adds one quantity sum. Idempotent by entry id. The check-in is NOT invented: "goal met" follows the server's
+ * confirmed total, so `done` only changes when Hoy refetches after the RPC answers.
+ */
+export function applyQuantityEntry<T extends OptimisticState>(
+  state: T,
+  habitId: string,
+  entryId: string,
+  amount: number,
+  at: string,
+): T {
+  const tl = logsOf(state)
+  const current = tl.quantity[habitId] ?? []
+  if (current.some((e) => e.id === entryId)) return state
+  return { ...state, todayLogs: { ...tl, quantity: { ...tl.quantity, [habitId]: [...current, { id: entryId, amount, at }] } } }
+}
+
+/** Removes one of today's quantity sums by id; an unknown id leaves the state as it was. */
+export function removeQuantityEntry<T extends OptimisticState>(state: T, entryId: string): T {
+  const tl = logsOf(state)
+  const habitId = Object.keys(tl.quantity).find((h) => tl.quantity[h].some((e) => e.id === entryId))
+  if (!habitId) return state
+  return {
+    ...state,
+    todayLogs: { ...tl, quantity: { ...tl.quantity, [habitId]: tl.quantity[habitId].filter((e) => e.id !== entryId) } },
+  }
+}
+
+const timeLogOf = (logs: TodayLog[] | undefined) => (logs ?? []).find((l) => l.kind === 'time')
+
+function withTime<T extends OptimisticState>(state: T, habitId: string, minutes: number, topic: string | null): T {
+  const tl = logsOf(state)
+  const others = (tl.logs[habitId] ?? []).filter((l) => l.kind !== 'time')
+  return { ...state, todayLogs: { ...tl, logs: { ...tl.logs, [habitId]: [...others, { kind: 'time', minutes, topic }] } } }
+}
+
+/** `add_time` / a Pomodoro block: adds minutes to today (a new topic replaces the old) and checks the habit in. */
+export function applyTime<T extends OptimisticState>(
+  state: T,
+  habitId: string,
+  minutes: number,
+  topic: string | null,
+  checkinId: string,
+): T {
+  const existing = timeLogOf(logsOf(state).logs[habitId])
+  const base = existing && existing.kind === 'time' ? existing : null
+  const next = withTime(state, habitId, (base?.minutes ?? 0) + minutes, topic ?? base?.topic ?? null)
+  return applyCheckin(next, habitId, checkinId)
+}
+
+/** `set_time_entry`: replaces today's total and topic (no topic clears it). The check-in is untouched. */
+export function setTimeLog<T extends OptimisticState>(state: T, habitId: string, minutes: number, topic: string | null): T {
+  return withTime(state, habitId, minutes, topic)
+}
+
+/** `delete_time_entry`: drops today's minutes and leaves the check-in, as the RPC does. */
+export function removeTimeLog<T extends OptimisticState>(state: T, habitId: string): T {
+  const tl = logsOf(state)
+  return { ...state, todayLogs: { ...tl, logs: { ...tl.logs, [habitId]: (tl.logs[habitId] ?? []).filter((l) => l.kind !== 'time') } } }
 }
