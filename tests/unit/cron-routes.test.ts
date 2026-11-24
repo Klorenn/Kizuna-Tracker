@@ -21,6 +21,7 @@ describe.each(routes)('POST /api/cron/$name authentication', ({ name, load }) =>
     vi.doMock('@/lib/notify', () => ({ notify: async () => {}, pushPendingNotifications: async () => 0 }))
     vi.doMock('@/lib/reminders', () => ({ dueReminderEntries: () => [] }))
     vi.doMock('@/lib/reminders-repo', () => ({ loadReminderCandidates: async () => [], claimReminders: async () => [] }))
+    vi.doMock('@/lib/scheduled-notifications', () => ({ runScheduledNotifications: async () => ({ streakRisk: 0, weeklySummary: 0 }) }))
     process.env.CRON_SECRET = 'env-secret'
   })
 

@@ -3,6 +3,7 @@ import { authorizeCronRequest } from '@/lib/cron-auth'
 import { notify, pushPendingNotifications } from '@/lib/notify'
 import { dueReminderEntries } from '@/lib/reminders'
 import { claimReminders, loadReminderCandidates } from '@/lib/reminders-repo'
+import { runScheduledNotifications } from '@/lib/scheduled-notifications'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const dynamic = 'force-dynamic'
@@ -21,7 +22,9 @@ export async function POST(request: Request) {
     for (let i = 0; i < targets.length; i += 10) {
       await Promise.all(targets.slice(i, i + 10).map((id) => notify(id, 'reminder', {})))
     }
-    return NextResponse.json({ swept, reminded: targets.length })
+    // 3) evening pushes: streak at risk (daily 20:00 local) and weekly summary (Sunday 21:00 local)
+    const scheduled = await runScheduledNotifications(db, now)
+    return NextResponse.json({ swept, reminded: targets.length, ...scheduled })
   } catch (e) {
     console.error('reminders failed', e)
     return NextResponse.json({ error: 'failed' }, { status: 500 })
