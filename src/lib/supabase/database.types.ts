@@ -1749,6 +1749,42 @@ export type Database = {
           },
         ]
       }
+      notification_log: {
+        Row: {
+          created_at: string
+          kind: string
+          local_date: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          kind: string
+          local_date: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          kind?: string
+          local_date?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "notification_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "notification_log_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "public_profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       notifications: {
         Row: {
           created_at: string
@@ -1867,6 +1903,8 @@ export type Database = {
           height_cm: number | null
           id: string
           last_name: string
+          notify_streak_risk: boolean
+          notify_weekly_summary: boolean
           reminder_time: string
           terms_accepted_at: string
           timezone: string
@@ -1886,6 +1924,8 @@ export type Database = {
           height_cm?: number | null
           id: string
           last_name: string
+          notify_streak_risk?: boolean
+          notify_weekly_summary?: boolean
           reminder_time?: string
           terms_accepted_at: string
           timezone: string
@@ -1905,6 +1945,8 @@ export type Database = {
           height_cm?: number | null
           id?: string
           last_name?: string
+          notify_streak_risk?: boolean
+          notify_weekly_summary?: boolean
           reminder_time?: string
           terms_accepted_at?: string
           timezone?: string
@@ -2851,6 +2893,13 @@ export type Database = {
       next_item_start: {
         Args: { c: Database["public"]["Tables"]["challenges"]["Row"] }
         Returns: string
+      }
+      notification_targets: {
+        Args: { p_kind: string }
+        Returns: {
+          timezone: string
+          user_id: string
+        }[]
       }
       propose_group_fine: {
         Args: { p_amount: number; p_group_id: string; p_purpose: string }
