@@ -17,3 +17,14 @@ next-env.d.ts
 /test-results/
 /playwright-report/
 .atl/
+
+# android (TWA / Bubblewrap): build outputs and signing material
+/android/app/build/
+/android/.gradle/
+/android/build/
+/android/local.properties
+*.apk
+*.aab
+*.idsig
+*.keystore
+*.jks

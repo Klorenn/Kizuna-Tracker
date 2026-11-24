@@ -1,0 +1,29 @@
+{
+  "packageId": "com.kizunatracker.app",
+  "host": "kizuna-tracker.vercel.app",
+  "name": "Kizuna Tracker",
+  "launcherName": "Kizuna",
+  "display": "standalone",
+  "themeColor": "#FAFAFA",
+  "navigationColor": "#FAFAFA",
+  "backgroundColor": "#FAFAFA",
+  "enableNotifications": true,
+  "splashScreenFadeOutDuration": 300,
+  "startUrl": "/",
+  "iconUrl": "https://kizuna-tracker.vercel.app/icons/icon-512.png",
+  "maskableIconUrl": "https://kizuna-tracker.vercel.app/icons/icon-maskable-512.png",
+  "webManifestUrl": "https://kizuna-tracker.vercel.app/manifest.webmanifest",
+  "signingKey": {
+    "path": "/Users/paukoh/kizuna-release.keystore",
+    "alias": "kizuna"
+  },
+  "appVersion": "1.0.0",
+  "appVersionCode": 1,
+  "fallbackType": "customtabs",
+  "features": {},
+  "isChromeOSOnly": false,
+  "isMetaQuest": false,
+  "orientation": "default",
+  "minSdkVersion": 24,
+  "generatorApp": "bubblewrap-cli"
+}
