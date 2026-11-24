@@ -14,21 +14,17 @@ import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ListCard, ListRow } from "@/components/ui/ListRow";
 import { SectionHeader } from "@/components/ui/SectionHeader";
-import { localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import { netBalances } from "@/domain/ledger";
 import { dailyStreak, weeklyStreak } from "@/domain/streaks";
 import { avatarUrl } from "@/lib/avatar";
-import { loadCheckinDates } from "@/lib/checkin-dates";
-import { loadGoalsResult } from "@/lib/goals-data";
+import { loadPerfilData } from "@/lib/perfil-data";
 import { activityGrid, debtSummary, lastDays, memberSince, streakText } from "@/lib/profile-view";
 import { profileShareUrl } from "@/lib/public-profile";
 import { siteOrigin } from "@/lib/site-url";
-import { challengeRecord, profileStreaks, streakWindow } from "@/lib/stats";
-import { readRows } from "@/lib/read";
+import { profileStreaks } from "@/lib/stats";
 import { createServerClient } from "@/lib/supabase/server";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
-import { loadRecentWeights } from "./body-data";
 
 export const metadata: Metadata = { title: "Perfil" };
 
@@ -57,31 +53,10 @@ export default async function PerfilPage() {
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
-  // Reads that need only the user id start with the profile; the ones that need its timezone follow.
-  const [profile, habitsRes, record, debtsRes, bodyEntries] = await Promise.all([
-    getViewerProfile(),
-    supabase
-      .from("habits")
-      .select("id,name,color,frequency_type,target_per_week")
-      .eq("user_id", user.id)
-      .is("archived_at", null)
-      .order("created_at"),
-    challengeRecord(user.id),
-    supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at"),
-    loadRecentWeights(supabase, user.id, 5),
-  ]);
-  if (!profile) redirect("/login?error=perfil");
-  // a failed read is the error page, never an empty list or a zero balance
-  const habitRows = readRows(habitsRes);
-  const debtRows = readRows(debtsRes);
-
-  const today = localDate(new Date(), profile.timezone);
-  // History of every habit in one call (one row per habit), alongside the goals
-  const { from } = streakWindow(today);
-  const [goalsRead, dated] = await Promise.all([
-    loadGoalsResult(supabase, user.id, today),
-    loadCheckinDates(supabase, habitRows.map((h) => h.id), from),
-  ]);
+  // Two serial levels after the session check: everything independent starts together (see loadPerfilData)
+  const data = await loadPerfilData(supabase, user.id, getViewerProfile());
+  if (data.missingProfile) redirect("/login?error=perfil");
+  const { profile, today, habitRows, debtRows, bodyEntries, record, goalsRead, dated } = data;
   // a failed read is a retry line, never a zero streak or an empty strip
   const goals = goalsRead.goals;
   const datesByHabit = dated.ok ? dated.byHabit : new Map<string, string[]>();

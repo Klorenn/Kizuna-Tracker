@@ -92,9 +92,11 @@ export function recordFromRows(
 }
 
 /** Reads through the caller's session (RLS: challenges and debts are visible to participants). */
-export async function challengeRecord(userId: string): Promise<{ won: number; lost: number }> {
-  const { createServerClient } = await import('@/lib/supabase/server')
-  const supabase = await createServerClient()
+export async function challengeRecord(
+  userId: string,
+  client?: Awaited<ReturnType<typeof import('@/lib/supabase/server').createServerClient>>,
+): Promise<{ won: number; lost: number }> {
+  const supabase = client ?? (await (await import('@/lib/supabase/server')).createServerClient())
   const { data: challenges } = await supabase
     .from('challenges')
     .select('id,creator_id,rival_id,status')

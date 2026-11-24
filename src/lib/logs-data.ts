@@ -682,6 +682,22 @@ export async function loadLatestWeight(supabase: Supabase, userId: string): Prom
 }
 
 /**
+ * The weights from `from` and, when there are none in the window, the newest one whenever it was.
+ * Both reads start together (the latest is one cheap indexed row), so the "older than the window"
+ * case costs no extra serial level.
+ */
+export async function loadWeightsAndLatest(
+  supabase: Supabase,
+  userId: string,
+  from: LocalDate,
+): Promise<{ entries: WeightEntry[]; latest: WeightEntry | null }> {
+  const latestRead = loadLatestWeight(supabase, userId);
+  latestRead.catch(() => {}); // unused when the window has entries
+  const entries = await loadWeights(supabase, userId, from);
+  return { entries, latest: entries.length === 0 ? await latestRead : null };
+}
+
+/**
  * The logs of a calendar month (`byCheckin`: by check-in id). Bounded to the month's dates. `kinds` says
  * which habit types exist: a kind that is absent is never queried, and the books and
  * exercises are only read when there are entries or sets to name (and then only those ids).

@@ -1,35 +1,25 @@
 "use client";
 
-import { Camera, Check, Warning } from "@phosphor-icons/react";
+import { Camera, Check } from "@phosphor-icons/react";
 import Link from "next/link";
-import { useOptimistic, useState, useTransition } from "react";
-import { checkItem, uncheckItem } from "@/app/(app)/habitos/actions";
 import type { TodayItem } from "@/domain/today";
 
-/** Day steps (e.g. Desayuno, Almuerzo...). The habit's check-in appears when all are checked. */
-export function ItemChecklist({ habitId, items }: { habitId: string; items: TodayItem[] }) {
-  const [, start] = useTransition();
-  const [error, setError] = useState<string | null>(null);
-  const [view, toggleView] = useOptimistic(
-    items,
-    (state, change: { id: string; checked: boolean }) =>
-      state.map((i) =>
-        i.id === change.id ? { ...i, checked: change.checked, time: change.checked ? "…" : null } : i,
-      ),
-  );
-
-  function toggle(item: TodayItem) {
-    setError(null);
-    start(async () => {
-      toggleView({ id: item.id, checked: !item.checked });
-      const result = item.checked ? await uncheckItem(item.id) : await checkItem(item.id);
-      if (!result.ok) setError(result.error);
-    });
-  }
-
+/**
+ * Day steps (e.g. Desayuno, Almuerzo...). The habit's check-in appears when all are checked. The row
+ * owns the optimistic state (it also shows the count and the habit's box), so a tap only reports it.
+ */
+export function ItemChecklist({
+  habitId,
+  items,
+  onToggle,
+}: {
+  habitId: string;
+  items: TodayItem[];
+  onToggle: (item: TodayItem) => void;
+}) {
   return (
     <div className="flex flex-col pb-2 pl-10">
-      {view.map((item) => (
+      {items.map((item) => (
         <div key={item.id} className="flex items-center gap-2">
           {item.requiresPhoto && !item.checked ? (
             <>
@@ -52,7 +42,7 @@ export function ItemChecklist({ habitId, items }: { habitId: string; items: Toda
                   type="checkbox"
                   className="peer sr-only"
                   checked={item.checked}
-                  onChange={() => toggle(item)}
+                  onChange={() => onToggle(item)}
                 />
                 <span className="flex size-[22px] shrink-0 items-center justify-center rounded-sm border-[1.5px] border-outline-strong bg-surface text-on-accent peer-checked:border-accent peer-checked:bg-accent peer-focus-visible:outline-2 peer-focus-visible:outline-offset-2 peer-focus-visible:outline-accent [&>svg]:opacity-0 peer-checked:[&>svg]:opacity-100">
                   <Check size={16} weight="bold" aria-hidden />
@@ -72,12 +62,6 @@ export function ItemChecklist({ habitId, items }: { habitId: string; items: Toda
           )}
         </div>
       ))}
-      {error ? (
-        <p role="alert" className="flex items-center gap-1 pt-1 text-small text-ink">
-          <Warning size={16} weight="light" className="shrink-0 text-alert" aria-hidden />
-          {error}
-        </p>
-      ) : null}
     </div>
   );
 }

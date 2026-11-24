@@ -28,16 +28,16 @@ import { bestStreak, dailyStreak, weeklyStreak } from "@/domain/streaks";
 import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays, loadMonthWeights } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
+import { monthGuess, prefetchMonth } from "@/lib/month-prefetch";
 import { buildLogCards } from "@/lib/log-cards";
 import {
   loadCardioData,
-  loadLatestWeight,
   loadQuantityForHabits,
   loadReadingData,
   loadTimeData,
   loadVisitDates,
   loadWatchData,
-  loadWeights,
+  loadWeightsAndLatest,
   loadWorkoutData,
   logWindowStart,
   quantityConfigOf,
@@ -122,11 +122,11 @@ async function loadRegistros(
       return config ? [{ habitId: h.id, name: h.name, config }] : [];
     })
     .slice(0, 3);
-  const [readingData, workoutData, visits, weightEntries, time, watch, quantityData, cardio] = await Promise.all([
+  const [readingData, workoutData, visits, weights, time, watch, quantityData, cardio] = await Promise.all([
     hasReading ? loadReadingData(supabase, userId, windowStart) : null,
     hasWorkout ? loadWorkoutData(supabase, userId, windowStart) : null,
     hasWorkout ? loadVisitDates(supabase, userId, windowStart) : null,
-    loadWeights(supabase, userId, windowStart),
+    loadWeightsAndLatest(supabase, userId, windowStart),
     has("time") ? loadTimeData(supabase, userId, windowStart) : null,
     has("watch") ? loadWatchData(supabase, userId, windowStart) : null,
     quantityHabits.length > 0
@@ -135,7 +135,7 @@ async function loadRegistros(
     has("cardio") ? loadCardioData(supabase, userId, windowStart) : null,
   ]);
   // the newest weigh-in may be older than the window: still shown, with its date
-  const latestWeight = weightEntries.length === 0 ? await loadLatestWeight(supabase, userId) : null;
+  const { entries: weightEntries, latest: latestWeight } = weights;
   const month = monthOf(today);
   const cards = buildLogCards({
     month,
@@ -227,6 +227,18 @@ export default async function ResumenPage({
   // of the selected habits (ONE query, grouped here) and the REGISTROS cards.
   const current = monthOf(today);
   const selectedIds = selected.map((x) => x.id);
+  // The calendar month depends on the first check-in (lower clamp), so the month most likely shown
+  // starts with the rest; a different final month loads again below.
+  const monthsView = vista === MONTHS_VIEW;
+  const calendarData = monthsView
+    ? null
+    : prefetchMonth(monthGuess(mes, current), (m) =>
+        // weigh-ins are private: this is the owner's own calendar, read with their session
+        Promise.all([
+          loadMonthDays(supabase, { userId: user.id, habits: selected, month: m, today, timezone: tz, includeLogs: true }),
+          loadMonthWeights(supabase, user.id, m),
+        ]),
+      );
   const [firstCheckin, historyRows, registros] = await Promise.all([
     loadFirstCheckinDate(supabase, user.id, selectedIds),
     fetchAll<{ habit_id: string; local_date: LocalDate }>((a, b) =>
@@ -253,7 +265,6 @@ export default async function ResumenPage({
   const earliest = earliestMonth([firstCheckin, ...selected.map(since)], current);
   const month = parseMonthParam(mes, { current, earliest });
   const nav = monthNav(month, { current, earliest });
-  const monthsView = vista === MONTHS_VIEW;
   const hParam = showAll ? (h === ALL_HABITS ? ALL_HABITS : undefined) : h === habit.id ? habit.id : undefined;
   const mesParam = month === current ? undefined : month;
   const href = (m: MonthKey, view?: string) =>
@@ -304,11 +315,7 @@ export default async function ResumenPage({
       </>
     );
   } else {
-    // weigh-ins are private: this is the owner's own calendar, read with their session
-    const [days, weights] = await Promise.all([
-      loadMonthDays(supabase, { userId: user.id, habits: selected, month, today, timezone: tz, includeLogs: true }),
-      loadMonthWeights(supabase, user.id, month),
-    ]);
+    const [days, weights] = await calendarData!.forMonth(month);
     calendarSection = (
       <>
         <SectionHeader label="Calendario" action="Ver por meses" href={href(month, MONTHS_VIEW)} scroll={false} />

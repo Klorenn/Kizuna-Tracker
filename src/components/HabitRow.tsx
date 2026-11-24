@@ -4,8 +4,9 @@ import { Camera, Check, Timer, Warning } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { memo, useId, useOptimistic, useState, useTransition } from "react";
-import { checkIn, undoCheckIn } from "@/app/(app)/habitos/actions";
-import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayRow } from "@/domain/today";
+import { checkIn, checkItem, uncheckItem, undoCheckIn } from "@/app/(app)/habitos/actions";
+import { applyItemChange, checkedCount, planToggle, settleToggle } from "@/domain/optimistic-toggle";
+import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayItem, type TodayRow } from "@/domain/today";
 import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
 import { addLogOffered, habitRowPropsEqual } from "./habit-row-equal";
@@ -86,16 +87,21 @@ function HabitRowView({
   /** the live group this habit is linked to: a small chip next to the name */
   group?: { name: string; color: string };
 }) {
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
+  const [, startItem] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useOptimistic(row.done);
+  const [doneNow, setDone] = useOptimistic(row.done);
+  // the steps flip at once too, and with them the "N de M" count and the habit's own box
+  const [items, flipItem] = useOptimistic(row.items, applyItemChange);
   const [sheet, setSheet] = useState<OpenSheet | null>(null);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const undoCopy = undoLosesCopy(row);
   const undoBodyId = useId();
   const [toast, showToast] = useToast();
   const hasItems = row.items.length > 0;
-  const checkedCount = row.items.filter((i) => i.checked).length;
+  const checked = checkedCount(items);
+  // all steps checked is what completes a habit with steps (the database makes its check-in)
+  const done = hasItems && items !== row.items && items.length > 0 ? checked === items.length : doneNow;
   const plain = !hasItems && !row.requiresPhoto;
   const readingFlow = plain && row.logType === "reading" && reading !== undefined;
   const timeFlow = plain && row.logType === "time";
@@ -117,9 +123,21 @@ function HabitRowView({
 
   function run() {
     setConfirmUndo(false);
+    const plan = planToggle(row.done, pending);
+    if (!plan.run) return;
     start(async () => {
-      setDone(!row.done);
-      const result = row.done ? await undoCheckIn(row.id) : await checkIn(row.id);
+      setDone(plan.optimistic);
+      const result = await settleToggle(() => (plan.action === "undo" ? undoCheckIn(row.id) : checkIn(row.id)));
+      // a refusal or a dropped connection: the optimistic value reverts when this transition ends
+      if (!result.ok) setError(result.error);
+    });
+  }
+
+  function toggleItem(item: TodayItem) {
+    setError(null);
+    startItem(async () => {
+      flipItem({ id: item.id, checked: !item.checked });
+      const result = await settleToggle(() => (item.checked ? uncheckItem(item.id) : checkItem(item.id)));
       if (!result.ok) setError(result.error);
     });
   }
@@ -131,7 +149,7 @@ function HabitRowView({
   if (hasItems) {
     action = (
       <span className="font-mono text-small font-medium text-muted">
-        {checkedCount} de {row.items.length}
+        {checked} de {items.length}
       </span>
     );
   } else if (quantity) {
@@ -251,7 +269,7 @@ function HabitRowView({
         {text}
         {action}
       </div>
-      {hasItems ? <ItemChecklist habitId={row.id} items={row.items} /> : null}
+      {hasItems ? <ItemChecklist habitId={row.id} items={items} onToggle={toggleItem} /> : null}
       {quantity ? (
         <div className="pb-3 pl-10">
           <QuantityControl

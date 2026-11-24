@@ -37,6 +37,7 @@ import type { Frequency, LocalDate } from "@/domain/types";
 import { loadFirstCheckinDate, loadMonthDays } from "@/lib/calendar-data";
 import { monthOverview } from "@/lib/calendar-days";
 import { loadGoalsResult } from "@/lib/goals-data";
+import { monthGuess, prefetchMonth } from "@/lib/month-prefetch";
 import {
   loadCardioData,
   loadQuantityData,
@@ -76,8 +77,17 @@ export default async function HabitoPage({
   const supabase = await createServerClient();
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
+  // The goals select needs neither the habit nor the profile (only the date, later): it starts with them
+  const profileRead = getViewerProfile();
+  const goalsRead = loadGoalsResult(
+    supabase,
+    user.id,
+    profileRead.then((p) => localDate(new Date(), p?.timezone ?? "UTC")),
+    id,
+  );
+  goalsRead.catch(() => {}); // not awaited when the habit is missing (404) or the profile is
   const [profile, habitRes] = await Promise.all([
-    getViewerProfile(),
+    profileRead,
     supabase
       .from("habits")
       .select(
@@ -215,7 +225,21 @@ export default async function HabitoPage({
     }
   };
 
-  // independent reads in one go (the month of the calendar depends on the first check-in, below)
+  // Independent reads in one go. The month of the calendar depends on the first check-in, so the month
+  // most likely shown starts now (a different final month loads again below).
+  const monthDays = monthsView
+    ? null
+    : prefetchMonth(monthGuess(mes, thisMonth), (m) =>
+        loadMonthDays(supabase, {
+          userId: user.id,
+          habits: [habit],
+          month: m,
+          today,
+          timezone: profile.timezone,
+          // own habit detail: the owner sees the detail of every kind of log
+          includeLogs: true,
+        }),
+      );
   const [checkinsRes, goals, firstCheckin, progress, yearCheckins] = await Promise.all([
     supabase
       .from("checkins")
@@ -225,7 +249,7 @@ export default async function HabitoPage({
       .gte("local_date", from)
       .order("local_date", { ascending: false })
       .limit(limit),
-    loadGoalsResult(supabase, user.id, today, id),
+    goalsRead,
     loadFirstCheckinDate(supabase, user.id, [habit.id]),
     loadProgress(),
     monthsView
@@ -286,15 +310,7 @@ export default async function HabitoPage({
       </>
     );
   } else {
-    const days = await loadMonthDays(supabase, {
-      userId: user.id,
-      habits: [habit],
-      month,
-      today,
-      timezone: profile.timezone,
-      // own habit detail: the owner sees the detail of every kind of log
-      includeLogs: true,
-    });
+    const days = await monthDays!.forMonth(month);
     calendar = (
       <>
         <SectionHeader label="Calendario" action="Ver por meses" href={monthHref(month, MONTHS_VIEW)} scroll={false} />

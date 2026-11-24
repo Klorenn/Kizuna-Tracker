@@ -17,7 +17,16 @@ export type GoalsResult = { ok: boolean; goals: GoalView[] };
  * the history failed, nothing when the goals failed) and the screen must show a retry state
  * instead of presenting it as real.
  */
-export async function loadGoalsResult(supabase: Supabase, userId: string, today: string, habitId?: string): Promise<GoalsResult> {
+export async function loadGoalsResult(
+  supabase: Supabase,
+  userId: string,
+  todayInput: string | Promise<string>,
+  habitId?: string,
+): Promise<GoalsResult> {
+  // `today` may still be in flight (it comes from the profile's time zone): the goals select does not need it,
+  // so it starts now and the date is awaited only when the windows are built
+  const todayRead = Promise.resolve(todayInput);
+  todayRead.catch(() => {}); // awaited below on the success path; this only keeps an early return from leaving it unhandled
   let q = supabase
     .from("goals")
     // the habit comes in the same read (goals on archived habits are hidden): one level, not two
@@ -31,6 +40,7 @@ export async function loadGoalsResult(supabase: Supabase, userId: string, today:
   if (error) return { ok: false, goals: [] };
   const goals = rows ?? [];
   if (goals.length === 0) return { ok: true, goals: [] };
+  const today = await todayRead;
 
   // One history read for every goal (one row per habit, no row cap), then each goal counts its own window.
   const visible = goals.map((g) => {
@@ -67,6 +77,6 @@ export async function loadGoalsResult(supabase: Supabase, userId: string, today:
  * The user's active goals as view models (weekly first), optionally limited to one habit. Kept for
  * screens that have not adopted `loadGoalsResult`: a failed read shows as zero progress there.
  */
-export async function loadGoals(supabase: Supabase, userId: string, today: string, habitId?: string) {
+export async function loadGoals(supabase: Supabase, userId: string, today: string | Promise<string>, habitId?: string) {
   return (await loadGoalsResult(supabase, userId, today, habitId)).goals;
 }
