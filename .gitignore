@@ -28,3 +28,6 @@ next-env.d.ts
 *.idsig
 *.keystore
 *.jks
+
+# database backups (pg_dump of production, Vercel env backups): never commit
+/backups/
