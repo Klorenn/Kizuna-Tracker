@@ -1,6 +1,7 @@
-import MaskedView from "@react-native-masked-view/masked-view";
+import RNMaskedView from "@react-native-masked-view/masked-view";
 import { Image } from "expo-image";
-import { StyleSheet, View } from "react-native";
+import type { ComponentType, ReactElement, ReactNode } from "react";
+import { StyleSheet, View, type StyleProp, type ViewStyle } from "react-native";
 
 /**
  * M0 spike (design #10): does expo-image `tintColor` recolor the animated cat GIF on Android? The web draws the GIF as a
@@ -10,6 +11,9 @@ import { StyleSheet, View } from "react-native";
  * cat needs a pre-baked alpha asset.
  */
 export type CatStrategy = "tint" | "mask";
+
+// the package types MaskedView as a class component that React 19's JSX types reject
+const MaskedView = RNMaskedView as unknown as ComponentType<{ testID?: string; style?: StyleProp<ViewStyle>; maskElement: ReactElement; children?: ReactNode }>;
 
 const CAT_GIF = require("../../assets/brand/cat-lift.gif");
 
