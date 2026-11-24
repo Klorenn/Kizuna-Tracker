@@ -10,7 +10,7 @@ import {
   type SourceHabitRow,
 } from "@/lib/challenge-accept";
 import { requireUser } from "@/lib/require-user";
-import { REJECT_REASONS, type ChallengeInput, type RejectReason, validateChallengeInput } from "@/lib/challenge-form";
+import { OPEN_CHALLENGE_STATUSES, REJECT_REASONS, type ChallengeInput, type RejectReason, validateChallengeInput } from "@/lib/challenge-form";
 import { notify } from "@/lib/notify";
 import { createServerClient } from "@/lib/supabase/server";
 
@@ -55,9 +55,14 @@ function refresh(id?: string) {
   if (id) revalidatePath(`/retos/${id}`);
 }
 
-export async function proposeChallenge(
-  input: ChallengeInput,
-): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+const EXISTS = "Ya tienes un reto con esta persona.";
+
+/** `code: "exists"` = a proposed or active challenge with that person is already there; `existingId` is its id. */
+export type ProposeResult =
+  | { ok: true; id: string }
+  | { ok: false; error: string; code?: "exists"; existingId?: string };
+
+export async function proposeChallenge(input: ChallengeInput): Promise<ProposeResult> {
   const valid = validateChallengeInput(input);
   if (!valid.ok) return valid;
   if (!UUID.test(input.rivalId) || !UUID.test(input.habitId)) return { ok: false, error: GENERIC };
@@ -74,6 +79,17 @@ export async function proposeChallenge(
     )
     .limit(1);
   if (!friendship || friendship.length === 0) return { ok: false, error: "Solo puedes retar a tus amigos." };
+
+  const { data: open } = await supabase
+    .from("challenges")
+    .select("id")
+    .in("status", [...OPEN_CHALLENGE_STATUSES])
+    .or(
+      `and(creator_id.eq.${uid},rival_id.eq.${input.rivalId}),and(creator_id.eq.${input.rivalId},rival_id.eq.${uid})`,
+    )
+    .order("created_at", { ascending: false })
+    .limit(1);
+  if (open && open.length > 0) return { ok: false, code: "exists", existingId: open[0].id, error: EXISTS };
 
   const { data: habit } = await supabase
     .from("habits")
@@ -102,6 +118,7 @@ export async function proposeChallenge(
     })
     .select("id")
     .single();
+  if (error?.code === "23505") return { ok: false, code: "exists", error: EXISTS };
   if (error || !data) return { ok: false, error: error?.code === "42501" ? PRIVATE_HABIT : GENERIC };
   await notify(input.rivalId, "challenge_proposed", {
     challenge_id: data.id,

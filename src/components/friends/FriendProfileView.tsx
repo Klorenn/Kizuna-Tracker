@@ -1,7 +1,6 @@
-import { CaretLeft, CaretRight, Flag, Receipt, UsersThree } from "@phosphor-icons/react/dist/ssr";
+import { CaretLeft, CaretRight, Receipt, UsersThree } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { ActivityHeatmap } from "@/components/profile/ActivityHeatmap";
-import { ButtonLink } from "@/components/ui/Button";
 import { Card } from "@/components/ui/Card";
 import { ListCard, ListRow } from "@/components/ui/ListRow";
 import { SectionHeader } from "@/components/ui/SectionHeader";
@@ -13,6 +12,7 @@ import { streakText } from "@/lib/profile-view";
 import { ActivityDays } from "./ActivityItem";
 import { FriendHabitList } from "./FriendHabitList";
 import { FriendOverflow } from "./FriendOverflow";
+import { RetarAction } from "./RetarAction";
 import { SectionRetry } from "./SectionRetry";
 
 function BigStat({ label, value, unit }: { label: string; value: number; unit: "days" | "weeks" }) {
@@ -75,10 +75,7 @@ export function FriendProfileView({
           </div>
         </div>
         <div className="flex gap-2">
-          <ButtonLink href={`/retos/nuevo?amigo=${friend.id}`} className="flex-1">
-            <Flag size={20} weight="light" aria-hidden />
-            Retar
-          </ButtonLink>
+          <RetarAction friendId={friend.id} openChallengeId={challengesFailed ? null : (open[0]?.id ?? null)} />
           <FriendOverflow userId={friend.id} firstName={first} />
         </div>
       </header>

@@ -7,6 +7,7 @@ import { proposeChallenge } from "@/app/(app)/retos/actions";
 import { formatCLP } from "@/domain/ledger";
 import type { IconKey } from "@/domain/presets";
 import { MAX_FINE, validateChallengeInput } from "@/lib/challenge-form";
+import { ExistingChallengeNotice } from "./ExistingChallengeNotice";
 import { HabitIcon } from "./habit-icon";
 import { Button } from "./ui/Button";
 import { Input } from "./ui/Input";
@@ -55,6 +56,7 @@ export function ChallengeForm({
   initialHabitId,
   habitLocked,
   initialRivalId = null,
+  openByRival = {},
 }: {
   friends: FriendOption[];
   habits: HabitOption[];
@@ -62,6 +64,8 @@ export function ChallengeForm({
   habitLocked: boolean;
   /** From a friend's profile ("Retar"): preselected, still changeable. */
   initialRivalId?: string | null;
+  /** friend id -> id of the proposed/active challenge already shared with them (server-read at page load). */
+  openByRival?: Record<string, string>;
 }) {
   const [rivalId, setRivalId] = useState(
     initialRivalId && friends.some((f) => f.id === initialRivalId) ? initialRivalId : "",
@@ -72,10 +76,14 @@ export function ChallengeForm({
   const [weeks, setWeeks] = useState(4);
   const [fine, setFine] = useState("");
   const [error, setError] = useState<string | null>(null);
+  // learned from the server when it refuses a duplicate that the page-load snapshot did not know about
+  const [found, setFound] = useState<Record<string, string | null>>({});
   const [busy, start] = useTransition();
   const router = useRouter();
 
   const rival = friends.find((f) => f.id === rivalId);
+  const existing = rivalId && rivalId in found ? found[rivalId] : (openByRival[rivalId] ?? undefined);
+  const hasExisting = existing !== undefined;
   const habit = habits.find((h) => h.id === habitId);
   const fineAmount = fine ? Number(fine) : 0;
   const frequency = type === "daily" ? ({ type: "daily" } as const) : ({ type: "weekly", target } as const);
@@ -88,6 +96,7 @@ export function ChallengeForm({
       setError(null);
       const r = await proposeChallenge({ rivalId, habitId, frequency, weeks, fineAmount });
       if (r.ok) router.replace("/retos");
+      else if (r.code === "exists") setFound((f) => ({ ...f, [rivalId]: r.existingId ?? null }));
       else setError(r.error);
     });
   }
@@ -97,7 +106,7 @@ export function ChallengeForm({
       className="flex flex-col gap-4"
       onSubmit={(e) => {
         e.preventDefault();
-        if (valid && !busy) submit();
+        if (valid && !busy && !hasExisting) submit();
       }}
     >
       {habitLocked && habit ? (
@@ -127,6 +136,7 @@ export function ChallengeForm({
             </option>
           ))}
         </select>
+        {hasExisting ? <ExistingChallengeNotice username={rival?.username ?? null} challengeId={existing} /> : null}
       </div>
 
       {!habitLocked ? (
@@ -200,7 +210,7 @@ export function ChallengeForm({
         </p>
       ) : null}
 
-      <Button type="submit" disabled={!valid || busy}>
+      <Button type="submit" disabled={!valid || busy || hasExisting}>
         {valid ? <ArrowRight size={20} weight="light" aria-hidden /> : null}
         {valid ? `Enviar reto a ${who}` : "Enviar reto"}
       </Button>

@@ -2,13 +2,11 @@ import { expect, test, type BrowserContext, type Page } from "@playwright/test";
 import { expectNoHorizontalScroll, randomHandle, signUp } from "./helpers";
 
 // Computed colours of the light theme (#rrggbb in tokens.css as rgb()): the accent of each colour,
-// and the indigo cat. Written out here on purpose: the test pins what the person sees.
+// (the cat follows the accent). Written out here on purpose: the test pins what the person sees.
 const INDIGO = "rgb(90, 90, 194)";
 const SAKURA = "rgb(185, 63, 120)";
 const MATCHA = "rgb(58, 122, 75)";
 const KON = "rgb(35, 64, 122)";
-const CAT_LIGHT = "rgb(90, 90, 194)";
-const CAT_DARK = "rgb(140, 140, 240)";
 
 const expectCookie = (context: BrowserContext, value: string) =>
   expect.poll(async () => (await context.cookies()).find((c) => c.name === "color")?.value).toBe(value);
@@ -27,16 +25,27 @@ test.describe("color cookie, no session", () => {
     expect(await dataColor(page)).toBe("indigo");
   });
 
-  test("the cat keeps indigo under another colour, in light and in dark", async ({ page, context, baseURL }) => {
+  test("the cat follows the chosen colour, in light and in dark", async ({ page, context, baseURL }) => {
+    const accent = () =>
+      page.evaluate(() => {
+        const probe = document.createElement("i");
+        probe.style.backgroundColor = "var(--color-accent)";
+        document.body.append(probe);
+        const v = getComputedStyle(probe).backgroundColor;
+        probe.remove();
+        return v;
+      });
     await context.addCookies([{ name: "color", value: "sakura", url: baseURL! }]);
     await page.emulateMedia({ colorScheme: "light" });
     await page.goto("/bienvenida");
     expect(await dataColor(page)).toBe("sakura");
     await expect(page.locator("[data-cat]").first()).toBeAttached();
-    expect(await bg(page, "[data-cat]")).toBe(CAT_LIGHT);
+    expect(await bg(page, "[data-cat]")).toBe(SAKURA);
+    expect(await bg(page, "[data-cat]")).toBe(await accent());
 
     await page.emulateMedia({ colorScheme: "dark" }); // theme is "system" without a cookie
-    expect(await bg(page, "[data-cat]")).toBe(CAT_DARK);
+    expect(await bg(page, "[data-cat]")).toBe(await accent());
+    expect(await bg(page, "[data-cat]")).not.toBe(SAKURA);
   });
 });
 

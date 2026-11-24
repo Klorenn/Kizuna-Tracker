@@ -5,7 +5,7 @@ import { redirect } from "next/navigation";
 import { ChallengeForm } from "@/components/ChallengeForm";
 import { Card } from "@/components/ui/Card";
 import { ButtonLink } from "@/components/ui/Button";
-import { parseNewChallengeParams, parseRivalParam } from "@/lib/challenge-form";
+import { OPEN_CHALLENGE_STATUSES, openChallengeByRival, parseNewChallengeParams, parseRivalParam } from "@/lib/challenge-form";
 import { createServerClient } from "@/lib/supabase/server";
 
 export const metadata: Metadata = { title: "Nuevo reto" };
@@ -23,7 +23,7 @@ export default async function NuevoRetoPage({
   } = await supabase.auth.getUser();
   if (!user) redirect("/bienvenida");
 
-  const [{ data: friendships }, { data: habits }] = await Promise.all([
+  const [{ data: friendships }, { data: habits }, { data: openRows }] = await Promise.all([
     supabase
       .from("friendships")
       .select("requester_id,addressee_id")
@@ -34,7 +34,13 @@ export default async function NuevoRetoPage({
       .eq("user_id", user.id)
       .is("archived_at", null)
       .order("created_at"),
+    supabase
+      .from("challenges")
+      .select("id,creator_id,rival_id,status")
+      .in("status", [...OPEN_CHALLENGE_STATUSES])
+      .order("created_at", { ascending: false }),
   ]);
+  const openByRival = openChallengeByRival(openRows ?? [], user.id);
 
   const friendIds = (friendships ?? []).map((f) => (f.requester_id === user.id ? f.addressee_id : f.requester_id));
   const { data: people } = friendIds.length
@@ -99,6 +105,7 @@ export default async function NuevoRetoPage({
           initialHabitId={fromHabit?.id ?? null}
           habitLocked={Boolean(fromHabit)}
           initialRivalId={fromFriend?.id ?? null}
+          openByRival={openByRival}
         />
       )}
     </main>

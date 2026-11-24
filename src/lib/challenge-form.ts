@@ -51,3 +51,27 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 export function parseRivalParam(value: unknown): string | null {
   return typeof value === 'string' && UUID.test(value) ? value.toLowerCase() : null
 }
+
+/** Statuses that count as "you already have a challenge with that person". */
+export const OPEN_CHALLENGE_STATUSES = ['proposed', 'active'] as const
+
+/**
+ * Other person -> id of the open (proposed or active) challenge shared with them. Rows are expected
+ * newest first, so the first one per person wins.
+ */
+export function openChallengeByRival(
+  rows: { id: string; creator_id: string; rival_id: string; status: string }[],
+  me: string,
+): Record<string, string> {
+  const out: Record<string, string> = {}
+  for (const r of rows) {
+    if (!(OPEN_CHALLENGE_STATUSES as readonly string[]).includes(r.status)) continue
+    const other = r.creator_id === me ? r.rival_id : r.creator_id
+    if (!(other in out)) out[other] = r.id
+  }
+  return out
+}
+
+export function existingChallengeMessage(username: string | null): string {
+  return username ? `Ya tienes un reto con @${username}` : 'Ya tienes un reto con esta persona'
+}

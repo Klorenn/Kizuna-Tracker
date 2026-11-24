@@ -97,6 +97,29 @@ describe('proposeChallenge', () => {
     })
   })
 
+  it('returns a typed "exists" result with the challenge id when one is already open with that person', async () => {
+    reads['friendships.select'] = { data: [{ id: 'f1' }], error: null }
+    reads['challenges.select'] = { data: [{ id: 'c-open' }], error: null }
+    reads['habits.select'] = { data: { visibility: 'friends', requires_photo: false, archived_at: null }, error: null }
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    await expect(proposeChallenge(input)).resolves.toEqual({
+      ok: false,
+      code: 'exists',
+      existingId: 'c-open',
+      error: 'Ya tienes un reto con esta persona.',
+    })
+    expect(writes).toHaveLength(0)
+  })
+
+  it('maps a DB-level duplicate (23505) to the same typed result instead of a generic failure', async () => {
+    reads['friendships.select'] = { data: [{ id: 'f1' }], error: null }
+    reads['habits.select'] = { data: { visibility: 'friends', requires_photo: false, archived_at: null }, error: null }
+    reads['profiles.select'] = { data: { timezone: 'America/Santiago' }, error: null }
+    reads['challenges.insert'] = { data: null, error: { message: 'duplicate key', code: '23505' } }
+    const r = await proposeChallenge(input)
+    expect(r).toMatchObject({ ok: false, code: 'exists' })
+  })
+
   it('rejects ids that are not UUIDs', async () => {
     const r = await proposeChallenge({ ...input, rivalId: 'abc,or(x)' })
     expect(r.ok).toBe(false)

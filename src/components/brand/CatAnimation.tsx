@@ -14,8 +14,8 @@ import {
 const reducedMotion = () => window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 
 /**
- * The owner's animated cat (GIF), tinted through a luminance CSS mask (cat token: indigo in light and
- * dark, and it does not follow the colour setting; see --color-cat in tokens.css) and cropped to the cat's bounding box so `width` is the cat's real width.
+ * The owner's animated cat (GIF), tinted through a luminance CSS mask (cat token: aliases the accent, so it
+ * follows the colour setting in every mode; see --color-cat in tokens.css) and cropped to the cat's bounding box so `width` is the cat's real width.
  * - prefers-reduced-motion: the mask is the still frame with a 300 ms fade-in (.cat-mask in globals.css).
  * - `variant`: small badges (<= 64 px) default to "still": only the PNG is fetched, never the GIF.
  * - `once`: plays a single pass (the asset's playMs) counted from when the GIF has actually loaded

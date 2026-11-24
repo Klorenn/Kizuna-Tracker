@@ -86,7 +86,8 @@ describe('dark theme tokens', () => {
   })
 
   it('overrides every themeable color (only the media chrome, cream and shu stay fixed)', () => {
-    const fixed = ['--color-cream', '--color-media', '--color-on-media']
+    // the cat tokens are aliases of the accent family (resolved per mode), so they need no dark override
+    const fixed = ['--color-cream', '--color-media', '--color-on-media', '--color-cat', '--color-cat2']
     const themeable = Object.keys(light).filter((k) => k.startsWith('--color-') && !fixed.includes(k))
     expect(themeable.filter((k) => !(k in darkExplicit))).toEqual([])
     expect(darkExplicit['--shadow-card']).toBe('none')
@@ -347,19 +348,20 @@ describe('color theme tokens', () => {
     }
   })
 
-  it('the mascot keeps indigo: cat tokens equal the indigo accent and accent2, in both modes, and no colour touches them', () => {
-    expect(light['--color-cat']).toBe(INDIGO_TODAY.light['--color-accent'])
-    expect(light['--color-cat2']).toBe(INDIGO_TODAY.light['--color-accent2'])
-    expect(darkExplicit['--color-cat']).toBe(INDIGO_TODAY.dark['--color-accent'])
-    expect(darkExplicit['--color-cat2']).toBe(INDIGO_TODAY.dark['--color-accent2'])
-    expect(darkSystem['--color-cat']).toBe(darkExplicit['--color-cat'])
-    expect(darkSystem['--color-cat2']).toBe(darkExplicit['--color-cat2'])
+  it('the mascot follows the chosen colour: cat tokens alias accent/accent2 once, on :root, and no mode block overrides them', () => {
+    expect(light['--color-cat']).toBe('var(--color-accent)')
+    expect(light['--color-cat2']).toBe('var(--color-accent2)')
+    // a literal in a dark block would pin the cat to indigo in dark mode
+    for (const block of [darkExplicit, darkSystem]) {
+      expect(Object.keys(block).filter((k) => k.includes('cat'))).toEqual([])
+    }
+    // colour rules map only the accent family; the cat follows through the alias, not its own entries
     for (const rule of [modeRule.light, modeRule.dark, modeRule.system, ...COLORS.map(palette)]) {
       expect(Object.keys(rule).filter((k) => k.includes('cat'))).toEqual([])
     }
   })
 
-  it('the cat is painted with the cat tokens, never the accent', () => {
+  it('the cat is painted with the cat tokens (which alias the accent), never the accent utilities directly', () => {
     const src = (f: string) => readFileSync(join(process.cwd(), f), 'utf8')
     const paths = src('src/components/brand/cat-paths.tsx')
     expect(paths).not.toMatch(/var\(--color-accent2?\)/)
@@ -368,10 +370,6 @@ describe('color theme tokens', () => {
     const anim = src('src/components/brand/CatAnimation.tsx')
     expect(anim).not.toMatch(/\bbg-accent\b/)
     expect(anim).toContain('--color-cat')
-    // the declarations are literal values (not aliases of the accent), in light, explicit dark and system dark
-    for (const block of [light, darkExplicit, darkSystem]) {
-      for (const k of ['--color-cat', '--color-cat2']) expect(block[k], k).toMatch(/^#[0-9a-f]{6}$/)
-    }
   })
 
   it('globals.css carries no raw hex (colours live in tokens.css only)', () => {

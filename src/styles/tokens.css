@@ -107,13 +107,12 @@
   --habit-indigo-soft: color-mix(in oklab, var(--habit-indigo) var(--habit-soft-mix), transparent);
 }
 
-/* The mascot keeps its own colour whatever the colour setting is: today's indigo accent and accent2,
-   in each mode (dark values live in both dark blocks below). No colour overrides these two tokens.
-   Aliasing them (--color-cat: var(--color-accent); --color-cat2: var(--color-accent2);) is the
-   one-line switch to make the cat follow the chosen colour. */
+/* The mascot follows the chosen colour: its tokens alias the accent family, so every colour and mode
+   (light, dark, system dark) reaches it through --color-accent / --color-accent2 on the same element.
+   Do not redeclare these inside a mode block: a literal there would pin the cat to one colour. */
 :root {
-  --color-cat: #5a5ac2;
-  --color-cat2: #2e3a5e;
+  --color-cat: var(--color-accent);
+  --color-cat2: var(--color-accent2);
 }
 
 /* ---------- Color themes ----------
@@ -517,8 +516,6 @@
   --color-heat-2: #7b7bd2;
   --color-heat-3: #9d9df3;
   --color-heat-4: #cdcdfa;
-  --color-cat: #8c8cf0;
-  --color-cat2: #9ba6d9;
   --shadow-card: none;
   --habit-on: #0f0f10;
   --habit-soft-mix: 24%;
@@ -575,8 +572,6 @@
     --color-heat-2: #7b7bd2;
     --color-heat-3: #9d9df3;
     --color-heat-4: #cdcdfa;
-    --color-cat: #8c8cf0;
-    --color-cat2: #9ba6d9;
     --shadow-card: none;
     --habit-on: #0f0f10;
     --habit-soft-mix: 24%;
