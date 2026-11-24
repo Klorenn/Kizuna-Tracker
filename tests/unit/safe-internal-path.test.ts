@@ -15,9 +15,20 @@ describe('safeInternalPath', () => {
       expect(safeInternalPath(p)).toBeNull()
   })
   it('rejects a path or query over the limits', () => {
-    expect(safeInternalPath(`/${'a'.repeat(511)}`)).toBe(`/${'a'.repeat(511)}`)
-    expect(safeInternalPath(`/${'a'.repeat(512)}`)).toBeNull()
+    expect(safeInternalPath(`/retos/${'a'.repeat(504)}`)).toBe(`/retos/${'a'.repeat(504)}`)
+    expect(safeInternalPath(`/retos/${'a'.repeat(506)}`)).toBeNull()
     expect(safeInternalPath(`/x?${'a'.repeat(129)}`)).toBeNull()
+  })
+  it('only the web app pages are allowed: never /auth, /api, the login or any other route', () => {
+    for (const p of ['/auth/native-handoff?token_hash=abc123', '/auth/x', '/api/m/web-session', '/api/cron/reminders', '/login', '/serwist/sw.js', '/robots.txt', '/unknown', '/retosx'])
+      expect(safeInternalPath(p)).toBeNull()
+  })
+  it('a handoff url can never be the next of a handoff', () => {
+    expect(safeInternalPath('/retos?next=/auth/native-handoff')).toBeNull()
+    expect(safeInternalPath('/auth/native-handoff?token_hash=H&next=%2F')).toBeNull()
+  })
+  it('accepts the page prefixes of the app', () => {
+    for (const p of ['/amigos', '/deudas', '/grupos', '/habitos/1', '/libros', '/listo', '/metas', '/notificaciones', '/perfil/ajustes', '/registros/1/time', '/resumen', '/retos', '/series']) expect(safeInternalPath(p)).toBe(p)
   })
   it('rejects non-strings', () => {
     for (const p of [null, undefined, 42, {}, ['/x']]) expect(safeInternalPath(p)).toBeNull()

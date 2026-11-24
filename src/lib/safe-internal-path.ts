@@ -6,6 +6,8 @@
 const MAX_PATH = 512
 const MAX_QUERY = 128
 const PATH = /^\/[A-Za-z0-9/_@.-]*$/
+/** The web app's page routes (src/app/(app)) plus the public profile paths. Never /auth, /api or any route outside this list. */
+const PAGES = new Set(['amigos', 'deudas', 'grupos', 'habitos', 'libros', 'listo', 'metas', 'notificaciones', 'perfil', 'registros', 'resumen', 'retos', 'series', 'u'])
 const QUERY = /^[A-Za-z0-9_=&.-]*$/
 
 /** `value` when it is a safe internal path, else null. */
@@ -17,5 +19,7 @@ export function safeInternalPath(value: unknown): string | null {
   if (path.length === 0 || path.length > MAX_PATH || query.length > MAX_QUERY) return null
   if (!PATH.test(path) || !QUERY.test(query)) return null
   if (path.includes('//') || path.split('/').some((s) => s === '.' || s === '..')) return null
+  const first = path.split('/')[1]
+  if (first !== '' && !first.startsWith('@') && !PAGES.has(first)) return null
   return value
 }

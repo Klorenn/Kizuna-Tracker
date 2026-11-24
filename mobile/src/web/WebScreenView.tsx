@@ -44,8 +44,9 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
     return (
       <AppWebView
         ref={webRef}
-        source={{ uri: state.url }}
-        originWhitelist={[origin]}
+        source={{ uri: state.url, headers: { "X-Kizuna-Native": "1" } }}
+        // "*" on purpose: with a narrower list the library opens non-matching urls with Linking itself, skipping the policy below
+        originWhitelist={["*"]}
         applicationNameForUserAgent={userAgentName}
         javaScriptEnabled
         domStorageEnabled

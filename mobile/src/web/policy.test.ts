@@ -12,10 +12,11 @@ describe("decideNavigation", () => {
     expect(decideNavigation("https://evil.com/x", O)).toEqual({ action: "external", url: "https://evil.com/x" });
     expect(decideNavigation("https://kizuna.example.evil.com/", O)).toEqual({ action: "external", url: "https://kizuna.example.evil.com/" });
     expect(decideNavigation("mailto:hola@kizuna.example", O)).toEqual({ action: "external", url: "mailto:hola@kizuna.example" });
+    expect(decideNavigation("https://site.kizuna.example.evil.com/", O).action).toBe("external");
     expect(decideNavigation("tel:+56911111111", O)).toEqual({ action: "external", url: "tel:+56911111111" });
   });
   it("blocks the origin over http, credentials in the url and every other scheme", () => {
-    for (const bad of ["http://kizuna.example/retos", "https://user:pw@kizuna.example/", "javascript:alert(1)", "file:///etc/hosts", "data:text/html,hi", "content://x/y", "intent://evil#Intent;end", "ftp://kizuna.example/", ""]) {
+    for (const bad of ["http://kizuna.example/retos", "https://user:pw@kizuna.example/", "javascript:alert(1)", "file:///etc/hosts", "data:text/html,hi", "content://x/y", "intent://evil#Intent;end", "ftp://kizuna.example/", "market://details?id=x", "sms:+56911111111", "https://kizuna.example@evil.com/", ""]) {
       expect(decideNavigation(bad, O)).toEqual({ action: "block" });
     }
   });

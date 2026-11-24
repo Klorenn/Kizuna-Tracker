@@ -16,8 +16,10 @@ describe("WebScreenView", () => {
 
   it("loads the handoff url with the hardened WebView flags and the native UA marker", async () => {
     await render(<WebScreenView {...base} state={ready} />);
-    expect(props().source).toEqual({ uri: ready.url });
-    expect(props().originWhitelist).toEqual([O]);
+    // the header (with the UA marker) is what lets the web accept the handoff: a browser cannot send it
+    expect(props().source).toEqual({ uri: ready.url, headers: { "X-Kizuna-Native": "1" } });
+    // "*": the library would otherwise hand non-matching urls straight to Linking, skipping decideNavigation (the only gate)
+    expect(props().originWhitelist).toEqual(["*"]);
     expect(props().applicationNameForUserAgent).toBe("KizunaNative/1");
     expect(props().setSupportMultipleWindows).toBe(false);
     expect(props().allowFileAccess).toBe(false);

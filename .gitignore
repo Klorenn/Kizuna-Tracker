@@ -42,3 +42,6 @@ next-env.d.ts
 /mobile/coverage/
 credentials.json
 google-services.json
+
+# local pg_dump files of production
+/konjo-pre-0025*
