@@ -60,3 +60,12 @@ describe('watchStep (Hoy celebration watcher)', () => {
     expect(watchStep(open, closed, deps({ reading: null })).show).toEqual({ kind: 'day', reading: null })
   })
 })
+
+describe('watchStep with water', () => {
+  it('shows water when it completes and the day stays open; claimed water falls through to nothing', () => {
+    const before = s([r('w', 'water', false), r('b', 'read', false)])
+    const after = s([r('w', 'water', true), r('b', 'read', false)])
+    expect(watchStep(before, after, deps()).show).toEqual({ kind: 'water', reading: null })
+    expect(watchStep(before, after, deps({ claimed: ['water'] })).show).toBeNull()
+  })
+})

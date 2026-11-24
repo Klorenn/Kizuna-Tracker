@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   celebratedHabit,
   completedMealsHabit,
+  waterGoalBody,
   type Celebration,
   type DayProgress,
   type HoyRowState,
@@ -25,6 +26,7 @@ const COPY = {
   day: { title: "Día completo", body: "Completaste todos tus hábitos de hoy.", asset: "jump" },
   meals: { title: "Comidas del día completas", body: "Marcaste todas tus comidas de hoy.", asset: "eat" },
   rest: { title: "Descanso registrado", body: "Marcaste tu descanso de hoy.", asset: "sleep" },
+  water: { title: "¡Meta de agua cumplida!", body: "Bien hidratado hoy 💧", asset: "jump" },
   study: { title: "Estudio registrado", body: "Marcaste tu estudio de hoy.", asset: "code" },
 } as const satisfies Record<string, { title: string; body: string; asset: CatAsset }>;
 export type CelebrationKind = keyof typeof COPY;
@@ -34,12 +36,16 @@ export function DayCompleteSheet({
   kind,
   open,
   onClose,
+  waterTarget,
 }: {
   kind: CelebrationKind;
   open: boolean;
   onClose: () => void;
+  /** the water habit's goal in ml, for the subtitle */
+  waterTarget?: number;
 }) {
-  const { title, body, asset } = COPY[kind];
+  const { title, body: base, asset } = COPY[kind];
+  const body = kind === "water" ? waterGoalBody(waterTarget) : base;
   return (
     <CelebrationSheet open={open} title={title} asset={asset} onClose={onClose}>
       <p className="text-body text-muted">{body}</p>
@@ -54,7 +60,7 @@ function claim(kind: Celebration, before: HoyState, next: HoyState, today: Local
   const scope =
     kind === "meals"
       ? (completedMealsHabit(before, next) ?? "meals")
-      : kind === "rest" || kind === "study"
+      : kind === "rest" || kind === "water" || kind === "study"
         ? (celebratedHabit(kind, before, next) ?? kind)
         : "day";
   return claimCelebration(sessionStore(), celebrationKey(kind, scope, today));
@@ -106,5 +112,6 @@ export function DayCompleteWatcher({
   if (!armed) return null;
   if (kind === "book") return <BookDoneSheet open={open} title={reading?.finishedTitle ?? ""} onClose={close} />;
   if (kind === "reading") return <ReadingDoneSheet open={open} pages={reading?.pages ?? 0} onClose={close} />;
-  return <DayCompleteSheet kind={kind} open={open} onClose={close} />;
+  const waterTarget = rows.find((r) => r.preset === "water")?.target;
+  return <DayCompleteSheet kind={kind} open={open} onClose={close} waterTarget={waterTarget} />;
 }

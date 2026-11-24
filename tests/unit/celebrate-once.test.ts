@@ -77,3 +77,13 @@ describe('startWhenReady', () => {
     expect(start).not.toHaveBeenCalled()
   })
 })
+
+describe('water claim', () => {
+  it('is claimed once per habit per day', () => {
+    const s = memory()
+    expect(claimCelebration(s, celebrationKey('water', 'w1', '2026-11-22'))).toBe(true)
+    expect(claimCelebration(s, celebrationKey('water', 'w1', '2026-11-22'))).toBe(false)
+    expect(claimCelebration(s, celebrationKey('water', 'w1', '2026-11-23'))).toBe(true)
+    expect(claimCelebration(s, celebrationKey('water', 'w2', '2026-11-22'))).toBe(true)
+  })
+})

@@ -154,6 +154,7 @@ export default async function Home() {
               hasItems: r.items.length > 0,
               done: r.done,
               icon: r.icon,
+              target: r.quantity?.config.unit === "ml" ? r.quantity.config.target : undefined,
             }))}
           />
           <CatPreload

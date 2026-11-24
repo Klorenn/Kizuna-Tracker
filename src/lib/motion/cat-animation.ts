@@ -136,7 +136,7 @@ export function startWhenReady(load: (ready: () => void) => void, fallbackMs: nu
 }
 
 /**
- * GIFs Hoy may celebrate with: jump (day complete, book finished), eat (item meals), lift (gym),
+ * GIFs Hoy may celebrate with: jump (day complete, book finished, water goal), eat (item meals), lift (gym),
  * read (reading saved), sleep (Dormir 8 h), code (study habits).
  */
 export function hoyCatAssets(

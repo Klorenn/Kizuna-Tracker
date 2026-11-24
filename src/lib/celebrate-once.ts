@@ -3,7 +3,7 @@ import { CAT_ASSETS, type CatAsset } from '@/lib/motion/cat-animation'
 /** Extra time after the cat's single pass before a celebration sheet closes by itself. */
 export const CELEBRATION_TAIL_MS = 500
 
-export type CelebrationOnce = 'workout' | 'day' | 'meals' | 'rest' | 'study'
+export type CelebrationOnce = 'workout' | 'day' | 'meals' | 'rest' | 'water' | 'study'
 
 /** One celebration per (kind, habit or "day", local date) per browser session. */
 export function celebrationKey(kind: CelebrationOnce, scope: string, date: string): string {

@@ -43,8 +43,8 @@ describe("pickCelebration", () => {
   const read1 = row("r", "read", false, true);
   const eat0 = row("e", "eat_well", true, false);
   const eat1 = row("e", "eat_well", true, true);
-  const other0 = row("o", "water", true, false);
-  const other1 = row("o", "water", true, true);
+  const other0 = row("o", "walk", true, false);
+  const other1 = row("o", "walk", true, true);
 
   it("never celebrates on first render", () => {
     expect(pickCelebration(null, state([read1, eat1]))).toBeNull();
@@ -158,5 +158,58 @@ describe('celebrationCandidates', () => {
     const after = s([r('a', null, true)])
     expect(celebrationCandidates(null, after)).toEqual([])
     expect(celebrationCandidates(s([r('a', null, false)]), after, { gymSheet: true })).toEqual([])
+  })
+})
+
+import { isWaterHabit, waterGoalBody } from '@/domain/day-complete'
+
+describe('water goal celebration', () => {
+  type R = { id: string; preset: string | null; hasItems: boolean; done: boolean; icon?: string; target?: number }
+  const w = (done: boolean): R => ({ id: 'w', preset: 'water', hasItems: false, done })
+  const walk = (done: boolean): R => ({ id: 'k', preset: 'walk', hasItems: false, done })
+  const read0: R = { id: 'r', preset: 'read', hasItems: false, done: false }
+  const st = (rows: R[]): HoyState => ({ done: rows.filter((x) => x.done).length, total: rows.length, rows })
+
+  it('water open -> done fires "water" when the day stays open', () => {
+    expect(pickCelebration(st([w(false), read0]), st([w(true), read0]))).toBe('water')
+  })
+  it('first render never fires water', () => {
+    expect(pickCelebration(null, st([w(true), read0]))).toBeNull()
+    expect(celebrationCandidates(null, st([w(true), read0]))).toEqual([])
+  })
+  it('does not fire for other quantity presets', () => {
+    expect(pickCelebration(st([walk(false), read0]), st([walk(true), read0]))).toBeNull()
+  })
+  it('does not fire when water was already done or on undo', () => {
+    expect(pickCelebration(st([w(true), read0]), st([w(true), read0]))).toBeNull()
+    expect(pickCelebration(st([w(true), read0]), st([w(false), read0]))).toBeNull()
+  })
+  it('day wins when water completes the last habit (water stays a lower candidate)', () => {
+    expect(pickCelebration(st([w(false)]), st([w(true)]))).toBe('day')
+    expect(celebrationCandidates(st([w(false)]), st([w(true)]))).toEqual(['day', 'water'])
+  })
+  it('sits after meals and rest, before study and reading', () => {
+    const sleep = (d: boolean): R => ({ id: 's', preset: 'sleep', hasItems: false, done: d })
+    const study = (d: boolean): R => ({ id: 't', preset: 'study', hasItems: false, done: d })
+    expect(
+      celebrationCandidates(st([sleep(false), w(false), study(false), read0]), st([sleep(true), w(true), study(true), read0]), {
+        reading: { pages: 3, finishedTitle: null },
+      }),
+    ).toEqual(['rest', 'water', 'study', 'reading'])
+  })
+  it('names the water habit (scope of its once-per-day claim)', () => {
+    expect(celebratedHabit('water', st([w(false), read0]), st([w(true), read0]))).toBe('w')
+  })
+  it('isWaterHabit is the Agua preset only', () => {
+    expect(isWaterHabit({ preset: 'water' })).toBe(true)
+    expect(isWaterHabit({ preset: 'walk' })).toBe(false)
+  })
+  it('body shows the real target, generic when unknown', () => {
+    expect(waterGoalBody(2000)).toBe('2 litros hoy 💧')
+    expect(waterGoalBody(1000)).toBe('1 litro hoy 💧')
+    expect(waterGoalBody(2500)).toBe('2,5 litros hoy 💧')
+    expect(waterGoalBody(750)).toBe('750 ml hoy 💧')
+    expect(waterGoalBody(undefined)).toBe('Bien hidratado hoy 💧')
+    expect(waterGoalBody(0)).toBe('Bien hidratado hoy 💧')
   })
 })

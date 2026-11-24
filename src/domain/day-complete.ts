@@ -14,7 +14,8 @@ export function shouldCelebrateDay(
   return next.total > 0 && prev.total === next.total && prev.done < prev.total && next.done === next.total;
 }
 
-export type HoyRowState = { id: string; preset: string | null; hasItems: boolean; done: boolean; icon?: string };
+/** `target` is a quantity habit's goal in ml (water only); absent when unknown or in another unit. */
+export type HoyRowState = { id: string; preset: string | null; hasItems: boolean; done: boolean; icon?: string; target?: number };
 
 /** Picker icons that mean study or desk work (the "Estudiar" preset uses book-open). */
 export const STUDY_ICONS: readonly string[] = ["laptop", "desk"];
@@ -27,6 +28,19 @@ export function isRestHabit(r: { preset: string | null; icon?: string }): boolea
 /** Study or work moment: the "Estudiar" preset or a laptop/desk icon (typing cat). */
 export function isStudyHabit(r: { preset: string | null; icon?: string }): boolean {
   return r.preset === "study" || (r.icon !== undefined && STUDY_ICONS.includes(r.icon));
+}
+
+/** Water moment: the "Agua" preset (quantity habit; other quantity habits never celebrate). */
+export function isWaterHabit(r: { preset: string | null }): boolean {
+  return r.preset === "water";
+}
+
+/** Celebration subtitle with the real daily goal in ml; generic when the target is unknown. */
+export function waterGoalBody(targetMl: number | undefined): string {
+  if (!targetMl || !Number.isFinite(targetMl) || targetMl <= 0) return "Bien hidratado hoy 💧";
+  if (targetMl < 1000) return `${Math.round(targetMl)} ml hoy 💧`;
+  const l = Math.round((targetMl / 1000) * 100) / 100;
+  return `${String(l).replace(".", ",")} ${l === 1 ? "litro" : "litros"} hoy 💧`;
 }
 
 /** Id of the first row matching `pred` that went from open to done. */
@@ -56,12 +70,12 @@ export function completedMealsHabit(prev: HoyState, next: HoyState): string | nu
 /** What a reading sheet saved from Hoy: pages read and the title of the book it finished, if any. */
 export type ReadingSaved = { pages: number; finishedTitle: string | null };
 
-export type Celebration = "book" | "day" | "meals" | "rest" | "study" | "reading";
+export type Celebration = "book" | "day" | "meals" | "rest" | "water" | "study" | "reading";
 
 /**
  * Which celebration to show after Hoy refreshed, never two at once. Priority: gym sheet (lift,
  * owned by the photo flow: null here) > book finished (jump) > day complete (jump) > meals complete
- * (eat) > rest, "Dormir 8 h" (sleep) > study (code) > reading saved (read). `prev` null (first
+ * (eat) > rest, "Dormir 8 h" (sleep) > water goal (jump) > study (code) > reading saved (read). `prev` null (first
  * render) never celebrates.
  */
 export function pickCelebration(
@@ -87,12 +101,13 @@ export function celebrationCandidates(
   if (shouldCelebrateDay(prev, next)) out.push("day");
   if (mealsJustCompleted(prev, next)) out.push("meals");
   if (justDone(prev, next, isRestHabit)) out.push("rest");
+  if (justDone(prev, next, isWaterHabit)) out.push("water");
   if (justDone(prev, next, isStudyHabit)) out.push("study");
   if (opts.reading) out.push("reading");
   return out;
 }
 
-/** The habit behind a rest or study celebration (scope of its once-per-day claim). */
-export function celebratedHabit(kind: "rest" | "study", prev: HoyState, next: HoyState): string | null {
-  return justDone(prev, next, kind === "rest" ? isRestHabit : isStudyHabit);
+/** The habit behind a rest, water or study celebration (scope of its once-per-day claim). */
+export function celebratedHabit(kind: "rest" | "water" | "study", prev: HoyState, next: HoyState): string | null {
+  return justDone(prev, next, kind === "rest" ? isRestHabit : kind === "water" ? isWaterHabit : isStudyHabit);
 }
