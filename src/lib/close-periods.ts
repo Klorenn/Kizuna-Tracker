@@ -1,21 +1,27 @@
 import { localDate } from '@/domain/dates'
-import { evaluatePeriod, isPeriodClosable, periodsFor, type Period } from '@/domain/challenges'
-import type { Frequency, LocalDate } from '@/domain/types'
+import {
+  evaluateItems,
+  isPeriodClosable,
+  itemAppliesTo,
+  periodsFor,
+  type ChallengeItemSpec,
+  type Period,
+} from '@/domain/challenges'
+import type { LocalDate } from '@/domain/types'
 import { closeDueGroupWeeks, isMissingFunction, type GroupsClient } from '@/lib/groups-rpc'
 
 export type ActiveChallenge = {
   id: string
   creatorId: string
   rivalId: string
-  creatorHabitId: string
-  rivalHabitId: string
-  frequency: Frequency
+  /** The period unit of the whole challenge; every item shares it (each item has its own weekly target). */
+  frequencyType: 'daily' | 'weekly'
   weeks: number
   fineAmount: number
   startsOn: LocalDate
   timezone: string
-  /** Only photo check-ins count: a day completed through steps (no photo, not rejectable) does not. */
-  requiresPhoto: boolean
+  /** The ACTIVE sub-retos (challenge_items). Photo items count only photo check-ins (a day done through steps does not). */
+  items: ChallengeItemSpec[]
   /** Set when the challenge was cancelled/unfriended after it started; only periods that ended before it still count. */
   cancelledAt: Date | null
 }
@@ -26,6 +32,17 @@ export type NewDebt = {
   debtorId: string
   creditorId: string
   amount: number
+}
+
+/** One row of challenge_item_results: how a player did on one item in one closed period. */
+export type NewItemResult = {
+  challengeId: string
+  periodStart: LocalDate
+  itemId: string
+  playerId: string
+  met: boolean
+  done: number
+  needed: number
 }
 
 export interface ClosePeriodsRepo {
@@ -43,6 +60,8 @@ export interface ClosePeriodsRepo {
     from: LocalDate,
     to: LocalDate,
   ): Promise<{ habitId: string; localDate: LocalDate; createdAt: Date }[]>
+  /** Insert-if-absent on (challenge, period, item, player). Never overwrites, so a rerun is a no-op. */
+  insertItemResults(rows: NewItemResult[]): Promise<void>
   /** Insert-if-absent. Resolves true only when this call inserted the row. */
   insertPeriod(challengeId: string, period: Period, closedAt: Date): Promise<boolean>
   /** Insert-if-absent. Resolves true only when this call inserted the row. */
@@ -55,9 +74,11 @@ export interface ClosePeriodsRepo {
 
 /**
  * Closes every challenge period that is over (and whose photos can no longer be rejected),
- * turning failures into debts. Safe to re-run: debts go in first (unique per
+ * turning failures into debts. Every active item (sub-reto) is evaluated per player and a
+ * player who misses ANY of them owes ONE debt for the period. Safe to re-run: item results go
+ * in first (unique per challenge/period/item/player), then the debts (unique per
  * challenge/period/debtor) and the period row last, so a crash in between is repaired by
- * the next run without duplicating debts. Tradeoff: if the run dies after a debt is inserted
+ * the next run without duplicating anything. Tradeoff: if the run dies after a debt is inserted
  * but before its notification is, the retry sees the debt as already present and the
  * `new_debt` notification is lost (the debt itself is never lost).
  *
@@ -88,14 +109,14 @@ export async function closeDuePeriods(
 async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: Date) {
   let closed = 0
   let debtsCreated = 0
-  const periods = periodsFor(c.startsOn, c.weeks, c.frequency)
+  if (c.items.length === 0) return { closed, debtsCreated } // an active challenge always has items; never bill on none
+  const periods = periodsFor(c.startsOn, c.weeks, c.frequencyType === 'daily' ? { type: 'daily' } : { type: 'weekly', target: 1 })
   const done = new Set(await repo.closedPeriodStarts(c.id))
   const today = localDate(now, c.timezone)
   const cutoff = c.cancelledAt ? localDate(c.cancelledAt, c.timezone) : null
 
   type Loaded = {
-    creator: LocalDate[]
-    rival: LocalDate[]
+    datesByItem: Map<string, { creator: LocalDate[]; rival: LocalDate[] }>
     photos: { habitId: string; localDate: LocalDate; createdAt: Date }[]
   }
   let loaded: Loaded | null = null
@@ -103,17 +124,27 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     if (loaded) return loaded
     const from = periods[0].start
     const to = periods[periods.length - 1].end
-    const photos = await repo.photoCheckins([c.creatorHabitId, c.rivalHabitId], from, to)
-    if (c.requiresPhoto) {
-      // a photo challenge is met only with photos the rival could see and reject
-      const datesOf = (habitId: string) => photos.filter((k) => k.habitId === habitId).map((k) => k.localDate)
-      return (loaded = { creator: datesOf(c.creatorHabitId), rival: datesOf(c.rivalHabitId), photos })
+    // one photo read for every habit of every item; photo items are counted from it
+    const photos = await repo.photoCheckins(
+      c.items.flatMap((i) => [i.creatorHabitId, i.rivalHabitId]),
+      from,
+      to,
+    )
+    const datesOf = (habitId: string) => photos.filter((k) => k.habitId === habitId).map((k) => k.localDate)
+    const datesByItem = new Map<string, { creator: LocalDate[]; rival: LocalDate[] }>()
+    for (const i of c.items) {
+      if (i.requiresPhoto) {
+        // a photo item is met only with photos the rival could see and reject
+        datesByItem.set(i.id, { creator: datesOf(i.creatorHabitId), rival: datesOf(i.rivalHabitId) })
+        continue
+      }
+      const [creator, rival] = await Promise.all([
+        repo.checkinDates(i.creatorHabitId, from, to),
+        repo.checkinDates(i.rivalHabitId, from, to),
+      ])
+      datesByItem.set(i.id, { creator, rival })
     }
-    const [creator, rival] = await Promise.all([
-      repo.checkinDates(c.creatorHabitId, from, to),
-      repo.checkinDates(c.rivalHabitId, from, to),
-    ])
-    return (loaded = { creator, rival, photos })
+    return (loaded = { datesByItem, photos })
   }
 
   for (const period of periods) {
@@ -122,15 +153,31 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
     if (done.has(period.start)) continue
 
     const data = await load()
+    // only the items that count in this period can hold it open (a photo of a not-yet-started item cannot)
+    const habits = new Set(c.items.filter((i) => itemAppliesTo(i, period)).flatMap((i) => [i.creatorHabitId, i.rivalHabitId]))
     const photoTimes = data.photos
-      .filter((k) => k.localDate >= period.start && k.localDate <= period.end)
+      .filter((k) => habits.has(k.habitId) && k.localDate >= period.start && k.localDate <= period.end)
       .map((k) => k.createdAt)
     if (!isPeriodClosable(period, c.timezone, now, photoTimes)) continue
 
-    const { creatorFailed, rivalFailed } = evaluatePeriod(period, c.frequency, data.creator, data.rival)
-    const owed: { debtorId: string; creditorId: string }[] = []
-    if (creatorFailed) owed.push({ debtorId: c.creatorId, creditorId: c.rivalId })
-    if (rivalFailed) owed.push({ debtorId: c.rivalId, creditorId: c.creatorId })
+    const { creatorFailed, rivalFailed, results } = evaluateItems(period, c.items, data.datesByItem)
+    if (results.length > 0) {
+      // written first, like the debts: a crash before the period row is repaired by the rerun (insert-if-absent)
+      await repo.insertItemResults(
+        results.map((r) => ({
+          challengeId: c.id,
+          periodStart: period.start,
+          itemId: r.itemId,
+          playerId: r.side === 'creator' ? c.creatorId : c.rivalId,
+          met: r.met,
+          done: r.done,
+          needed: r.needed,
+        })),
+      )
+    }
+    const owed: { debtorId: string; creditorId: string; side: 'creator' | 'rival' }[] = []
+    if (creatorFailed) owed.push({ debtorId: c.creatorId, creditorId: c.rivalId, side: 'creator' })
+    if (rivalFailed) owed.push({ debtorId: c.rivalId, creditorId: c.creatorId, side: 'rival' })
 
     for (const o of owed) {
       const inserted = await repo.insertDebt({
@@ -147,6 +194,7 @@ async function closeChallenge(repo: ClosePeriodsRepo, c: ActiveChallenge, now: D
         period_start: period.start,
         creditor_id: o.creditorId,
         amount: c.fineAmount,
+        item_ids: results.filter((r) => r.side === o.side && !r.met).map((r) => r.itemId),
       })
     }
 

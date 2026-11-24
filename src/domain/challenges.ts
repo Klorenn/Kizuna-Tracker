@@ -41,6 +41,88 @@ export function evaluatePeriod(
   }
 }
 
+/** One sub-reto (a row of challenge_items) as the cron sees it: only active items reach the domain. */
+export type ChallengeItemSpec = {
+  id: string
+  creatorHabitId: string
+  rivalHabitId: string
+  /** The challenge's period unit with this item's own weekly target. */
+  frequency: Frequency
+  /** Only non-rejected photo check-ins count for this item. */
+  requiresPhoto: boolean
+  /** The item counts only from the period that starts on or after this date. */
+  startsOn: LocalDate
+}
+
+export type ItemResult = { itemId: string; side: 'creator' | 'rival'; met: boolean; done: number; needed: number }
+
+/** An item added mid-challenge does not count in periods that started before its own start. */
+export function itemAppliesTo(item: ChallengeItemSpec, period: Period): boolean {
+  return item.startsOn <= period.start
+}
+
+/**
+ * Evaluates every item that applies to the period, per player. A player fails the period if they miss ANY applicable
+ * item; with no applicable item nobody fails. `results` holds one row per applicable item and side (done/needed are
+ * stored so history survives later check-in deletions).
+ */
+export function evaluateItems(
+  period: Period,
+  items: ChallengeItemSpec[],
+  datesByItem: Map<string, { creator: LocalDate[]; rival: LocalDate[] }>,
+): { creatorFailed: boolean; rivalFailed: boolean; results: ItemResult[] } {
+  const results: ItemResult[] = []
+  let creatorFailed = false
+  let rivalFailed = false
+  for (const item of items) {
+    if (!itemAppliesTo(item, period)) continue
+    const d = datesByItem.get(item.id) ?? { creator: [], rival: [] }
+    const needed = item.frequency.type === 'daily' ? 1 : item.frequency.target
+    for (const side of ['creator', 'rival'] as const) {
+      const done = new Set(d[side].filter((x) => x >= period.start && x <= period.end)).size
+      const met = !failed(period, item.frequency, d[side])
+      results.push({ itemId: item.id, side, met, done, needed })
+      if (!met) {
+        if (side === 'creator') creatorFailed = true
+        else rivalFailed = true
+      }
+    }
+  }
+  return { creatorFailed, rivalFailed, results }
+}
+
+function daysBetween(from: LocalDate, to: LocalDate): number {
+  const t = (d: LocalDate) => {
+    const [y, m, day] = d.split('-').map(Number)
+    return Date.UTC(y, m - 1, day)
+  }
+  return Math.round((t(to) - t(from)) / 86_400_000)
+}
+
+/**
+ * First period boundary strictly after `today` (the challenge's local date), never before the challenge start; null
+ * when no whole period is left. Mirror of the SQL `next_item_start(challenge)`; keep both in sync.
+ * Daily: tomorrow (the last day is the latest start). Weekly: the next Monday-aligned period start.
+ */
+export function nextItemStart(
+  startsOn: LocalDate,
+  weeks: number,
+  type: Frequency['type'],
+  today: LocalDate,
+): LocalDate | null {
+  let start: LocalDate
+  let last: LocalDate
+  if (type === 'daily') {
+    start = addDays(today, 1)
+    last = addDays(startsOn, weeks * 7 - 1)
+  } else {
+    start = addDays(startsOn, 7 * Math.ceil(Math.max(daysBetween(startsOn, addDays(today, 1)), 0) / 7))
+    last = addDays(startsOn, (weeks - 1) * 7)
+  }
+  if (start < startsOn) start = startsOn
+  return start > last ? null : start
+}
+
 export function isPeriodClosable(
   period: Period,
   tz: string,
