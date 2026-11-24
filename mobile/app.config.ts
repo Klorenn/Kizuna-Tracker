@@ -24,7 +24,8 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
-  runtimeVersion: { policy: "fingerprint" },
+  // appVersion, not fingerprint: the fingerprint depends on EAS-only env (google-services) and never matches locally.
+  runtimeVersion: { policy: "appVersion" },
   updates: { url: process.env.EAS_UPDATES_URL ?? `https://u.expo.dev/${EAS_PROJECT_ID}` },
   android: {
     package: IS_DEV ? "com.kizunatracker.app.dev" : "com.kizunatracker.app",

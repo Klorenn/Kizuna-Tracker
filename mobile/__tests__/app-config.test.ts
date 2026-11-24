@@ -6,8 +6,9 @@ describe("app.config", () => {
   it("keeps the TWA identity so the APK installs as an update over it", () => {
     expect(expo.android?.package).toBe("com.kizunatracker.app");
     // 1.1.0 / versionCode 4 is already published: bump by patch only
-    expect(expo.android?.versionCode).toBe(5);
-    expect(expo.version).toBe("1.1.1");
+    // native-release.sh bumps these on every release; only the invariants are pinned here
+    expect(expo.android?.versionCode).toBeGreaterThanOrEqual(5);
+    expect(expo.version).toMatch(/^1\.1\.\d+$/);
   });
   it("registers the kizuna:// scheme and a VIEW intent filter for it, with no https filter", () => {
     expect(expo.scheme).toBe("kizuna");
@@ -23,8 +24,8 @@ describe("app.config", () => {
     const entry = (expo.plugins as unknown[]).find((p) => Array.isArray(p) && p[0] === "expo-notifications") as [string, Record<string, unknown>] | undefined;
     expect(entry?.[1]).toMatchObject({ icon: "./assets/android-icon-monochrome.png" });
   });
-  it("uses the fingerprint runtime policy and the router plugin", () => {
-    expect(expo.runtimeVersion).toEqual({ policy: "fingerprint" });
+  it("uses the appVersion runtime policy (fingerprint differs between local and EAS) and the router plugin", () => {
+    expect(expo.runtimeVersion).toEqual({ policy: "appVersion" });
     expect(expo.plugins).toContain("expo-router");
     expect(expo.plugins).toContain("expo-secure-store");
     expect(expo.plugins).toContain("./plugins/with-kizuna-widget");

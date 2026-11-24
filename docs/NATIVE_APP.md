@@ -10,7 +10,7 @@ Resumen: `mobile/` es una app Expo (expo-router, TanStack Query) con la MISMA id
 - **Push**: tabla `device_push_tokens` + `expo_push_tickets` (`supabase/migrations/20261128090000_device_push_tokens.sql`), envio por Expo junto con VAPID, recibos en el cron de recordatorios.
 - **WebView**: Amigos, Retos, Resumen, Perfil y el resto van en WebView con handoff de sesion (`/api/m/web-session` -> `/auth/native-handoff`), allowlist estricta y "Sesion web expirada" tras un reintento.
 - **Widget**: modulo Android del repo inyectado por el plugin `mobile/plugins/with-kizuna-widget`. Abre `kizuna://app`; el pairing es `kizuna://widget/pair`.
-- **runtimeVersion**: politica `fingerprint` (`mobile/app.config.ts`). Cambia cuando cambia el codigo nativo.
+- **runtimeVersion**: politica `appVersion` (`mobile/app.config.ts`): los updates solo llegan a APKs con la misma `version`. La huella (`fingerprint`) se descarto porque difiere entre la maquina local y EAS.
 
 ## Canales EAS (`mobile/eas.json`)
 
@@ -41,7 +41,7 @@ Con `--dry-run` el commit del bump es temporal (EAS necesita verlo) y se deshace
 ./scripts/native-update.sh "fix: texto del boton"
 ```
 
-Publica en el canal `production`. Solo sirve para cambios de JS y assets. Si cambias algo nativo (un modulo nativo nuevo o actualizado, un config plugin, campos nativos de `app.config.ts`, permisos) el fingerprint cambia y los APK instalados NO reciben el update: hay que publicar un APK nuevo con `native-release.sh`. Para probar primero: `eas update --channel preview`, que solo llega a la beta.
+Publica en el canal `production`. Solo sirve para cambios de JS y assets. Si cambias algo nativo (un modulo nativo nuevo o actualizado, un config plugin, campos nativos de `app.config.ts`, permisos) hay que publicar un APK nuevo (que sube la version) y los APK instalados NO deben recibir ese update JS: hay que publicar un APK nuevo con `native-release.sh`. Para probar primero: `eas update --channel preview`, que solo llega a la beta.
 
 ## Rollback
 
