@@ -21,7 +21,6 @@ import type { createServerClient } from "@/lib/supabase/server";
 
 // Reading and books. Workout actions live in ./workout-actions.ts (Gym area).
 
-export type { ReadingInput };
 type Result = { ok: true } | { ok: false; error: string };
 type Client = Awaited<ReturnType<typeof createServerClient>>;
 

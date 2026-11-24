@@ -13,7 +13,6 @@ import { requireUser } from "@/lib/require-user";
 
 // Distance outings (cardio). Every write goes through the RPCs of 0018; none touches the check-in.
 
-export type { CardioInput };
 type Result = { ok: true } | { ok: false; error: string };
 
 const OUTING_LOST = CARDIO_OUTING_LOST;

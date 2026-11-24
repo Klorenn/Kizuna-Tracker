@@ -22,7 +22,6 @@ import { loggedCoverage } from "@/lib/watch-coverage";
 // Series and movies: the titles library and the watch entry of a check-in. Every write of an
 // entry goes through the RPCs of 0018; titles use their own table with column grants.
 
-export type { WatchInput };
 type Result = { ok: true } | { ok: false; error: string };
 
 const FUTURE = WATCH_FUTURE;

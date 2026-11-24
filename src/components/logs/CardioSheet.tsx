@@ -8,8 +8,9 @@ import {
   checkInWithCardio,
   lastCardio,
   updateCardio,
-  type CardioInput,
+
 } from "@/app/(app)/registros/cardio-actions";
+import type { CardioInput } from "@/lib/cardio-copy";
 import { Button } from "@/components/ui/Button";
 import { Chip } from "@/components/ui/Chip";
 import { Input } from "@/components/ui/Input";

@@ -17,7 +17,8 @@
 import { Minus, Plus, Warning } from "@phosphor-icons/react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
-import { checkInWithWatch, deleteWatch, saveWatch, type WatchInput } from "@/app/(app)/registros/watch-actions";
+import { checkInWithWatch, deleteWatch, saveWatch } from "@/app/(app)/registros/watch-actions";
+import type { WatchInput } from "@/lib/watch-copy";
 import type { PickerMedia } from "@/app/(app)/series/media-data";
 import { Button } from "@/components/ui/Button";
 import { Checkbox } from "@/components/ui/Checkbox";
