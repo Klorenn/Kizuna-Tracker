@@ -16,6 +16,13 @@
       "distribution": "internal",
       "channel": "preview"
     },
+    "dev-preview": {
+      "extends": "preview",
+      "distribution": "internal",
+      "credentialsSource": "remote",
+      "android": { "buildType": "apk" },
+      "env": { "APP_VARIANT": "dev" }
+    },
     "production": {
       "extends": "base",
       "channel": "production"

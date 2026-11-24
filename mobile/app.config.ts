@@ -8,19 +8,26 @@ import type { ConfigContext, ExpoConfig } from "expo/config";
 // Public id of @kl0ren/kizuna on EAS (not a secret); EAS_PROJECT_ID env overrides it.
 const EAS_PROJECT_ID = "771483b4-e9ea-4113-90b0-ad3b15473879";
 
+/**
+ * `APP_VARIANT=dev` builds "Kizuna Dev": another package and scheme, so it installs next to the production app.
+ * Everything else (updates url, projectId, version) is shared.
+ */
+const IS_DEV = process.env.APP_VARIANT === "dev";
+const SCHEME = IS_DEV ? "kizuna-dev" : "kizuna";
+
 export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
-  name: "Kizuna",
+  name: IS_DEV ? "Kizuna Dev" : "Kizuna",
   slug: "kizuna",
   version: "1.1.0",
-  scheme: "kizuna",
+  scheme: SCHEME,
   orientation: "portrait",
   icon: "./assets/icon.png",
   userInterfaceStyle: "automatic",
   runtimeVersion: { policy: "fingerprint" },
   updates: { url: process.env.EAS_UPDATES_URL ?? `https://u.expo.dev/${EAS_PROJECT_ID}` },
   android: {
-    package: "com.kizunatracker.app",
+    package: IS_DEV ? "com.kizunatracker.app.dev" : "com.kizunatracker.app",
     versionCode: 4,
     adaptiveIcon: {
       backgroundColor: "#FAFAFA",
@@ -30,7 +37,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
     },
     googleServicesFile: process.env.GOOGLE_SERVICES_JSON,
     // kizuna:// only. No https filter and no autoVerify: https links stay with the TWA/browser during the transition.
-    intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: "kizuna" }] }],
+    intentFilters: [{ action: "VIEW", category: ["BROWSABLE", "DEFAULT"], data: [{ scheme: SCHEME }] }],
   },
   plugins: ["expo-router", "expo-secure-store", "./plugins/with-kizuna-widget"],
   extra: { eas: { projectId: process.env.EAS_PROJECT_ID ?? EAS_PROJECT_ID } },
