@@ -87,42 +87,11 @@ npx --yes "$BUBBLEWRAP" build --manifest="./$MANIFEST" \
   --signingKeyPath="$KEYSTORE_PATH" --signingKeyAlias="$KEY_ALIAS" </dev/null
 [[ -f app-release-signed.apk ]] || die "build did not produce app-release-signed.apk"
 
-echo "==> Verifying signature"
-CERT_OUT="$("$APKSIGNER" verify --verbose --print-certs app-release-signed.apk)"
-echo "$CERT_OUT" | rg -i "^Verifies|Verified using|SHA-256" || true
-HEX="$(echo "$CERT_OUT" | rg -i -o -r '$1' 'certificate SHA-256 digest: *([0-9a-f]+)' | head -1)"
-ACTUAL="$(node -p 'process.argv[1].toUpperCase().match(/../g).join(":")' "$HEX")"
-if [[ "${ANDROID_RELEASE_SKIP_FINGERPRINT:-0}" == "1" ]]; then
-  echo "WARNING: fingerprint check skipped (ANDROID_RELEASE_SKIP_FINGERPRINT=1, test only). Got: $ACTUAL"
-elif [[ "$ACTUAL" != "$EXPECTED_SHA256" ]]; then
-  die "certificate SHA-256 mismatch (wrong keystore?). Expected $EXPECTED_SHA256, got '$ACTUAL'. Aborting: this key would break updates and assetlinks."
-fi
+source "$ROOT/scripts/lib/apk-assert.sh"
+apk_assert_fingerprint "$APKSIGNER" app-release-signed.apk "$EXPECTED_SHA256"
 
-# The widget must survive the merge and R8. Runs in --dry-run too (before the APK is copied out).
-echo "==> Verifying the widget is in the APK"
-AAPT2="$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2"
-DEXDUMP="$SDK_ROOT/build-tools/$BUILD_TOOLS/dexdump"
-[[ -x "$AAPT2" && -x "$DEXDUMP" ]] || die "aapt2/dexdump not found in build-tools $BUILD_TOOLS"
-MERGED_XML="$("$AAPT2" dump xmltree --file AndroidManifest.xml app-release-signed.apk)" || die "aapt2 could not read the APK manifest"
-for pat in \
-  'name\(0x01010003\)="com\.kizunatracker\.widget\.KizunaWidgetProvider"' \
-  '"android\.appwidget\.action\.APPWIDGET_UPDATE"' \
-  '"android\.appwidget\.provider"' \
-  'name\(0x01010003\)="com\.kizunatracker\.widget\.WidgetSetupActivity"' \
-  'name\(0x01010003\)="android\.permission\.INTERNET"'; do
-  rg -q -- "$pat" <<<"$MERGED_XML" || die "merged manifest lacks: $pat"
-done
-# Capture first: `dexdump | rg -q` would die of SIGPIPE under pipefail.
-DEX_CLASSES="$("$DEXDUMP" app-release-signed.apk 2>/dev/null || true)"
-if ! rg -q "Class descriptor\\s+: 'Lcom/kizunatracker/widget/KizunaWidgetProvider;'" <<<"$DEX_CLASSES"; then
-  # dexdump may stop at the first dex of a multi-dex APK: scan every classes*.dex as a fallback.
-  # Into a temp file, never `unzip | rg -q`: rg exiting early would SIGPIPE unzip and pipefail turns that into a failure.
-  DEX_TMP="$(mktemp)"
-  unzip -p app-release-signed.apk 'classes*.dex' >"$DEX_TMP" || { rm -f "$DEX_TMP"; die "could not read classes*.dex from the APK"; }
-  rg -a -q 'Lcom/kizunatracker/widget/KizunaWidgetProvider;' "$DEX_TMP" \
-    || { rm -f "$DEX_TMP"; die "R8 removed the widget provider (check consumer-rules.pro)"; }
-  rm -f "$DEX_TMP"
-fi
+# Runs in --dry-run too (before the APK is copied out).
+apk_assert_widget "$SDK_ROOT/build-tools/$BUILD_TOOLS/aapt2" "$SDK_ROOT/build-tools/$BUILD_TOOLS/dexdump" app-release-signed.apk
 
 cp app-release-signed.apk "$ROOT/$APK_NAME"
 echo "==> APK ready: $ROOT/$APK_NAME"
