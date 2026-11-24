@@ -31,6 +31,9 @@ database has no tables yet (migrations not applied) or cannot be reached.
 
 Apply `supabase/migrations/0001` to `0021` in order, as the `postgres` role, to an empty project.
 
+Releases that change the schema may carry their own rollout order. Sub-retos (`challenge_items`, migration
+`20261125120000`) must be applied BEFORE the code deploy: see `docs/CHALLENGE_ITEMS.md`.
+
 Never apply `supabase/seed.sql` to production: it creates test users with a known password.
 Never run `supabase db reset --linked`, `supabase db push --include-seed` or
 `supabase config push` against the hosted project, and never run the end-to-end suite with
