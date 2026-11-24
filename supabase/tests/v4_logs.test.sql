@@ -38,10 +38,13 @@ grant execute on function tests.n(text), tests.today(), tests.denied(text), test
 -- A and B are accepted friends.
 insert into auth.users (id) values
   ('a1800000-0000-0000-0000-000000000001'),
-  ('a1800000-0000-0000-0000-000000000002');
+  ('a1800000-0000-0000-0000-000000000002'),
+  ('a1800000-0000-0000-0000-000000000003');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
   ('a1800000-0000-0000-0000-000000000001', 'v4_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
-  ('a1800000-0000-0000-0000-000000000002', 'v4_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago');
+  ('a1800000-0000-0000-0000-000000000002', 'v4_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  -- C is the rival of the second active challenge (one open challenge per pair)
+  ('a1800000-0000-0000-0000-000000000003', 'v4_c', 'C', 'Test', '1990-01-01', now(), 'America/Santiago');
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a1800000-0000-0000-0000-000000000001', 'a1800000-0000-0000-0000-000000000002', 'accepted');
 
@@ -74,13 +77,14 @@ insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility, log_type, quantity_unit, quantity_label, quantity_target, quantity_step) values
   ('b1800000-0000-0000-0000-000000000009', 'a1800000-0000-0000-0000-000000000001', 'Páginas', 'book', 'daily', 'friends', 'quantity', 'custom', 'páginas', 10, 1);
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
-  ('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Con pasos', 'book', 'daily', 'friends');
+  ('b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Con pasos', 'book', 'daily', 'friends'),
+  ('b1800000-0000-0000-0000-00000000000b', 'a1800000-0000-0000-0000-000000000003', 'Estudiar C', 'book', 'daily', 'friends');
 insert into public.habit_items (id, habit_id, user_id, label, position) values
   ('11800000-0000-0000-0000-000000000001', 'b1800000-0000-0000-0000-00000000000a', 'a1800000-0000-0000-0000-000000000001', 'Paso', 0);
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
-  ('c1800000-0000-0000-0000-000000000011', 'a1800000-0000-0000-0000-000000000001', 'a1800000-0000-0000-0000-000000000002',
-   'b1800000-0000-0000-0000-000000000009', 'b1800000-0000-0000-0000-000000000006', 'daily', null, false, 4, 1000,
+  ('c1800000-0000-0000-0000-000000000011', 'a1800000-0000-0000-0000-000000000001', 'a1800000-0000-0000-0000-000000000003',
+   'b1800000-0000-0000-0000-000000000009', 'b1800000-0000-0000-0000-00000000000b', 'daily', null, false, 4, 1000,
    'America/Santiago', 'active', tests.today());
 
 -- titles: A has a series and a movie, B has one

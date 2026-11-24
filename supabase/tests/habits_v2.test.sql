@@ -10,11 +10,16 @@ select plan(35);
 insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
   ('a0000000-0000-0000-0000-000000000002'),
-  ('a0000000-0000-0000-0000-000000000004');
+  ('a0000000-0000-0000-0000-000000000004'),
+  ('a0000000-0000-0000-0000-000000000005'),
+  ('a0000000-0000-0000-0000-000000000006');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at) values
   ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago', null),
-  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago', now());
+  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago', now()),
+  -- rivals of the second and third challenge: one open challenge per pair
+  ('a0000000-0000-0000-0000-000000000005', 'user_e', 'E', 'Test', '1990-01-01', now(), 'America/Santiago', null),
+  ('a0000000-0000-0000-0000-000000000006', 'user_f', 'F', 'Test', '1990-01-01', now(), 'America/Santiago', null);
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'accepted');
 
@@ -45,7 +50,9 @@ values ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-0000000
 insert into public.habits (id, user_id, name, icon, frequency_type, requires_photo, visibility) values
   ('b0000000-0000-0000-0000-000000000009', 'a0000000-0000-0000-0000-000000000001', 'Gym reto', 'barbell', 'daily', true, 'friends'),
   ('b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Con reto foto', 'book', 'daily', false, 'friends'),
-  ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Gym libre', 'barbell', 'daily', true, 'friends');
+  ('b0000000-0000-0000-0000-000000000011', 'a0000000-0000-0000-0000-000000000001', 'Gym libre', 'barbell', 'daily', true, 'friends'),
+  ('b0000000-0000-0000-0000-000000000012', 'a0000000-0000-0000-0000-000000000005', 'Rival E', 'barbell', 'daily', true, 'friends'),
+  ('b0000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000006', 'Rival F', 'barbell', 'daily', true, 'friends');
 insert into public.habit_items (id, habit_id, user_id, label, position, requires_photo) values
   ('f0000000-0000-0000-0000-000000000007', 'b0000000-0000-0000-0000-000000000010', 'a0000000-0000-0000-0000-000000000001', 'Paso', 0, false);
 -- legacy state (before 0014's activation guard): an active step smuggled onto a photo habit
@@ -55,10 +62,10 @@ insert into public.habit_items (id, habit_id, user_id, label, position, requires
 alter table public.habit_items enable trigger habit_items_activation_guard;
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone, status)
 values
-  ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
-   'b0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000007', 'daily', true, 4, 5000, 'America/Santiago', 'active'),
-  ('c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
-   'b0000000-0000-0000-0000-000000000010', 'b0000000-0000-0000-0000-000000000007', 'daily', true, 4, 5000, 'America/Santiago', 'proposed');
+  ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000005',
+   'b0000000-0000-0000-0000-000000000009', 'b0000000-0000-0000-0000-000000000012', 'daily', true, 4, 5000, 'America/Santiago', 'active'),
+  ('c0000000-0000-0000-0000-000000000003', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000006',
+   'b0000000-0000-0000-0000-000000000010', 'b0000000-0000-0000-0000-000000000013', 'daily', true, 4, 5000, 'America/Santiago', 'proposed');
 insert into storage.objects (bucket_id, name, owner) values
   ('proofs', 'a0000000-0000-0000-0000-000000000001/d0000000-0000-0000-0000-000000000001.jpg', 'a0000000-0000-0000-0000-000000000001'),
   ('proofs', 'a0000000-0000-0000-0000-000000000001/d0000000-0000-0000-0000-000000000002.jpg', 'a0000000-0000-0000-0000-000000000001');

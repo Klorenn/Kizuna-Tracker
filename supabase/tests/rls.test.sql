@@ -21,15 +21,19 @@ insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000001'),
   ('a0000000-0000-0000-0000-000000000002'),
   ('a0000000-0000-0000-0000-000000000003'),
-  ('a0000000-0000-0000-0000-000000000004');
+  ('a0000000-0000-0000-0000-000000000004'),
+  ('a0000000-0000-0000-0000-000000000005');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
   ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
   ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago'),
   ('a0000000-0000-0000-0000-000000000003', 'user_c', 'C', 'Test', '1990-01-01', now(), 'America/Santiago'),
-  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago');
+  ('a0000000-0000-0000-0000-000000000004', 'user_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  -- E is a second friend of B: A and B already share an open challenge (one open challenge per pair)
+  ('a0000000-0000-0000-0000-000000000005', 'user_e', 'E', 'Test', '1990-01-01', now(), 'America/Santiago');
 insert into public.friendships (requester_id, addressee_id, status) values
   ('a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002', 'accepted'),
-  ('a0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'pending');
+  ('a0000000-0000-0000-0000-000000000004', 'a0000000-0000-0000-0000-000000000001', 'pending'),
+  ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000005', 'accepted');
 insert into public.habits (id, user_id, name, icon, frequency_type, requires_photo) values
   ('b0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'Gym', 'barbell', 'daily', true),
   ('b0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000002', 'Gym', 'barbell', 'daily', true),
@@ -118,7 +122,7 @@ select throws_ok(
   '42501', null, 'cannot create a challenge with someone elses habit');
 select lives_ok(
   $$ insert into public.challenges (creator_id, rival_id, creator_habit_id, frequency_type, requires_photo, weeks, fine_amount, timezone)
-     values ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000002', 'daily', true, 4, 5000, 'America/Santiago') $$,
+     values ('a0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000005', 'b0000000-0000-0000-0000-000000000002', 'daily', true, 4, 5000, 'America/Santiago') $$,
   'friend can propose a challenge with own habit');
 select throws_ok($$ update public.debts set amount = 1 $$, '42501', null, 'creditor cannot change debt amount');
 select throws_ok($$ update public.debts set debtor_id = creditor_id $$, '42501', null, 'creditor cannot change debtor');

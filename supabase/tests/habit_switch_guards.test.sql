@@ -13,10 +13,15 @@ grant execute on function tests.today() to authenticated;
 
 insert into auth.users (id) values
   ('a2100000-0000-0000-0000-000000000001'),
-  ('a2100000-0000-0000-0000-000000000002');
+  ('a2100000-0000-0000-0000-000000000002'),
+  ('a2100000-0000-0000-0000-000000000003'),
+  ('a2100000-0000-0000-0000-000000000004');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone) values
   ('a2100000-0000-0000-0000-000000000001', 'sg_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago'),
-  ('a2100000-0000-0000-0000-000000000002', 'sg_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago');
+  ('a2100000-0000-0000-0000-000000000002', 'sg_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  -- one open challenge per pair: C is the rival of the proposed one, D of the active quantity one
+  ('a2100000-0000-0000-0000-000000000003', 'sg_c', 'C', 'Test', '1990-01-01', now(), 'America/Santiago'),
+  ('a2100000-0000-0000-0000-000000000004', 'sg_d', 'D', 'Test', '1990-01-01', now(), 'America/Santiago');
 
 -- habits of A (ids b21...NN); B owns the rival habits
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
@@ -34,18 +39,18 @@ insert into public.habits (id, user_id, name, icon, frequency_type, visibility, 
   ('b2100000-0000-0000-0000-00000000000b', 'a2100000-0000-0000-0000-000000000001', 'Agua sin check-in', 'drop', 'daily', 'friends', 'quantity', 'ml', 2000, 250);
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   ('b2100000-0000-0000-0000-000000000012', 'a2100000-0000-0000-0000-000000000002', 'Rival 2', 'book', 'daily', 'friends'),
-  ('b2100000-0000-0000-0000-000000000013', 'a2100000-0000-0000-0000-000000000002', 'Rival 3', 'book', 'daily', 'friends'),
+  ('b2100000-0000-0000-0000-000000000013', 'a2100000-0000-0000-0000-000000000003', 'Rival 3', 'book', 'daily', 'friends'),
   ('b2100000-0000-0000-0000-000000000014', 'a2100000-0000-0000-0000-000000000002', 'Rival 4', 'book', 'daily', 'friends'),
-  ('b2100000-0000-0000-0000-000000000018', 'a2100000-0000-0000-0000-000000000002', 'Rival 8', 'drop', 'daily', 'friends');
+  ('b2100000-0000-0000-0000-000000000018', 'a2100000-0000-0000-0000-000000000004', 'Rival 8', 'drop', 'daily', 'friends');
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
   ('c2100000-0000-0000-0000-000000000002', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000002',
    'b2100000-0000-0000-0000-000000000002', 'b2100000-0000-0000-0000-000000000012', 'daily', null, false, 4, 1000, 'America/Santiago', 'active', tests.today()),
-  ('c2100000-0000-0000-0000-000000000003', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000002',
+  ('c2100000-0000-0000-0000-000000000003', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000003',
    'b2100000-0000-0000-0000-000000000003', 'b2100000-0000-0000-0000-000000000013', 'daily', null, false, 4, 1000, 'America/Santiago', 'proposed', null),
   ('c2100000-0000-0000-0000-000000000004', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000002',
    'b2100000-0000-0000-0000-000000000004', 'b2100000-0000-0000-0000-000000000014', 'daily', null, false, 4, 1000, 'America/Santiago', 'finished', tests.today() - 40),
-  ('c2100000-0000-0000-0000-000000000008', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000002',
+  ('c2100000-0000-0000-0000-000000000008', 'a2100000-0000-0000-0000-000000000001', 'a2100000-0000-0000-0000-000000000004',
    'b2100000-0000-0000-0000-000000000008', 'b2100000-0000-0000-0000-000000000018', 'daily', null, false, 4, 1000, 'America/Santiago', 'active', tests.today());
 insert into public.checkins (habit_id, user_id, local_date) values
   ('b2100000-0000-0000-0000-000000000005', 'a2100000-0000-0000-0000-000000000001', tests.today()),

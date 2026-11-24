@@ -4,7 +4,7 @@ begin;
 truncate public.profiles cascade;
 delete from auth.users where email like '%@example.com';
 create extension if not exists pgtap with schema extensions;
-select plan(54);
+select plan(55);
 
 create schema tests;
 create function tests.n(q text) returns int language plpgsql as $f$
@@ -23,12 +23,15 @@ insert into auth.users (id) values
   ('a0000000-0000-0000-0000-000000000002'),
   ('a0000000-0000-0000-0000-000000000003'),
   ('a0000000-0000-0000-0000-000000000004'),
-  ('a0000000-0000-0000-0000-000000000005');
+  ('a0000000-0000-0000-0000-000000000005'),
+  ('a0000000-0000-0000-0000-000000000006');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at) values
   ('a0000000-0000-0000-0000-000000000001', 'user_a', 'A', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a0000000-0000-0000-0000-000000000002', 'user_b', 'B', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a0000000-0000-0000-0000-000000000003', 'user_c', 'C', 'Test', '1990-01-01', now(), 'America/Santiago', null),
-  ('a0000000-0000-0000-0000-000000000005', 'user_e', 'E', 'Test', '1990-01-01', now(), 'America/Santiago', null);
+  ('a0000000-0000-0000-0000-000000000005', 'user_e', 'E', 'Test', '1990-01-01', now(), 'America/Santiago', null),
+  -- G is the rival of the second open challenge of A (one open challenge per pair)
+  ('a0000000-0000-0000-0000-000000000006', 'user_g', 'G', 'Test', '1990-01-01', now(), 'America/Santiago', null);
 -- the reserved prefix is fine on a deleted row (that is what account deletion writes)
 select lives_ok($$ insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at)
   values ('a0000000-0000-0000-0000-000000000004', 'deleted_a00000000004', 'Cuenta', 'eliminada', null, now(), 'UTC', now()) $$,
@@ -46,7 +49,8 @@ insert into public.habits (id, user_id, name, icon, frequency_type, target_per_w
   ('b0000000-0000-0000-0000-000000000022', 'a0000000-0000-0000-0000-000000000003', 'Pasos', 'list', 'daily', null, false, 'friends', null),
   ('b0000000-0000-0000-0000-000000000031', 'a0000000-0000-0000-0000-000000000005', 'Agua', 'drop', 'daily', null, false, 'friends', null),
   ('b0000000-0000-0000-0000-000000000032', 'a0000000-0000-0000-0000-000000000005', 'Nadar', 'waves', 'weekly', 1, false, 'friends', null),
-  ('b0000000-0000-0000-0000-000000000033', 'a0000000-0000-0000-0000-000000000005', 'Viejo', 'moon', 'daily', null, false, 'friends', now());
+  ('b0000000-0000-0000-0000-000000000033', 'a0000000-0000-0000-0000-000000000005', 'Viejo', 'moon', 'daily', null, false, 'friends', now()),
+  ('b0000000-0000-0000-0000-000000000041', 'a0000000-0000-0000-0000-000000000006', 'Correr G', 'run', 'daily', null, false, 'friends', null);
 -- I4 path: a step is archived, then the habit starts asking for a photo
 insert into public.habit_items (id, habit_id, user_id, label, position, archived_at) values
   ('f0000000-0000-0000-0000-000000000013', 'b0000000-0000-0000-0000-000000000013', 'a0000000-0000-0000-0000-000000000002', 'Paso', 0, now());
@@ -56,8 +60,8 @@ insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
   ('c0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
    'b0000000-0000-0000-0000-000000000001', 'b0000000-0000-0000-0000-000000000013', 'weekly', 3, true, 4, 4500, 'America/Santiago', 'active', current_date - 3),
-  ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000002',
-   'b0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000012', 'daily', null, false, 2, 1000, 'America/Santiago', 'active', current_date - 3);
+  ('c0000000-0000-0000-0000-000000000002', 'a0000000-0000-0000-0000-000000000001', 'a0000000-0000-0000-0000-000000000006',
+   'b0000000-0000-0000-0000-000000000002', 'b0000000-0000-0000-0000-000000000041', 'daily', null, false, 2, 1000, 'America/Santiago', 'active', current_date - 3);
 insert into public.invites (inviter_id, code, expires_at) values
   ('a0000000-0000-0000-0000-000000000001', 'hardening-code', now() + interval '7 days');
 
@@ -78,6 +82,8 @@ set local role authenticated;
 select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000002","role":"authenticated"}', true);
 select is(public.remove_friend('a0000000-0000-0000-0000-000000000001'), true, 'remove_friend cancels even without a friendship row');
 select is(public.remove_friend('a0000000-0000-0000-0000-000000000001'), false, 'second call has nothing left to do');
+select set_config('request.jwt.claims', '{"sub":"a0000000-0000-0000-0000-000000000001","role":"authenticated"}', true);
+select is(public.remove_friend('a0000000-0000-0000-0000-000000000006'), true, 'the open challenge with the second rival is cancelled the same way');
 reset role;
 select is((select count(*)::int from public.challenges where status = 'cancelled' and cancelled_at is not null), 2,
   'both open challenges were cancelled and stamped');

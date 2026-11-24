@@ -39,7 +39,10 @@ insert into auth.users (id) values
   ('a2000000-0000-0000-0000-000000000005'),
   ('a2000000-0000-0000-0000-000000000006'),
   ('a2000000-0000-0000-0000-000000000007'),
-  ('a2000000-0000-0000-0000-000000000008');
+  ('a2000000-0000-0000-0000-000000000008'),
+  ('a2000000-0000-0000-0000-00000000000a'),
+  ('a2000000-0000-0000-0000-00000000000b'),
+  ('a2000000-0000-0000-0000-00000000000c');
 insert into public.profiles (id, username, first_name, last_name, birth_date, terms_accepted_at, timezone, deleted_at) values
   ('a2000000-0000-0000-0000-000000000001', 'fh_u1', 'U1', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a2000000-0000-0000-0000-000000000002', 'fh_u2', 'U2', 'Test', '1990-01-01', now(), 'Pacific/Honolulu', null),
@@ -48,7 +51,11 @@ insert into public.profiles (id, username, first_name, last_name, birth_date, te
   ('a2000000-0000-0000-0000-000000000005', 'fh_u5', 'U5', 'Test', '1990-01-01', now(), 'America/Santiago', null),
   ('a2000000-0000-0000-0000-000000000006', 'deleted_a20000000006', 'Cuenta', 'eliminada', null, now(), 'America/Santiago', now()),
   ('a2000000-0000-0000-0000-000000000007', 'fh_u7', 'U7', 'Test', '1990-01-01', now(), 'America/Santiago', null),
-  ('a2000000-0000-0000-0000-000000000008', 'fh_u8', 'U8', 'Test', '1990-01-01', now(), tests.noon_tz(), null);
+  ('a2000000-0000-0000-0000-000000000008', 'fh_u8', 'U8', 'Test', '1990-01-01', now(), tests.noon_tz(), null),
+  -- one rival per challenge of U1: only one open challenge is allowed per pair
+  ('a2000000-0000-0000-0000-00000000000a', 'fh_ua', 'UA', 'Test', '1990-01-01', now(), 'America/Santiago', null),
+  ('a2000000-0000-0000-0000-00000000000b', 'fh_ub', 'UB', 'Test', '1990-01-01', now(), 'America/Santiago', null),
+  ('a2000000-0000-0000-0000-00000000000c', 'fh_uc', 'UC', 'Test', '1990-01-01', now(), 'America/Santiago', null);
 
 -- time habits for the pomodoro cases
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility, preset, log_type) values
@@ -229,10 +236,10 @@ reset role;
 -- player is judged on their own check-ins, so deleting one can only make that player fail.
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   ('b2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', 'Termino sin cerrar', 'book', 'daily', 'friends'),
-  ('b2000000-0000-0000-0000-000000000025', 'a2000000-0000-0000-0000-000000000007', 'Termino sin cerrar rival', 'book', 'daily', 'friends');
+  ('b2000000-0000-0000-0000-000000000025', 'a2000000-0000-0000-0000-00000000000a', 'Termino sin cerrar rival', 'book', 'daily', 'friends');
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
-  ('c2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000007',
+  ('c2000000-0000-0000-0000-000000000024', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-00000000000a',
    'b2000000-0000-0000-0000-000000000024', 'b2000000-0000-0000-0000-000000000025', 'daily', null, false, 1, 1000,
    'America/Santiago', 'active', tests.today() - 9);
 insert into public.checkins (habit_id, user_id, local_date)
@@ -279,7 +286,7 @@ select set_config('request.jwt.claims', '', true);
 -- definer RPC: uncheck_item (steps). Habit S is in a challenge whose closed period includes today.
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   ('b2000000-0000-0000-0000-000000000031', 'a2000000-0000-0000-0000-000000000001', 'Con pasos', 'book', 'daily', 'friends'),
-  ('b2000000-0000-0000-0000-000000000032', 'a2000000-0000-0000-0000-000000000007', 'Con pasos rival', 'book', 'daily', 'friends'),
+  ('b2000000-0000-0000-0000-000000000032', 'a2000000-0000-0000-0000-00000000000b', 'Con pasos rival', 'book', 'daily', 'friends'),
   ('b2000000-0000-0000-0000-000000000033', 'a2000000-0000-0000-0000-000000000001', 'Pasos libres', 'book', 'daily', 'friends');
 insert into public.habit_items (id, habit_id, user_id, label, position) values
   ('12000000-0000-0000-0000-000000000031', 'b2000000-0000-0000-0000-000000000031', 'a2000000-0000-0000-0000-000000000001', 'Paso', 0),
@@ -293,7 +300,7 @@ reset role;
 select is((select count(*)::int from public.checkins where habit_id = 'b2000000-0000-0000-0000-000000000033'), 0, 'and its check-in goes away');
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
-  ('c2000000-0000-0000-0000-000000000031', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000007',
+  ('c2000000-0000-0000-0000-000000000031', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-00000000000b',
    'b2000000-0000-0000-0000-000000000031', 'b2000000-0000-0000-0000-000000000032', 'daily', null, false, 4, 1000,
    'America/Santiago', 'active', tests.today() - 5);
 insert into public.challenge_periods (challenge_id, period_start, period_end, closed_at) values
@@ -310,10 +317,10 @@ select is((select count(*)::int from public.checkin_items where item_id = '12000
 -- definer RPC: remove_quantity_entry keeps the check-in in a closed period (rule already there since 0018)
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility, log_type, quantity_unit, quantity_target, quantity_step) values
   ('b2000000-0000-0000-0000-000000000041', 'a2000000-0000-0000-0000-000000000001', 'Agua', 'drop', 'daily', 'friends', 'quantity', 'ml', 500, 250),
-  ('b2000000-0000-0000-0000-000000000042', 'a2000000-0000-0000-0000-000000000007', 'Agua 7', 'drop', 'daily', 'friends', 'quantity', 'ml', 500, 250);
+  ('b2000000-0000-0000-0000-000000000042', 'a2000000-0000-0000-0000-00000000000c', 'Agua 7', 'drop', 'daily', 'friends', 'quantity', 'ml', 500, 250);
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on) values
-  ('c2000000-0000-0000-0000-000000000041', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-000000000007',
+  ('c2000000-0000-0000-0000-000000000041', 'a2000000-0000-0000-0000-000000000001', 'a2000000-0000-0000-0000-00000000000c',
    'b2000000-0000-0000-0000-000000000041', 'b2000000-0000-0000-0000-000000000042', 'daily', null, false, 4, 1000,
    'America/Santiago', 'active', tests.today() - 5);
 set local role authenticated;

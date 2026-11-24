@@ -84,10 +84,10 @@ values ('d3600000-0000-0000-0000-0000000000c1', tests.u(2), tests.u(7), tests.h(
 -- the unrelated challenge period used to prove the challenge behaviour of habit_date_period_closed is unchanged
 insert into public.habits (id, user_id, name, icon, frequency_type, visibility) values
   (tests.h(2, 30), tests.u(2), 'Reto cerrado', 'barbell', 'daily', 'friends'),
-  (tests.h(7, 30), tests.u(7), 'Reto cerrado rival', 'barbell', 'daily', 'friends');
+  (tests.h(76, 30), tests.u(76), 'Reto cerrado rival', 'barbell', 'daily', 'friends');
 insert into public.challenges (id, creator_id, rival_id, creator_habit_id, rival_habit_id, frequency_type, target_per_week,
                                requires_photo, weeks, fine_amount, timezone, status, starts_on)
-values ('d3600000-0000-0000-0000-0000000000c2', tests.u(2), tests.u(7), tests.h(2, 30), tests.h(7, 30), 'daily', null, false, 4, 1000,
+values ('d3600000-0000-0000-0000-0000000000c2', tests.u(2), tests.u(76), tests.h(2, 30), tests.h(76, 30), 'daily', null, false, 4, 1000,
         'America/Santiago', 'active', tests.today() - 30);
 insert into public.challenge_periods (challenge_id, period_start, period_end, closed_at) values
   ('d3600000-0000-0000-0000-0000000000c2', tests.today() - 30, tests.today() - 24, now()),
