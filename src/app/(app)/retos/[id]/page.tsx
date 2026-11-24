@@ -34,6 +34,7 @@ import {
   type ItemResultRow,
   type ItemRow,
 } from "@/lib/challenge-view";
+import { readChallengeCheckins } from "@/lib/challenge-checkins";
 import { fetchAll } from "@/lib/paginate";
 import { createServerClient } from "@/lib/supabase/server";
 import type { Database } from "@/lib/supabase/database.types";
@@ -100,13 +101,7 @@ export default async function RetoPage({ params }: { params: Promise<{ id: strin
       supabase.from("public_profiles").select("display_name,avatar_path,avatar_preset").eq("id", otherId).maybeSingle(),
       supabase.from("habits").select("id,name,color").in("id", habitIds),
       c.starts_on
-        ? supabase
-            .from("checkins")
-            .select("id,habit_id,local_date,photo_path,is_duplicate,rejected_at,rejected_by,reject_reason,created_at")
-            .in("habit_id", habitIds)
-            .gte("local_date", c.starts_on)
-            .lte("local_date", endsOn(c) ?? c.starts_on)
-            .order("created_at", { ascending: false })
+        ? readChallengeCheckins(supabase, habitIds, c.starts_on, endsOn(c) ?? c.starts_on).then((rows) => ({ data: rows }))
         : Promise.resolve({ data: [] }),
       supabase.from("debts").select("id,debtor_id,creditor_id,amount,paid_at,period_start").eq("challenge_id", c.id),
       supabase.from("challenge_periods").select("period_start").eq("challenge_id", c.id).not("closed_at", "is", null),
