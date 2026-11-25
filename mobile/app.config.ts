@@ -19,7 +19,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   ...config,
   name: IS_DEV ? "Kizuna Dev" : "Kizuna",
   slug: "kizuna",
-  version: "1.1.2",
+  version: "1.1.3",
   scheme: SCHEME,
   orientation: "portrait",
   icon: "./assets/icon.png",
@@ -29,7 +29,7 @@ export default ({ config }: ConfigContext): ExpoConfig => ({
   updates: { url: process.env.EAS_UPDATES_URL ?? `https://u.expo.dev/${EAS_PROJECT_ID}` },
   android: {
     package: IS_DEV ? "com.kizunatracker.app.dev" : "com.kizunatracker.app",
-    versionCode: 8,
+    versionCode: 9,
     adaptiveIcon: {
       backgroundColor: "#FAFAFA",
       foregroundImage: "./assets/android-icon-foreground.png",
