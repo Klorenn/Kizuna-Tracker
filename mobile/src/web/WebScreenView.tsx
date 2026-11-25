@@ -1,4 +1,4 @@
-import { useState, type ComponentType, type Ref, type RefObject } from "react";
+import { useRef, useState, type ComponentType, type Ref, type RefObject } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { AndroidWebViewProps } from "react-native-webview/lib/WebViewTypes";
@@ -54,6 +54,9 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
   const { colors } = useTheme();
   // the page failed to load (no network): the WebView stays mounted underneath, so its history survives the retry
   const [loadFailed, setLoadFailed] = useState(false);
+  // no page has loaded yet: a reload() would drop the handoff's X-Kizuna-Native header (the server answers 403), so retry asks the parent
+  const loaded = useRef(false);
+  const httpFailed = useRef(false);
 
   if (state.kind === "ready") {
     return (
@@ -85,13 +88,32 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
           else onNavigate?.(nav.url);
           onCanGoBack?.(Boolean((nav as { canGoBack?: boolean }).canGoBack));
         }}
+        onLoadStart={() => {
+          httpFailed.current = false;
+        }}
         onError={() => setLoadFailed(true)}
-        onLoad={() => setLoadFailed(false)}
+        onHttpError={(e) => {
+          const { statusCode, url } = e.nativeEvent;
+          // only the first (handoff / direct) page: a 4xx/5xx of a sub-resource or later in the session is the web's own
+          if (!loaded.current && statusCode >= 400 && url === state.url) {
+            httpFailed.current = true;
+            setLoadFailed(true);
+          }
+        }}
+        onLoad={() => {
+          if (httpFailed.current) return;
+          loaded.current = true;
+          setLoadFailed(false);
+        }}
         style={{ flex: 1, backgroundColor: colors.bg }}
       />
       {loadFailed ? (
         <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: colors.bg }]}>
-          <Message copy={MESSAGE.offline!} onRetry={() => { setLoadFailed(false); webRef?.current?.reload(); }} />
+          <Message copy={MESSAGE.offline!} onRetry={() => {
+              setLoadFailed(false);
+              if (loaded.current) webRef?.current?.reload();
+              else onRetry();
+            }} />
         </View>
       ) : null}
       </View>

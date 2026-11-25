@@ -41,11 +41,46 @@ describe("WebScreenView", () => {
     const webRef = { current: { reload } as unknown as WebView };
     await render(<WebScreenView {...base} webRef={webRef} state={ready} />);
     expect(screen.queryByText("Sin conexión")).toBeNull();
+    await act(async () => props().onLoad({ nativeEvent: {} })); // a page loaded earlier in this WebView
     await act(async () => props().onError({ nativeEvent: { description: "net::ERR_INTERNET_DISCONNECTED" } }));
     expect(screen.getByText("Sin conexión")).toBeTruthy();
     expect(screen.getByTestId("webview")).toBeTruthy(); // stays mounted underneath: history and page state survive
     await fireEvent.press(screen.getByText("Reintentar"));
     expect(reload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+  });
+  it("retry before the first successful load asks the parent for a fresh handoff: reload() would drop the X-Kizuna-Native header", async () => {
+    const reload = jest.fn();
+    const webRef = { current: { reload } as unknown as WebView };
+    await render(<WebScreenView {...base} webRef={webRef} state={ready} />);
+    await act(async () => props().onError({ nativeEvent: {} }));
+    await fireEvent.press(screen.getByText("Reintentar"));
+    expect(base.onRetry).toHaveBeenCalledTimes(1);
+    expect(reload).not.toHaveBeenCalled();
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+  });
+  it("retry after a page has loaded reloads it", async () => {
+    const reload = jest.fn();
+    const webRef = { current: { reload } as unknown as WebView };
+    await render(<WebScreenView {...base} webRef={webRef} state={ready} />);
+    await act(async () => props().onLoad({ nativeEvent: {} }));
+    await act(async () => props().onError({ nativeEvent: {} }));
+    await fireEvent.press(screen.getByText("Reintentar"));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(base.onRetry).not.toHaveBeenCalled();
+  });
+  it("a 403 on the handoff url shows the overlay and the load that follows does not clear it", async () => {
+    await render(<WebScreenView {...base} state={ready} />);
+    await act(async () => props().onLoadStart({ nativeEvent: {} }));
+    await act(async () => props().onHttpError({ nativeEvent: { statusCode: 403, url: ready.url } }));
+    await act(async () => props().onLoad({ nativeEvent: {} }));
+    expect(screen.getByText("Sin conexión")).toBeTruthy();
+    await fireEvent.press(screen.getByText("Reintentar"));
+    expect(base.onRetry).toHaveBeenCalledTimes(1);
+  });
+  it("an http error of a sub-resource is ignored", async () => {
+    await render(<WebScreenView {...base} state={ready} />);
+    await act(async () => props().onHttpError({ nativeEvent: { statusCode: 404, url: `${O}/favicon.ico` } }));
     expect(screen.queryByText("Sin conexión")).toBeNull();
   });
   it("a successful load clears the offline screen by itself", async () => {
