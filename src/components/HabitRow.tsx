@@ -3,9 +3,22 @@
 import { Camera, Check, Timer, Warning } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { memo, useId, useOptimistic, useState, useTransition } from "react";
+import { useRouter } from "next/navigation";
+import { memo, useEffect, useId, useOptimistic, useState, useTransition } from "react";
 import { checkIn, checkItem, uncheckItem, undoCheckIn } from "@/app/(app)/habitos/actions";
-import { applyItemChange, checkedCount, planToggle, settleToggle } from "@/domain/optimistic-toggle";
+import {
+  applyItemChange,
+  checkedCount,
+  nextSettled,
+  planToggle,
+  pruneSettledItems,
+  settleToggle,
+  settledDone,
+  settledIsStale,
+  settledItems,
+  type Settled,
+  type SettledItems,
+} from "@/domain/optimistic-toggle";
 import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayItem, type TodayRow } from "@/domain/today";
 import { logEntryHref } from "@/lib/log-text";
 import type { PickerBook } from "@/lib/reading-books";
@@ -90,9 +103,35 @@ function HabitRowView({
   const [pending, start] = useTransition();
   const [, startItem] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  const [doneNow, setDone] = useOptimistic(row.done);
+  const router = useRouter();
+  // a confirmed flip is held until the refreshed props show it: the optimistic value alone is dropped
+  // when the transition ends, and a late or stale payload would flip the row back to its old state
+  const [settled, setSettled] = useState<Settled>(null);
+  const [heldItems, setHeldItems] = useState<SettledItems>({});
+  const [doneNow, setDone] = useOptimistic(settledDone(row.done, settled));
   // the steps flip at once too, and with them the "N de M" count and the habit's own box
-  const [items, flipItem] = useOptimistic(row.items, applyItemChange);
+  const [items, flipItem] = useOptimistic(settledItems(row.items, heldItems), applyItemChange);
+  useEffect(() => {
+    if (settledIsStale(row.done, settled)) setSettled(null);
+  }, [row.done, settled]);
+  useEffect(() => {
+    const next = pruneSettledItems(row.items, heldItems);
+    if (next !== heldItems) setHeldItems(next);
+  }, [row.items, heldItems]);
+  // props that never caught up (a stale router payload): ask for the page again, then let go
+  const holding = settled !== null || Object.keys(heldItems).length > 0;
+  useEffect(() => {
+    if (!holding) return;
+    const refresh = setTimeout(() => router.refresh(), 1500);
+    const release = setTimeout(() => {
+      setSettled(null);
+      setHeldItems({});
+    }, 6000);
+    return () => {
+      clearTimeout(refresh);
+      clearTimeout(release);
+    };
+  }, [holding, router]);
   const [sheet, setSheet] = useState<OpenSheet | null>(null);
   const [confirmUndo, setConfirmUndo] = useState(false);
   const undoCopy = undoLosesCopy(row);
@@ -109,27 +148,31 @@ function HabitRowView({
   const cardioFlow = plain && row.logType === "cardio";
   const quantity = plain && row.logType === "quantity" ? row.quantity : null;
 
+  // what the row confirms right now: held flips count, so a quick second tap is not a repeat
+  const confirmed = settledDone(row.done, settled);
+
   function toggle() {
     setError(null);
-    if (!row.done) {
+    if (!confirmed) {
       if (readingFlow) return setSheet({ type: "reading", mode: { kind: "checkin", habitId: row.id } });
       if (timeFlow) return setSheet({ type: "time", mode: { kind: "checkin", habitId: row.id } });
       if (watchFlow) return setSheet({ type: "watch", mode: { kind: "checkin", habitId: row.id } });
       if (cardioFlow) return setSheet({ type: "cardio", mode: { kind: "checkin" } });
     }
-    if (row.done && undoCopy) return setConfirmUndo(true);
+    if (confirmed && undoCopy) return setConfirmUndo(true);
     run();
   }
 
   function run() {
     setConfirmUndo(false);
-    const plan = planToggle(row.done, pending);
+    const plan = planToggle(confirmed, pending);
     if (!plan.run) return;
     start(async () => {
       setDone(plan.optimistic);
       const result = await settleToggle(() => (plan.action === "undo" ? undoCheckIn(row.id) : checkIn(row.id)));
       // a refusal or a dropped connection: the optimistic value reverts when this transition ends
       if (!result.ok) setError(result.error);
+      setSettled(nextSettled(row.done, plan.optimistic, result));
     });
   }
 
@@ -139,6 +182,7 @@ function HabitRowView({
       flipItem({ id: item.id, checked: !item.checked });
       const result = await settleToggle(() => (item.checked ? uncheckItem(item.id) : checkItem(item.id)));
       if (!result.ok) setError(result.error);
+      else setHeldItems((h) => ({ ...h, [item.id]: { from: row.items.find((i) => i.id === item.id)?.checked ?? item.checked, value: !item.checked } }));
     });
   }
 

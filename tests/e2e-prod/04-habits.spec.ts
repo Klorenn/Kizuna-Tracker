@@ -4,9 +4,18 @@ import { expect, test } from "./fixtures";
 const BOOLEAN = "Smoke boolean";
 const WATER = "Smoke agua";
 
+/**
+ * The server-rendered page is visible before React hydrates, and a click in that window is lost (the
+ * box stays as rendered). Wait for the network to go quiet, which is when the client bundles are in.
+ */
+async function hydrated(page: Page) {
+  await page.waitForLoadState("networkidle");
+}
+
 async function openHoy(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Hoy", level: 1 })).toBeVisible();
+  await hydrated(page);
 }
 
 /** A celebration or day-complete sheet may open over Hoy after a check-in: close it. */
@@ -62,6 +71,7 @@ test("boolean habit: check in, verify done, undo, verify pending", async ({ page
   // survives a reload: it is persisted, not just optimistic
   await page.reload();
   await expect(page.getByRole("checkbox", { name: BOOLEAN, exact: true })).toHaveAttribute("aria-checked", "true");
+  await hydrated(page);
   await dismissSheets(page);
 
   await page.getByRole("checkbox", { name: BOOLEAN, exact: true }).click();

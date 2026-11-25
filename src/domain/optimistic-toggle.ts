@@ -40,3 +40,46 @@ export function applyItemChange(items: TodayItem[], change: { id: string; checke
 }
 
 export const checkedCount = (items: TodayItem[]): number => items.filter((i) => i.checked).length
+
+/**
+ * A confirmed flip, held after the transition ends. `useOptimistic` drops its value when the
+ * transition does; if the refreshed props have not landed yet (or came from a stale router/prefetched
+ * payload) the row would flip back to its old state until some later refresh. `from` is the state the
+ * props had when the tap ran: while they still show it, `value` is shown; once they move, they win.
+ */
+export type Settled = { from: boolean; value: boolean } | null
+
+export const settledDone = (confirmed: boolean, settled: Settled): boolean =>
+  settled && settled.from === confirmed ? settled.value : confirmed
+
+/** The props moved off `from`: the held value has done its job and can go. */
+export const settledIsStale = (confirmed: boolean, settled: Settled): boolean =>
+  settled !== null && settled.from !== confirmed
+
+/** Only a confirmed action settles; a refusal reverts to what the props say. */
+export const nextSettled = (from: boolean, value: boolean, outcome: ToggleOutcome): Settled =>
+  outcome.ok ? { from, value } : null
+
+export type SettledItems = Record<string, { from: boolean; value: boolean }>
+
+/** The steps with every held flip applied while the props still show the old state. */
+export function settledItems(items: TodayItem[], held: SettledItems): TodayItem[] {
+  let changed = false
+  const out = items.map((i) => {
+    const s = held[i.id]
+    if (!s || s.from !== i.checked) return i
+    changed = true
+    return applyItemChange([i], { id: i.id, checked: s.value })[0]
+  })
+  return changed ? out : items
+}
+
+/** Drops the held flips the props have moved past (same object when nothing changes). */
+export function pruneSettledItems(items: TodayItem[], held: SettledItems): SettledItems {
+  const next: SettledItems = {}
+  for (const [id, s] of Object.entries(held)) {
+    const i = items.find((x) => x.id === id)
+    if (i && i.checked === s.from) next[id] = s
+  }
+  return Object.keys(next).length === Object.keys(held).length ? held : next
+}

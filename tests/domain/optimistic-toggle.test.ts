@@ -4,8 +4,13 @@ import {
   applyItemChange,
   checkedCount,
   displayDone,
+  nextSettled,
   planToggle,
+  pruneSettledItems,
   settleToggle,
+  settledDone,
+  settledIsStale,
+  settledItems,
 } from '@/domain/optimistic-toggle'
 import type { TodayItem } from '@/domain/today'
 
@@ -64,5 +69,41 @@ describe('item checks', () => {
   test('checkedCount counts the checked ones', () => {
     expect(checkedCount(items)).toBe(1)
     expect(checkedCount(applyItemChange(items, { id: 'b', checked: true }))).toBe(2)
+  })
+})
+
+describe('settled value (holds the confirmed flip until fresh props agree)', () => {
+  test('with nothing settled, the props win', () => {
+    expect(settledDone(true, null)).toBe(true)
+  })
+  test('props still show the pre-action state: the settled value is held (no flicker back to "done")', () => {
+    expect(settledDone(true, { from: true, value: false })).toBe(false)
+    expect(settledDone(false, { from: false, value: true })).toBe(true)
+  })
+  test('props moved on: they win, and the settled value is stale', () => {
+    expect(settledDone(false, { from: true, value: false })).toBe(false)
+    expect(settledDone(true, { from: false, value: true })).toBe(true)
+    expect(settledIsStale(false, { from: true, value: false })).toBe(true)
+    expect(settledIsStale(true, { from: true, value: false })).toBe(false)
+    expect(settledIsStale(true, null)).toBe(false)
+  })
+  test('a failed action never settles anything', () => {
+    expect(nextSettled(true, false, { ok: false, error: 'x' })).toBeNull()
+    expect(nextSettled(true, false, { ok: true })).toEqual({ from: true, value: false })
+  })
+  test('steps: a held step stays flipped while props still show the old state', () => {
+    const held = { a: { from: true, value: false } }
+    const shown = settledItems([item('a', true), item('b', true)], held)
+    expect(shown.map((i) => i.checked)).toEqual([false, true])
+    // props caught up: untouched
+    const fresh = [item('a', false), item('b', true)]
+    expect(settledItems(fresh, held)).toBe(fresh)
+    expect(settledItems(fresh, {})).toBe(fresh)
+  })
+  test('steps: entries the props already agree with are dropped', () => {
+    const held = { a: { from: true, value: false }, b: { from: true, value: false } }
+    expect(pruneSettledItems([item('a', false), item('b', true)], held)).toEqual({ b: { from: true, value: false } })
+    const same = { b: { from: true, value: false } }
+    expect(pruneSettledItems([item('b', true)], same)).toBe(same)
   })
 })
