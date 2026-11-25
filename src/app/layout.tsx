@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Geist_Mono, Inter } from "next/font/google";
 import { cookies } from "next/headers";
+import { ErrorReporter } from "@/components/ErrorReporter";
 import { COLOR_COOKIE, THEME_COOKIE, appleStatusBarStyle, parseColor, parseTheme, themeColorFor } from "@/lib/theme";
 import { resolveSiteUrl } from "@/lib/site-metadata-url";
 import "./globals.css";
@@ -60,6 +61,7 @@ export default async function RootLayout({
   return (
     <html lang="es" data-theme={theme} data-color={color} className={`${inter.variable} ${geistMono.variable}`}>
       <body className="antialiased">
+        <ErrorReporter />
         {children}
       </body>
     </html>

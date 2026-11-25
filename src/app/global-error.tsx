@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect } from "react";
+import { reportClientError } from "@/lib/client-errors/report";
 import { Button } from "@/components/ui/Button";
 import "./globals.css";
 
@@ -10,7 +12,10 @@ import "./globals.css";
  * default colour (data-color="indigo").
  * Retry is a full reload: there is no router to refresh once the root layout has failed.
  */
-export default function GlobalError() {
+export default function GlobalError({ error }: { error: Error & { digest?: string } }) {
+  useEffect(() => {
+    reportClientError({ kind: error.digest ? "server" : "react", message: error.message, stack: error.stack, digest: error.digest });
+  }, [error]);
   return (
     <html lang="es" data-theme="system" data-color="indigo">
       <body className="antialiased">
