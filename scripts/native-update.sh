@@ -15,4 +15,4 @@ cd "$ROOT"
 [[ -z "$(git status --porcelain --untracked-files=no)" ]] || die "working tree has uncommitted changes; commit them first so the update matches git"
 
 cd "$ROOT/mobile"
-eas update --channel production --message "$MESSAGE" --non-interactive
+eas update --channel production --environment production --message "$MESSAGE" --non-interactive
