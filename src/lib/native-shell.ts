@@ -1,6 +1,6 @@
 /**
  * The native app's WebView adds `KizunaNative/<version>` to its user agent (applicationNameForUserAgent). Inside it the web
- * hides what the app already provides: the bottom nav, the install prompt and the web-push prompts.
+ * hides only what native replaces: the install prompt and the web-push prompts (the bottom nav stays: the app is the web).
  */
 export const NATIVE_UA_MARKER = 'KizunaNative'
 

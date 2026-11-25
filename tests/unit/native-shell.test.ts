@@ -54,11 +54,11 @@ describe('(app) layout', () => {
     expect(html).toContain('aria-label="Principal"')
     expect(html).toContain('pb-[calc(3.5rem')
   })
-  it('hides the bottom nav and drops its padding for the marker UA', async () => {
+  it('keeps the bottom nav and its padding for the marker UA: the app is the web, inside its own WebView', async () => {
     ua = WEBVIEW_UA
     const html = renderToStaticMarkup(await AppLayout({ children: page }))
     expect(html).toContain('contenido')
-    expect(html).not.toContain('aria-label="Principal"')
-    expect(html).not.toContain('pb-[calc(3.5rem')
+    expect(html).toContain('aria-label="Principal"')
+    expect(html).toContain('pb-[calc(3.5rem')
   })
 })
