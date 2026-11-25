@@ -42,6 +42,31 @@ describe('scroll lock', () => {
   })
 })
 
+describe('scroll lock safety net', () => {
+  it('reset() restores the page even when a holder never released (closed by back navigation, bfcache)', () => {
+    const style = { overflow: 'auto' }
+    const lock = createScrollLock(() => style)
+    lock()
+    lock()
+    expect(style.overflow).toBe('hidden')
+    lock.reset()
+    expect(style.overflow).toBe('auto')
+    lock.reset() // nothing locked: no-op
+    expect(style.overflow).toBe('auto')
+  })
+  it('a release that arrives after reset() does not unlock a newer holder', () => {
+    const style = { overflow: 'auto' }
+    const lock = createScrollLock(() => style)
+    const stale = lock()
+    lock.reset()
+    const fresh = lock()
+    stale()
+    expect(style.overflow).toBe('hidden')
+    fresh()
+    expect(style.overflow).toBe('auto')
+  })
+})
+
 describe('trapTarget', () => {
   const items = ['a', 'b', 'c']
   it('wraps forward from the last and backward from the first', () => {

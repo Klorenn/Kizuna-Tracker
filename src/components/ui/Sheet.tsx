@@ -58,6 +58,20 @@ export function Sheet({
   // Portal only after mount: the server render (and the first client render) never touch `document`.
   useEffect(() => setMounted(true), []);
 
+  // Safety net for the WebView / bfcache: a page restored with the lock still set (or left by back navigation while a sheet was open)
+  // must never stay unscrollable. Only when no sheet is open any more.
+  useEffect(() => {
+    const unlockIfNoSheet = () => {
+      if (!stack.hasOpen()) lockScroll.reset();
+    };
+    window.addEventListener("pageshow", unlockIfNoSheet);
+    window.addEventListener("popstate", unlockIfNoSheet);
+    return () => {
+      window.removeEventListener("pageshow", unlockIfNoSheet);
+      window.removeEventListener("popstate", unlockIfNoSheet);
+    };
+  }, []);
+
   const active = open && mounted;
 
   useEffect(() => {

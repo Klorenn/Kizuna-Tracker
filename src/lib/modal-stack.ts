@@ -16,29 +16,45 @@ export function createModalStack() {
       const i = ids.indexOf(id)
       if (i >= 0) ids.splice(i, 1)
     },
+    hasOpen(): boolean {
+      return ids.length > 0
+    },
     isTop(id: number): boolean {
       return ids.length > 0 && ids[ids.length - 1] === id
     },
   }
 }
 
-/** Locks scrolling while at least one holder is open; returns an idempotent release. */
+/**
+ * Locks scrolling while at least one holder is open; returns an idempotent release.
+ * `lock.reset()` is the safety net: it drops every holder and restores the page (a sheet that never got to release, e.g. the
+ * page came back from the back/forward cache with the lock still set). Releases issued before a reset become no-ops.
+ */
 export function createScrollLock(style: () => { overflow: string }) {
   let count = 0
   let saved = ''
-  return function lock(): () => void {
+  let epoch = 0
+  function lock(): () => void {
     if (count++ === 0) {
       const s = style()
       saved = s.overflow
       s.overflow = 'hidden'
     }
     let released = false
+    const mine = epoch
     return () => {
-      if (released) return
+      if (released || mine !== epoch) return
       released = true
       if (--count === 0) style().overflow = saved
     }
   }
+  lock.reset = () => {
+    if (count === 0) return
+    count = 0
+    epoch++
+    style().overflow = saved
+  }
+  return lock
 }
 
 /**
