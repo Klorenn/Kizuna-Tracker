@@ -1,4 +1,4 @@
-import { useRef, useState, type ComponentType, type Ref, type RefObject } from "react";
+import { useMemo, useRef, useState, type ComponentType, type Ref, type RefObject } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { AndroidWebViewProps } from "react-native-webview/lib/WebViewTypes";
@@ -57,13 +57,33 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
   // no page has loaded yet: a reload() would drop the handoff's X-Kizuna-Native header (the server answers 403), so retry asks the parent
   const loaded = useRef(false);
   const httpFailed = useRef(false);
+  // the page the user is on, and a key that remounts the WebView when its renderer died (a dead one never recovers by itself)
+  const lastUrl = useRef<string | null>(null);
+  const [instance, setInstance] = useState(0);
+  const handoffUrl = state.kind === "ready" ? state.url : null;
+  const source = useMemo(() => (handoffUrl ? { uri: lastUrl.current ?? handoffUrl, headers: { "X-Kizuna-Native": "1" } } : undefined), [handoffUrl, instance]);
+  const onRendererGone = () => {
+    // before any page loaded the link is spent (one-time): ask the parent for a fresh one; later the session cookies carry the page
+    if (!loaded.current || !lastUrl.current) onRetry();
+    else setInstance((n) => n + 1);
+  };
 
   if (state.kind === "ready") {
     return (
       <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppWebView
+        key={instance}
         ref={webRef}
-        source={{ uri: state.url, headers: { "X-Kizuna-Native": "1" } }}
+        source={source!}
+        androidLayerType="hardware"
+        cacheEnabled
+        cacheMode="LOAD_DEFAULT"
+        overScrollMode="never"
+        nestedScrollEnabled
+        textZoom={100}
+        setBuiltInZoomControls={false}
+        setDisplayZoomControls={false}
+        onRenderProcessGone={onRendererGone}
         // "*" on purpose: with a narrower list the library opens non-matching urls with Linking itself, skipping the policy below
         originWhitelist={["*"]}
         applicationNameForUserAgent={userAgentName}
@@ -83,6 +103,7 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
           return false;
         }}
         onNavigationStateChange={(nav) => {
+          if (decideNavigation(nav.url, origin).action === "allow" && !isExpiredLanding(nav.url, origin) && !isWebSignedOut(nav.url, origin)) lastUrl.current = nav.url;
           if (isExpiredLanding(nav.url, origin)) onLoginLanding();
           else if (isWebSignedOut(nav.url, origin)) onSignedOut();
           else onNavigate?.(nav.url);
