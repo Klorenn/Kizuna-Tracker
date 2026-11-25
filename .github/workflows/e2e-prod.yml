@@ -1,0 +1,44 @@
+name: E2E prod smoke
+
+# Runs the production smoke suite (tests/e2e-prod) after every successful Vercel production deploy,
+# once a day, and on demand. It uses the dedicated test account @kizuna_e2e; every spec leaves it as it found it.
+on:
+  deployment_status:
+  schedule:
+    - cron: "17 11 * * *" # 08:17 Chile
+  workflow_dispatch:
+
+concurrency:
+  group: e2e-prod
+  cancel-in-progress: false
+
+jobs:
+  smoke:
+    # Only after a successful production deployment (Vercel posts deployment_status events), or schedule/manual.
+    if: >-
+      github.event_name != 'deployment_status' ||
+      (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      E2E_USERNAME: kizuna_e2e
+      E2E_EMAIL: e2e-bot@kizunatracker.invalid
+      E2E_PASSWORD: ${{ secrets.E2E_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm exec playwright test -c playwright.prod.config.ts
+      - if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-prod-results
+          path: tests/e2e-prod/.results
+          retention-days: 7
