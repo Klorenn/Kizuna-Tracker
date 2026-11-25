@@ -1,7 +1,8 @@
 // /api/cron/* authenticate with their own bearer secret (pg_cron has no session).
 // /api/m/* authenticate with a Supabase bearer JWT (getClaims); /auth/native-handoff with a one-time token_hash.
+// /api/client-errors takes anonymous error reports (rate limited, always 204, user id only from the cookie session).
 // /api/widget/* authenticate with their own bearer token (kzw_...), not a cookie session.
-const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/api/health", "/api/widget", "/api/m", "/auth/native-handoff", "/serwist"];
+const PUBLIC_PREFIXES = ["/bienvenida", "/login", "/registro", "/legal", "/invite", "/u", "/api/cron", "/api/health", "/api/client-errors", "/api/widget", "/api/m", "/auth/native-handoff", "/serwist"];
 
 /**
  * The one public page under a new prefix: a group invitation, "/g/" and 8 characters of the code
