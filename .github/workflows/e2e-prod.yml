@@ -3,7 +3,8 @@ name: E2E prod smoke
 # Runs the production smoke suite (tests/e2e-prod) after every successful Vercel production deploy,
 # once a day, and on demand. It uses the dedicated test account @kizuna_e2e; every spec leaves it as it found it.
 on:
-  deployment_status:
+  # Vercel reports deploys as commit statuses ("Vercel – kizuna-tracker"), not GitHub deployments.
+  status:
   schedule:
     - cron: "17 11 * * *" # 08:17 Chile
   workflow_dispatch:
@@ -16,8 +17,9 @@ jobs:
   smoke:
     # Only after a successful production deployment (Vercel posts deployment_status events), or schedule/manual.
     if: >-
-      github.event_name != 'deployment_status' ||
-      (github.event.deployment_status.state == 'success' && github.event.deployment.environment == 'Production')
+      github.event_name != 'status' ||
+      (github.event.state == 'success' && github.event.context == 'Vercel – kizuna-tracker'
+       && contains(github.event.branches.*.name, 'main'))
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
