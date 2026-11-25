@@ -12,6 +12,22 @@ async function hydrated(page: Page) {
   await page.waitForLoadState("networkidle");
 }
 
+/**
+ * Clicks a toggle and waits for its server action (POST with a Next-Action header) to answer. The row
+ * flips optimistically at once, so asserting aria-checked alone proves nothing about persistence: a
+ * reload right after would abort the action, and a second tap while the first is in flight is ignored
+ * on purpose (planToggle). Then the network goes quiet so the refreshed payload has landed.
+ */
+async function toggle(page: Page, name: string) {
+  const answered = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+    { timeout: 30_000 },
+  );
+  await page.getByRole("checkbox", { name, exact: true }).click();
+  expect((await answered).ok()).toBe(true);
+  await page.waitForLoadState("networkidle");
+}
+
 async function openHoy(page: Page) {
   await page.goto("/");
   await expect(page.getByRole("heading", { name: "Hoy", level: 1 })).toBeVisible();
@@ -61,12 +77,12 @@ test("boolean habit: check in, verify done, undo, verify pending", async ({ page
 
   // normalise: a previous aborted run may have left it checked
   if ((await box.getAttribute("aria-checked")) === "true") {
-    await box.click();
+    await toggle(page, BOOLEAN);
     await expect(box).toHaveAttribute("aria-checked", "false");
     await dismissSheets(page);
   }
 
-  await box.click();
+  await toggle(page, BOOLEAN);
   await expect(box).toHaveAttribute("aria-checked", "true");
   // survives a reload: it is persisted, not just optimistic
   await page.reload();
@@ -74,7 +90,7 @@ test("boolean habit: check in, verify done, undo, verify pending", async ({ page
   await hydrated(page);
   await dismissSheets(page);
 
-  await page.getByRole("checkbox", { name: BOOLEAN, exact: true }).click();
+  await toggle(page, BOOLEAN);
   await expect(page.getByRole("checkbox", { name: BOOLEAN, exact: true })).toHaveAttribute("aria-checked", "false");
   await page.reload();
   await expect(page.getByRole("checkbox", { name: BOOLEAN, exact: true })).toHaveAttribute("aria-checked", "false");

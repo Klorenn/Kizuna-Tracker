@@ -2,6 +2,8 @@ import { creds, LOGGED_OUT } from "./env";
 import { expect, test } from "./fixtures";
 
 test.use({ storageState: LOGGED_OUT });
+// Every attempt counts against the app's login limiter (10 per account per 15 min): a retry would burn it.
+test.describe.configure({ retries: 0 });
 
 test("the test account can log in", async ({ page }) => {
   await page.goto("/login");
