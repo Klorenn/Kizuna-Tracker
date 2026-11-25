@@ -40,7 +40,7 @@ select is((select app_version from public.client_errors where fingerprint = 'fp-
 -- ============================================================ caps and path
 select public.record_client_error(null, 'error', repeat('m', 5000), repeat('s', 9000), '/x?token=secret#h', 'browser', null, null, 'fp-cccccccc');
 select is((select char_length(message) from public.client_errors where fingerprint = 'fp-cccccccc'), 1000, 'message capped at 1000');
-select is((select char_length(stack) from public.client_errors where fingerprint = 'fp-cccccccc'), 4000, 'stack capped at 4000');
+select is((select char_length(stack) from public.client_errors where fingerprint = 'fp-cccccccc'), 2000, 'stack capped at 2000 (20261129120000)');
 select is((select url_path from public.client_errors where fingerprint = 'fp-cccccccc'), '/x', 'query string never stored');
 select throws_ok($$select public.record_client_error(null, 'bogus', 'm', null, '/', 'browser', null, null, 'fp-dddddddd')$$, '23514', null, 'kind is checked');
 

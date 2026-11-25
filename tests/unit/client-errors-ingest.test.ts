@@ -37,15 +37,43 @@ describe('ingestClientError', () => {
     const d = deps()
     await ingestClientError(d, input({ userId: 'u1' }))
     const keys = d.limited.mock.calls.map((c) => c[0].key)
-    expect(keys).toEqual(['cerr:ip:1.2.3.4', 'cerr:user:u1'])
+    expect(keys).toEqual(['cerr:ip:1.2.3.4', 'cerr:user:u1', 'cerr:global'])
+  })
+  it('the global bucket is 300 per hour and is checked for anonymous reports too', async () => {
+    const d = deps()
+    await ingestClientError(d, input())
+    expect(d.limited.mock.calls.map((c) => c[0])).toContainEqual({ key: 'cerr:global', limit: 300, windowSeconds: 3600 })
+  })
+  it('fails CLOSED when only the global limiter errors', async () => {
+    const d = deps({ limited: vi.fn(async (a: { key: string }) => { if (a.key === 'cerr:global') throw new Error('down'); return false }) as never })
+    await ingestClientError(d, input())
+    expect(d.record).not.toHaveBeenCalled()
+  })
+  it('limiters run before any sanitizing', async () => {
+    const order: string[] = []
+    const d = deps({ limited: vi.fn(async () => { order.push('limit'); return true }) as never })
+    const big = JSON.stringify({ kind: 'error', message: 'me@a.com '.repeat(200), stack: 'a'.repeat(5000) })
+    await ingestClientError(d, input({ rawBody: big }))
+    expect(order).toEqual(['limit'])
+    expect(d.record).not.toHaveBeenCalled()
+  })
+  it('refuses kind server without a session, accepts it with one', async () => {
+    const raw = JSON.stringify({ kind: 'server', message: 'digest 1' })
+    const a = deps()
+    await ingestClientError(a, input({ rawBody: raw, userId: null }))
+    expect(a.limited).not.toHaveBeenCalled()
+    expect(a.record).not.toHaveBeenCalled()
+    const b = deps()
+    await ingestClientError(b, input({ rawBody: raw, userId: 'u1' }))
+    expect(b.record).toHaveBeenCalledOnce()
   })
   it('drops silently when limited', async () => {
     const d = deps({ limited: vi.fn(async () => true) as never })
     await ingestClientError(d, input())
     expect(d.record).not.toHaveBeenCalled()
   })
-  it('fails open only if the limiter itself errors', async () => {
-    const d = deps({ limited: vi.fn(async () => { throw new Error('db down') }) as never })
+  it('fails open for ip and user limiters if they themselves error', async () => {
+    const d = deps({ limited: vi.fn(async (a: { key: string }) => { if (a.key !== 'cerr:global') throw new Error('db down'); return false }) as never })
     await ingestClientError(d, input())
     expect(d.record).toHaveBeenCalledOnce()
   })

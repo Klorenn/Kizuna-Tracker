@@ -37,7 +37,7 @@ export default async function ErroresPage() {
                 <span className="font-semibold">{g.count}×</span> <span className="break-words">{g.message.slice(0, 160)}</span>
               </summary>
               <dl className="mt-2 grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 text-caption text-ink">
-                <dt>Tipo</dt><dd>{g.kind}</dd>
+                <dt>Tipo</dt><dd>{g.kind === "server" ? "server (reportado por el cliente, no verificado)" : g.kind}</dd>
                 <dt>Última vez</dt><dd>{new Date(g.lastSeen).toISOString().replace("T", " ").slice(0, 16)} UTC</dd>
                 <dt>Ruta</dt><dd className="break-all">{g.path}</dd>
                 <dt>Cliente</dt><dd>{g.uaKind}</dd>

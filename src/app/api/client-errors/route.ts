@@ -1,5 +1,6 @@
 import { after } from "next/server";
 import { ingestClientError, type IngestDeps } from "@/lib/client-errors/ingest";
+import { readBodyCapped } from "@/lib/client-errors/body";
 import { MAX_BODY_BYTES } from "@/lib/client-errors/payload";
 import { clientIp, ipBucket } from "@/lib/request-ip";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -55,11 +56,14 @@ export async function POST(request: Request) {
   try {
     const length = Number(request.headers.get("content-length") ?? "0");
     if (Number.isFinite(length) && length > MAX_BODY_BYTES) return NO_CONTENT();
-    const rawBody = await request.text();
-    if (rawBody.length > MAX_BODY_BYTES) return NO_CONTENT();
+    // the stream is read here and abandoned after 8 KB: content-length can lie or be absent (chunked)
+    const rawBody = await readBodyCapped(request.body, MAX_BODY_BYTES);
+    if (rawBody === null) return NO_CONTENT();
     const userId = await sessionUserId();
     const input = {
       rawBody,
+      // Assumes Vercel's edge: it sets x-vercel-forwarded-for / x-real-ip itself, so a client cannot choose its bucket.
+      // Off Vercel these headers are client-controlled and the per-IP limit would be spoofable (the global cap still holds).
       ipBucket: ipBucket(clientIp(request.headers)),
       userId,
       ua: request.headers.get("user-agent"),

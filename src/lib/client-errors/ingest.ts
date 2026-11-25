@@ -1,6 +1,6 @@
 import { fingerprint } from './fingerprint'
 import { isNoise } from './noise'
-import { MAX_BODY_BYTES, parseUa, validatePayload } from './payload'
+import { MAX_BODY_BYTES, checkShape, parseUa, sanitizeShape } from './payload'
 
 export type ErrorRow = {
   user_id: string | null
@@ -23,6 +23,8 @@ export interface IngestDeps {
 /** Per ip bucket and per user, in their own key family. */
 const IP_LIMIT = { limit: 30, windowSeconds: 600 }
 const USER_LIMIT = { limit: 60, windowSeconds: 600 }
+/** One bucket for everybody: bounds what a distributed flood can write per hour. */
+const GLOBAL_LIMIT = { key: 'cerr:global', limit: 300, windowSeconds: 3600 }
 
 /**
  * The whole pipeline behind POST /api/client-errors, free of Next and Supabase. It never throws and never reports:
@@ -40,11 +42,15 @@ export async function ingestClientError(
     } catch {
       return
     }
-    const v = validatePayload(json)
-    if (!v.ok) return
-    const e = v.value
-    if (isNoise({ message: e.message, stack: e.stack })) return
+    // 1) cheap structural check, no sanitizing yet
+    const shape = checkShape(json)
+    if (!shape.ok) return
+    const raw = shape.value
+    // a server-side report is only believable from a signed-in session
+    if (raw.kind === 'server' && !input.userId) return
+    if (isNoise({ message: raw.message, stack: raw.stack })) return
 
+    // 2) limiters, before any regex runs: ip (records), user, then global
     const checks = [{ key: `cerr:ip:${input.ipBucket}`, ...IP_LIMIT }]
     if (input.userId) checks.push({ key: `cerr:user:${input.userId}`, ...USER_LIMIT })
     for (const c of checks) {
@@ -52,6 +58,12 @@ export async function ingestClientError(
       const limited = await deps.limited(c).catch(() => false)
       if (limited) return
     }
+    // the global cap fails CLOSED: if it cannot be checked, nothing is written
+    const globalLimited = await deps.limited(GLOBAL_LIMIT).catch(() => true)
+    if (globalLimited) return
+
+    // 3) only now sanitize and fingerprint
+    const e = sanitizeShape(raw)
 
     const ua = parseUa(input.ua)
     await deps.record({

@@ -26,12 +26,32 @@ describe('redact', () => {
   })
 })
 
+describe('redact, extra', () => {
+  it('turns uuids into :id', () => {
+    expect(redact('user 3f2b8c1e-1111-4222-8333-444455556666 missing')).toBe('user :id missing')
+  })
+  it('drops the query of relative URLs', () => {
+    expect(redact('fetch /api/x?token=abc&u=1 failed')).toBe('fetch /api/x failed')
+    expect(redact('at /_next/c.js?v=3:1:2')).not.toContain('v=3')
+  })
+  it('a 4000-char message plus a 7000-char stack sanitize in under 10 ms (no regex blowup)', () => {
+    sanitizeMessage('warm up'.repeat(100)) // JIT warm-up: the budget is for the regexes, not for a cold start
+    sanitizeStack('warm up'.repeat(100))
+    for (const filler of ['a', 'a@', 'a.', '/a?', '0']) {
+      const t = performance.now()
+      sanitizeMessage(filler.repeat(4000 / filler.length))
+      sanitizeStack(filler.repeat(7000 / filler.length))
+      expect(performance.now() - t).toBeLessThan(10)
+    }
+  })
+})
+
 describe('truncation', () => {
-  it('caps message at 1000 and stack at 4000', () => {
+  it('caps message at 1000 and stack at 2000', () => {
     expect(MAX_MESSAGE).toBe(1000)
-    expect(MAX_STACK).toBe(4000)
+    expect(MAX_STACK).toBe(2000)
     expect(sanitizeMessage('x '.repeat(2000)).length).toBeLessThanOrEqual(1000)
-    expect(sanitizeStack('a b\n'.repeat(5000))!.length).toBeLessThanOrEqual(4000)
+    expect(sanitizeStack('a b\n'.repeat(5000))!.length).toBeLessThanOrEqual(2000)
   })
   it('stack is null when empty or missing', () => {
     expect(sanitizeStack(undefined)).toBeNull()
@@ -51,6 +71,12 @@ describe('sanitizePath', () => {
   it('collapses uuids and usernames', () => {
     expect(sanitizePath('/habitos/3f2b8c1e-1111-4222-8333-444455556666')).toBe('/habitos/:id')
     expect(sanitizePath('/@pau_koh')).toBe('/@:user')
+  })
+  it('collapses the public identifier routes', () => {
+    expect(sanitizePath('/u/pau_koh')).toBe('/u/:user')
+    expect(sanitizePath('/invite/0123abcd')).toBe('/invite/:code')
+    expect(sanitizePath('/g/ABCD-EFGH')).toBe('/g/:code')
+    expect(sanitizePath('/g/ABCD-EFGH/extra')).toBe('/g/:code/extra')
   })
   it('falls back to / for junk and caps the length', () => {
     expect(sanitizePath('nope')).toBe('/')

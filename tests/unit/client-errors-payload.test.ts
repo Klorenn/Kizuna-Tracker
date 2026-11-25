@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MAX_BODY_BYTES, parseUa, validatePayload } from '@/lib/client-errors/payload'
+import { MAX_BODY_BYTES, checkShape, parseUa, validatePayload } from '@/lib/client-errors/payload'
 
 const ok = { kind: 'error', message: 'boom', stack: 'at x (https://a.com/c.js:1:2)', path: '/perfil?x=1' }
 
@@ -42,5 +42,15 @@ describe('parseUa', () => {
   it('is browser otherwise', () => {
     expect(parseUa('Mozilla/5.0 Chrome/120')).toEqual({ uaKind: 'browser', appVersion: null })
     expect(parseUa(null)).toEqual({ uaKind: 'browser', appVersion: null })
+  })
+})
+
+describe('checkShape (cheap structural check, no sanitizing)', () => {
+  it('accepts a valid shape untouched and rejects the invalid ones', () => {
+    const r = checkShape({ kind: 'error', message: 'me@a.com', stack: 'x', path: '/a?b=1' })
+    expect(r.ok && r.value).toEqual({ kind: 'error', message: 'me@a.com', stack: 'x', path: '/a?b=1' })
+    expect(checkShape({ kind: 'error', message: 'm', userId: 'x' }).ok).toBe(false)
+    expect(checkShape({ kind: 'nope', message: 'm' }).ok).toBe(false)
+    expect(checkShape({ kind: 'error', message: 'a'.repeat(5000) }).ok).toBe(false)
   })
 })
