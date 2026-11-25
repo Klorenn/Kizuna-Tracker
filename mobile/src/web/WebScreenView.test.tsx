@@ -1,9 +1,10 @@
-import { fireEvent, render, screen } from "@testing-library/react-native";
+import { act, fireEvent, render, screen } from "@testing-library/react-native";
+import type { WebView } from "react-native-webview";
 import { WebScreenView } from "./WebScreenView";
 
 jest.mock("react-native-webview", () => {
   const { View } = jest.requireActual("react-native");
-  return { WebView: (p: Record<string, unknown>) => <View testID="webview" {...p} /> };
+  return { WebView: ({ ref: _ref, ...p }: Record<string, unknown>) => <View testID="webview" {...p} /> };
 });
 
 const O = "https://kizuna.example";
@@ -35,12 +36,35 @@ describe("WebScreenView", () => {
     expect(props().onShouldStartLoadWithRequest({ url: "javascript:alert(1)" })).toBe(false);
     expect(base.onExternal).toHaveBeenCalledTimes(1);
   });
-  it("the pairing intent opens the widget setup, a kizuna://app link opens natively", async () => {
+  it("a page that fails to load (no network) shows Sin conexión over the WebView, and Reintentar reloads it", async () => {
+    const reload = jest.fn();
+    const webRef = { current: { reload } as unknown as WebView };
+    await render(<WebScreenView {...base} webRef={webRef} state={ready} />);
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+    await act(async () => props().onError({ nativeEvent: { description: "net::ERR_INTERNET_DISCONNECTED" } }));
+    expect(screen.getByText("Sin conexión")).toBeTruthy();
+    expect(screen.getByTestId("webview")).toBeTruthy(); // stays mounted underneath: history and page state survive
+    await fireEvent.press(screen.getByText("Reintentar"));
+    expect(reload).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+  });
+  it("a successful load clears the offline screen by itself", async () => {
+    await render(<WebScreenView {...base} state={ready} />);
+    await act(async () => props().onError({ nativeEvent: {} }));
+    expect(screen.getByText("Sin conexión")).toBeTruthy();
+    await act(async () => props().onLoad({ nativeEvent: {} }));
+    expect(screen.queryByText("Sin conexión")).toBeNull();
+  });
+  it("the WebView background is the theme background (no white flash before the page paints)", async () => {
+    await render(<WebScreenView {...base} state={ready} />);
+    expect([props().style].flat(2).reduce((a: object, x: object) => ({ ...a, ...x }), {})).toMatchObject({ backgroundColor: "#fafafa" });
+  });
+  it("the pairing intent opens the widget setup, a kizuna://app link opens the path in the WebView", async () => {
     await render(<WebScreenView {...base} state={ready} />);
     expect(props().onShouldStartLoadWithRequest({ url: "intent://widget/pair?code=ABCD1234#Intent;scheme=kizuna;end" })).toBe(false);
     expect(base.onPair).toHaveBeenCalledWith("kizuna://widget/pair?code=ABCD1234");
     expect(props().onShouldStartLoadWithRequest({ url: "kizuna://app/habitos/h1" })).toBe(false);
-    expect(base.onNative).toHaveBeenCalledWith("/habitos/h1");
+    expect(base.onNative).toHaveBeenCalledWith(expect.stringMatching(/^\/\?path=%2Fhabitos%2Fh1&n=\d+$/));
   });
   it("reports the login landing (expired handoff) and the web sign-out", async () => {
     await render(<WebScreenView {...base} state={ready} />);

@@ -23,7 +23,7 @@ export function usePushLinks(api: LinksApi = Notifications) {
       const href = mapWebPath((r.notification.request.content.data as { url?: unknown } | null | undefined)?.url);
       if (!href) return;
       handled.add(id);
-      router.push(href as never);
+      router.replace(href as never);
     };
     void api.getLastNotificationResponseAsync().then(open, () => undefined);
     const sub = api.addNotificationResponseReceivedListener(open);

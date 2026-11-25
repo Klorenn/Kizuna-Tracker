@@ -25,4 +25,14 @@ describe("PushBanner", () => {
     const unknown = await render(<PushBanner state="unknown" onEnable={jest.fn()} onOpenSettings={jest.fn()} />);
     expect(unknown.toJSON()).toBeNull();
   });
+  it("can be dismissed for now when it is asked to be (the shell shows it over the web)", async () => {
+    const onDismiss = jest.fn();
+    await render(<PushBanner state="ask" onEnable={jest.fn()} onOpenSettings={jest.fn()} onDismiss={onDismiss} />);
+    await fireEvent.press(screen.getByText("Ahora no"));
+    expect(onDismiss).toHaveBeenCalledTimes(1);
+  });
+  it("shows no dismiss button without a handler", async () => {
+    await render(<PushBanner state="ask" onEnable={jest.fn()} onOpenSettings={jest.fn()} />);
+    expect(screen.queryByText("Ahora no")).toBeNull();
+  });
 });

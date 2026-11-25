@@ -1,27 +1,15 @@
 import { mapWebPath } from "./map-web-path";
 
 describe("mapWebPath", () => {
-  it("maps the web paths that have a native screen to that screen", () => {
-    expect(mapWebPath("/")).toBe("/");
-    expect(mapWebPath("/habitos/3f2a-bc")).toBe("/habitos/3f2a-bc");
-    expect(mapWebPath("/registros/ht/pomodoro")).toBe("/registros/ht/pomodoro");
-    expect(mapWebPath("/registros/ht/quantity")).toBe("/registros/ht/quantity");
-    expect(mapWebPath("/registros/ht/watch")).toBe("/registros/ht/watch");
+  it("every web path opens in the one WebView: the home route with the encoded path and a nonce (a repeat tap reloads it)", () => {
+    expect(mapWebPath("/retos/123", 7)).toBe("/?path=%2Fretos%2F123&n=7");
+    expect(mapWebPath("/habitos/3f2a-bc", 7)).toBe("/?path=%2Fhabitos%2F3f2a-bc&n=7");
+    expect(mapWebPath("/grupos/9f1c2b3a?seccion=fondo", 1)).toBe("/?path=%2Fgrupos%2F9f1c2b3a%3Fseccion%3Dfondo&n=1");
+    expect(mapWebPath("/", 2)).toBe("/?path=%2F&n=2");
   });
-  it("the four web tabs open the native tab (a WebView inside it)", () => {
-    for (const tab of ["/amigos", "/retos", "/resumen", "/perfil"]) expect(mapWebPath(tab)).toBe(tab);
-    expect(mapWebPath("/retos?x=1")).toBe("/web?path=%2Fretos%3Fx%3D1");
-  });
-  it("sends everything else to the WebView screen with the path encoded", () => {
-    expect(mapWebPath("/retos/123")).toBe("/web?path=%2Fretos%2F123");
-    expect(mapWebPath("/deudas")).toBe("/web?path=%2Fdeudas");
-    expect(mapWebPath("/grupos/9f1c2b3a-4d5e-4f60-8a7b-1c2d3e4f5a6b?seccion=fondo")).toBe(
-      "/web?path=%2Fgrupos%2F9f1c2b3a-4d5e-4f60-8a7b-1c2d3e4f5a6b%3Fseccion%3Dfondo",
-    );
-    expect(mapWebPath("/notificaciones")).toBe("/web?path=%2Fnotificaciones");
-  });
-  it("a registros path with an unknown screen is not native", () => {
-    expect(mapWebPath("/registros/ht/other")).toBe("/web?path=%2Fregistros%2Fht%2Fother");
+  it("the nonce defaults to the clock", () => {
+    jest.spyOn(Date, "now").mockReturnValueOnce(99);
+    expect(mapWebPath("/retos")).toBe("/?path=%2Fretos&n=99");
   });
   it("refuses anything that is not a same-origin relative path: no navigation at all", () => {
     for (const bad of ["https://evil.com", "//evil.com", "/a/../b", "javascript:alert(1)", "", null, undefined, 7, "/x#y"]) {

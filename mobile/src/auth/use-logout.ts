@@ -1,4 +1,3 @@
-import { useQueryClient } from "@tanstack/react-query";
 import * as Notifications from "expo-notifications";
 import { useRouter } from "expo-router";
 import { useMemo } from "react";
@@ -16,7 +15,6 @@ import { createLogout, signOutEverywhere } from "./logout";
  * the encrypted auth store, the WebView cookies, then the native login. The web's sign-out lands here too.
  */
 export function useLogout() {
-  const queryClient = useQueryClient();
   const router = useRouter();
   return useMemo(
     () =>
@@ -24,7 +22,6 @@ export function useLogout() {
         unregisterPush: () => pushRegistrar.unregister(),
         cancelScheduled: () => Notifications.cancelAllScheduledNotificationsAsync(),
         signOut: () => signOutEverywhere(supabase().auth),
-        clearQueries: () => queryClient.clear(),
         clearPersisted: () => clearPersistedCache(cacheKv),
         clearAuthStore: () => authStorage.clear(),
         wipeWebSession: async () => {
@@ -33,6 +30,6 @@ export function useLogout() {
         },
         goToLogin: () => router.replace("/login"),
       }),
-    [queryClient, router],
+    [router],
   );
 }

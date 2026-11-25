@@ -7,7 +7,6 @@ function make(fail: string[] = []) {
     unregisterPush: step("push"),
     cancelScheduled: step("scheduled"),
     signOut: step("signOut"),
-    clearQueries: jest.fn(() => { calls.push("queries"); if (fail.includes("queries")) throw new Error("queries"); }),
     clearPersisted: jest.fn(() => { calls.push("persisted"); }),
     clearAuthStore: step("authStore"),
     wipeWebSession: step("web"),
@@ -20,12 +19,12 @@ describe("logout", () => {
   it("runs the sequence in order: push token first (needs the session), then the session, caches, WebView cookies, login", async () => {
     const { logout, calls } = make();
     await logout();
-    expect(calls).toEqual(["push", "scheduled", "signOut", "queries", "persisted", "authStore", "web", "login"]);
+    expect(calls).toEqual(["push", "scheduled", "signOut", "persisted", "authStore", "web", "login"]);
   });
   it("a failing step never stops the rest: the user always ends on the login screen", async () => {
     const { logout, calls } = make(["push", "signOut", "web"]);
     await logout();
-    expect(calls).toEqual(["push", "scheduled", "signOut", "queries", "persisted", "authStore", "web", "login"]);
+    expect(calls).toEqual(["push", "scheduled", "signOut", "persisted", "authStore", "web", "login"]);
   });
   it("signs out locally only (this device, not the other sessions of the account)", async () => {
     const { logout, deps } = make();

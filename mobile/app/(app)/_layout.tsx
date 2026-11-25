@@ -1,7 +1,8 @@
-import { Redirect, Stack } from "expo-router";
+import { Redirect, Slot } from "expo-router";
 import { gateTarget } from "../../src/auth/gate";
 import { useSession } from "../../src/auth/session";
 import { PushBridge } from "../../src/push/PushBridge";
+import { PushPrompt } from "../../src/push/PushPrompt";
 
 /** The auth gate: nothing under (app) renders without a session. */
 export default function AppLayout() {
@@ -12,7 +13,8 @@ export default function AppLayout() {
   return (
     <>
       <PushBridge />
-      <Stack screenOptions={{ headerShown: false }} />
+      <PushPrompt />
+      <Slot />
     </>
   );
 }

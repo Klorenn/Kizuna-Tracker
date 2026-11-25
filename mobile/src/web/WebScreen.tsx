@@ -13,7 +13,7 @@ import { clearWebLinked, isWebLinked, markWebLinked } from "./web-session-state"
 import { useSession } from "../auth/session";
 import { WebScreenView } from "./WebScreenView";
 
-/** An authenticated screen of the web (retos, amigos, perfil...), signed in through the one-time handoff link. */
+/** The whole web app in one full-screen WebView, signed in through the one-time handoff link (or the live web session). */
 export function WebScreen({ path }: { path: string }) {
   const router = useRouter();
   const logout = useLogout();
@@ -59,7 +59,7 @@ export function WebScreen({ path }: { path: string }) {
       onRetry={retry}
       onExternal={(url) => void Linking.openURL(url).catch(() => undefined)}
       onPair={(url) => void Linking.openURL(url).catch(() => undefined)}
-      onNative={(href) => router.push(href as never)}
+      onNative={(href) => router.replace(href as never)}
       onLoginLanding={onLoginLanding}
       onSignedOut={() => onWebSignedOut() || void logout()}
       onNavigate={onPage}

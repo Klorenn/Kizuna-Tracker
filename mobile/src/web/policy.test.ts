@@ -30,9 +30,10 @@ describe("decideNavigation", () => {
     expect(decideNavigation("kizuna://widget/pair", O)).toEqual({ action: "block" });
     expect(decideNavigation("kizuna://widget/other?code=ABCD1234", O)).toEqual({ action: "block" });
   });
-  it("routes kizuna://app/<path> natively", () => {
-    expect(decideNavigation("kizuna://app/habitos/3f2a", O)).toEqual({ action: "native", href: "/habitos/3f2a" });
-    expect(decideNavigation("kizuna://app/retos/9", O)).toEqual({ action: "native", href: "/web?path=%2Fretos%2F9" });
+  it("routes kizuna://app/<path> to the app route that opens the path in the WebView", () => {
+    jest.spyOn(Date, "now").mockReturnValue(3);
+    expect(decideNavigation("kizuna://app/habitos/3f2a", O)).toEqual({ action: "native", href: "/?path=%2Fhabitos%2F3f2a&n=3" });
+    expect(decideNavigation("kizuna://app/retos/9", O)).toEqual({ action: "native", href: "/?path=%2Fretos%2F9&n=3" });
     expect(decideNavigation("kizuna://app/a/../b", O)).toEqual({ action: "block" });
   });
 });

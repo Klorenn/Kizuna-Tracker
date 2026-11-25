@@ -3,10 +3,10 @@ import { FONT } from "../theme/fonts";
 import { useTheme } from "../theme/ThemeProvider";
 import type { PushPermissionView } from "./use-push-permission";
 
-type Props = { state: PushPermissionView; onEnable: () => void; onOpenSettings: () => void };
+type Props = { state: PushPermissionView; onEnable: () => void; onOpenSettings: () => void; onDismiss?: () => void };
 
 /** Asks, in context and on a tap, for the notification permission. After a denial it only points to the system settings. */
-export function PushBanner({ state, onEnable, onOpenSettings }: Props) {
+export function PushBanner({ state, onEnable, onOpenSettings, onDismiss }: Props) {
   const { colors, radius } = useTheme();
   if (state !== "ask" && state !== "blocked") return null;
   const blocked = state === "blocked";
@@ -18,6 +18,11 @@ export function PushBanner({ state, onEnable, onOpenSettings }: Props) {
           {blocked ? "Actívalas en los ajustes del sistema para recibir tus recordatorios." : "Te avisamos de recordatorios, retos y pagos."}
         </Text>
       </View>
+      {onDismiss && !blocked ? (
+        <Pressable accessibilityRole="button" onPress={onDismiss} style={styles.button}>
+          <Text style={{ color: colors.muted, fontFamily: FONT.medium }}>Ahora no</Text>
+        </Pressable>
+      ) : null}
       <Pressable accessibilityRole="button" onPress={blocked ? onOpenSettings : onEnable} style={[styles.button, { backgroundColor: colors.accent, borderRadius: radius.md }]}>
         <Text style={{ color: colors.onAccent, fontFamily: FONT.medium }}>{blocked ? "Abrir ajustes" : "Activar"}</Text>
       </Pressable>

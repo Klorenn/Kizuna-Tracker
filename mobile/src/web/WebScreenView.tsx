@@ -1,4 +1,4 @@
-import type { ComponentType, Ref } from "react";
+import { useState, type ComponentType, type Ref, type RefObject } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from "react-native";
 import { WebView } from "react-native-webview";
 import type { AndroidWebViewProps } from "react-native-webview/lib/WebViewTypes";
@@ -14,7 +14,7 @@ type Props = {
   state: HandoffState;
   origin: string;
   userAgentName: string;
-  webRef?: Ref<WebView>;
+  webRef?: RefObject<WebView | null>;
   onRetry: () => void;
   onExternal: (url: string) => void;
   onPair: (url: string) => void;
@@ -29,19 +29,35 @@ type Props = {
 
 const MESSAGE: Partial<Record<HandoffState["kind"], { title: string; body?: string }>> = {
   expired: { title: "Sesión web expirada", body: "Vuelve a intentarlo para abrir esta pantalla." },
-  offline: { title: "Sin conexión", body: "Conéctate a internet para abrir esta pantalla." },
+  offline: { title: "Sin conexión", body: "Conéctate a internet para abrir Kizuna." },
   failed: { title: "No pudimos abrir esta pantalla. Inténtalo de nuevo." },
 };
+
+function Message({ copy, onRetry }: { copy: { title: string; body?: string }; onRetry: () => void }) {
+  const { colors, radius } = useTheme();
+  return (
+    <>
+      <Text style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
+      {copy.body ? <Text style={{ color: colors.muted, textAlign: "center" }}>{copy.body}</Text> : null}
+      <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.button, { backgroundColor: colors.accent, borderRadius: radius.md }]}>
+        <Text style={{ color: colors.onAccent, fontWeight: "600" }}>Reintentar</Text>
+      </Pressable>
+    </>
+  );
+}
 
 /**
  * One web screen of the app. It is only ever given the handoff URL of our own origin and refuses every other navigation.
  * No JS bridge (no onMessage, nothing injected), no file access, no mixed content, no extra windows.
  */
 export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, onExternal, onPair, onNative, onLoginLanding, onSignedOut, onNavigate, onCanGoBack }: Props) {
-  const { colors, radius } = useTheme();
+  const { colors } = useTheme();
+  // the page failed to load (no network): the WebView stays mounted underneath, so its history survives the retry
+  const [loadFailed, setLoadFailed] = useState(false);
 
   if (state.kind === "ready") {
     return (
+      <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <AppWebView
         ref={webRef}
         source={{ uri: state.url, headers: { "X-Kizuna-Native": "1" } }}
@@ -69,8 +85,16 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
           else onNavigate?.(nav.url);
           onCanGoBack?.(Boolean((nav as { canGoBack?: boolean }).canGoBack));
         }}
+        onError={() => setLoadFailed(true)}
+        onLoad={() => setLoadFailed(false)}
         style={{ flex: 1, backgroundColor: colors.bg }}
       />
+      {loadFailed ? (
+        <View style={[StyleSheet.absoluteFill, styles.center, { backgroundColor: colors.bg }]}>
+          <Message copy={MESSAGE.offline!} onRetry={() => { setLoadFailed(false); webRef?.current?.reload(); }} />
+        </View>
+      ) : null}
+      </View>
     );
   }
   if (state.kind === "loading" || state.kind === "unauthenticated") {
@@ -80,14 +104,9 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
       </View>
     );
   }
-  const copy = MESSAGE[state.kind]!;
   return (
     <View style={[styles.center, { backgroundColor: colors.bg }]}>
-      <Text style={[styles.title, { color: colors.text }]}>{copy.title}</Text>
-      {copy.body ? <Text style={{ color: colors.muted, textAlign: "center" }}>{copy.body}</Text> : null}
-      <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.button, { backgroundColor: colors.accent, borderRadius: radius.md }]}>
-        <Text style={{ color: colors.onAccent, fontWeight: "600" }}>Reintentar</Text>
-      </Pressable>
+      <Message copy={MESSAGE[state.kind]!} onRetry={onRetry} />
     </View>
   );
 }

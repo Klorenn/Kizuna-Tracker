@@ -1,11 +1,10 @@
 export type LogoutDeps = {
   /** DELETE /api/m/push-token: needs the session, so it goes first */
   unregisterPush(): Promise<void>;
-  /** Pomodoro notifications scheduled on this device */
+  /** Notifications scheduled on this device */
   cancelScheduled(): Promise<void>;
   /** revokes the web sessions the handoffs created (global), then this device (local) */
   signOut(): Promise<void>;
-  clearQueries(): void;
   clearPersisted(): void;
   clearAuthStore(): Promise<void>;
   /** the WebView's cookies: no web page stays reachable authenticated */
@@ -31,7 +30,6 @@ export function createLogout(d: LogoutDeps): () => Promise<void> {
       await attempt(d.unregisterPush);
       await attempt(d.cancelScheduled);
       await attempt(d.signOut);
-      await attempt(d.clearQueries);
       await attempt(d.clearPersisted);
       await attempt(d.clearAuthStore);
       await attempt(d.wipeWebSession);
