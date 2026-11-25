@@ -1,6 +1,6 @@
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createElement } from 'react'
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 import { createModalStack, createScrollLock, trapTarget } from '@/lib/modal-stack'
 import { Sheet } from '@/components/ui/Sheet'
 
@@ -23,6 +23,36 @@ describe('modal stack', () => {
     expect(s.isTop(b)).toBe(true)
     s.close(b)
     expect(s.isTop(b)).toBe(false)
+  })
+})
+
+describe('modal stack closeTop (native back)', () => {
+  it('closes only the top modal and reports whether there was one', () => {
+    const s = createModalStack()
+    expect(s.closeTop()).toBe(false)
+    const closedA = vi.fn()
+    const closedB = vi.fn()
+    s.open(closedA)
+    s.open(closedB)
+    expect(s.closeTop()).toBe(true)
+    expect(closedB).toHaveBeenCalledTimes(1)
+    expect(closedA).not.toHaveBeenCalled()
+  })
+  it('a modal opened without a closer is still on the stack but cannot be closed from outside', () => {
+    const s = createModalStack()
+    const a = s.open()
+    expect(s.hasOpen()).toBe(true)
+    expect(s.closeTop()).toBe(false)
+    s.close(a)
+  })
+  it('closing a lower modal by id keeps the closer of the one above', () => {
+    const s = createModalStack()
+    const top = vi.fn()
+    const a = s.open(vi.fn())
+    s.open(top)
+    s.close(a)
+    expect(s.closeTop()).toBe(true)
+    expect(top).toHaveBeenCalledTimes(1)
   })
 })
 

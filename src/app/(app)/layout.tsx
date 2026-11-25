@@ -1,6 +1,7 @@
 import { SerwistProvider } from "@serwist/turbopack/react";
 import { headers } from "next/headers";
 import { BottomNav } from "@/components/BottomNav";
+import { NativeBackBridge } from "@/components/NativeBackBridge";
 import { NativeShellProvider } from "@/components/NativeShell";
 import { isNativeUA } from "@/lib/native-shell";
 
@@ -14,6 +15,7 @@ export default async function AppLayout({
       <NativeShellProvider native={native}>
         <div className="pb-[calc(3.5rem+env(safe-area-inset-bottom))]">{children}</div>
         <BottomNav />
+        {native ? <NativeBackBridge /> : null}
       </NativeShellProvider>
     </SerwistProvider>
   );

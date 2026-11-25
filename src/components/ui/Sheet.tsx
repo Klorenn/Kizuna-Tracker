@@ -3,11 +3,10 @@
 import { X } from "@phosphor-icons/react";
 import { useEffect, useId, useRef, useState, type ReactNode, type RefObject } from "react";
 import { createPortal } from "react-dom";
-import { createModalStack, createScrollLock, trapTarget } from "@/lib/modal-stack";
+import { createScrollLock, trapTarget } from "@/lib/modal-stack";
+import { sheetStack as stack } from "@/lib/sheet-stack";
 import { IconButton } from "./IconButton";
 
-/** Every open sheet, in opening order: only the top one answers Escape, its backdrop and Tab. */
-const stack = createModalStack();
 /** Body scroll lock shared by all sheets (ref-counted, so nested sheets release it once). */
 const lockScroll = createScrollLock(() => document.body.style);
 
@@ -78,7 +77,7 @@ export function Sheet({
     if (!active) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
-    const id = stack.open();
+    const id = stack.open(() => onCloseRef.current());
     const release = lockScroll();
     const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     (initialRef.current?.current ?? dialog).focus();

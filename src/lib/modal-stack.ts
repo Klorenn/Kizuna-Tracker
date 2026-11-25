@@ -5,22 +5,34 @@
 
 export function createModalStack() {
   const ids: number[] = []
+  const closers = new Map<number, () => void>()
   let seq = 0
   return {
-    open(): number {
+    /** `close` lets code outside the modal close it (the native app's back button): it must only close UI. */
+    open(close?: () => void): number {
       const id = ++seq
       ids.push(id)
+      if (close) closers.set(id, close)
       return id
     },
     close(id: number) {
       const i = ids.indexOf(id)
       if (i >= 0) ids.splice(i, 1)
+      closers.delete(id)
     },
     hasOpen(): boolean {
       return ids.length > 0
     },
     isTop(id: number): boolean {
       return ids.length > 0 && ids[ids.length - 1] === id
+    },
+    /** Asks the top modal to close; true when there was one that can be closed. The modal removes itself via `close(id)`. */
+    closeTop(): boolean {
+      const top = ids[ids.length - 1]
+      const fn = top === undefined ? undefined : closers.get(top)
+      if (!fn) return false
+      fn()
+      return true
     },
   }
 }
