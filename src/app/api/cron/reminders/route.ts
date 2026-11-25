@@ -31,7 +31,15 @@ export async function POST(request: Request) {
       console.error('receipts failed', e)
       return null
     })
-    return NextResponse.json({ swept, reminded: targets.length, ...scheduled, receipts })
+    // 5) retention of client_errors (30 days): one indexed delete; never fails the cron
+    let purgedErrors: number | null = null
+    try {
+      const { data, error } = await db.rpc('purge_client_errors')
+      purgedErrors = error ? null : data
+    } catch (e) {
+      console.error('client_errors purge failed', e)
+    }
+    return NextResponse.json({ swept, reminded: targets.length, ...scheduled, receipts, purgedErrors })
   } catch (e) {
     console.error('reminders failed', e)
     return NextResponse.json({ error: 'failed' }, { status: 500 })

@@ -705,6 +705,57 @@ export type Database = {
           },
         ]
       }
+      client_errors: {
+        Row: {
+          app_version: string | null
+          bucket: string
+          count: number
+          created_at: string
+          fingerprint: string
+          id: string
+          kind: string
+          last_seen_at: string
+          message: string
+          release: string | null
+          stack: string | null
+          ua_kind: string
+          url_path: string
+          user_id: string | null
+        }
+        Insert: {
+          app_version?: string | null
+          bucket?: string
+          count?: number
+          created_at?: string
+          fingerprint: string
+          id?: string
+          kind: string
+          last_seen_at?: string
+          message: string
+          release?: string | null
+          stack?: string | null
+          ua_kind: string
+          url_path?: string
+          user_id?: string | null
+        }
+        Update: {
+          app_version?: string | null
+          bucket?: string
+          count?: number
+          created_at?: string
+          fingerprint?: string
+          id?: string
+          kind?: string
+          last_seen_at?: string
+          message?: string
+          release?: string | null
+          stack?: string | null
+          ua_kind?: string
+          url_path?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       device_push_tokens: {
         Row: {
           created_at: string
@@ -3049,6 +3100,21 @@ export type Database = {
         Returns: string
       }
       public_profile: { Args: { p_username: string }; Returns: Json }
+      purge_client_errors: { Args: never; Returns: number }
+      record_client_error: {
+        Args: {
+          p_app_version: string
+          p_fingerprint: string
+          p_kind: string
+          p_message: string
+          p_release: string
+          p_stack: string
+          p_ua_kind: string
+          p_url_path: string
+          p_user_id: string
+        }
+        Returns: undefined
+      }
       rate_limit: {
         Args: {
           p_key: string
