@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { vi } from 'vitest'
-import { announceReading, celebrationsHeld, clearReading, holdCelebrations, onCelebrationsReleased, takeReading } from '@/lib/celebration-bus'
+import { announceGoal, clearGoal, onGoalAnnounced, takeGoal, announceReading, celebrationsHeld, clearReading, holdCelebrations, onCelebrationsReleased, takeReading } from '@/lib/celebration-bus'
 
 describe('celebration bus', () => {
   it('hands the saved reading to the next taker once', () => {
@@ -31,6 +31,19 @@ describe('celebration bus', () => {
     b()
     expect(celebrationsHeld()).toBe(false)
     expect(released).toHaveBeenCalledTimes(1)
+    off()
+  })
+
+  it('a met quantity goal is handed over once, notifies listeners, and can be dropped', () => {
+    const seen = vi.fn()
+    const off = onGoalAnnounced(seen)
+    announceGoal('h1')
+    expect(seen).toHaveBeenCalledTimes(1)
+    expect(takeGoal()).toBe('h1')
+    expect(takeGoal()).toBeNull()
+    announceGoal('h2')
+    clearGoal()
+    expect(takeGoal()).toBeNull()
     off()
   })
 })

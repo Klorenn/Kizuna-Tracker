@@ -158,6 +158,9 @@ export default async function Home() {
               done: r.done,
               icon: r.icon,
               target: r.quantity?.config.unit === "ml" ? r.quantity.config.target : undefined,
+              name: r.name,
+              unit: r.quantity?.config.unit,
+              unitLabel: r.quantity?.config.label,
             }))}
           />
           <CatPreload

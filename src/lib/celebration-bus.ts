@@ -54,3 +54,33 @@ export function onCelebrationsReleased(fn: () => void): () => void {
     listeners.delete(fn)
   }
 }
+
+/*
+ * A quantity habit's goal was met (the server confirmed it). Hoy normally notices through the refresh that
+ * follows, but that refresh is a second round trip that can be skipped or land late (offline, a held sheet),
+ * so the control also announces it here and the watcher celebrates from this when the refresh did not.
+ */
+let goal: string | null = null
+const goalListeners = new Set<() => void>()
+
+export function announceGoal(habitId: string): void {
+  goal = habitId
+  for (const fn of [...goalListeners]) fn()
+}
+
+export function takeGoal(): string | null {
+  const g = goal
+  goal = null
+  return g
+}
+
+export function clearGoal(): void {
+  goal = null
+}
+
+export function onGoalAnnounced(fn: () => void): () => void {
+  goalListeners.add(fn)
+  return () => {
+    goalListeners.delete(fn)
+  }
+}

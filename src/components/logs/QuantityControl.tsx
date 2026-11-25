@@ -3,6 +3,7 @@
 import { CheckCircle, DotsThree, Warning, X } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { announceGoal } from "@/lib/celebration-bus";
 import { createQuickAddPress } from "@/lib/quick-add-press";
 import { addQuantity, refreshQuantity, removeQuantity } from "@/app/(app)/registros/quantity-actions";
 import { ProgressRing } from "@/components/ui/ProgressRing";
@@ -149,6 +150,8 @@ export function QuantityControl({
   const queueRef = useRef<QuantityQueue | null>(null);
   const dirty = useRef(false);
   const stamps = useRef(new Map<string, string>());
+  // whether the server already counted today's goal as met: the tap that flips it is the one that celebrates
+  const wasDone = useRef(goalMet(total, config.target));
 
   const queue = useCallback((): QuantityQueue => {
     if (!queueRef.current) queueRef.current = sharedQuantityQueue(addQuantity);
@@ -185,6 +188,7 @@ export function QuantityControl({
     const waiting = q.pending().filter((s) => s.habitId === habitId);
     if (waiting.length > 0) dirty.current = true; // a restored backlog: refresh once when it drains
     setServerDone((d) => doneAfterSync(d, total, config.target));
+    wasDone.current = goalMet(total, config.target);
     setList([
       ...server.map((e) => ({ ...e, saved: true })),
       ...waiting.map((s) => ({
@@ -218,6 +222,8 @@ export function QuantityControl({
       if (e.sum.habitId !== habitId) return;
       if (e.kind === "settled") {
         if (e.result.ok) {
+          if (e.result.done && !wasDone.current) announceGoal(habitId);
+          wasDone.current = e.result.done;
           setServerDone(e.result.done);
           setList((l) => l.map((x) => (x.id === e.sum.entryId ? { ...x, saved: true } : x)));
         } else {
@@ -257,6 +263,7 @@ export function QuantityControl({
         return;
       }
       q.setTotal(habitId, res.total);
+      wasDone.current = res.done;
       setServerDone(res.done);
       setRejection(null);
       setList((l) => l.filter((e) => e.id !== entryId));

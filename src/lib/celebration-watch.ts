@@ -1,5 +1,7 @@
 import {
   celebrationCandidates,
+  isWaterHabit,
+  type HoyRowState,
   type Celebration,
   type HoyState,
   type ReadingSaved,
@@ -41,4 +43,23 @@ export function watchStep(
     if (deps.claim(kind, prev, next)) return { prev: next, show: { kind, reading }, deferred: false }
   }
   return { prev: next, show: null, deferred: false }
+}
+
+/**
+ * A water goal announced by the quantity control (see celebration-bus). Pure for tests:
+ * - held (a sheet is open): nothing yet, keep the habit and try again on release;
+ * - not a water habit on Hoy (steps, km...) or an unknown id: nothing;
+ * - otherwise water, once per habit per day (`claim`).
+ */
+export function goalStep(
+  habitId: string | null,
+  rows: HoyRowState[],
+  deps: { held(): boolean; claim(habitId: string): boolean },
+): { show: Shown | null; habitId: string | null; deferred?: true } {
+  if (!habitId) return { show: null, habitId: null }
+  if (deps.held()) return { show: null, habitId, deferred: true }
+  const row = rows.find((r) => r.id === habitId)
+  if (!row || !isWaterHabit(row)) return { show: null, habitId: null }
+  if (!deps.claim(habitId)) return { show: null, habitId: null }
+  return { show: { kind: 'water', reading: null }, habitId }
 }

@@ -200,9 +200,19 @@ describe('water goal celebration', () => {
   it('names the water habit (scope of its once-per-day claim)', () => {
     expect(celebratedHabit('water', st([w(false), read0]), st([w(true), read0]))).toBe('w')
   })
-  it('isWaterHabit is the Agua preset only', () => {
+  it('isWaterHabit: the water preset, or a liquid-unit quantity habit named agua', () => {
     expect(isWaterHabit({ preset: 'water' })).toBe(true)
     expect(isWaterHabit({ preset: 'walk' })).toBe(false)
+    // custom habit named "Agua" (preset null) in ml, or in custom "vasos" / "litros"
+    expect(isWaterHabit({ preset: null, name: 'Agua', unit: 'ml' })).toBe(true)
+    expect(isWaterHabit({ preset: null, name: 'Tomar AGUA', unit: 'custom', unitLabel: 'vasos' })).toBe(true)
+    expect(isWaterHabit({ preset: null, name: 'Beber agua', unit: 'custom', unitLabel: 'Litros' })).toBe(true)
+    expect(isWaterHabit({ preset: null, name: 'Hidratación', unit: 'custom', unitLabel: 'vasos' })).toBe(false)
+    // name alone, or a liquid unit alone, is not enough
+    expect(isWaterHabit({ preset: null, name: 'Agua' })).toBe(false)
+    expect(isWaterHabit({ preset: null, name: 'Leche', unit: 'ml' })).toBe(false)
+    expect(isWaterHabit({ preset: null, name: 'Agua de coco', unit: 'steps' })).toBe(false)
+    expect(isWaterHabit({ preset: null, name: 'Aguacate', unit: 'ml' })).toBe(false)
   })
   it('body shows the real target, generic when unknown', () => {
     expect(waterGoalBody(2000)).toBe('2 litros hoy 💧')

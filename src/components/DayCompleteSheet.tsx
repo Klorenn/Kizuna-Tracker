@@ -5,6 +5,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import {
   celebratedHabit,
   completedMealsHabit,
+  isWaterHabit,
   waterGoalBody,
   type Celebration,
   type DayProgress,
@@ -13,8 +14,8 @@ import {
 } from "@/domain/day-complete";
 import type { LocalDate } from "@/domain/types";
 import { celebrationKey, claimCelebration, sessionStore } from "@/lib/celebrate-once";
-import { celebrationsHeld, onCelebrationsReleased, takeReading } from "@/lib/celebration-bus";
-import { watchStep, type Shown } from "@/lib/celebration-watch";
+import { celebrationsHeld, clearGoal, onCelebrationsReleased, onGoalAnnounced, takeGoal, takeReading } from "@/lib/celebration-bus";
+import { goalStep, watchStep, type Shown } from "@/lib/celebration-watch";
 import type { CatAsset } from "@/lib/motion/cat-animation";
 
 // Celebrations are rare: their code loads the first time one has to open, not with Hoy.
@@ -53,6 +54,9 @@ export function DayCompleteSheet({
   );
 }
 
+/** How long the refresh gets to bring the water celebration itself (and "día completo", which outranks it) before the control's own announcement shows it. */
+const GOAL_GRACE_MS = 1200;
+
 /** Once per (kind, habit or day, local date) per session: undo then redo does not celebrate again. */
 function claim(kind: Celebration, before: HoyState, next: HoyState, today: LocalDate): boolean {
   // book and reading follow an explicit save in the reading sheet: they always show
@@ -87,6 +91,15 @@ export function DayCompleteWatcher({
   const latest = useRef<HoyState>({ done, total, rows });
   latest.current = { done, total, rows };
 
+  // A water goal the quantity control announced and the refresh has not celebrated (yet).
+  const goal = useRef<string | null>(null);
+  const goalTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const dropGoal = useCallback(() => {
+    goal.current = null;
+    if (goalTimer.current) clearTimeout(goalTimer.current);
+    goalTimer.current = null;
+  }, []);
+
   const evaluate = useCallback(() => {
     const step = watchStep(prev.current, latest.current, {
       held: celebrationsHeld,
@@ -95,16 +108,51 @@ export function DayCompleteWatcher({
     });
     prev.current = step.prev;
     if (step.show) {
+      dropGoal(); // the refresh celebrated (water, or the day that outranks it): the announcement is spent
+      last.current = step.show;
+      setArmed(true);
+      setShown(step.show);
+    }
+  }, [today, dropGoal]);
+
+  const fireGoal = useCallback(() => {
+    goalTimer.current = null;
+    const step = goalStep(goal.current, latest.current.rows, {
+      held: celebrationsHeld,
+      claim: (habitId) => claimCelebration(sessionStore(), celebrationKey("water", habitId, today)),
+    });
+    if (step.deferred) return; // a sheet is open: the release arms it again
+    goal.current = null;
+    if (step.show) {
       last.current = step.show;
       setArmed(true);
       setShown(step.show);
     }
   }, [today]);
 
+  const armGoal = useCallback(() => {
+    goal.current = takeGoal() ?? goal.current;
+    if (!goal.current || goalTimer.current || celebrationsHeld()) return;
+    goalTimer.current = setTimeout(fireGoal, GOAL_GRACE_MS);
+  }, [fireGoal]);
+
   useEffect(() => {
     evaluate();
   }, [done, total, rows, evaluate]);
-  useEffect(() => onCelebrationsReleased(evaluate), [evaluate]);
+  useEffect(
+    () =>
+      onCelebrationsReleased(() => {
+        evaluate();
+        armGoal();
+      }),
+    [evaluate, armGoal],
+  );
+  // announcements from before this Hoy mounted (another page) are stale, like a stale reading
+  useEffect(() => {
+    clearGoal();
+    return onGoalAnnounced(armGoal);
+  }, [armGoal]);
+  useEffect(() => dropGoal, [dropGoal]);
 
   const close = useCallback(() => setShown(null), []);
   const { kind, reading } = shown ?? last.current;
@@ -112,6 +160,6 @@ export function DayCompleteWatcher({
   if (!armed) return null;
   if (kind === "book") return <BookDoneSheet open={open} title={reading?.finishedTitle ?? ""} onClose={close} />;
   if (kind === "reading") return <ReadingDoneSheet open={open} pages={reading?.pages ?? 0} onClose={close} />;
-  const waterTarget = rows.find((r) => r.preset === "water")?.target;
+  const waterTarget = rows.find((r) => isWaterHabit(r))?.target;
   return <DayCompleteSheet kind={kind} open={open} onClose={close} waterTarget={waterTarget} />;
 }

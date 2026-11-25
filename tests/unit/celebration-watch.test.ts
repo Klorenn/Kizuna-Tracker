@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import type { HoyState, ReadingSaved } from '@/domain/day-complete'
-import { watchStep } from '@/lib/celebration-watch'
+import { goalStep, watchStep } from '@/lib/celebration-watch'
 
 const r = (id: string, preset: string | null, done: boolean) => ({ id, preset, hasItems: false, done })
 const s = (rows: ReturnType<typeof r>[]): HoyState => ({ done: rows.filter((x) => x.done).length, total: rows.length, rows })
@@ -67,5 +67,26 @@ describe('watchStep with water', () => {
     const after = s([r('w', 'water', true), r('b', 'read', false)])
     expect(watchStep(before, after, deps()).show).toEqual({ kind: 'water', reading: null })
     expect(watchStep(before, after, deps({ claimed: ['water'] })).show).toBeNull()
+  })
+})
+
+describe('goalStep (water goal met, independent of the Hoy refresh)', () => {
+  const rows = [
+    { id: 'w', preset: null, name: 'Agua', unit: 'ml', hasItems: false, done: false, target: 2000 },
+    { id: 'p', preset: null, name: 'Pasos', unit: 'steps', hasItems: false, done: false },
+  ]
+  const ok = { held: () => false, claim: () => true }
+
+  it('shows water for a water habit and reports its goal', () => {
+    expect(goalStep('w', rows, ok)).toEqual({ show: { kind: 'water', reading: null }, habitId: 'w' })
+  })
+  it('ignores other quantity habits, unknown ids and a null announcement', () => {
+    expect(goalStep('p', rows, ok).show).toBeNull()
+    expect(goalStep('zzz', rows, ok).show).toBeNull()
+    expect(goalStep(null, rows, ok).show).toBeNull()
+  })
+  it('waits while a sheet holds celebrations, and honors the once-per-day claim', () => {
+    expect(goalStep('w', rows, { held: () => true, claim: () => true })).toEqual({ show: null, habitId: 'w', deferred: true })
+    expect(goalStep('w', rows, { held: () => false, claim: () => false }).show).toBeNull()
   })
 })

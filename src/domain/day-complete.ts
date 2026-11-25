@@ -15,7 +15,18 @@ export function shouldCelebrateDay(
 }
 
 /** `target` is a quantity habit's goal in ml (water only); absent when unknown or in another unit. */
-export type HoyRowState = { id: string; preset: string | null; hasItems: boolean; done: boolean; icon?: string; target?: number };
+export type HoyRowState = {
+  id: string;
+  preset: string | null;
+  hasItems: boolean;
+  done: boolean;
+  icon?: string;
+  target?: number;
+  /** habit name, quantity unit (`QuantityUnit`) and custom unit label: only for the water detection of custom habits */
+  name?: string;
+  unit?: string;
+  unitLabel?: string | null;
+};
 
 /** Picker icons that mean study or desk work (the "Estudiar" preset uses book-open). */
 export const STUDY_ICONS: readonly string[] = ["laptop", "desk"];
@@ -30,9 +41,20 @@ export function isStudyHabit(r: { preset: string | null; icon?: string }): boole
   return r.preset === "study" || (r.icon !== undefined && STUDY_ICONS.includes(r.icon));
 }
 
-/** Water moment: the "Agua" preset (quantity habit; other quantity habits never celebrate). */
-export function isWaterHabit(r: { preset: string | null }): boolean {
-  return r.preset === "water";
+const norm = (t: string) => t.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase();
+
+/**
+ * Water moment. Two ways in:
+ * - the "Agua" preset (any log type);
+ * - a custom habit (preset null: the form stores no preset for a habit the user named "Agua") that
+ *   measures a liquid (unit ml, or a custom unit labelled vasos / litros / ml / l) AND is named agua.
+ * Name alone or unit alone is not enough: "Leche" in ml or "Agua de coco" in steps never celebrate.
+ */
+export function isWaterHabit(r: { preset: string | null; name?: string; unit?: string; unitLabel?: string | null }): boolean {
+  if (r.preset === "water") return true;
+  if (!r.name || !r.unit) return false;
+  const liquid = r.unit === "ml" || (r.unit === "custom" && /^(vasos?|litros?|ml|l)$/.test(norm((r.unitLabel ?? "").trim())));
+  return liquid && /\bagua\b/.test(norm(r.name));
 }
 
 /** Celebration subtitle with the real daily goal in ml; generic when the target is unknown. */
