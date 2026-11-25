@@ -2,6 +2,7 @@ import { TZDate } from "@date-fns/tz";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import type { SupabaseClient } from "@supabase/supabase-js";
+import { chipsFromMyGroupsRows, type GroupChip } from "@/domain/my-groups-chips";
 import { buildToday, type TodayRow } from "@/domain/today";
 import type { Database } from "@/lib/supabase/database.types";
 import { loadTodayCore, type TodayData } from "@/lib/today-core";
@@ -22,6 +23,8 @@ export type TodayView = {
   bestDailyStreak: number;
   /** done over total, 0 when there are no habits */
   progress: number;
+  /** habit id to the live group it belongs to (the chip on its row) */
+  groupChips: Record<string, GroupChip>;
 };
 
 export class TodayLoadError extends Error {
@@ -36,10 +39,17 @@ export function todayRawOf(data: Ready): TodayRaw {
 }
 
 /**
- * Group chips need `groups-data` (server-only) for the row mapping, which is not whitelisted: Phase 1 shows no chips
- * (an empty Map), as the design allows. M1+ can extract the mapper to a whitelisted file.
+ * Group chips: `my_groups` is callable by `authenticated`, so the app reads it directly and maps the rows with the shared
+ * pure mapper. Chips are decoration: any failure is an empty Map, never a broken Hoy.
  */
-const noChips = async () => new Map<string, { name: string; color: string }>();
+export async function fetchGroupChips(supabase: SupabaseClient<Database>): Promise<Map<string, GroupChip>> {
+  try {
+    const { data, error } = (await supabase.rpc("my_groups")) as { data: unknown; error: unknown };
+    return error ? new Map() : chipsFromMyGroupsRows(data);
+  } catch {
+    return new Map();
+  }
+}
 
 /** The queryFn: the shared reads, over the user's own session (RLS), as a persistable value. */
 export async function fetchToday(supabase: SupabaseClient<Database>, userId: string, now: Date = new Date()): Promise<TodayRaw> {
@@ -47,7 +57,7 @@ export async function fetchToday(supabase: SupabaseClient<Database>, userId: str
     if (error) throw new TodayLoadError(false);
     return data;
   });
-  const data = await loadTodayCore(supabase, userId, profileRead, now, noChips);
+  const data = await loadTodayCore(supabase, userId, profileRead, now, () => fetchGroupChips(supabase));
   if (!data.ok) throw new TodayLoadError(Boolean(data.missingProfile));
   return todayRawOf(data);
 }
@@ -73,5 +83,6 @@ export function selectToday(raw: TodayRaw, now: Date = new Date()): TodayView {
     total: built.total,
     bestDailyStreak: built.bestDailyStreak,
     progress: built.total === 0 ? 0 : built.doneCount / built.total,
+    groupChips: Object.fromEntries(raw.groupChips ?? []),
   };
 }
