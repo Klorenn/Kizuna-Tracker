@@ -4,7 +4,7 @@ import { WebView } from "react-native-webview";
 import type { AndroidWebViewProps } from "react-native-webview/lib/WebViewTypes";
 import { useTheme } from "../theme/ThemeProvider";
 import type { HandoffState } from "./use-web-handoff";
-import { decideNavigation, isExpiredLanding, isWebSignedOut } from "./policy";
+import { decideNavigation, isExpiredLanding, isWebSignedOut, parseBackReply } from "./policy";
 
 // The package types intersect the iOS, Android and Windows props, which makes literal props (false, "never") unassignable;
 // the app is Android only, so the component is typed by its Android props.
@@ -25,6 +25,8 @@ type Props = {
   onNavigate?: (url: string) => void;
   /** Android back: lets the container call goBack */
   onCanGoBack?: (can: boolean) => void;
+  /** the page's answer to the back button (validated: exact shape, our origin). Without it the WebView has no message channel at all. */
+  onBackReply?: (reply: { id: number; handled: boolean }) => void;
 };
 
 const MESSAGE: Partial<Record<HandoffState["kind"], { title: string; body?: string }>> = {
@@ -48,9 +50,10 @@ function Message({ copy, onRetry }: { copy: { title: string; body?: string }; on
 
 /**
  * One web screen of the app. It is only ever given the handoff URL of our own origin and refuses every other navigation.
- * No JS bridge (no onMessage, nothing injected), no file access, no mixed content, no extra windows.
+ * The only bridge is the back reply (`onBackReply`: one validated message shape from our origin; the app injects only the back call
+ * when the button is pressed). No file access, no mixed content, no extra windows.
  */
-export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, onExternal, onPair, onNative, onLoginLanding, onSignedOut, onNavigate, onCanGoBack }: Props) {
+export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, onExternal, onPair, onNative, onLoginLanding, onSignedOut, onNavigate, onCanGoBack, onBackReply }: Props) {
   const { colors } = useTheme();
   // the page failed to load (no network): the WebView stays mounted underneath, so its history survives the retry
   const [loadFailed, setLoadFailed] = useState(false);
@@ -102,6 +105,14 @@ export function WebScreenView({ state, origin, userAgentName, webRef, onRetry, o
           else if (d.action === "native") onNative(d.href);
           return false;
         }}
+        onMessage={
+          onBackReply
+            ? (e) => {
+                const r = parseBackReply(e.nativeEvent.data, e.nativeEvent.url, origin);
+                if (r) onBackReply(r);
+              }
+            : undefined
+        }
         onNavigationStateChange={(nav) => {
           if (decideNavigation(nav.url, origin).action === "allow" && !isExpiredLanding(nav.url, origin) && !isWebSignedOut(nav.url, origin)) lastUrl.current = nav.url;
           if (isExpiredLanding(nav.url, origin)) onLoginLanding();

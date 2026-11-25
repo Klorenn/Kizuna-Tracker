@@ -1,4 +1,4 @@
-import { decideNavigation, isExpiredLanding, isWebSignedOut, registroOutcome, nativeUserAgentName } from "./policy";
+import { decideNavigation, isExpiredLanding, isWebSignedOut, registroOutcome, nativeUserAgentName, parseBackReply } from "./policy";
 
 const O = "https://kizuna.example";
 
@@ -65,5 +65,40 @@ describe("nativeUserAgentName", () => {
     expect(nativeUserAgentName("1.1.1")).toBe("KizunaNative/1");
     expect(nativeUserAgentName("2.0.0")).toBe("KizunaNative/2");
     expect(nativeUserAgentName(undefined)).toBe("KizunaNative/1");
+  });
+});
+
+describe("parseBackReply (the only message the app accepts from the page)", () => {
+  const O = "https://kizuna.example";
+  const ok = JSON.stringify({ t: "kizuna.back", id: 4, handled: true });
+  it("accepts the exact shape from the web origin", () => {
+    expect(parseBackReply(ok, `${O}/retos`, O)).toEqual({ id: 4, handled: true });
+    expect(parseBackReply(JSON.stringify({ t: "kizuna.back", id: 0, handled: false }), `${O}/`, O)).toEqual({ id: 0, handled: false });
+  });
+  it("refuses another origin, a non-https page, credentials and a missing url", () => {
+    expect(parseBackReply(ok, "https://evil.com/", O)).toBeNull();
+    expect(parseBackReply(ok, "http://kizuna.example/", O)).toBeNull();
+    expect(parseBackReply(ok, "https://u:p@kizuna.example/", O)).toBeNull();
+    expect(parseBackReply(ok, "", O)).toBeNull();
+    expect(parseBackReply(ok, undefined as unknown as string, O)).toBeNull();
+  });
+  it("refuses anything but the known shape", () => {
+    const u = `${O}/`;
+    for (const bad of [
+      "not json",
+      "null",
+      "[]",
+      '"kizuna.back"',
+      JSON.stringify({ t: "other", id: 1, handled: true }),
+      JSON.stringify({ t: "kizuna.back", id: "1", handled: true }),
+      JSON.stringify({ t: "kizuna.back", id: 1.5, handled: true }),
+      JSON.stringify({ t: "kizuna.back", id: -1, handled: true }),
+      JSON.stringify({ t: "kizuna.back", id: 1, handled: "yes" }),
+      JSON.stringify({ t: "kizuna.back", id: 1 }),
+      JSON.stringify({ t: "kizuna.back", id: 1, handled: true, extra: "x" }),
+      "x".repeat(5000),
+    ])
+      expect(parseBackReply(bad, u, O)).toBeNull();
+    expect(parseBackReply(undefined as unknown as string, u, O)).toBeNull();
   });
 });

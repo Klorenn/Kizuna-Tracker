@@ -6,6 +6,7 @@ import type { WebView } from "react-native-webview";
 import { useLogout } from "../auth/use-logout";
 import { env } from "../lib/env";
 import { supabase } from "../lib/supabase";
+import { backScript, createBackCoordinator } from "./back-coordinator";
 import { requestWebSession } from "./handoff";
 import { nativeUserAgentName } from "./policy";
 import { useWebHandoff } from "./use-web-handoff";
@@ -39,16 +40,29 @@ export function WebScreen({ path }: { path: string }) {
     if (state.kind === "unauthenticated") router.replace("/login");
   }, [state.kind, router]);
 
-  useEffect(() => {
-    const sub = BackHandler.addEventListener("hardwareBackPress", () => {
-      if (canGoBack) {
-        webRef.current?.goBack();
+  // Android back: the page closes its top sheet first; only when it did not (or did not answer) does back go back in the web, then leave
+  const canGoBackRef = useRef(false);
+  canGoBackRef.current = canGoBack;
+  const leave = useRef(() => {});
+  leave.current = () => (router.canGoBack() ? router.back() : BackHandler.exitApp());
+  const [backBridge] = useState(() =>
+    createBackCoordinator({
+      ask: (id) => {
+        const web = webRef.current;
+        if (!web) return false;
+        web.injectJavaScript(backScript(id));
         return true;
-      }
-      return false;
-    });
-    return () => sub.remove();
-  }, [canGoBack]);
+      },
+      fallback: () => (canGoBackRef.current ? webRef.current?.goBack() : leave.current()),
+    }),
+  );
+  useEffect(() => {
+    const sub = BackHandler.addEventListener("hardwareBackPress", () => backBridge.press());
+    return () => {
+      sub.remove();
+      backBridge.dispose();
+    };
+  }, [backBridge]);
 
   return (
     <WebScreenView
@@ -64,6 +78,7 @@ export function WebScreen({ path }: { path: string }) {
       onSignedOut={() => onWebSignedOut() || void logout()}
       onNavigate={onPage}
       onCanGoBack={setCanGoBack}
+      onBackReply={backBridge.reply}
     />
   );
 }

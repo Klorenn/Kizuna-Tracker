@@ -99,3 +99,28 @@ export function nativeUserAgentName(version: string | undefined): string {
   const major = Number.parseInt(version ?? "", 10);
   return `KizunaNative/${Number.isFinite(major) && major > 0 ? major : 1}`;
 }
+
+/** The one message type the page may post (web: src/lib/native-back.ts). */
+const BACK_TYPE = "kizuna.back";
+
+/**
+ * The page's answer to the back button: exactly `{ t: "kizuna.back", id, handled }`, sent from a page of our own origin (https, no
+ * credentials). Anything else (another origin, another shape, extra keys, an oversized payload) is dropped: the WebView has no other bridge.
+ */
+export function parseBackReply(data: unknown, url: unknown, origin: string): { id: number; handled: boolean } | null {
+  if (typeof data !== "string" || data.length > 200 || typeof url !== "string") return null;
+  const p = parse(url);
+  if (!p || !sameOrigin(p, origin)) return null;
+  let v: unknown;
+  try {
+    v = JSON.parse(data);
+  } catch {
+    return null;
+  }
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+  const o = v as Record<string, unknown>;
+  const keys = Object.keys(o);
+  if (keys.length !== 3 || !keys.every((k) => k === "t" || k === "id" || k === "handled")) return null;
+  if (o.t !== BACK_TYPE || typeof o.id !== "number" || !Number.isSafeInteger(o.id) || o.id < 0 || typeof o.handled !== "boolean") return null;
+  return { id: o.id, handled: o.handled };
+}

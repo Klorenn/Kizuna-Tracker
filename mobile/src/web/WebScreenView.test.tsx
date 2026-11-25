@@ -25,8 +25,10 @@ describe("WebScreenView", () => {
     expect(props().setSupportMultipleWindows).toBe(false);
     expect(props().allowFileAccess).toBe(false);
     expect(props().mixedContentMode).toBe("never");
+    // nothing is injected up front; without a back handler there is no message channel at all
     expect(props().onMessage).toBeUndefined();
     expect(props().injectedJavaScript).toBeUndefined();
+    expect(props().injectedJavaScriptBeforeContentLoaded).toBeUndefined();
   });
   it("only the web origin may load; other sites open in the browser and the WebView stays", async () => {
     await render(<WebScreenView {...base} state={ready} />);

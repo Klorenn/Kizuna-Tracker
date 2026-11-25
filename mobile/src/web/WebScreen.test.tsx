@@ -6,10 +6,13 @@ import { clearWebLinked } from "./web-session-state";
 const mockReplace = jest.fn();
 const mockLogout = jest.fn();
 const mockGoBack = jest.fn();
+const mockInject = jest.fn();
+const mockRouterBack = jest.fn();
+let mockCanRouterBack = false;
 let mockView: Record<string, any> = {};
 let mockHandoff: unknown = { ok: true, url: "https://kizuna.example/auth/native-handoff?token_hash=a&next=%2F" };
 
-jest.mock("expo-router", () => ({ useRouter: () => ({ replace: mockReplace }) }));
+jest.mock("expo-router", () => ({ useRouter: () => ({ replace: mockReplace, back: mockRouterBack, canGoBack: () => mockCanRouterBack }) }));
 jest.mock("expo-constants", () => ({ __esModule: true, default: { expoConfig: { version: "1.2.0" } } }));
 jest.mock("../auth/use-logout", () => ({ useLogout: () => mockLogout }));
 jest.mock("../auth/session", () => ({ useSession: () => ({ session: { user: { id: "u1" } } }) }));
@@ -19,7 +22,7 @@ jest.mock("./handoff", () => ({ requestWebSession: async () => mockHandoff }));
 jest.mock("./WebScreenView", () => ({
   WebScreenView: (p: Record<string, any>) => {
     mockView = p;
-    if (p.webRef) p.webRef.current = { goBack: mockGoBack };
+    if (p.webRef) p.webRef.current = { goBack: mockGoBack, injectJavaScript: mockInject };
     return null;
   },
 }));
@@ -42,16 +45,49 @@ describe("WebScreen (the whole app in one WebView)", () => {
     expect(mockView.userAgentName).toBe("KizunaNative/1");
     expect(mockView.origin).toBe("https://kizuna.example");
   });
-  it("Android back goes back inside the web while it can", async () => {
+  const idOf = () => Number(/__kizunaBack\(?[^0-9]*?(\d+)/.exec(mockInject.mock.calls.at(-1)![0])![1]);
+  it("Android back first asks the page to close its top sheet (injected call, nothing else)", async () => {
     await mount();
+    expect(mockView.onBackReply).toEqual(expect.any(Function));
     await act(async () => mockView.onCanGoBack(true));
     expect(back()).toBe(true);
-    expect(mockGoBack).toHaveBeenCalledTimes(1);
+    expect(mockInject).toHaveBeenCalledTimes(1);
+    expect(mockInject.mock.calls[0][0]).toContain("window.__kizunaBack");
+    await act(async () => mockView.onBackReply({ id: idOf(), handled: true }));
+    expect(mockGoBack).not.toHaveBeenCalled();
   });
-  it("at the first page back is not handled: the app exits/minimizes as usual", async () => {
+  it("when the page had no sheet to close, back goes back inside the web while it can", async () => {
+    await mount();
+    await act(async () => mockView.onCanGoBack(true));
+    back();
+    await act(async () => mockView.onBackReply({ id: idOf(), handled: false }));
+    expect(mockGoBack).toHaveBeenCalledTimes(1);
+    expect(mockRouterBack).not.toHaveBeenCalled();
+  });
+  it("no reply in 150 ms falls back too", async () => {
+    jest.useFakeTimers();
+    try {
+      await mount();
+      await act(async () => mockView.onCanGoBack(true));
+      back();
+      await act(async () => jest.advanceTimersByTime(150));
+      expect(mockGoBack).toHaveBeenCalledTimes(1);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+  it("at the first page, with nothing to close, back leaves the screen (router back, else exit the app)", async () => {
+    const exit = jest.spyOn(BackHandler, "exitApp").mockImplementation(() => true as never);
     await mount();
     await act(async () => mockView.onCanGoBack(false));
-    expect(back()).toBe(false);
+    mockCanRouterBack = true;
+    back();
+    await act(async () => mockView.onBackReply({ id: idOf(), handled: false }));
+    expect(mockRouterBack).toHaveBeenCalledTimes(1);
+    mockCanRouterBack = false;
+    back();
+    await act(async () => mockView.onBackReply({ id: idOf(), handled: false }));
+    expect(exit).toHaveBeenCalledTimes(1);
     expect(mockGoBack).not.toHaveBeenCalled();
   });
   it("the web's own sign-out (/bienvenida after a real page) runs the native logout", async () => {
