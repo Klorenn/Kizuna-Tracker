@@ -8,6 +8,7 @@ export default defineConfig({
   },
   test: {
     include: ["tests/**/*.test.ts", "src/**/*.test.ts"],
+    exclude: ["**/node_modules/**", "tests/e2e-prod/**"],
     environment: "node",
     coverage: { provider: "v8" },
   },

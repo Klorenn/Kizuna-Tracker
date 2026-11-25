@@ -45,3 +45,7 @@ google-services.json
 
 # local pg_dump files of production
 /konjo-pre-0025*
+
+# prod smoke suite (tests/e2e-prod): session state, traces and results never go to git
+/tests/e2e-prod/.auth/
+/tests/e2e-prod/.results/
