@@ -33,4 +33,10 @@ describe("Cat", () => {
     await render(<Cat accent="#000000" strategy="tint" size={96} testID="cat" />);
     expect(screen.getByTestId("cat-image").props.style).toEqual(expect.objectContaining({ width: 96, height: 96 }));
   });
+  it("draws the sleeping cat for the finished day, a different asset than the default lifting cat", async () => {
+    await render(<Cat accent="#000000" strategy="tint" size={56} testID="a" />);
+    const lift = screen.getByTestId("a-image").props.source;
+    await render(<Cat accent="#000000" strategy="tint" size={56} asset="sleep" testID="b" />);
+    expect(screen.getByTestId("b-image").props.source).not.toEqual(lift);
+  });
 });

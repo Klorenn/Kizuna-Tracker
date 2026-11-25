@@ -36,9 +36,9 @@ describe("HoyContainer", () => {
   it("a tap is optimistic: the habit shows done and the count moves before the server answers", async () => {
     mocked.checkInRpc.mockReturnValue(new Promise(() => {}));
     const qc = await mount();
-    expect(screen.getByText("1 de 3")).toBeTruthy();
+    expect(screen.getByText(/^1 de 3 hechos/)).toBeTruthy();
     await fireEvent.press(screen.getByLabelText("Marcar Gimnasio"));
-    await waitFor(() => expect(screen.getByText("2 de 3")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^2 de 3 hechos/)).toBeTruthy());
     expect(screen.queryByLabelText("Marcar Gimnasio")).toBeNull();
     qc.clear();
   });
@@ -48,7 +48,7 @@ describe("HoyContainer", () => {
     const qc = await mount();
     await fireEvent.press(screen.getByLabelText("Marcar Gimnasio"));
     await waitFor(() => expect(screen.getByText("Este hábito pide una foto de prueba.")).toBeTruthy());
-    expect(screen.getByText("1 de 3")).toBeTruthy();
+    expect(screen.getByText(/^1 de 3 hechos/)).toBeTruthy();
     expect(screen.getByLabelText("Marcar Gimnasio")).toBeTruthy();
     qc.clear();
   });
@@ -57,7 +57,7 @@ describe("HoyContainer", () => {
     mocked.undoCheckInRpc.mockReturnValue(new Promise(() => {}));
     const qc = await mount();
     await fireEvent.press(screen.getByText("Deshacer"));
-    await waitFor(() => expect(screen.getByText("0 de 3")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^0 de 3 hechos/)).toBeTruthy());
     expect(mocked.undoCheckInRpc).toHaveBeenCalledWith(expect.anything(), "u1", "h1");
     qc.clear();
   });
@@ -66,7 +66,7 @@ describe("HoyContainer", () => {
     mocked.checkItemRpc.mockReturnValue(new Promise(() => {}));
     const qc = await mount();
     await fireEvent.press(screen.getByText("Sentarse"));
-    await waitFor(() => expect(screen.getByText("2 de 3")).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/^2 de 3 hechos/)).toBeTruthy());
     qc.clear();
   });
 

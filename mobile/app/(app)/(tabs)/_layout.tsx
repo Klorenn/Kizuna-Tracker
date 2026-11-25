@@ -1,24 +1,37 @@
 import { Tabs } from "expo-router";
+import { TabIcon, TabLabel } from "../../../src/nav/TabIcon";
 import { useTheme } from "../../../src/theme/ThemeProvider";
 
-/** The four web tabs are native tabs that hold a WebView; Hoy is native. */
+const TABS = [
+  { name: "index", title: "Hoy", icon: "house" },
+  { name: "amigos", title: "Amigos", icon: "users" },
+  { name: "retos", title: "Retos", icon: "trophy" },
+  { name: "resumen", title: "Resumen", icon: "chart-bar" },
+  { name: "perfil", title: "Perfil", icon: "user" },
+] as const;
+
+/** The web BottomNav as native tabs: Hoy is native, the other four hold a WebView. */
 export default function TabsLayout() {
   const { colors } = useTheme();
-  const tab = { tabBarIcon: () => null, tabBarIconStyle: { display: "none" as const }, tabBarLabelStyle: { fontSize: 13, marginBottom: 10 } };
   return (
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: colors.accent,
-        tabBarInactiveTintColor: colors.muted,
-        tabBarStyle: { backgroundColor: colors.bg, borderTopColor: colors.line },
+        tabBarStyle: { backgroundColor: colors.paper, borderTopColor: colors.line, borderTopWidth: 1 },
+        tabBarItemStyle: { paddingTop: 4 },
       }}
     >
-      <Tabs.Screen name="index" options={{ title: "Hoy", ...tab }} />
-      <Tabs.Screen name="amigos" options={{ title: "Amigos", ...tab }} />
-      <Tabs.Screen name="retos" options={{ title: "Retos", ...tab }} />
-      <Tabs.Screen name="resumen" options={{ title: "Resumen", ...tab }} />
-      <Tabs.Screen name="perfil" options={{ title: "Perfil", ...tab }} />
+      {TABS.map(({ name, title, icon }) => (
+        <Tabs.Screen
+          key={name}
+          name={name}
+          options={{
+            title,
+            tabBarIcon: ({ focused }) => <TabIcon name={icon} focused={focused} />,
+            tabBarLabel: ({ focused }) => <TabLabel title={title} focused={focused} />,
+          }}
+        />
+      ))}
     </Tabs>
   );
 }

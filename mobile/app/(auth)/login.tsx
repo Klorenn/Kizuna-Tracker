@@ -1,5 +1,5 @@
 import { Redirect, useLocalSearchParams, useRouter } from "expo-router";
-import { KeyboardAvoidingView, Platform, Text, View } from "react-native";
+import { KeyboardAvoidingView, Platform, ScrollView } from "react-native";
 import { gateTarget } from "../../src/auth/gate";
 import { LoginForm, type SubmitResult } from "../../src/auth/LoginForm";
 import { loginRequest } from "../../src/auth/login-client";
@@ -16,17 +16,16 @@ async function submit(identifier: string, password: string): Promise<SubmitResul
 }
 
 export default function LoginScreen() {
-  const { colors, space } = useTheme();
+  const { colors } = useTheme();
   const { state } = useSession();
   const router = useRouter();
   const { creada } = useLocalSearchParams<{ creada?: string }>();
   if (gateTarget(state, "auth") === "/") return <Redirect href="/" />;
   return (
     <KeyboardAvoidingView behavior={Platform.OS === "ios" ? "padding" : undefined} style={{ flex: 1, backgroundColor: colors.bg }}>
-      <View style={{ flex: 1, justifyContent: "center", padding: space.lg, gap: space.lg }}>
-        <Text style={{ color: colors.text, fontSize: 32, fontWeight: "600" }}>Kizuna</Text>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={{ width: "100%", maxWidth: 448, alignSelf: "center", paddingHorizontal: 20, paddingTop: 12, paddingBottom: 24 }}>
         <LoginForm onSubmit={submit} onCreateAccount={() => router.push("/registro")} notice={creada === "1" ? "Cuenta creada. Inicia sesión." : undefined} />
-      </View>
+      </ScrollView>
     </KeyboardAvoidingView>
   );
 }

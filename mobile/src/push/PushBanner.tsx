@@ -1,4 +1,5 @@
 import { Pressable, StyleSheet, Text, View } from "react-native";
+import { FONT } from "../theme/fonts";
 import { useTheme } from "../theme/ThemeProvider";
 import type { PushPermissionView } from "./use-push-permission";
 
@@ -13,12 +14,12 @@ export function PushBanner({ state, onEnable, onOpenSettings }: Props) {
     <View style={[styles.box, { backgroundColor: colors.surface, borderColor: colors.line, borderRadius: radius.md }]}>
       <View style={styles.text}>
         <Text style={[styles.title, { color: colors.text }]}>{blocked ? "Notificaciones desactivadas" : "Activa las notificaciones"}</Text>
-        <Text style={{ color: colors.muted, fontSize: 13 }}>
+        <Text style={{ color: colors.muted, fontSize: 13, fontFamily: FONT.regular }}>
           {blocked ? "Actívalas en los ajustes del sistema para recibir tus recordatorios." : "Te avisamos de recordatorios, retos y pagos."}
         </Text>
       </View>
       <Pressable accessibilityRole="button" onPress={blocked ? onOpenSettings : onEnable} style={[styles.button, { backgroundColor: colors.accent, borderRadius: radius.md }]}>
-        <Text style={{ color: colors.onAccent, fontWeight: "600" }}>{blocked ? "Abrir ajustes" : "Activar"}</Text>
+        <Text style={{ color: colors.onAccent, fontFamily: FONT.medium }}>{blocked ? "Abrir ajustes" : "Activar"}</Text>
       </Pressable>
     </View>
   );
@@ -27,6 +28,6 @@ export function PushBanner({ state, onEnable, onOpenSettings }: Props) {
 const styles = StyleSheet.create({
   box: { borderWidth: 1, padding: 12, margin: 12, flexDirection: "row", alignItems: "center", gap: 12 },
   text: { flex: 1, gap: 2 },
-  title: { fontSize: 14, fontWeight: "600" },
+  title: { fontSize: 14, fontFamily: FONT.semibold },
   button: { paddingHorizontal: 14, paddingVertical: 10 },
 });

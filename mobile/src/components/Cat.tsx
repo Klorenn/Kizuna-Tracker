@@ -15,15 +15,20 @@ export type CatStrategy = "tint" | "mask";
 // the package types MaskedView as a class component that React 19's JSX types reject
 const MaskedView = RNMaskedView as unknown as ComponentType<{ testID?: string; style?: StyleProp<ViewStyle>; maskElement: ReactElement; children?: ReactNode }>;
 
-const CAT_GIF = require("../../assets/brand/cat-lift.gif");
+const CAT_GIFS = {
+  lift: require("../../assets/brand/cat-lift.gif"),
+  sleep: require("../../assets/brand/cat-sleep.gif"),
+};
+export type CatAsset = keyof typeof CAT_GIFS;
 
 export function resolveCatStrategy(pref: string | undefined): CatStrategy {
   return pref?.trim().toLowerCase() === "mask" ? "mask" : "tint";
 }
 
-type Props = { accent: string; size?: number; strategy?: CatStrategy; testID?: string };
+type Props = { accent: string; size?: number; strategy?: CatStrategy; asset?: CatAsset; testID?: string };
 
-export function Cat({ accent, size = 120, strategy = resolveCatStrategy(process.env.EXPO_PUBLIC_CAT_STRATEGY), testID = "cat" }: Props) {
+export function Cat({ accent, size = 120, strategy = resolveCatStrategy(process.env.EXPO_PUBLIC_CAT_STRATEGY), asset = "lift", testID = "cat" }: Props) {
+  const CAT_GIF = CAT_GIFS[asset];
   const box = { width: size, height: size };
   if (strategy === "mask") {
     return (

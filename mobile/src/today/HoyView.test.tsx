@@ -10,12 +10,14 @@ describe("HoyView", () => {
   it("shows the label, the progress and every habit with its streak", async () => {
     await render(<HoyView state={{ kind: "ready", view }} onRetry={() => {}} />);
     expect(screen.getByText("Hoy · mié 25 nov")).toBeTruthy();
-    expect(screen.getByText("1 de 3")).toBeTruthy();
+    expect(screen.getByText("Hoy")).toBeTruthy(); // the big title
+    expect(screen.getByText(/^1 de 3 hechos/)).toBeTruthy();
+    expect(screen.getByLabelText("33% completado")).toBeTruthy(); // the progress ring
     expect(screen.getByText("Leer")).toBeTruthy();
     expect(screen.getByText("Gimnasio")).toBeTruthy();
     expect(screen.getByText("Meditar")).toBeTruthy();
-    expect(screen.getByText("Racha 3")).toBeTruthy(); // Leer
-    expect(screen.getByText("Racha 1")).toBeTruthy(); // Gimnasio, weekly
+    expect(screen.getByLabelText("Racha de 3 días")).toBeTruthy(); // Leer
+    expect(screen.getByLabelText("Racha de 1 semanas")).toBeTruthy(); // Gimnasio, weekly
   });
   it("marks done habits and lists the checked items with their time", async () => {
     await render(<HoyView state={{ kind: "ready", view }} onRetry={() => {}} />);
@@ -27,7 +29,7 @@ describe("HoyView", () => {
   });
   it("shows an empty state when there are no habits", async () => {
     await render(<HoyView state={{ kind: "ready", view: { ...view, rows: [], total: 0, doneCount: 0, progress: 0 } }} onRetry={() => {}} />);
-    expect(screen.getByText("Aún no tienes hábitos.")).toBeTruthy();
+    expect(screen.getByText("Todavía no tienes hábitos")).toBeTruthy();
   });
   it("loading shows a spinner label; a failure shows a retry; offline says Sin conexión", async () => {
     const { rerender } = await render(<HoyView state={{ kind: "loading" }} onRetry={() => {}} />);
@@ -90,6 +92,28 @@ describe("HoyView actions", () => {
     await render(<HoyView state={ready} onRetry={() => {}} actions={actions()} errorMessage="Este hábito pide una foto de prueba." onDismissError={onDismissError} />);
     await fireEvent.press(screen.getByText("Este hábito pide una foto de prueba."));
     expect(onDismissError).toHaveBeenCalled();
+  });
+});
+
+describe("HoyView web parity", () => {
+  const ready = { kind: "ready", view } as const;
+  it("draws each habit's icon in its identity color", async () => {
+    await render(<HoyView state={ready} onRetry={() => {}} />);
+    expect(screen.getAllByTestId(/^habit-icon-/).length).toBe(3);
+  });
+  it("shows the group chip of a linked habit, named for screen readers", async () => {
+    const withChip = { ...view, groupChips: { [view.rows[0].id]: { name: "Corremos", color: "cielo" } } };
+    await render(<HoyView state={{ kind: "ready", view: withChip }} onRetry={() => {}} />);
+    expect(screen.getByLabelText("Grupo Corremos")).toBeTruthy();
+    expect(screen.getByText("Corremos")).toBeTruthy();
+  });
+  it("shows the sleeping cat and the rest line only when every habit is done", async () => {
+    await render(<HoyView state={ready} onRetry={() => {}} />);
+    expect(screen.queryByText("Listo por hoy. Descansa.")).toBeNull();
+    const rows = view.rows.map((r) => ({ ...r, done: true }));
+    await render(<HoyView state={{ kind: "ready", view: { ...view, rows, doneCount: 3, progress: 1 } }} onRetry={() => {}} />);
+    expect(screen.getByText("Listo por hoy. Descansa.")).toBeTruthy();
+    expect(screen.getByTestId("cat-image")).toBeTruthy();
   });
 });
 
