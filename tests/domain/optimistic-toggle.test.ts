@@ -5,7 +5,11 @@ import {
   checkedCount,
   displayDone,
   nextSettled,
-  planToggle,
+  IDLE_QUEUE,
+  followUpFor,
+  nextIntent,
+  settleQueue,
+  tapQueue,
   pruneSettledItems,
   settleToggle,
   settledDone,
@@ -16,16 +20,75 @@ import type { TodayItem } from '@/domain/today'
 
 const item = (id: string, checked: boolean): TodayItem => ({ id, label: id, position: 0, requiresPhoto: false, checked, time: checked ? '08:00' : null }) as TodayItem
 
-describe('planToggle (apply)', () => {
-  test('a tap on an undone habit checks it, optimistically done', () => {
-    expect(planToggle(false, false)).toEqual({ run: true, action: 'do', optimistic: true })
+describe('nextIntent', () => {
+  test('idle: a tap wants the opposite of the confirmed state', () => {
+    expect(nextIntent(false, IDLE_QUEUE)).toBe(true)
+    expect(nextIntent(true, IDLE_QUEUE)).toBe(false)
   })
-  test('a tap on a done habit undoes it, optimistically not done', () => {
-    expect(planToggle(true, false)).toEqual({ run: true, action: 'undo', optimistic: false })
+  test('in flight: a tap flips what the user last asked for, not the stale confirmed state', () => {
+    expect(nextIntent(false, { target: true, intent: true })).toBe(false)
+    expect(nextIntent(false, { target: true, intent: false })).toBe(true)
   })
-  test('a tap while the previous one is still in flight is ignored (no double check-in, no spurious "nothing to undo")', () => {
-    expect(planToggle(false, true)).toEqual({ run: false })
-    expect(planToggle(true, true)).toEqual({ run: false })
+})
+
+describe('followUpFor', () => {
+  test('nothing queued, or already there: no request', () => {
+    expect(followUpFor(true, null)).toBeNull()
+    expect(followUpFor(true, true)).toBeNull()
+  })
+  test('the confirmed state differs from the intent: exactly the action that reaches it', () => {
+    expect(followUpFor(true, false)).toBe('undo')
+    expect(followUpFor(false, true)).toBe('do')
+  })
+})
+
+describe('tapQueue / settleQueue (coalescing)', () => {
+  test('first tap on an idle row runs the action at once, shown optimistically', () => {
+    expect(tapQueue(IDLE_QUEUE, false)).toEqual({ queue: { target: true, intent: true }, run: 'do', shown: true })
+    expect(tapQueue(IDLE_QUEUE, true)).toEqual({ queue: { target: false, intent: false }, run: 'undo', shown: false })
+  })
+  test('a tap in flight is queued as the latest intent, never dropped, no request yet', () => {
+    const first = tapQueue(IDLE_QUEUE, false)
+    expect(tapQueue(first.queue, false)).toEqual({ queue: { target: true, intent: false }, run: null, shown: false })
+  })
+  test('check, uncheck: after the check settles one undo reaches the intent', () => {
+    const t1 = tapQueue(IDLE_QUEUE, false)
+    const t2 = tapQueue(t1.queue, false)
+    expect(settleQueue(t2.queue, true)).toEqual({ queue: { target: false, intent: false }, run: 'undo', shown: false })
+  })
+  test('check, uncheck, check: coalesces, the settle needs no extra request', () => {
+    let q = tapQueue(IDLE_QUEUE, false).queue
+    q = tapQueue(q, false).queue
+    const t3 = tapQueue(q, false)
+    expect(t3.shown).toBe(true)
+    expect(t3.run).toBeNull()
+    expect(settleQueue(t3.queue, true)).toEqual({ queue: IDLE_QUEUE, run: null, shown: true })
+  })
+  test('uncheck, check, uncheck while in flight: one follow-up at most', () => {
+    let q = tapQueue(IDLE_QUEUE, true).queue // undo in flight
+    q = tapQueue(q, true).queue
+    q = tapQueue(q, true).queue
+    expect(q.intent).toBe(false)
+    expect(settleQueue(q, true).run).toBeNull()
+  })
+  test('a settled follow-up with nothing newer goes idle', () => {
+    const s = settleQueue({ target: false, intent: false }, true)
+    expect(s.queue).toEqual(IDLE_QUEUE)
+    expect(s.run).toBeNull()
+  })
+  test('failure drops the queued intent and sends nothing', () => {
+    const t2 = tapQueue(tapQueue(IDLE_QUEUE, false).queue, false)
+    expect(settleQueue(t2.queue, false)).toEqual({ queue: IDLE_QUEUE, run: null, shown: null })
+  })
+  test('a failed follow-up also drops everything', () => {
+    expect(settleQueue({ target: false, intent: false }, false).queue).toEqual(IDLE_QUEUE)
+  })
+  test('per item: queues are independent values', () => {
+    const a = tapQueue(IDLE_QUEUE, false)
+    const b = tapQueue(IDLE_QUEUE, true)
+    expect(a.run).toBe('do')
+    expect(b.run).toBe('undo')
+    expect(tapQueue(a.queue, false).queue).not.toEqual(b.queue)
   })
 })
 

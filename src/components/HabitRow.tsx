@@ -4,20 +4,24 @@ import { Camera, Check, Timer, Warning } from "@phosphor-icons/react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { memo, useEffect, useId, useOptimistic, useState, useTransition } from "react";
+import { memo, useEffect, useId, useOptimistic, useRef, useState, useTransition } from "react";
 import { checkIn, checkItem, uncheckItem, undoCheckIn } from "@/app/(app)/habitos/actions";
 import {
+  IDLE_QUEUE,
   applyItemChange,
   checkedCount,
   nextSettled,
-  planToggle,
   pruneSettledItems,
   settleToggle,
   settledDone,
   settledIsStale,
+  settleQueue,
   settledItems,
+  tapQueue,
   type Settled,
   type SettledItems,
+  type ToggleAction,
+  type ToggleQueue,
 } from "@/domain/optimistic-toggle";
 import { baseSubtitle, habitSubtitle, undoLosesCopy, type TodayItem, type TodayRow } from "@/domain/today";
 import { logEntryHref } from "@/lib/log-text";
@@ -100,7 +104,7 @@ function HabitRowView({
   /** the live group this habit is linked to: a small chip next to the name */
   group?: { name: string; color: string };
 }) {
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
   const [, startItem] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const router = useRouter();
@@ -111,6 +115,12 @@ function HabitRowView({
   const [doneNow, setDone] = useOptimistic(settledDone(row.done, settled));
   // the steps flip at once too, and with them the "N de M" count and the habit's own box
   const [items, flipItem] = useOptimistic(settledItems(row.items, heldItems), applyItemChange);
+  // taps made while an action is in flight only move the latest intent; one follow-up reaches it (see tapQueue)
+  const queue = useRef<ToggleQueue>(IDLE_QUEUE);
+  const itemQueues = useRef<Record<string, ToggleQueue>>({});
+  // what the props say right now, for async continuations that outlive the render that started them
+  const live = useRef({ done: row.done, items: row.items });
+  live.current = { done: row.done, items: row.items };
   useEffect(() => {
     if (settledIsStale(row.done, settled)) setSettled(null);
   }, [row.done, settled]);
@@ -150,39 +160,63 @@ function HabitRowView({
 
   // what the row confirms right now: held flips count, so a quick second tap is not a repeat
   const confirmed = settledDone(row.done, settled);
+  // what the user last asked for: a tap while an action is in flight acts on this, not on the stale confirmed state
+  const current = queue.current.intent ?? queue.current.target ?? confirmed;
 
   function toggle() {
     setError(null);
-    if (!confirmed) {
+    if (!current) {
       if (readingFlow) return setSheet({ type: "reading", mode: { kind: "checkin", habitId: row.id } });
       if (timeFlow) return setSheet({ type: "time", mode: { kind: "checkin", habitId: row.id } });
       if (watchFlow) return setSheet({ type: "watch", mode: { kind: "checkin", habitId: row.id } });
       if (cardioFlow) return setSheet({ type: "cardio", mode: { kind: "checkin" } });
     }
-    if (confirmed && undoCopy) return setConfirmUndo(true);
+    if (current && undoCopy) return setConfirmUndo(true);
     run();
   }
 
   function run() {
     setConfirmUndo(false);
-    const plan = planToggle(confirmed, pending);
-    if (!plan.run) return;
+    const step = tapQueue(queue.current, confirmed);
+    queue.current = step.queue;
+    if (step.run) send(step.run, step.shown!);
+    else start(async () => setDone(step.shown!));
+  }
+
+  // one action in flight; when it settles, the follow-up (if the intent moved meanwhile) runs in a new one
+  function send(action: ToggleAction, to: boolean) {
     start(async () => {
-      setDone(plan.optimistic);
-      const result = await settleToggle(() => (plan.action === "undo" ? undoCheckIn(row.id) : checkIn(row.id)));
-      // a refusal or a dropped connection: the optimistic value reverts when this transition ends
+      setDone(to);
+      const result = await settleToggle(() => (action === "undo" ? undoCheckIn(row.id) : checkIn(row.id)));
+      // a refusal or a dropped connection: the queue is dropped and the optimistic value reverts when the transition ends
       if (!result.ok) setError(result.error);
-      setSettled(nextSettled(row.done, plan.optimistic, result));
+      const next = settleQueue(queue.current, result.ok);
+      queue.current = next.queue;
+      setSettled(nextSettled(live.current.done, to, result));
+      if (next.run) send(next.run, next.shown!);
     });
   }
 
   function toggleItem(item: TodayItem) {
     setError(null);
+    const step = tapQueue(itemQueues.current[item.id] ?? IDLE_QUEUE, item.checked);
+    itemQueues.current[item.id] = step.queue;
+    if (step.run) sendItem(item.id, step.run, step.shown!);
+    else startItem(async () => flipItem({ id: item.id, checked: step.shown! }));
+  }
+
+  function sendItem(id: string, action: ToggleAction, to: boolean) {
     startItem(async () => {
-      flipItem({ id: item.id, checked: !item.checked });
-      const result = await settleToggle(() => (item.checked ? uncheckItem(item.id) : checkItem(item.id)));
+      flipItem({ id, checked: to });
+      const result = await settleToggle(() => (action === "undo" ? uncheckItem(id) : checkItem(id)));
       if (!result.ok) setError(result.error);
-      else setHeldItems((h) => ({ ...h, [item.id]: { from: row.items.find((i) => i.id === item.id)?.checked ?? item.checked, value: !item.checked } }));
+      const next = settleQueue(itemQueues.current[id] ?? IDLE_QUEUE, result.ok);
+      itemQueues.current[id] = next.queue;
+      if (result.ok) {
+        const from = live.current.items.find((i) => i.id === id)?.checked ?? !to;
+        setHeldItems((h) => ({ ...h, [id]: { from, value: to } }));
+      }
+      if (next.run) sendItem(id, next.run, next.shown!);
     });
   }
 

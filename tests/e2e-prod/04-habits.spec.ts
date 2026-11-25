@@ -96,6 +96,40 @@ test("boolean habit: check in, verify done, undo, verify pending", async ({ page
   await expect(page.getByRole("checkbox", { name: BOOLEAN, exact: true })).toHaveAttribute("aria-checked", "false");
 });
 
+test("boolean habit: a double tap (check then undo at once) ends unchecked once the server settles", async ({ page }) => {
+  await openHoy(page);
+  const box = page.getByRole("checkbox", { name: BOOLEAN, exact: true });
+  await expect(box).toBeVisible();
+
+  // normalise: start from unchecked
+  if ((await box.getAttribute("aria-checked")) === "true") {
+    await toggle(page, BOOLEAN);
+    await expect(box).toHaveAttribute("aria-checked", "false");
+    await dismissSheets(page);
+  }
+
+  // the second tap lands while the check is in flight: it is queued, then one undo follows
+  const actions: string[] = [];
+  page.on("request", (r) => {
+    if (r.method() === "POST" && r.headers()["next-action"] !== undefined) actions.push(r.url());
+  });
+  const answered = page.waitForResponse(
+    (r) => r.request().method() === "POST" && r.request().headers()["next-action"] !== undefined,
+    { timeout: 30_000 },
+  );
+  await box.click();
+  await box.click();
+  await expect(box).toHaveAttribute("aria-checked", "false");
+  expect((await answered).ok()).toBe(true);
+  await page.waitForLoadState("networkidle");
+  await dismissSheets(page);
+
+  // settled: still unchecked, and it is the server's state, not an optimistic leftover
+  await expect(box).toHaveAttribute("aria-checked", "false");
+  await page.reload();
+  await expect(page.getByRole("checkbox", { name: BOOLEAN, exact: true })).toHaveAttribute("aria-checked", "false");
+});
+
 test("quantity habit: add a glass, counter changes, remove it", async ({ page }) => {
   await openHoy(page);
   const open = async () => {

@@ -3,15 +3,42 @@ import type { TodayItem } from './today'
 /** Shown when the action could not even reach the server (offline, dropped connection). */
 export const TOGGLE_FAILED = 'No se pudo guardar. Revisa tu conexión e inténtalo de nuevo.'
 
-export type TogglePlan = { run: false } | { run: true; action: 'do' | 'undo'; optimistic: boolean }
+export type ToggleAction = 'do' | 'undo'
 
 /**
- * What a tap does: flip the confirmed state, showing the flip at once. A tap while the previous one
- * is still in flight does nothing (it would repeat the action: a second undo would answer "nothing to undo").
+ * One toggle's tap queue. `target` is the state the in-flight action is heading to (null: idle);
+ * `intent` is the latest state the user asked for. Taps never get lost (they move `intent`) and never
+ * multiply (only the final intent matters): when the in-flight action settles, at most one follow-up
+ * runs to reach it.
  */
-export function planToggle(confirmed: boolean, pending: boolean): TogglePlan {
-  if (pending) return { run: false }
-  return confirmed ? { run: true, action: 'undo', optimistic: false } : { run: true, action: 'do', optimistic: true }
+export type ToggleQueue = { target: boolean | null; intent: boolean | null }
+
+export const IDLE_QUEUE: ToggleQueue = { target: null, intent: null }
+
+export type QueueStep = { queue: ToggleQueue; run: ToggleAction | null; shown: boolean | null }
+
+const actionFor = (to: boolean): ToggleAction => (to ? 'do' : 'undo')
+
+/** What a tap asks for: the opposite of the latest intent, else of the in-flight target, else of the confirmed state. */
+export const nextIntent = (confirmed: boolean, queue: ToggleQueue): boolean => !(queue.intent ?? queue.target ?? confirmed)
+
+/** The single action that takes the confirmed state to the intent; none when there is nothing to reach. */
+export const followUpFor = (confirmed: boolean, intent: boolean | null): ToggleAction | null =>
+  intent === null || intent === confirmed ? null : actionFor(intent)
+
+/** A tap: runs at once when idle; while an action is in flight it only records the new intent. `shown` is the optimistic value. */
+export function tapQueue(queue: ToggleQueue, confirmed: boolean): QueueStep {
+  const intent = nextIntent(confirmed, queue)
+  if (queue.target === null) return { queue: { target: intent, intent }, run: actionFor(intent), shown: intent }
+  return { queue: { target: queue.target, intent }, run: null, shown: intent }
+}
+
+/** The in-flight action settled. Failure drops the queue (the row reverts to the server state); success sends the follow-up, if the intent moved. */
+export function settleQueue(queue: ToggleQueue, ok: boolean): QueueStep {
+  if (!ok || queue.target === null) return { queue: IDLE_QUEUE, run: null, shown: null }
+  const run = followUpFor(queue.target, queue.intent)
+  if (!run || queue.intent === null) return { queue: IDLE_QUEUE, run: null, shown: queue.target }
+  return { queue: { target: queue.intent, intent: queue.intent }, run, shown: queue.intent }
 }
 
 export type ToggleOutcome = { ok: true } | { ok: false; error: string }
