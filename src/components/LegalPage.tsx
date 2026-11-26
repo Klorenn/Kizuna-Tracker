@@ -1,25 +1,13 @@
-import { CaretLeft, Info } from "@phosphor-icons/react/dist/ssr";
+import { CaretLeft } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import type { ReactNode } from "react";
 
-export const LEGAL_DRAFT_NOTICE = "Borrador pendiente de revisión legal";
-
 export type LegalSection = { title: string; body: ReactNode[] };
 
-/** Draft notice, last-updated line and numbered sections. Used by the /legal/* pages and the in-app sheet. */
+/** Last-updated line and numbered sections. Used by the /legal/* pages and the in-app sheet. */
 export function LegalBody({ updated, sections }: { updated: string; sections: LegalSection[] }) {
   return (
     <div className="flex flex-col gap-4">
-      <p
-        role="note"
-        className="flex items-start gap-2 rounded-md bg-accent-soft px-4 py-3 text-small text-ink"
-      >
-        <Info size={16} weight="light" className="mt-px shrink-0" aria-hidden />
-        <span>
-          <strong className="font-medium">{LEGAL_DRAFT_NOTICE}</strong>. Este texto puede cambiar antes
-          del lanzamiento.
-        </span>
-      </p>
       <p className="font-mono text-small text-muted">Última actualización: {updated}</p>
       {sections.map((s, i) => (
         <section key={s.title} aria-labelledby={`sec-${i}`} className="flex flex-col gap-2">

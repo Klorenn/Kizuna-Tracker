@@ -164,6 +164,14 @@ describe('buildLogCards v4: tiempo, series, cantidad y distancia', () => {
     })
   })
 
+  test('cantidad sin días dice Sin registros', () => {
+    const cards = buildLogCards({
+      ...empty,
+      quantity: [{ habitId: 'agua1', name: 'Agua', config: agua, entries: [], doneDates: [] }],
+    })
+    expect(cards.find((c) => c.key === 'quantity')?.value).toBe('Sin registros')
+  })
+
   test('cantidad: solo los 3 primeros hábitos, en orden de creación', () => {
     const q = (n: number) => ({ habitId: `h${n}`, name: `Hábito ${n}`, config: agua, entries: [], doneDates: [] })
     const cards = buildLogCards({ ...empty, quantity: [q(1), q(2), q(3), q(4)] })

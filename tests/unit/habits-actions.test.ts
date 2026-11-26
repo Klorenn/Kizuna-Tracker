@@ -51,8 +51,10 @@ vi.mock('next/cache', () => ({ revalidatePath: vi.fn() }))
 
 import {
   checkIn,
+  checkInOn,
   checkItem,
   archiveHabit,
+  restoreHabit,
   createHabit,
   setHabitVisibility,
   uncheckItem,
@@ -81,6 +83,17 @@ describe('habit actions', () => {
     rpc.mockResolvedValue({ data: [{ checkin_id: 'c1', created: false }], error: null })
     await expect(checkIn('h1')).resolves.toEqual({ ok: true, checkinId: 'c1', created: false })
     expect(rpc).toHaveBeenCalledWith('create_checkin', { p_habit_id: 'h1' })
+  })
+
+  it('checkInOn calls create_checkin_on with the chosen day', async () => {
+    rpc.mockResolvedValue({ data: [{ checkin_id: 'c1', created: true }], error: null })
+    await expect(checkInOn('h1', '2026-11-24')).resolves.toEqual({ ok: true, checkinId: 'c1', created: true })
+    expect(rpc).toHaveBeenCalledWith('create_checkin_on', { p_habit_id: 'h1', p_date: '2026-11-24' })
+  })
+
+  it('checkInOn refuses a date that is not a day and does not call the database', async () => {
+    await expect(checkInOn('h1', 'ayer')).resolves.toMatchObject({ ok: false })
+    expect(rpc).not.toHaveBeenCalled()
   })
 
   it('checkIn returns a Spanish error instead of throwing', async () => {
@@ -382,6 +395,7 @@ describe('habit actions', () => {
       await expect(updateHabit('x', presetDraft('walk'))).resolves.toEqual({ ok: false, error: NOT_FOUND })
       await expect(setHabitVisibility('x', 'public')).resolves.toEqual({ ok: false, error: NOT_FOUND })
       await expect(archiveHabit('x')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+      await expect(restoreHabit('x')).resolves.toEqual({ ok: false, error: NOT_FOUND })
       await expect(undoCheckIn('x')).resolves.toEqual({ ok: false, error: NOT_FOUND })
       expect(calls.some((c) => c.op === 'update' || c.op === 'delete' || c.op === 'insert')).toBe(false)
     })
@@ -412,7 +426,9 @@ describe('every action verifies the session first', () => {
     ['updateHabit', () => updateHabit('h1', presetDraft('walk'))],
     ['setHabitVisibility', () => setHabitVisibility('h1', 'private')],
     ['archiveHabit', () => archiveHabit('h1')],
+    ['restoreHabit', () => restoreHabit('h1')],
     ['checkIn', () => checkIn('h1')],
+    ['checkInOn', () => checkInOn('h1', '2026-11-24')],
     ['undoCheckIn', () => undoCheckIn('h1')],
     ['checkItem', () => checkItem('i1')],
     ['uncheckItem', () => uncheckItem('i1')],
@@ -434,6 +450,7 @@ describe('direct writes that change no row are "not found"', () => {
     updateData = none
     await expect(setHabitVisibility('h1', 'private')).resolves.toEqual({ ok: false, error: NOT_FOUND })
     await expect(archiveHabit('h1')).resolves.toEqual({ ok: false, error: NOT_FOUND })
+    await expect(restoreHabit('h1')).resolves.toEqual({ ok: false, error: NOT_FOUND })
     await expect(updateHabit('h1', presetDraft('walk'))).resolves.toEqual({ ok: false, error: NOT_FOUND })
     reads['checkins.select'] = { data: { photo_path: null }, error: null }
     reads['checkins.delete'] = { data: none, error: null }

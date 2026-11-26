@@ -12,6 +12,8 @@ const MONTH_NAMES = [
 ]
 /** Monday first, like every week in the app. */
 export const WEEKDAY_NAMES = ['lunes', 'martes', 'miércoles', 'jueves', 'viernes', 'sábado', 'domingo']
+/** Two letters so martes and miércoles are not both "M". */
+export const WEEKDAY_LETTERS = ['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'] as const
 
 const MONTH_RE = /^(\d{4})-(0[1-9]|1[0-2])$/
 

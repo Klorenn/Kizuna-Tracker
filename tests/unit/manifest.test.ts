@@ -7,7 +7,7 @@ import { pngSize } from '@/lib/png'
 describe('manifest', () => {
   const m = manifest()
   it('names the app and is installable', () => {
-    expect(m.name).toBe('Kizuna Tracker')
+    expect(m.name).toBe('Kizuna')
     expect(m.short_name).toBe('Kizuna')
     expect(m.display).toBe('standalone')
     expect(m.start_url).toBe('/')

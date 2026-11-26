@@ -6,7 +6,7 @@ test("bienvenida: legal links open a sheet and stay on the page", async ({ page 
   await page.getByRole("button", { name: "Política de privacidad" }).click();
   const dialog = page.getByRole("dialog", { name: "Política de privacidad" });
   await expect(dialog).toBeVisible();
-  await expect(dialog.getByText("Borrador pendiente de revisión legal")).toBeVisible();
+  await expect(dialog.getByText("Al registrarte guardamos")).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
   await expect(page).toHaveURL(/\/bienvenida$/);

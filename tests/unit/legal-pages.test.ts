@@ -21,9 +21,9 @@ describe('legal pages', () => {
   it.each([
     ['terminos', TerminosPage],
     ['privacidad', PrivacidadPage],
-  ])('%s shows the draft notice and a contact placeholder', (_name, Page) => {
+  ])('%s is the published text, with a contact placeholder and no draft banner', (_name, Page) => {
     const t = text(Page())
-    expect(t).toContain('Borrador pendiente de revisión legal')
+    expect(t).not.toContain('Borrador pendiente')
     expect(t).toContain('[correo de contacto por definir]')
   })
 
@@ -33,7 +33,7 @@ describe('legal pages', () => {
     expect(t).toContain('no procesa pagos')
     expect(t).toContain('No garantiza')
     expect(t).toContain('18 años')
-    expect(t).toContain('no hay recuperación de contraseña')
+    expect(t).toContain('enlace de restablecimiento')
     expect(t).toContain('borrar tu cuenta')
     expect(t).toContain('desde Perfil > Ajustes')
   })
@@ -66,12 +66,12 @@ describe('legal pages', () => {
 })
 
 describe('shared legal content', () => {
-  it('TermsContent and PrivacyContent render the draft notice without page chrome', async () => {
+  it('TermsContent and PrivacyContent render without page chrome or a draft banner', async () => {
     const { TermsContent } = await import('@/components/legal/TermsContent')
     const { PrivacyContent } = await import('@/components/legal/PrivacyContent')
     for (const C of [TermsContent, PrivacyContent]) {
       const t = text(C())
-      expect(t).toContain('Borrador pendiente de revisión legal')
+      expect(t).not.toContain('Borrador pendiente')
       expect(t).not.toContain('Ver los términos')
     }
   })

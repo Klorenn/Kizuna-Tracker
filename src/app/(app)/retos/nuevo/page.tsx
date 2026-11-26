@@ -107,6 +107,9 @@ export default async function NuevoRetoPage({
           <ButtonLink variant="secondary" href="/amigos">
             Ir a Amigos
           </ButtonLink>
+          <ButtonLink variant="secondary" href="/retos/practica">
+            Probar un reto solo
+          </ButtonLink>
         </Card>
       ) : options.length === 0 ? (
         <Card className="flex flex-col gap-3 p-4">

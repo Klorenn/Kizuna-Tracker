@@ -1,7 +1,7 @@
 "use client";
 
 import { LinkSimple, ShareNetwork } from "@phosphor-icons/react";
-import { useTransition } from "react";
+import { useState, useTransition } from "react";
 import { createInvite } from "@/app/(app)/amigos/actions";
 import { ListRow } from "./ui/ListRow";
 import { Toast, useToast } from "./ui/Toast";
@@ -15,19 +15,23 @@ type Props =
 export function ShareProfileButton(props: Props) {
   const [toast, showToast] = useToast();
   const [busy, start] = useTransition();
+  const [fallback, setFallback] = useState<string | null>(null);
 
   async function share(url: string, title: string) {
     try {
       if (typeof navigator.share === "function") {
         await navigator.share({ title, url });
+        setFallback(null);
         return;
       }
       await navigator.clipboard.writeText(url);
+      setFallback(null);
       showToast("Link copiado");
     } catch (e) {
       // closing the native share sheet is not an error
       if (e instanceof DOMException && e.name === "AbortError") return;
-      showToast("No pudimos copiar el link");
+      setFallback(url);
+      showToast("No pudimos copiar el link. Selecciónalo y cópialo a mano.");
     }
   }
 
@@ -46,7 +50,7 @@ export function ShareProfileButton(props: Props) {
   const Icon = props.kind === "profile" && props.icon === "link" ? LinkSimple : ShareNetwork;
   const label = props.label ?? (props.kind === "invite" ? "Invitar con un link" : "Compartir perfil");
   return (
-    <>
+    <div className="flex w-full flex-col">
       {props.kind === "profile" && props.variant === "row" ? (
         <ListRow
           icon={<Icon size={20} weight="light" />}
@@ -61,7 +65,16 @@ export function ShareProfileButton(props: Props) {
           {label}
         </Button>
       )}
+      {fallback ? (
+        <input
+          readOnly
+          value={fallback}
+          aria-label="Enlace para copiar"
+          onFocus={(e) => e.currentTarget.select()}
+          className="mt-2 h-12 w-full rounded-md border border-outline-strong bg-paper px-3 font-mono text-small text-ink"
+        />
+      ) : null}
       <Toast message={toast} />
-    </>
+    </div>
   );
 }

@@ -21,6 +21,7 @@ import {
   withSearch,
   type MonthKey,
 } from "@/domain/calendar";
+import { checkinDateAllowed } from "@/domain/checkin-window";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import { LOG_TYPES, type LogType } from "@/domain/logs";
@@ -220,7 +221,9 @@ export default async function ResumenPage({
   const showAll = habits.length > 1 && (h === undefined || h === ALL_HABITS || !habits.some((x) => x.id === h));
   const habit = habits.find((x) => x.id === h) ?? habits[0];
   const selected = showAll ? habits : [habit];
-  const today = localDate(new Date(), tz);
+  const now = new Date();
+  const today = localDate(now, tz);
+  const yesterdayOpen = checkinDateAllowed(now, tz, addDays(today, -1));
   const since = (x: { created_at: string }): LocalDate => localDate(new Date(x.created_at), tz);
 
   // Independent reads in one go: the first check-in (bounds the month), the year of check-ins
@@ -331,6 +334,7 @@ export default async function ResumenPage({
             nextHref={nav.next ? href(nav.next) : null}
             todayHref={nav.isCurrent ? null : href(current)}
             weights={weights}
+            yesterdayOpen={yesterdayOpen}
             note={
               !showAll && habit.frequency_type === "weekly"
                 ? `Meta: ${habit.target_per_week ?? 1} por semana.`

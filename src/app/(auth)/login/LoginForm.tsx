@@ -92,6 +92,14 @@ export function LoginForm({
         invalid={flagged}
         trailing={<PasswordToggle shown={show} onToggle={() => setShow((v) => !v)} />}
       />
+      <p className="flex justify-end">
+        <Link
+          href="/recuperar"
+          className="-mx-2 inline-flex min-h-11 items-center rounded-md px-2 text-small font-medium text-accent"
+        >
+          Olvidé mi contraseña
+        </Link>
+      </p>
       <Button
         type="submit"
         className="mt-2"

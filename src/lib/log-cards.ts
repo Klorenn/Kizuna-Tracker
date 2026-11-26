@@ -154,7 +154,8 @@ export function buildLogCards(input: {
   for (const h of (input.quantity ?? []).slice(0, MAX_QUANTITY_CARDS)) {
     const now = monthlyQuantity(h.entries, h.doneDates, month, h.config);
     const before = monthlyQuantity(h.entries, h.doneDates, prev, h.config);
-    const perDay = (m: { days: number; average: number }) => (m.days === 0 ? "—" : `${formatAmount(m.average, h.config)}/día`);
+    const perDay = (m: { days: number; average: number }) =>
+      m.days === 0 ? "Sin registros" : `${formatAmount(m.average, h.config)}/día`;
     cards.push({
       key: "quantity",
       label: h.name,

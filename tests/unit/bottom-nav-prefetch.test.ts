@@ -20,4 +20,10 @@ describe('BottomNav prefetch', () => {
     expect(links.map((l) => l.href)).toEqual(['/', '/amigos', '/retos', '/resumen', '/perfil'])
     for (const l of links) expect(l.prefetch).toBe(true)
   })
+
+  it('paints the bar only as wide as the column', () => {
+    const html = renderToStaticMarkup(createElement(BottomNav))
+    expect(html).toContain('pointer-events-auto mx-auto flex max-w-md border-t border-line bg-paper')
+    expect(html).not.toContain('fixed inset-x-0 bottom-0 border-t')
+  })
 })

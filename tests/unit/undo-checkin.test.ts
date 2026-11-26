@@ -73,6 +73,17 @@ describe('undoCheckinCore', () => {
     b['checkins.select'] = { data: null, error: { message: 'x' } }
     await expect(undoCheckinCore(fake(b).client, 'u1', 'h1', NOW)).resolves.toMatchObject({ ok: false, error: 'No pudimos guardar los cambios. Inténtalo de nuevo.' })
   })
+  it('undoes yesterday only before local noon', async () => {
+    const morning = new Date('2026-03-10T14:30:00Z')
+    const { client, log } = fake(base())
+    await expect(undoCheckinCore(client, 'u1', 'h1', morning, 'yesterday')).resolves.toEqual({ ok: true })
+    expect(log.ops.find((o) => o.op === 'delete')?.eqs.local_date).toBe('2026-03-09')
+    const noon = new Date('2026-03-10T15:00:00Z')
+    await expect(undoCheckinCore(fake(base()).client, 'u1', 'h1', noon, 'yesterday')).resolves.toEqual({
+      ok: false,
+      error: 'Ayer ya se cerró. Se marca hasta el mediodía.',
+    })
+  })
   it('maps delete errors and an empty delete', async () => {
     const a = base()
     a['checkins.delete'] = { data: null, error: { message: 'quantity_checkin_managed' } }

@@ -2,7 +2,6 @@ import { Lock } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
-import { redirect } from "next/navigation";
 import type { ReactNode } from "react";
 import { BottomNav } from "@/components/BottomNav";
 import { AddFriendButton } from "@/components/FriendActions";
@@ -97,7 +96,6 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         .maybeSingle();
       state = viewerState(viewer.id, target.id, f);
       friendshipId = f?.id ?? null;
-      if (state === "self") redirect("/perfil");
       if (state === "friend") {
         const today = localDate(new Date(), timezone);
         const data = await loadFriendProfile(supabase, viewer.id, target.id, today, timezone);
@@ -125,14 +123,16 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
   const { data } = await supabase.rpc("public_profile", { p_username: username });
   // someone with a pending request still sees who it is (and Aceptar/Rechazar) even with no public habits
   const asking = (state === "incoming" || state === "outgoing") && target?.username ? target : null;
-  if (!data && !asking) return <Unavailable />;
+  const self = state === "self" && target?.username ? target : null;
+  const known = asking ?? self;
+  if (!data && !known) return <Unavailable />;
   const row: PublicProfileRow = data
     ? (data as unknown as PublicProfileRow)
     : {
-        username: asking!.username!,
-        displayName: asking!.display_name ?? asking!.username!,
-        avatarPath: asking!.avatar_path,
-        avatarPreset: asking!.avatar_preset,
+        username: known!.username!,
+        displayName: known!.display_name ?? known!.username!,
+        avatarPath: known!.avatar_path,
+        avatarPreset: known!.avatar_preset,
         habits: [],
       };
   const view = toPublicProfileView(row, localDate(new Date(), timezone));
@@ -148,11 +148,19 @@ export default async function PublicProfilePage({ params }: { params: Promise<{ 
         </div>
       </header>
 
+      {state === "self" ? (
+        <p className="text-small text-muted">
+          Así te ve alguien que no es tu amigo.{" "}
+          <Link href="/perfil" className="font-medium text-accent">
+            Volver a tu perfil
+          </Link>
+        </p>
+      ) : null}
       {state === "incoming" && friendshipId ? (
         <RequestButtons friendshipId={friendshipId} name={view.displayName.split(" ")[0]} />
       ) : null}
       <div className="flex gap-3">
-        {state === "incoming" ? null : (
+        {state === "incoming" || state === "self" ? null : (
           <div className="flex-1">
             {state === "anon" ? (
               <ButtonLink href={`/login?next=${encodeURIComponent(`/@${view.username}`)}`}>

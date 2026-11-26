@@ -5,7 +5,7 @@ const PAPER = '#FAFAFA'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Kizuna Tracker',
+    name: 'Kizuna',
     short_name: 'Kizuna',
     description: 'Rachas de hábitos con retos entre amigos.',
     start_url: '/',

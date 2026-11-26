@@ -1,4 +1,4 @@
-import { CaretLeft, FileText, GlobeSimple, LockSimple, Scales, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
+import { Archive, CaretLeft, FileText, GlobeSimple, LockSimple, Scales, ShieldCheck } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { cookies } from "next/headers";
 import Link from "next/link";
@@ -139,6 +139,10 @@ export default async function AjustesPage() {
           mono
           chevron
         />
+      </ListSection>
+
+      <ListSection id="ajustes-habitos" label="Hábitos">
+        <ListRow href="/habitos/archivados" icon={<Archive size={20} weight="light" />} label="Hábitos archivados" chevron />
       </ListSection>
 
       <ListSection id="ajustes-legal" label="Legal">

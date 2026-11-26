@@ -42,7 +42,7 @@ const SECTIONS: LegalSection[] = [
     {
       title: "Tu cuenta",
       body: [
-        "Eres responsable de tu contraseña y de lo que ocurra con tu cuenta. En esta versión no hay recuperación de contraseña: si la pierdes, no podremos restablecerla.",
+        "Eres responsable de tu contraseña y de lo que ocurra con tu cuenta. Si la olvidas, pide un enlace de restablecimiento en Iniciar sesión.",
         "Puedes borrar tu cuenta cuando quieras desde Perfil > Ajustes. Puedes cerrar tu sesión en el mismo lugar.",
       ],
     },
@@ -63,5 +63,5 @@ const SECTIONS: LegalSection[] = [
 
 /** Legal text without page chrome: shared by /legal/terminos and the in-app sheet. */
 export function TermsContent() {
-  return <LegalBody updated="23 de noviembre de 2026" sections={SECTIONS} />;
+  return <LegalBody updated="25 de noviembre de 2026" sections={SECTIONS} />;
 }

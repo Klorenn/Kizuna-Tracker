@@ -18,11 +18,8 @@ export function BottomNav() {
   const pathname = usePathname();
   if (pathname === "/listo") return null;
   return (
-    <nav
-      aria-label="Principal"
-      className="fixed inset-x-0 bottom-0 border-t border-line bg-paper pb-[env(safe-area-inset-bottom)]"
-    >
-      <ul className="mx-auto flex max-w-md px-2 pt-1">
+    <nav aria-label="Principal" className="pointer-events-none fixed inset-x-0 bottom-0">
+      <ul className="pointer-events-auto mx-auto flex max-w-md border-t border-line bg-paper px-2 pt-1 pb-[env(safe-area-inset-bottom)]">
         {TABS.map(({ href, label, Icon }) => {
           const active = isTabActive(href, pathname);
           return (

@@ -257,6 +257,24 @@ export async function archiveHabit(id: string): Promise<Result> {
   return { ok: true };
 }
 
+export async function restoreHabit(id: string): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const { supabase, userId: uid } = auth;
+  if (!(await ownHabit(supabase, uid, id))) return { ok: false, error: NOT_FOUND };
+  const { data, error } = await supabase
+    .from("habits")
+    .update({ archived_at: null })
+    .eq("id", id)
+    .eq("user_id", uid)
+    .select("id");
+  if (error) return { ok: false, error: messageFor(error.message) };
+  if (!data || data.length === 0) return { ok: false, error: NOT_FOUND };
+  refresh();
+  revalidatePath("/habitos/archivados");
+  return { ok: true };
+}
+
 export async function checkIn(
   habitId: string,
 ): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string }> {
@@ -269,12 +287,33 @@ export async function checkIn(
   return { ok: true, checkinId: row.checkin_id, created: row.created };
 }
 
-/** Removes today's photo-less check-in (the date comes from the profile timezone). */
-export async function undoCheckIn(habitId: string): Promise<Result> {
+const DAY = /^\d{4}-\d{2}-\d{2}$/;
+
+/** A boolean check-in on a chosen day. The database allows today, and yesterday before local noon. */
+export async function checkInOn(
+  habitId: string,
+  date: string,
+): Promise<{ ok: true; checkinId: string; created: boolean } | { ok: false; error: string }> {
   const auth = await requireUser();
   if (!auth.ok) return { ok: false, error: auth.error };
-  const result = await undoCheckinCore(auth.supabase, auth.userId, habitId);
-  if (result.ok) refreshHabit(habitId);
+  if (!DAY.test(date)) return { ok: false, error: GENERIC };
+  const { data, error } = await auth.supabase.rpc("create_checkin_on", { p_habit_id: habitId, p_date: date });
+  const row = data?.[0];
+  if (error || !row) return { ok: false, error: messageFor(error?.message) };
+  refreshHabit(habitId);
+  revalidatePath("/resumen");
+  return { ok: true, checkinId: row.checkin_id, created: row.created };
+}
+
+/** Removes today's photo-less check-in (the date comes from the profile timezone). */
+export async function undoCheckIn(habitId: string, when: "today" | "yesterday" = "today"): Promise<Result> {
+  const auth = await requireUser();
+  if (!auth.ok) return { ok: false, error: auth.error };
+  const result = await undoCheckinCore(auth.supabase, auth.userId, habitId, new Date(), when);
+  if (result.ok) {
+    refreshHabit(habitId);
+    if (when === "yesterday") revalidatePath("/resumen");
+  }
   return result;
 }
 

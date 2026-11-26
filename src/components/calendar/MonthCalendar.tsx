@@ -16,7 +16,7 @@ import {
   type ReactNode,
 } from "react";
 import { DaySheet, type CalendarHabitView } from "./DaySheet";
-import { WEEKDAY_NAMES, monthBounds, monthGrid, monthTitle, type MonthKey } from "@/domain/calendar";
+import { WEEKDAY_LETTERS, WEEKDAY_NAMES, monthBounds, monthGrid, monthTitle, type MonthKey } from "@/domain/calendar";
 import { addDays, weekStart } from "@/domain/dates";
 import type { LocalDate } from "@/domain/types";
 import { dayAriaLabel, onlyRejected, type HabitDay } from "@/lib/calendar-days";
@@ -24,7 +24,6 @@ import { navDir, swipeDirection, swipeStarted, type NavDir } from "@/lib/calenda
 
 export type { CalendarHabitView } from "./DaySheet";
 
-const WEEKDAY_LETTERS = ["L", "M", "M", "J", "V", "S", "D"];
 const MAX_MARKS = 4;
 const EASE = "cubic-bezier(.32,.72,0,1)";
 
@@ -81,6 +80,7 @@ export function MonthCalendar({
   todayHref,
   note,
   weights,
+  yesterdayOpen = false,
 }: {
   month: MonthKey;
   today: LocalDate;
@@ -95,6 +95,7 @@ export function MonthCalendar({
   note?: string;
   /** The owner's weigh-ins by date. Private: only on the owner's own calendar. */
   weights?: Record<LocalDate, number>;
+  yesterdayOpen?: boolean;
 }) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -483,6 +484,7 @@ export function MonthCalendar({
           onClose={closeSheet}
           returnFocusRef={returnFocus}
           weightKg={weights?.[selected] ?? null}
+          yesterdayOpen={yesterdayOpen}
         />
       ) : null}
     </div>

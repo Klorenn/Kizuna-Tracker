@@ -330,7 +330,9 @@ function HabitRowView({
   return (
     <div>
       <div className="flex min-h-[60px] items-center gap-4 py-2.5">
-        {!plain || quantity ? (
+        {quantity ? (
+          <span className="size-6 shrink-0" aria-hidden />
+        ) : !plain ? (
           <Box done={done} />
         ) : (
           <button

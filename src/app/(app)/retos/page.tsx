@@ -9,6 +9,8 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { ButtonLink } from "@/components/ui/Button";
+import { practiceReport } from "@/domain/personal-challenge";
+import { formatCLP } from "@/domain/ledger";
 import { localDate } from "@/domain/dates";
 import { HABIT_ICONS, type IconKey } from "@/domain/presets";
 import {
@@ -257,6 +259,40 @@ export default async function RetosPage() {
     return { status: c.status, data: { ...base, kind: "finished", summary, outcome } };
   });
 
+  const { data: practice } = await supabase
+    .from("personal_challenges")
+    .select("habit_id,target_per_week,weeks,fine_amount,starts_on,timezone")
+    .eq("user_id", viewer.id)
+    .is("cancelled_at", null)
+    .maybeSingle();
+  let practiceCard: { name: string; line: string } | null = null;
+  if (practice) {
+    const [{ data: habit }, { data: marks }] = await Promise.all([
+      supabase.from("habits").select("name").eq("id", practice.habit_id).maybeSingle(),
+      supabase.from("checkins").select("local_date").eq("habit_id", practice.habit_id).gte("local_date", practice.starts_on),
+    ]);
+    const report = practiceReport(
+      {
+        startsOn: practice.starts_on,
+        weeks: practice.weeks,
+        frequency: { type: "weekly", target: practice.target_per_week ?? 1 },
+        fineAmount: practice.fine_amount,
+      },
+      (marks ?? []).map((m) => m.local_date),
+      localDate(now, practice.timezone),
+    );
+    practiceCard = {
+      name: habit?.name ?? "Hábito",
+      line: report.finished
+        ? report.owed > 0
+          ? `Terminó. Anotas ${formatCLP(report.owed)} de práctica.`
+          : "Terminó. Cumpliste la práctica."
+        : report.current
+          ? `Semana ${report.current.index} de ${report.current.total}: ${report.current.done} de ${report.current.needed}.`
+          : "Práctica en curso.",
+    };
+  }
+
   const proposed = cards.filter((c) => c.status === "proposed");
   const active = cards.filter((c) => c.status === "active");
   const done = cards.filter((c) => c.status === "finished" || c.status === "cancelled").slice(0, 10);
@@ -277,12 +313,33 @@ export default async function RetosPage() {
       </div>
       <h1 className="text-[44px] font-semibold leading-[1.1] tracking-[-0.02em] text-ink">Retos</h1>
 
+      {practiceCard ? (
+        <Card className="flex flex-col gap-1 p-4">
+          <p className="text-small font-medium text-accent">Práctica</p>
+          <p className="text-body font-medium text-ink">{practiceCard.name}</p>
+          <p className="text-small text-ink">{practiceCard.line}</p>
+          <p className="text-small text-muted">Esto es un ensayo. La multa no entra en Deudas.</p>
+          <ButtonLink variant="secondary" href="/retos/practica">
+            Ver la práctica
+          </ButtonLink>
+        </Card>
+      ) : null}
+
       {cards.length === 0 ? (
         <Card>
           <EmptyState
             title="Aún no tienes retos"
             body="Rétate con un amigo a cumplir un hábito. Quien falle, anota una multa."
-            action={<ButtonLink href="/retos/nuevo">Nuevo reto</ButtonLink>}
+            action={
+              <span className="flex flex-col gap-2">
+                <ButtonLink href="/retos/nuevo">Nuevo reto</ButtonLink>
+                {practiceCard ? null : (
+                  <ButtonLink variant="secondary" href="/retos/practica">
+                    Probar un reto solo
+                  </ButtonLink>
+                )}
+              </span>
+            }
           />
         </Card>
       ) : null}

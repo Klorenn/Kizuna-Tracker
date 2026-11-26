@@ -2,11 +2,15 @@
 
 import { CheckCircle, CircleHalf, Clock, ImageBroken, MinusCircle, WarningCircle } from "@phosphor-icons/react";
 import Link from "next/link";
-import type { RefObject } from "react";
+import { useRouter } from "next/navigation";
+import { useState, useTransition, type RefObject } from "react";
+import { checkInOn, undoCheckIn } from "@/app/(app)/habitos/actions";
+import { Button } from "@/components/ui/Button";
 import { DayLogDetail, WeightRow } from "@/components/logs/DayLogDetail";
 import { Sheet } from "@/components/ui/Sheet";
 import { HabitIcon } from "@/components/habit-icon";
 import { dayHeading } from "@/domain/calendar";
+import { addDays } from "@/domain/dates";
 import type { HabitColor } from "@/domain/habit-colors";
 import type { LogType } from "@/domain/logs";
 import type { IconKey } from "@/domain/presets";
@@ -96,6 +100,7 @@ export function DaySheet({
   onClose,
   returnFocusRef,
   weightKg,
+  yesterdayOpen = false,
 }: {
   date: LocalDate;
   today: LocalDate;
@@ -108,6 +113,8 @@ export function DaySheet({
   returnFocusRef?: RefObject<HTMLElement | null>;
   /** That day's weigh-in. Private: pass it only on the owner's own calendar. */
   weightKg?: number | null;
+  /** Yesterday stays markable until local noon. The server is the authority if the page is stale. */
+  yesterdayOpen?: boolean;
 }) {
   const byId = new Map(habits.map((h) => [h.id, h]));
   const records = hasRecords(entries);
@@ -205,7 +212,59 @@ export function DaySheet({
             )}
           </div>
         )}
+        {yesterdayOpen && date === addDays(today, -1) ? (
+          <YesterdayMarks date={date} habits={habits.filter(plainHabit)} entries={entries} />
+        ) : null}
       </div>
     </Sheet>
+  );
+}
+
+function plainHabit(h: CalendarHabitView) {
+  return !h.logType || h.logType === "none";
+}
+
+function YesterdayMarks({
+  date,
+  habits,
+  entries,
+}: {
+  date: LocalDate;
+  habits: CalendarHabitView[];
+  entries: HabitDay[];
+}) {
+  const router = useRouter();
+  const [error, setError] = useState<string | null>(null);
+  const [pending, start] = useTransition();
+  if (habits.length === 0) return null;
+  return (
+    <div className="flex flex-col gap-2 border-t border-line pt-3">
+      <p className="text-small text-muted">Hasta el mediodía puedes marcar ayer.</p>
+      {habits.map((h) => {
+        const entry = entries.find((e) => e.habitId === h.id);
+        const done = entry?.status === "done" && entry.photos.length === 0;
+        return (
+          <Button
+            key={h.id}
+            variant="secondary"
+            disabled={pending}
+            onClick={() =>
+              start(async () => {
+                const r = done ? await undoCheckIn(h.id, "yesterday") : await checkInOn(h.id, date);
+                if (r.ok) router.refresh();
+                setError(r.ok ? null : r.error);
+              })
+            }
+          >
+            {done ? `Deshacer ${h.name}` : `Marcar ${h.name}`}
+          </Button>
+        );
+      })}
+      {error ? (
+        <p role="alert" className="text-small text-ink">
+          {error}
+        </p>
+      ) : null}
+    </div>
   );
 }

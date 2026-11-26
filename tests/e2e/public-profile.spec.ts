@@ -35,7 +35,8 @@ test("legal pages are public, carry the draft notice and fit 375 px", async ({ p
     await page.goto(path);
     await expect(page).toHaveURL(new RegExp(`${path}$`));
     await expect(page.getByRole("heading", { name: heading, level: 1 })).toBeVisible();
-    await expect(page.getByText("Borrador pendiente de revisión legal")).toBeVisible();
+    await expect(page.getByText("Última actualización")).toBeVisible();
+    await expect(page.getByText("Borrador pendiente")).toHaveCount(0);
   }
   await expectNoHorizontalScroll(page, ["/legal/terminos", "/legal/privacidad", "/bienvenida", "/login", "/registro"]);
 });

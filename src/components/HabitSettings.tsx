@@ -63,7 +63,7 @@ export function HabitSettings({
       </Button>
       <Sheet open={confirm} title="¿Archivar este hábito?" onClose={() => setConfirm(false)}>
         <p className="text-body text-muted">
-          Dejará de aparecer en Hoy. Tu historial se conserva.
+          Dejará de aparecer en Hoy. Tu historial se conserva. Puedes recuperarlo en Ajustes, en Hábitos archivados.
         </p>
         <Button onClick={archive} disabled={pending}>
           Archivar

@@ -1,5 +1,6 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
-import { localDate } from "@/domain/dates";
+import { checkinDateAllowed } from "@/domain/checkin-window";
+import { addDays, localDate } from "@/domain/dates";
 import type { Database } from "@/lib/supabase/database.types";
 import {
   CANNOT_UNDO,
@@ -21,6 +22,7 @@ export async function undoCheckinCore(
   uid: string,
   habitId: string,
   now: Date = new Date(),
+  when: "today" | "yesterday" = "today",
 ): Promise<UndoResult> {
   // ownership, time zone and steps do not depend on each other: one round, not three
   const [{ data: habit }, { data: profile }, { data: items, error: itemsError }] = await Promise.all([
@@ -35,7 +37,11 @@ export async function undoCheckinCore(
   ]);
   if (!habit) return { ok: false, error: NOT_FOUND };
   if (!profile) return { ok: false, error: ERRORS.not_authenticated };
-  const date = localDate(now, profile.timezone);
+  const day = localDate(now, profile.timezone);
+  const date = when === "yesterday" ? addDays(day, -1) : day;
+  if (when === "yesterday" && !checkinDateAllowed(now, profile.timezone, date)) {
+    return { ok: false, error: ERRORS.date_locked };
+  }
 
   // habits with items are undone by unchecking an item; photo check-ins are not undoable here
   if (itemsError) return { ok: false, error: GENERIC };
@@ -56,6 +62,8 @@ export async function undoCheckinCore(
     .eq("local_date", date)
     .select("id");
   if (error) return { ok: false, error: undoMessage(error.message) };
-  if (!removed || removed.length === 0) return { ok: false, error: NO_CHECKIN_TODAY };
+  if (!removed || removed.length === 0) {
+    return { ok: false, error: when === "yesterday" ? "Ayer no hay un registro que deshacer." : NO_CHECKIN_TODAY };
+  }
   return { ok: true };
 }

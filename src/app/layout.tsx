@@ -23,21 +23,21 @@ export async function generateMetadata(): Promise<Metadata> {
   const theme = await currentTheme();
   return {
     metadataBase: resolveSiteUrl(),
-    title: { default: "Kizuna Tracker", template: "%s · Kizuna" },
+    title: { default: "Kizuna", template: "%s · Kizuna" },
     description: SITE_DESCRIPTION,
     openGraph: {
       type: "website",
-      siteName: "Kizuna Tracker",
+      siteName: "Kizuna",
       locale: "es_CL",
-      title: "Kizuna Tracker",
+      title: "Kizuna",
       description: SITE_DESCRIPTION,
     },
     twitter: {
       card: "summary_large_image",
-      title: "Kizuna Tracker",
+      title: "Kizuna",
       description: SITE_DESCRIPTION,
     },
-    applicationName: "Kizuna Tracker",
+    applicationName: "Kizuna",
     appleWebApp: { capable: true, title: "Kizuna", statusBarStyle: appleStatusBarStyle(theme) },
   };
 }

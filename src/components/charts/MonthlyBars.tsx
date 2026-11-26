@@ -2,6 +2,7 @@
 
 import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
 import type { HabitColor } from "@/domain/habit-colors";
+import { EMPTY_CHART, hasChartValues } from "./empty";
 
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -16,6 +17,9 @@ function Tick({ x, y, payload }: { x?: number; y?: number; payload?: { value: st
 /** Check-ins per month (`YYYY-MM`), bars in the habit color with the count on top. */
 export function MonthlyBars({ data, color }: { data: { month: string; count: number }[]; color: HabitColor }) {
   const rows = data.map((d) => ({ ...d, label: MONTHS[Number(d.month.slice(5, 7)) - 1] }));
+  if (!hasChartValues(rows.map((r) => r.count))) {
+    return <p className="py-6 text-center text-small text-muted">{EMPTY_CHART}</p>;
+  }
   return (
     <div
       className="h-[140px] w-full"

@@ -28,6 +28,7 @@ import {
   withSearch,
   type MonthKey,
 } from "@/domain/calendar";
+import { checkinDateAllowed } from "@/domain/checkin-window";
 import { addDays, localDate } from "@/domain/dates";
 import { toHabitColor } from "@/domain/habit-colors";
 import { LOG_TYPES, type LogType } from "@/domain/logs";
@@ -326,6 +327,7 @@ export default async function HabitoPage({
             nextHref={nav.next ? monthHref(nav.next) : null}
             todayHref={nav.isCurrent ? null : monthHref(thisMonth)}
             note={weeklyNote}
+            yesterdayOpen={checkinDateAllowed(new Date(), profile.timezone, addDays(today, -1))}
           />
         </Card>
       </>

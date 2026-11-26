@@ -16,6 +16,7 @@ export const ERRORS: Record<string, string> = {
   quantity_checkin_managed: "Un hábito de cantidad se deshace quitando sumas.",
   habit_has_items: "Este hábito se completa marcando sus pasos.",
   photo_required: "Este hábito pide una foto de prueba.",
+  date_locked: "Ayer ya se cerró. Se marca hasta el mediodía.",
   item_not_found: "No encontramos ese paso.",
   habit_not_found: "No encontramos ese hábito.",
   checkin_rejected: "Tu amigo rechazó esta prueba. No puedes deshacerla.",

@@ -1,4 +1,5 @@
 import { TZDate } from "@date-fns/tz";
+import Link from "next/link";
 import { Camera, Plus } from "@phosphor-icons/react/dist/ssr";
 import { format } from "date-fns";
 import { es } from "date-fns/locale";
@@ -17,6 +18,8 @@ import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ProgressRing } from "@/components/ui/ProgressRing";
 import { SectionHeader } from "@/components/ui/SectionHeader";
+import { checkinDateAllowed } from "@/domain/checkin-window";
+import { addDays } from "@/domain/dates";
 import { buildToday } from "@/domain/today";
 import { hoyCatAssets } from "@/lib/motion/cat-animation";
 import { createServerClient } from "@/lib/supabase/server";
@@ -80,6 +83,14 @@ export default async function Home() {
         habits={view.rows.filter((r) => r.logType === "time").map((r) => ({ id: r.id, name: r.name }))}
       />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
+      {checkinDateAllowed(now, timeZone, addDays(today, -1)) ? (
+        <p className="text-small text-muted">
+          Hasta el mediodía puedes marcar ayer.{" "}
+          <Link href="/resumen" className="font-medium text-accent">
+            Ir al calendario
+          </Link>
+        </p>
+      ) : null}
       {view.total === 0 ? (
         <>
           <Card>

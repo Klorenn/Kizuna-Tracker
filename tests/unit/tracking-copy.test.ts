@@ -17,6 +17,7 @@ describe('tracking-copy', () => {
   it('maps database codes to the web Spanish copy', () => {
     expect(messageFor('P0001: period_closed')).toBe('Este día ya cerró en un reto: no puedes deshacerlo.')
     expect(messageFor('photo_required')).toBe('Este hábito pide una foto de prueba.')
+    expect(messageFor('date_locked')).toBe('Ayer ya se cerró. Se marca hasta el mediodía.')
     expect(messageFor('habit_has_items')).toBe('Este hábito se completa marcando sus pasos.')
     expect(messageFor('item_not_found')).toBe('No encontramos ese paso.')
     expect(messageFor('checkin_today')).toBe(TODAY_LOCKED)

@@ -3,6 +3,7 @@
 import { getISOWeek } from "date-fns";
 import { Bar, BarChart, Cell, LabelList, ResponsiveContainer, XAxis } from "recharts";
 import type { HabitColor } from "@/domain/habit-colors";
+import { EMPTY_CHART, hasChartValues } from "./empty";
 
 type Props = { data: { weekStart: string; count: number }[]; target: number; color: HabitColor };
 
@@ -20,6 +21,9 @@ export function WeeklyBars({ data, target, color }: Props) {
     ...d,
     label: `S${getISOWeek(new Date(`${d.weekStart}T12:00:00Z`))}`,
   }));
+  if (!hasChartValues(rows.map((r) => r.count))) {
+    return <p className="py-6 text-center text-small text-muted">{EMPTY_CHART}</p>;
+  }
   return (
     <div
       className="h-[140px] w-full"

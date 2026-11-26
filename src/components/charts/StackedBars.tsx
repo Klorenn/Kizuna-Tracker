@@ -3,6 +3,7 @@
 import { getISOWeek } from "date-fns";
 import { Bar, BarChart, LabelList, ResponsiveContainer, XAxis } from "recharts";
 import { habitColorVar, type HabitColor } from "@/domain/habit-colors";
+import { EMPTY_CHART, hasChartValues } from "./empty";
 
 const MONTHS = ["Ene", "Feb", "Mar", "Abr", "May", "Jun", "Jul", "Ago", "Sep", "Oct", "Nov", "Dic"];
 
@@ -30,6 +31,9 @@ export function StackedBars({ rows, series, kind }: { rows: Row[]; series: Serie
         : MONTHS[Number(r.bucket.slice(5, 7)) - 1],
   }));
   const what = kind === "week" ? "semana" : "mes";
+  if (!hasChartValues(data.map((r) => r.total))) {
+    return <p className="py-6 text-center text-small text-muted">{EMPTY_CHART}</p>;
+  }
   return (
     <div
       className="h-[140px] w-full"

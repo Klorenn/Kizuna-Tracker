@@ -9,7 +9,7 @@ test.describe("social card", () => {
 
     expect(await meta("property", "og:title")).toBeTruthy();
     expect(await meta("property", "og:description")).toBeTruthy();
-    expect(await meta("property", "og:site_name")).toBe("Kizuna Tracker");
+    expect(await meta("property", "og:site_name")).toBe("Kizuna");
     expect(await meta("property", "og:type")).toBe("website");
     expect(await meta("property", "og:locale")).toBe("es_CL");
     expect(await meta("name", "twitter:card")).toBe("summary_large_image");

@@ -65,7 +65,7 @@ const SECTIONS: LegalSection[] = [
     {
       title: "Contraseña",
       body: [
-        "En esta versión no hay recuperación de contraseña. Guárdala en un lugar seguro.",
+        "Puedes restablecer tu contraseña desde Iniciar sesión. Te enviamos un enlace al correo de la cuenta.",
       ],
     },
     {
@@ -85,5 +85,5 @@ const SECTIONS: LegalSection[] = [
 
 /** Legal text without page chrome: shared by /legal/privacidad and the in-app sheet. */
 export function PrivacyContent() {
-  return <LegalBody updated="23 de noviembre de 2026" sections={SECTIONS} />;
+  return <LegalBody updated="25 de noviembre de 2026" sections={SECTIONS} />;
 }

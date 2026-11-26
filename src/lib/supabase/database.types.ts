@@ -1926,6 +1926,63 @@ export type Database = {
           },
         ]
       }
+      personal_challenges: {
+        Row: {
+          cancelled_at: string | null
+          created_at: string
+          fine_amount: number
+          frequency_type: string
+          habit_id: string
+          id: string
+          starts_on: string
+          target_per_week: number | null
+          timezone: string
+          user_id: string
+          weeks: number
+        }
+        Insert: {
+          cancelled_at?: string | null
+          created_at?: string
+          fine_amount: number
+          frequency_type: string
+          habit_id: string
+          id?: string
+          starts_on: string
+          target_per_week?: number | null
+          timezone: string
+          user_id: string
+          weeks: number
+        }
+        Update: {
+          cancelled_at?: string | null
+          created_at?: string
+          fine_amount?: number
+          frequency_type?: string
+          habit_id?: string
+          id?: string
+          starts_on?: string
+          target_per_week?: number | null
+          timezone?: string
+          user_id?: string
+          weeks?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "personal_challenges_habit_id_fkey"
+            columns: ["habit_id"]
+            isOneToOne: false
+            referencedRelation: "habits"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "personal_challenges_user_id_fkey"
+            columns: ["user_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       pomodoro_blocks: {
         Row: {
           block_id: string
@@ -2745,6 +2802,13 @@ export type Database = {
       }
       create_checkin: {
         Args: { p_habit_id: string }
+        Returns: {
+          checkin_id: string
+          created: boolean
+        }[]
+      }
+      create_checkin_on: {
+        Args: { p_date: string; p_habit_id: string }
         Returns: {
           checkin_id: string
           created: boolean

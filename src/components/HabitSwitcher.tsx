@@ -49,6 +49,7 @@ export function HabitSwitcher({
   }
   return (
     <Segmented
+      fit="content"
       label="Hábito"
       options={[
         ...(withAll ? [{ value: allValue, label: "Todos" }] : []),

@@ -9,6 +9,7 @@ import {
   monthOf,
   monthTitle,
   parseMonthParam,
+  WEEKDAY_LETTERS,
   recentMonths,
   shiftMonth,
   withSearch,
@@ -142,6 +143,10 @@ describe('textos de fecha', () => {
   test('día corto', () => {
     expect(dayLabel('2026-11-23')).toBe('23 de noviembre')
     expect(dayLabel('2026-03-01')).toBe('1 de marzo')
+  })
+  test('las letras del calendario distinguen martes y miércoles', () => {
+    expect(WEEKDAY_LETTERS).toEqual(['Lu', 'Ma', 'Mi', 'Ju', 'Vi', 'Sá', 'Do'])
+    expect(new Set(WEEKDAY_LETTERS).size).toBe(7)
   })
   test('encabezado del día con el día de la semana', () => {
     expect(dayHeading('2026-11-23', '2026-11-25')).toBe('Lunes 23 de noviembre')
