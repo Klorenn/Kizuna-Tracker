@@ -44,11 +44,12 @@ function PersonLink({
   chevron?: boolean;
 }) {
   return (
-    <Link
-      href={`/@${username}`}
-      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
-    >
+    <div className="flex min-w-0 flex-1 items-center gap-3">
       <Avatar name={name} src={avatar} preset={preset} />
+      <Link
+        href={`/@${username}`}
+        className="flex min-h-11 min-w-0 flex-1 items-center rounded-md focus-visible:outline-offset-[-2px]"
+      >
       <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
         <span className="truncate text-body font-medium text-ink">{name}</span>
         <span className="flex min-w-0 items-center gap-1.5 text-small text-muted">
@@ -62,7 +63,8 @@ function PersonLink({
         </span>
       </span>
       {chevron ? <CaretRight size={18} weight="light" aria-hidden className="-mr-1 shrink-0 text-muted" /> : null}
-    </Link>
+      </Link>
+    </div>
   );
 }
 

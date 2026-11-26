@@ -1,3 +1,4 @@
+import { ZoomablePhoto } from "@/components/ui/PhotoZoom";
 import { HabitIcon } from "./habit-icon";
 import type { IconKey } from "@/domain/presets";
 
@@ -17,24 +18,22 @@ export function FeedItem({ entry }: { entry: FeedEntry }) {
   if (entry.photoUrl) {
     return (
       <article className="relative flex h-[220px] flex-col justify-end gap-[2px] overflow-hidden rounded-lg border border-line bg-media p-4">
-        {/* eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL */}
-        <img
+        <ZoomablePhoto
           src={entry.photoUrl}
-          alt=""
-          width={448}
-          height={220}
+          alt={`Foto de ${entry.who}, ${entry.habit}`}
+          className="absolute inset-0"
+          imgClassName="size-full object-cover"
           loading="lazy"
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
         />
         <span
           aria-hidden
-          className="absolute inset-0 bg-gradient-to-b from-transparent from-40% to-media/75"
+          className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent from-40% to-media/75"
         />
-        <p className="relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-media">
+        <p className="pointer-events-none relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-media">
           {entry.who} · {entry.habit}
         </p>
-        <p className="relative text-small text-on-media">
+        <p className="pointer-events-none relative text-small text-on-media">
           {entry.when}
           {entry.note ? ` · ${entry.note}` : ""}
         </p>

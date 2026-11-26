@@ -22,6 +22,7 @@ import { toHabitColor } from "@/domain/habit-colors";
 import { groupByDay } from "@/lib/feed";
 import type { GroupActions, GroupResult, GroupWallCursor, GroupWallItem, GroupWallPage } from "@/lib/groups-contract";
 import { CONNECTION_ERROR, safeAction } from "@/lib/safe-action";
+import { ZoomablePhoto } from "@/components/ui/PhotoZoom";
 import { resignProof, useSignedUrls } from "@/lib/use-signed-urls";
 import type { GroupFineActions } from "@/lib/groups-fines-contract";
 import { RejectPhotoButton } from "../reject/RejectPhotoButton";
@@ -54,11 +55,11 @@ function Photo({ url: initial, name, path }: { url: string | null | undefined; n
       className="relative flex aspect-4/3 w-full items-center justify-center overflow-hidden rounded-md bg-media"
     >
       {url ? (
-        // lazy + async decode: a page of full-size photos must not compete with the rest of the screen
-        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-        <img
+        <ZoomablePhoto
           src={url}
           alt={`Foto de ${name}`}
+          className="absolute inset-0"
+          imgClassName="size-full object-cover"
           loading="lazy"
           decoding="async"
           onError={() => {
@@ -66,7 +67,6 @@ function Photo({ url: initial, name, path }: { url: string | null | undefined; n
             tried.current = true;
             void resignProof(path).then((u) => setOverride({ from: initial ?? "", url: u }));
           }}
-          className="absolute inset-0 size-full object-cover"
         />
       ) : url === null ? (
         <span className="flex items-center gap-1.5 text-small text-on-media/80">

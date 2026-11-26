@@ -148,7 +148,7 @@ export function AccountRows({
         icon={<Camera size={20} weight="light" />}
         label="Foto de perfil"
         hint={avatar.busy ? "Subiendo foto…" : "Aparece en tu perfil"}
-        trailing={<Avatar name={name} size="S" src={avatarSrc} preset={avatarPreset} />}
+        trailing={<Avatar name={name} size="S" src={avatarSrc} preset={avatarPreset} zoom={false} />}
         chevron
         onClick={() => setPhotoOpen(true)}
       />

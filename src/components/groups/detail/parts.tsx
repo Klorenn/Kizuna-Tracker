@@ -48,11 +48,12 @@ export function PersonLink({
   detail?: ReactNode;
 }) {
   return (
-    <Link
-      href={`/@${person.username}`}
-      className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
-    >
+    <div className="flex min-w-0 flex-1 items-center gap-3">
       <Avatar name={person.displayName} src={avatarUrl(person.avatarPath)} preset={person.avatarPreset} />
+      <Link
+        href={`/@${person.username}`}
+        className="flex min-h-11 min-w-0 flex-1 items-center rounded-md focus-visible:outline-offset-[-2px]"
+      >
       <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span className="flex min-w-0 items-center gap-2">
           <span className="truncate text-body font-medium text-ink">{person.displayName}</span>
@@ -63,7 +64,8 @@ export function PersonLink({
         <span className="truncate font-mono text-small text-muted">@{person.username}</span>
         {detail}
       </span>
-    </Link>
+      </Link>
+    </div>
   );
 }
 

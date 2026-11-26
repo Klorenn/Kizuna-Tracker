@@ -38,11 +38,11 @@ export function PersonRow({
   return (
     <div className="flex flex-col gap-2 px-4 py-3">
       <div className="flex items-center gap-3">
+        <Avatar name={person.displayName} src={person.avatarSrc} preset={person.avatarPreset} />
         <Link
           href={`/@${person.username}`}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
+          className="flex min-h-11 min-w-0 flex-1 items-center rounded-md focus-visible:outline-offset-[-2px]"
         >
-          <Avatar name={person.displayName} src={person.avatarSrc} preset={person.avatarPreset} />
           <span className="flex min-w-0 flex-1 flex-col gap-0.5">
             <span className="truncate text-body font-medium text-ink">{person.displayName}</span>
             <span className="truncate font-mono text-small text-muted">@{person.username}</span>

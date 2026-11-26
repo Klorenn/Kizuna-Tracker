@@ -1,6 +1,7 @@
 import { Clock, Fire, ImageBroken, Prohibit } from "@phosphor-icons/react/dist/ssr";
 import Link from "next/link";
 import { Avatar } from "@/components/ui/Avatar";
+import { ZoomablePhoto } from "@/components/ui/PhotoZoom";
 import { Card } from "@/components/ui/Card";
 import { groupByDay, type FeedEntry } from "@/lib/feed";
 
@@ -52,16 +53,13 @@ function PhotoCard({ entry, eager }: { entry: FeedEntry; eager: boolean }) {
   return (
     <div className="relative mt-1 flex h-[208px] flex-col justify-end overflow-hidden rounded-md bg-media p-3.5">
       {entry.photoUrl ? (
-        // lazy + async decode: up to 20 full-size photos per page must not compete with the first screen
-        // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-        <img
+        <ZoomablePhoto
           src={entry.photoUrl}
           alt={`Foto de ${entry.habit.name}`}
-          width={448}
-          height={208}
+          className="absolute inset-0"
+          imgClassName="size-full object-cover"
           loading={eager ? "eager" : "lazy"}
           decoding="async"
-          className="absolute inset-0 size-full object-cover"
         />
       ) : (
         <span className="absolute inset-0 flex items-center justify-center gap-1.5 pb-8 text-small text-on-media/80">
@@ -69,8 +67,8 @@ function PhotoCard({ entry, eager }: { entry: FeedEntry; eager: boolean }) {
           Foto no disponible
         </span>
       )}
-      <span aria-hidden className="absolute inset-0 bg-gradient-to-b from-transparent from-45% to-media/80" />
-      <p className="relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-media">{entry.copy}</p>
+      <span aria-hidden className="pointer-events-none absolute inset-0 bg-gradient-to-b from-transparent from-45% to-media/80" />
+      <p className="pointer-events-none relative text-[17px] font-semibold leading-[1.3] tracking-[-0.02em] text-on-media">{entry.copy}</p>
     </div>
   );
 }
@@ -95,9 +93,9 @@ export function ActivityItem({
   return (
     <li className="flex gap-3 px-4 py-3.5" data-habit-color={entry.habit.color}>
       {showPerson ? (
-        <Link href={href} tabIndex={-1} aria-hidden className="-m-0.5 flex size-11 shrink-0 items-center justify-center self-start rounded-full">
+        <span className="-m-0.5 flex size-11 shrink-0 items-center justify-center self-start">
           <Avatar name={entry.person.name} src={entry.person.avatar} preset={entry.person.avatarPreset} />
-        </Link>
+        </span>
       ) : null}
       <article className="flex min-w-0 flex-1 flex-col gap-1.5" aria-label={`${entry.person.name}: ${entry.copy}`}>
         <div className="flex min-h-6 items-center gap-2">

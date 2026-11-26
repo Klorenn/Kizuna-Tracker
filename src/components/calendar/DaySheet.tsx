@@ -6,6 +6,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type RefObject } from "react";
 import { checkInOn, undoCheckIn } from "@/app/(app)/habitos/actions";
 import { Button } from "@/components/ui/Button";
+import { ZoomablePhoto } from "@/components/ui/PhotoZoom";
 import { DayLogDetail, WeightRow } from "@/components/logs/DayLogDetail";
 import { Sheet } from "@/components/ui/Sheet";
 import { HabitIcon } from "@/components/habit-icon";
@@ -74,8 +75,7 @@ function Thumb({ url, alt, label }: { url: string | null | undefined; alt: strin
     <figure className="flex w-16 flex-col gap-1">
       <span className="relative flex size-16 items-center justify-center overflow-hidden rounded-md border border-line bg-field text-muted">
         {url ? (
-          // eslint-disable-next-line @next/next/no-img-element -- short-lived signed URL
-          <img src={url} alt={alt} className="absolute inset-0 size-full object-cover" />
+          <ZoomablePhoto src={url} alt={alt} className="absolute inset-0" imgClassName="size-full object-cover" />
         ) : url === null ? (
           <>
             <ImageBroken size={20} weight="light" aria-hidden />

@@ -1,4 +1,7 @@
+"use client";
+
 import { resolveAvatarSource } from "@/lib/avatar-presets";
+import { usePhotoZoom } from "./PhotoZoom";
 
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -36,6 +39,7 @@ export function Avatar({
   deleted = false,
   decorative = true,
   priority = false,
+  zoom = true,
 }: {
   name: string;
   size?: Size;
@@ -44,22 +48,44 @@ export function Avatar({
   deleted?: boolean;
   decorative?: boolean;
   priority?: boolean;
+  /** Off when the avatar sits inside another button (the settings row that opens the editor). */
+  zoom?: boolean;
 }) {
+  const open = usePhotoZoom();
   const source = resolveAvatarSource({ photo: src, preset, deleted });
   if (source.kind !== "initials") {
-    return (
+    const img = (
       // eslint-disable-next-line @next/next/no-img-element
       <img
         src={source.src}
-        alt={decorative ? "" : name}
-        aria-hidden={decorative || undefined}
+        alt={zoom || decorative ? "" : name}
+        aria-hidden={zoom || decorative || undefined}
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : undefined}
         decoding="async"
         draggable={false}
         data-avatar={source.kind}
-        className={`shrink-0 rounded-full border border-line bg-ink-soft object-cover ${BOX[size]}`}
+        className={
+          zoom
+            ? "size-full rounded-full border border-line bg-ink-soft object-cover"
+            : `shrink-0 rounded-full border border-line bg-ink-soft object-cover ${BOX[size]}`
+        }
       />
+    );
+    if (!zoom) return img;
+    return (
+      <button
+        type="button"
+        aria-label={`Ver foto de ${name}`}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          open({ src: source.src, alt: `Foto de ${name}` });
+        }}
+        className={`shrink-0 overflow-hidden rounded-full focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent ${BOX[size]}`}
+      >
+        {img}
+      </button>
     );
   }
   return (

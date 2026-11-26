@@ -36,11 +36,11 @@ export function FriendRequestRow({
   return (
     <div className="flex flex-col gap-2">
       <div className="flex items-center gap-3">
+        <Avatar name={displayName} src={avatar} preset={avatarPreset} />
         <Link
           href={`/@${username}`}
-          className="flex min-h-11 min-w-0 flex-1 items-center gap-3 rounded-md focus-visible:outline-offset-[-2px]"
+          className="flex min-h-11 min-w-0 flex-1 items-center rounded-md focus-visible:outline-offset-[-2px]"
         >
-          <Avatar name={displayName} src={avatar} preset={avatarPreset} />
           <span className="flex min-w-0 flex-1 flex-col gap-[2px]">
             <span className="truncate text-body font-medium text-ink">{displayName}</span>
             <span className="truncate font-mono text-[13px] text-muted">@{username}</span>
