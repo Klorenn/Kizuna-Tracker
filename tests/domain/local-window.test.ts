@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { dueLocalSlot, dueUsersForSlot, STREAK_RISK_SLOT, WEEKLY_SUMMARY_SLOT } from '@/domain/local-window'
+import { dueLocalSlot, dueMonthDay, dueUsersForSlot, STREAK_RISK_SLOT, WEEKLY_SUMMARY_SLOT } from '@/domain/local-window'
 
 const z = (iso: string) => new Date(iso)
 
@@ -68,6 +68,20 @@ describe('weekly slot (Sunday 21:00 local)', () => {
     expect(dueLocalSlot(z('2026-11-23T00:00:00Z'), 'America/Santiago', WEEKLY_SUMMARY_SLOT)).toBe('2026-11-22')
     // Tokyo: Sunday 21:00 JST = 12:00Z Sunday
     expect(dueLocalSlot(z('2026-11-22T12:00:00Z'), 'Asia/Tokyo', WEEKLY_SUMMARY_SLOT)).toBe('2026-11-22')
+  })
+})
+
+describe('dueMonthDay (día 15 a las 10:00, ventana de 15 minutos)', () => {
+  it('el 15 a las 10:05 y a las 10:14 entra; a las 10:15 no', () => {
+    expect(dueMonthDay(z('2026-11-15T13:05:00Z'), 'America/Santiago', 15, 600)).toBe('2026-11-15')
+    expect(dueMonthDay(z('2026-11-15T13:14:00Z'), 'America/Santiago', 15, 600)).toBe('2026-11-15')
+    expect(dueMonthDay(z('2026-11-15T13:15:00Z'), 'America/Santiago', 15, 600)).toBeNull()
+  })
+  it('un día 14 no entra, y una zona inválida tampoco', () => {
+    expect(dueMonthDay(z('2026-11-14T13:05:00Z'), 'America/Santiago', 15, 600)).toBeNull()
+    expect(dueMonthDay(z('2026-11-16T13:05:00Z'), 'America/Santiago', 15, 600)).toBeNull()
+    expect(dueMonthDay(z('2026-11-15T13:05:00Z'), 'Not/AZone', 15, 600)).toBeNull()
+    expect(dueMonthDay(z('2026-11-15T13:05:00Z'), '', 15, 600)).toBeNull()
   })
 })
 

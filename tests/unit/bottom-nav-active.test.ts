@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs'
 import { describe, expect, it } from 'vitest'
 import { isTabActive } from '@/components/bottom-nav-active'
 
@@ -28,5 +29,18 @@ describe('isTabActive', () => {
   it('the other tabs keep matching by prefix', () => {
     expect(isTabActive('/resumen', '/resumen')).toBe(true)
     expect(isTabActive('/perfil', '/perfil/editar')).toBe(true)
+  })
+  it('Mapa enciende Perfil y no es una pestaña', () => {
+    expect(isTabActive('/perfil', '/mapa')).toBe(true)
+    expect(isTabActive('/perfil', '/mapa/viajes/x')).toBe(true)
+    for (const tab of ['/', '/amigos', '/retos', '/resumen']) {
+      expect(isTabActive(tab, '/mapa')).toBe(false)
+    }
+    const nav = readFileSync('src/components/BottomNav.tsx', 'utf8')
+    for (const label of ['Hoy', 'Amigos', 'Retos', 'Resumen', 'Perfil']) {
+      expect(nav).toContain(`label: "${label}"`)
+    }
+    expect(nav).not.toContain('label: "Mapa"')
+    expect(nav).not.toContain("label: 'Mapa'")
   })
 })

@@ -1926,6 +1926,120 @@ export type Database = {
           },
         ]
       }
+      outing_invites: {
+        Row: {
+          created_at: string
+          id: string
+          invitee_id: string
+          outing_id: string
+          responded_at: string | null
+          status: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          invitee_id: string
+          outing_id: string
+          responded_at?: string | null
+          status: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          invitee_id?: string
+          outing_id?: string
+          responded_at?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outing_invites_invitee_id_fkey"
+            columns: ["invitee_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outing_invites_outing_id_fkey"
+            columns: ["outing_id"]
+            isOneToOne: false
+            referencedRelation: "outings"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      outings: {
+        Row: {
+          created_at: string
+          ends_on: string
+          id: string
+          lat: number
+          lng: number
+          month_start: string
+          note: string | null
+          owner_id: string
+          photo_path: string | null
+          place_detail: string | null
+          place_key: string
+          place_name: string
+          starts_on: string
+          status: string
+          trip_id: string | null
+          went_on: string | null
+        }
+        Insert: {
+          created_at?: string
+          ends_on: string
+          id?: string
+          lat: number
+          lng: number
+          month_start: string
+          note?: string | null
+          owner_id: string
+          photo_path?: string | null
+          place_detail?: string | null
+          place_key: string
+          place_name: string
+          starts_on: string
+          status: string
+          trip_id?: string | null
+          went_on?: string | null
+        }
+        Update: {
+          created_at?: string
+          ends_on?: string
+          id?: string
+          lat?: number
+          lng?: number
+          month_start?: string
+          note?: string | null
+          owner_id?: string
+          photo_path?: string | null
+          place_detail?: string | null
+          place_key?: string
+          place_name?: string
+          starts_on?: string
+          status?: string
+          trip_id?: string | null
+          went_on?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "outings_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "outings_trip_id_fkey"
+            columns: ["trip_id"]
+            isOneToOne: false
+            referencedRelation: "trips"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       personal_challenges: {
         Row: {
           cancelled_at: string | null
@@ -2390,6 +2504,35 @@ export type Database = {
           },
         ]
       }
+      trips: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          owner_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          owner_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          owner_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trips_owner_id_fkey"
+            columns: ["owner_id"]
+            isOneToOne: false
+            referencedRelation: "profiles"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       watch_entries: {
         Row: {
           checkin_id: string
@@ -2770,12 +2913,27 @@ export type Database = {
           total_minutes: number
         }[]
       }
+      add_trip_stop: {
+        Args: {
+          p_ends_on: string
+          p_lat: number
+          p_lng: number
+          p_note: string
+          p_place_detail: string
+          p_place_key: string
+          p_place_name: string
+          p_starts_on: string
+          p_trip_id: string
+        }
+        Returns: string
+      }
       archive_group: { Args: { p_group_id: string }; Returns: undefined }
       call_cron_endpoints: { Args: never; Returns: undefined }
       cancel_challenges_between: {
         Args: { p_other: string }
         Returns: undefined
       }
+      cancel_outing: { Args: { p_id: string }; Returns: Json }
       challenge_items_seed: {
         Args: { c: Database["public"]["Tables"]["challenges"]["Row"] }
         Returns: undefined
@@ -2837,6 +2995,20 @@ export type Database = {
       }
       create_group_invite: { Args: { p_group_id: string }; Returns: string }
       create_invite: { Args: never; Returns: string }
+      create_outing: {
+        Args: {
+          p_ends_on: string
+          p_lat: number
+          p_lng: number
+          p_note: string
+          p_place_detail: string
+          p_place_key: string
+          p_place_name: string
+          p_starts_on: string
+        }
+        Returns: string
+      }
+      create_trip: { Args: { p_name: string; p_outing_ids: string[] }; Returns: string }
       create_widget_pairing_code: {
         Args: never
         Returns: {
@@ -3113,6 +3285,10 @@ export type Database = {
         }[]
       }
       habit_preset_color: { Args: { p_preset: string }; Returns: string }
+      invite_outing_companion: {
+        Args: { p_friend_id: string; p_outing_id: string }
+        Returns: string
+      }
       invite_preview: { Args: { p_code: string }; Returns: Json }
       is_friend: { Args: { a: string; b: string }; Returns: boolean }
       join_group: {
@@ -3125,6 +3301,7 @@ export type Database = {
         Args: { p_date?: string; p_kg: number }
         Returns: string
       }
+      mark_outing_went: { Args: { p_id: string }; Returns: undefined }
       my_fund_debts: { Args: never; Returns: Json }
       my_groups: {
         Args: never
@@ -3148,6 +3325,11 @@ export type Database = {
           target_per_week: number
         }[]
       }
+      my_map: { Args: never; Returns: Json }
+      my_month: { Args: never; Returns: Json }
+      my_month_index: { Args: never; Returns: Json }
+      my_outing_invite: { Args: { p_outing_id: string }; Returns: Json }
+      my_trips: { Args: never; Returns: Json }
       next_item_start: {
         Args: { c: Database["public"]["Tables"]["challenges"]["Row"] }
         Returns: string
@@ -3159,6 +3341,7 @@ export type Database = {
           user_id: string
         }[]
       }
+      outing_photo_path: { Args: { p_id: string }; Returns: string }
       propose_group_fine: {
         Args: { p_amount: number; p_group_id: string; p_purpose: string }
         Returns: string
@@ -3219,7 +3402,12 @@ export type Database = {
           total: number
         }[]
       }
+      repeat_outing: { Args: { p_id: string }; Returns: string }
       request_cancel: { Args: { p_id: string }; Returns: boolean }
+      respond_outing_invite: {
+        Args: { p_accept: boolean; p_invite_id: string }
+        Returns: Json
+      }
       respond_challenge: {
         Args: {
           p_accept: boolean
@@ -3282,6 +3470,10 @@ export type Database = {
         Returns: undefined
       }
       set_height: { Args: { p_cm: number }; Returns: undefined }
+      set_outing_photo: {
+        Args: { p_outing_id: string; p_path: string; p_user_id: string }
+        Returns: undefined
+      }
       set_time_entry: {
         Args: { p_checkin_id: string; p_minutes: number; p_topic: string }
         Returns: string
@@ -3310,6 +3502,20 @@ export type Database = {
           p_group_id: string
           p_icon: string
           p_name: string
+        }
+        Returns: undefined
+      }
+      update_outing: {
+        Args: {
+          p_ends_on: string
+          p_id: string
+          p_lat: number
+          p_lng: number
+          p_note: string
+          p_place_detail: string
+          p_place_key: string
+          p_place_name: string
+          p_starts_on: string
         }
         Returns: undefined
       }

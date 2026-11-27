@@ -6,7 +6,7 @@ describe('isPublicPath', () => {
     '%s is public',
     (p) => expect(isPublicPath(p)).toBe(true),
   )
-  it.each(['/registros', '/loginfoo', '/hoy', '/', '/auth/callback', '/authx', '/invites', '/bienvenidas'])(
+  it.each(['/registros', '/loginfoo', '/hoy', '/', '/auth/callback', '/authx', '/invites', '/bienvenidas', '/mapa', '/api/places/search'])(
     '%s is not public',
     (p) => expect(isPublicPath(p)).toBe(false),
   )

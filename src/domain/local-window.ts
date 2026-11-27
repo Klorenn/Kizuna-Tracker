@@ -28,6 +28,23 @@ export function dueLocalSlot(now: Date, timeZone: string, slot: LocalSlot, windo
   return format(slotStart, 'yyyy-MM-dd')
 }
 
+/**
+ * The local date when `now` falls in the window after `minuteOfDay` and that local
+ * civil day is `dayOfMonth`. Day 15 at 10:00 is minute 600. An invalid zone is null.
+ */
+export function dueMonthDay(
+  now: Date,
+  timeZone: string,
+  dayOfMonth: number,
+  minuteOfDay: number,
+  windowMinutes = 15,
+): LocalDate | null {
+  const date = dueLocalSlot(now, timeZone, { minuteOfDay }, windowMinutes)
+  if (!date) return null
+  if (Number(date.slice(8, 10)) !== dayOfMonth) return null
+  return date
+}
+
 /** Users whose slot is open right now, each with the local date it belongs to (the once-per-day key). */
 export function dueUsersForSlot<T extends { id: string; timezone: string }>(
   users: T[],

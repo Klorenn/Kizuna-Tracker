@@ -7,12 +7,14 @@ import { format } from "date-fns";
 import { es } from "date-fns/locale";
 import { GoalCard } from "@/components/GoalCard";
 import { LoadFailed } from "@/components/LoadFailed";
+import { MonthFloorRow } from "@/components/map/MonthFloorRow";
 import { NewGoalSheet } from "@/components/NewGoalSheet";
 import { Card } from "@/components/ui/Card";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { SectionHeader } from "@/components/ui/SectionHeader";
 import { localDate, weekStart } from "@/domain/dates";
 import { loadGoalsResult } from "@/lib/goals-data";
+import { loadMyMonth, type Rpc } from "@/lib/outings-data";
 import { readRows } from "@/lib/read";
 import { createServerClient } from "@/lib/supabase/server";
 import { getViewer, viewerMissingDestination } from "@/lib/viewer";
@@ -26,9 +28,14 @@ export default async function MetasPage() {
 
   const now = new Date();
   const today = localDate(now, viewer.timezone);
-  const [goalsRead, habitsRes] = await Promise.all([
+  const rpc: Rpc = async (fn, args) => {
+    const { data, error } = args ? await supabase.rpc(fn, args as never) : await supabase.rpc(fn);
+    return { data, error: error ? { message: error.message } : null };
+  };
+  const [goalsRead, habitsRes, month] = await Promise.all([
     loadGoalsResult(supabase, viewer.id, today),
     supabase.from("habits").select("id,name").eq("user_id", viewer.id).is("archived_at", null).order("created_at"),
+    loadMyMonth(rpc),
   ]);
   const habits = readRows(habitsRes);
   const goals = goalsRead.goals;
@@ -44,6 +51,7 @@ export default async function MetasPage() {
         Perfil
       </Link>
       <h1 className="text-display font-semibold text-ink">Metas</h1>
+      <MonthFloorRow read={month.ok ? { ok: true, completed: month.data.completed } : { ok: false }} />
 
       {!goalsRead.ok ? (
         <>

@@ -8,5 +8,8 @@ export function isTabActive(href: string, pathname: string): boolean {
   if (href === "/retos") {
     return pathname.startsWith(href) || pathname === "/grupos" || pathname.startsWith("/grupos/");
   }
+  if (href === "/perfil") {
+    return pathname.startsWith("/perfil") || pathname === "/mapa" || pathname.startsWith("/mapa/");
+  }
   return pathname.startsWith(href);
 }

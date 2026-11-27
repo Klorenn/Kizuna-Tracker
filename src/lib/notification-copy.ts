@@ -20,6 +20,11 @@ export type NotificationType =
   | 'weekly_summary'
   | 'group_week_closed'
   | 'group_member_joined'
+  | 'outing_invited'
+  | 'outing_accepted'
+  | 'outing_declined'
+  | 'outing_cancelled'
+  | 'outing_month_nudge'
 
 export type NotificationView = { title: string; body: string; url: string }
 
@@ -39,6 +44,11 @@ const groupUrl = (id: unknown, section?: 'fondo' | 'muro'): string =>
 
 /** `/retos/<id>` when the payload carries an id, else the list. */
 const challengeUrl = (id: unknown): string => (str(id) ? `/retos/${id}` : '/retos')
+
+/** `/mapa?salida=<uuid>` only when the id is a uuid. A payload never becomes a path. */
+const outingUrl = (id: unknown): string => (typeof id === 'string' && UUID.test(id) ? `/mapa?salida=${id}` : '/mapa')
+
+const placeBody = (payload: Record<string, unknown>, fallback: string): string => str(payload.place_name) ?? fallback
 
 const REASONS: Record<string, string> = {
   not_habit: 'no era el hábito',
@@ -163,6 +173,38 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         url: groupUrl(payload.group_id),
       }
     }
+    case 'outing_invited': {
+      const name = str(payload.from_name)
+      return {
+        title: name ? `${name} te invita a una salida` : 'Te invitan a una salida',
+        body: placeBody(payload, 'Revisa el lugar y responde.'),
+        url: outingUrl(payload.outing_id),
+      }
+    }
+    case 'outing_accepted': {
+      const name = str(payload.from_name)
+      return {
+        title: name ? `${name} aceptó la salida` : 'Aceptaron tu salida',
+        body: placeBody(payload, 'Revisa el mapa.'),
+        url: outingUrl(payload.outing_id),
+      }
+    }
+    case 'outing_declined': {
+      const name = str(payload.from_name)
+      return {
+        title: name ? `${name} no pudo esta salida` : 'No pudieron esta salida',
+        body: placeBody(payload, 'Revisa el mapa.'),
+        url: '/mapa',
+      }
+    }
+    case 'outing_cancelled': {
+      const name = str(payload.from_name)
+      return {
+        title: name ? `${name} quitó la salida` : 'Quitaron una salida',
+        body: placeBody(payload, 'Revisa el mapa.'),
+        url: '/mapa',
+      }
+    }
     case 'group_member_joined': {
       const name = str(payload.display_name)
       const group = str(payload.group_name)
@@ -213,6 +255,12 @@ export function notificationView(type: string, payload: Record<string, unknown>)
         url: groupUrl(payload.group_id, 'fondo'),
       }
     }
+    case 'outing_month_nudge':
+      return {
+        title: 'Este mes todavía no tiene una salida.',
+        body: 'Cuando marques una, el mes queda cumplido.',
+        url: '/mapa',
+      }
     case 'group_photo_rejected': {
       const group = str(payload.group_name)
       const reason = str(payload.reason)?.trim()

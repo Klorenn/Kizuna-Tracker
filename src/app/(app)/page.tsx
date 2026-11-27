@@ -11,6 +11,7 @@ import { HabitRow, type RowReading } from "@/components/HabitRow";
 import { InstallPrompt } from "@/components/InstallPrompt";
 import { HideInNative } from "@/components/NativeShell";
 import { LoadFailed } from "@/components/LoadFailed";
+import { MonthFloorRow } from "@/components/map/MonthFloorRow";
 import { PomodoroBannerLazy } from "@/components/PomodoroBannerLazy";
 import { NotificationBell } from "@/components/NotificationBell";
 import { ButtonLink } from "@/components/ui/Button";
@@ -24,6 +25,9 @@ import { buildToday } from "@/domain/today";
 import { hoyCatAssets } from "@/lib/motion/cat-animation";
 import { createServerClient } from "@/lib/supabase/server";
 import { loadTodayData } from "@/lib/today-data";
+import { tripChipForToday } from "@/domain/outing-memory";
+import { loadMyMonth, type Rpc } from "@/lib/outings-data";
+import { loadMyTrips } from "@/lib/trips-data";
 import { getSessionUser, getViewerProfile } from "@/lib/viewer";
 
 export default async function Home() {
@@ -31,8 +35,16 @@ export default async function Home() {
   const user = await getSessionUser();
   if (!user) redirect("/bienvenida");
   const now = new Date();
-  // the profile read starts with the habits: no serial level for it
-  const data = await loadTodayData(supabase, user.id, getViewerProfile(), now);
+  const rpc: Rpc = async (fn, args) => {
+    const { data, error } = args ? await supabase.rpc(fn, args as never) : await supabase.rpc(fn);
+    return { data, error: error ? { message: error.message } : null };
+  };
+  // the profile read starts with the habits: no serial level for it. The month is its own read.
+  const [data, month, trips] = await Promise.all([
+    loadTodayData(supabase, user.id, getViewerProfile(), now),
+    loadMyMonth(rpc),
+    loadMyTrips(rpc),
+  ]);
   if (!data.ok && data.missingProfile) redirect("/login?error=perfil");
   if (!data.ok) {
     // any failed read: a retry line, never rows built from partial data (zeros, an empty list, "add" on an existing log)
@@ -66,6 +78,16 @@ export default async function Home() {
   });
   const allDone = view.total > 0 && view.doneCount === view.total;
   const label = `Hoy · ${format(new TZDate(now, timeZone), "EEE d MMM", { locale: es })}`;
+  const chip = trips.ok
+    ? tripChipForToday(
+        trips.data.map((trip) => ({
+          id: trip.id,
+          name: trip.name,
+          stops: trip.stops.map((stop) => ({ startsOn: stop.startsOn, endsOn: stop.endsOn })),
+        })),
+        today,
+      )
+    : null;
   const pct = view.total === 0 ? 0 : (view.doneCount / view.total) * 100;
 
   return (
@@ -83,6 +105,12 @@ export default async function Home() {
         habits={view.rows.filter((r) => r.logType === "time").map((r) => ({ id: r.id, name: r.name }))}
       />
       <SectionHeader label={label} action="Ver metas" href="/metas" />
+      <MonthFloorRow read={month.ok ? { ok: true, completed: month.data.completed } : { ok: false }} />
+      {chip ? (
+        <Link href={`/mapa/viajes/${chip.tripId}`} className="inline-flex min-h-11 items-center text-body text-ink">
+          Viaje · {chip.name}
+        </Link>
+      ) : null}
       {checkinDateAllowed(now, timeZone, addDays(today, -1)) ? (
         <p className="text-small text-muted">
           Hasta el mediodía puedes marcar ayer.{" "}

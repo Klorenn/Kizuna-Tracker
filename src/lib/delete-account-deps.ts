@@ -61,6 +61,21 @@ export function supabaseDeleteDeps(
     if (error) throw new Error(error.message);
   };
 
+  async function removeOutingPhotos(userId: string) {
+    const paths: string[] = [];
+    for (let offset = 0; ; offset += 1000) {
+      const { data, error } = await admin.storage.from("outing-photos").list(userId, { limit: 1000, offset });
+      must(error);
+      const rows = data ?? [];
+      paths.push(...rows.filter((row) => row.id).map((row) => `${userId}/${row.name}`));
+      if (rows.length < 1000) break;
+    }
+    for (let i = 0; i < paths.length; i += CHUNK) {
+      const { error } = await admin.storage.from("outing-photos").remove(paths.slice(i, i + CHUNK));
+      must(error);
+    }
+  }
+
   return {
     async listObjects(bucket, prefix) {
       const out: string[] = [];
@@ -116,6 +131,10 @@ export function supabaseDeleteDeps(
       must((await admin.from("friendships").delete().or(`requester_id.eq.${userId},addressee_id.eq.${userId}`)).error);
       must((await admin.from("invites").delete().eq("inviter_id", userId)).error);
       must((await admin.from("notifications").delete().eq("user_id", userId)).error);
+      await removeOutingPhotos(userId);
+      must((await admin.from("outing_invites").delete().eq("invitee_id", userId)).error);
+      must((await admin.from("outings").delete().eq("owner_id", userId)).error);
+      must((await admin.from("trips").delete().eq("owner_id", userId)).error);
       must((await admin.from("push_subscriptions").delete().eq("user_id", userId)).error);
       // a soft delete never fires the FK cascade: the widget tokens and pairing codes are purged explicitly
       must((await admin.from("widget_tokens").delete().eq("user_id", userId)).error);

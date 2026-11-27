@@ -1,4 +1,4 @@
-import { CaretRight, GearSix, GlobeSimple, Plus, Receipt } from "@phosphor-icons/react/dist/ssr";
+import { CaretRight, GearSix, GlobeSimple, MapTrifold, Plus, Receipt } from "@phosphor-icons/react/dist/ssr";
 import type { Metadata } from "next";
 import { headers } from "next/headers";
 import Link from "next/link";
@@ -145,6 +145,18 @@ export default async function PerfilPage() {
             <CaretRight size={18} weight="light" aria-hidden className="-mr-1 shrink-0 text-muted" />
           </Link>
         </Card>
+      </section>
+
+      <section aria-label="Mapa">
+        <ListCard>
+          <ListRow
+            href="/mapa"
+            icon={<MapTrifold size={20} weight="light" />}
+            label="Mapa"
+            hint="Un lugar en el mes"
+            chevron
+          />
+        </ListCard>
       </section>
 
       <section aria-label="Tus hábitos" className="flex flex-col gap-2">

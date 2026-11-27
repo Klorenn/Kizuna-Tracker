@@ -11,8 +11,23 @@ type Call = { table: string; op: string; payload?: unknown; filters: [string, un
 function fakeAdmin(reads: Record<string, unknown> = {}) {
   const calls: Call[] = []
   const auth = { updateUserById: vi.fn(async () => ({ error: null })), signOut: vi.fn(async () => ({ error: null })) }
+  const storageCalls: { bucket: string; op: string; prefix?: string }[] = []
   const client = {
     auth: { admin: auth },
+    storage: {
+      from(bucket: string) {
+        return {
+          async list(prefix: string) {
+            storageCalls.push({ bucket, op: 'list', prefix })
+            return { data: [], error: null }
+          },
+          async remove() {
+            storageCalls.push({ bucket, op: 'remove' })
+            return { data: null, error: null }
+          },
+        }
+      },
+    },
     from(table: string) {
       const make = (op: string, payload?: unknown) => {
         const call: Call = { table, op, payload, filters: [] }
@@ -34,7 +49,7 @@ function fakeAdmin(reads: Record<string, unknown> = {}) {
       }
     },
   }
-  return { client, calls, auth }
+  return { client, calls, auth, storageCalls }
 }
 
 const UID = 'u1'
@@ -154,7 +169,7 @@ describe('supabaseDeleteDeps', () => {
   })
 
   test('purgeSocial borra tokens y códigos de emparejamiento del widget por user_id', async () => {
-    const { client, calls } = fakeAdmin()
+    const { client, calls, storageCalls } = fakeAdmin()
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const deps = supabaseDeleteDeps(client as any)
     await deps.purgeSocial(UID)
@@ -163,5 +178,16 @@ describe('supabaseDeleteDeps', () => {
       expect(del, table).toBeDefined()
       expect(del!.filters).toContainEqual(['eq', ['user_id', UID]])
     }
+    const outings = calls.find((c) => c.table === 'outings' && c.op === 'delete')
+    expect(outings!.filters).toContainEqual(['eq', ['owner_id', UID]])
+    const inviteAt = calls.findIndex((c) => c.table === 'outing_invites' && c.op === 'delete')
+    const outingAt = calls.findIndex((c) => c.table === 'outings' && c.op === 'delete')
+    expect(inviteAt).toBeGreaterThanOrEqual(0)
+    expect(outingAt).toBeGreaterThan(inviteAt)
+    expect(calls[inviteAt]!.filters).toContainEqual(['eq', ['invitee_id', UID]])
+    const tripAt = calls.findIndex((c) => c.table === 'trips' && c.op === 'delete')
+    expect(tripAt).toBeGreaterThan(outingAt)
+    expect(calls[tripAt]!.filters).toContainEqual(['eq', ['owner_id', UID]])
+    expect(storageCalls).toContainEqual({ bucket: 'outing-photos', op: 'list', prefix: UID })
   })
 })

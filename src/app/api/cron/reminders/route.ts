@@ -4,6 +4,8 @@ import { notify, pushPendingNotifications } from '@/lib/notify'
 import { checkPushReceipts, supabaseReceiptDeps } from '@/lib/push-receipts'
 import { dueReminderEntries } from '@/lib/reminders'
 import { claimReminders, loadReminderCandidates } from '@/lib/reminders-repo'
+import { outingNudgeDeps } from '@/lib/outing-nudge-repo'
+import { runOutingMonthNudge } from '@/lib/outing-nudge'
 import { runScheduledNotifications } from '@/lib/scheduled-notifications'
 import { createAdminClient } from '@/lib/supabase/admin'
 
@@ -26,6 +28,12 @@ export async function POST(request: Request) {
     }
     // 3) evening pushes: streak at risk (daily 20:00 local) and weekly summary (Sunday 21:00 local)
     const scheduled = await runScheduledNotifications(db, now)
+    let monthNudges: number | null = null
+    try {
+      monthNudges = await runOutingMonthNudge(outingNudgeDeps(db), now)
+    } catch (e) {
+      console.error('outing month nudge failed', e)
+    }
     // 4) Expo receipts of the tickets sent 15+ minutes ago (dead tokens are deleted); never fails the cron
     const receipts = await checkPushReceipts(supabaseReceiptDeps(db)).catch((e) => {
       console.error('receipts failed', e)
@@ -39,7 +47,7 @@ export async function POST(request: Request) {
     } catch (e) {
       console.error('client_errors purge failed', e)
     }
-    return NextResponse.json({ swept, reminded: targets.length, ...scheduled, receipts, purgedErrors })
+    return NextResponse.json({ swept, reminded: targets.length, ...scheduled, monthNudges, receipts, purgedErrors })
   } catch (e) {
     console.error('reminders failed', e)
     return NextResponse.json({ error: 'failed' }, { status: 500 })
