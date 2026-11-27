@@ -11,6 +11,9 @@ import {
   monthLabel,
   monthRowValue,
   monthStartOf,
+  cleanGuestName,
+  planLine,
+  upcomingMonthStarts,
   outingTitle,
   shiftMonth,
   validateOutingDraft,
@@ -140,5 +143,22 @@ describe('conteo por lugar', () => {
     expect(visitLabel('Pucón', 1)).toBe('Pucón · 1 vez')
     expect(visitLabel('Pucón', 2)).toBe('Pucón · 2 veces')
     expect(visitLabel('Pucón', 3)).toBe('Pucón · 3 veces')
+  })
+})
+
+describe('planes', () => {
+  test('desde noviembre se puede llegar a enero', () => {
+    expect(upcomingMonthStarts('2026-11-27', 3)).toEqual(['2026-11-01', '2026-12-01', '2027-01-01'])
+  })
+
+  test('un nombre vacío no acompaña, y uno largo no pasa', () => {
+    expect(cleanGuestName('  ')).toEqual({ ok: true, name: null })
+    expect(cleanGuestName('  Mamá  ')).toEqual({ ok: true, name: 'Mamá' })
+    expect(cleanGuestName('a'.repeat(41)).ok).toBe(false)
+  })
+
+  test('la línea del checklist nombra a la persona', () => {
+    expect(planLine('Puerto Natales', null)).toBe('Puerto Natales')
+    expect(planLine('Puerto Natales', 'Mamá')).toBe('Puerto Natales · con Mamá')
   })
 })

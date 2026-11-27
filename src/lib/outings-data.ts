@@ -13,6 +13,7 @@ export type OutingView = {
   note: string | null;
   status: "planned" | "went";
   wentOn: LocalDate | null;
+  guestName: string | null;
   companionName: string | null;
   inviteStatus: "pending" | "accepted" | null;
   isOwner: boolean;
@@ -35,9 +36,21 @@ export type MapPinView = {
   companionName?: string;
 };
 
+export type UpcomingPlan = {
+  id: string;
+  placeName: string;
+  lat: number;
+  lng: number;
+  startsOn: LocalDate;
+  endsOn: LocalDate;
+  monthStart: LocalDate;
+  guestName: string | null;
+};
+
 export type MapPayload = {
   pins: MapPinView[];
   plans: MapPinView[];
+  upcoming: UpcomingPlan[];
 };
 
 export type Rpc = (
@@ -109,7 +122,16 @@ export function parseMapPayload(raw: unknown): MapPayload | null {
     if (!plan) return null;
     plans.push(plan);
   }
-  return { pins, plans };
+  const upcoming: UpcomingPlan[] = [];
+  if ("upcoming" in raw && raw.upcoming != null) {
+    if (!Array.isArray(raw.upcoming)) return null;
+    for (const row of raw.upcoming) {
+      const plan = parseUpcoming(row);
+      if (!plan) return null;
+      upcoming.push(plan);
+    }
+  }
+  return { pins, plans, upcoming };
 }
 
 export async function loadMyMonth(rpc: Rpc): Promise<{ ok: true; data: MonthPayload } | { ok: false }> {
@@ -174,6 +196,8 @@ function parseOuting(raw: unknown): Omit<OutingView, "companionName" | "inviteSt
   if (!(raw.went_on === null || (typeof raw.went_on === "string" && DATE.test(raw.went_on)))) return null;
   if (raw.status === "went" && raw.went_on === null) return null;
   if (raw.status === "planned" && raw.went_on !== null) return null;
+  const guestName = readGuest(raw);
+  if (guestName === undefined) return null;
   return {
     id: raw.id,
     placeName: raw.place_name,
@@ -186,6 +210,38 @@ function parseOuting(raw: unknown): Omit<OutingView, "companionName" | "inviteSt
     note: raw.note,
     status: raw.status,
     wentOn: raw.went_on,
+    guestName,
+  };
+}
+
+function readGuest(raw: Record<string, unknown>): string | null | undefined {
+  if (!("guest_name" in raw) || raw.guest_name == null || raw.guest_name === "") return null;
+  if (typeof raw.guest_name !== "string") return undefined;
+  const name = raw.guest_name.trim();
+  if (!name || name.length > 40) return undefined;
+  return name;
+}
+
+function parseUpcoming(raw: unknown): UpcomingPlan | null {
+  if (!isRecord(raw)) return null;
+  if (typeof raw.id !== "string" || raw.id.length === 0) return null;
+  if (typeof raw.place_name !== "string" || raw.place_name.trim().length === 0) return null;
+  if (typeof raw.lat !== "number" || typeof raw.lng !== "number") return null;
+  if (!Number.isFinite(raw.lat) || !Number.isFinite(raw.lng)) return null;
+  if (typeof raw.starts_on !== "string" || !DATE.test(raw.starts_on)) return null;
+  if (typeof raw.ends_on !== "string" || !DATE.test(raw.ends_on)) return null;
+  if (typeof raw.month_start !== "string" || !DATE.test(raw.month_start)) return null;
+  const guestName = readGuest(raw);
+  if (guestName === undefined) return null;
+  return {
+    id: raw.id,
+    placeName: raw.place_name,
+    lat: raw.lat,
+    lng: raw.lng,
+    startsOn: raw.starts_on,
+    endsOn: raw.ends_on,
+    monthStart: raw.month_start,
+    guestName,
   };
 }
 

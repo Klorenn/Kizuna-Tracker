@@ -1,4 +1,4 @@
-import { CaretLeft } from "@phosphor-icons/react/dist/ssr";
+import { CaretLeft, Check } from "@phosphor-icons/react/dist/ssr";
 import { CatAnimation } from "@/components/brand/CatAnimation";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
@@ -12,14 +12,14 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ListCard } from "@/components/ui/ListRow";
 import { localDate } from "@/domain/dates";
-import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, outingTitle, visitCounts, visitLabel } from "@/domain/outings";
+import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, planLine, upcomingMonthStarts, visitCounts, visitLabel } from "@/domain/outings";
 import type { LocalDate } from "@/domain/types";
 import { CreateTrip } from "@/components/map/CreateTrip";
 import { OutingPhotoUpload } from "@/components/map/OutingPhotoUpload";
 import { RepeatOuting } from "@/components/map/RepeatOuting";
 import { bondStat, distinctPlaces } from "@/domain/outing-memory";
 import { cancelOutingFromForm, markOutingWentFromForm, respondInviteFromForm } from "@/app/(app)/mapa/actions";
-import { loadMyMap, loadMyMonth, loadMyOutingInvite, type MapPinView, type OutingInviteView, type Rpc } from "@/lib/outings-data";
+import { loadMyMap, loadMyMonth, loadMyOutingInvite, type MapPinView, type OutingInviteView, type Rpc, type UpcomingPlan } from "@/lib/outings-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
 import { cityZones } from "@/lib/places";
@@ -35,6 +35,28 @@ function dayText(day: LocalDate): string {
 
 function rangeText(startsOn: LocalDate, endsOn: LocalDate): string {
   return startsOn === endsOn ? dayText(startsOn) : `${dayText(startsOn)} – ${dayText(endsOn)}`;
+}
+
+function UpcomingPlans({ plans }: { plans: UpcomingPlan[] }) {
+  if (plans.length === 0) return null;
+  return (
+    <section className="flex flex-col gap-2" aria-label="Planes">
+      <h2 className="text-body font-medium text-ink">Planes</h2>
+      <ListCard>
+        {plans.map((plan) => (
+          <div key={plan.id} className="flex items-start gap-3 border-b border-line px-4 py-3">
+            <span aria-hidden className="mt-0.5 inline-flex size-5 shrink-0 rounded border border-line" />
+            <div className="flex flex-col gap-1">
+              <p className="text-body text-ink">{planLine(plan.placeName, plan.guestName)}</p>
+              <p className="text-small text-muted">
+                {monthLabel(plan.monthStart)} · {rangeText(plan.startsOn, plan.endsOn)}
+              </p>
+            </div>
+          </div>
+        ))}
+      </ListCard>
+    </section>
+  );
 }
 
 function placeLabels(pins: MapPinView[]): string[] {
@@ -252,24 +274,39 @@ export default async function MapaPage({
             ) : (
               month.data.outings.map((outing) => {
                 const canMark = outing.status === "planned" && canMarkWent(today, outing.startsOn, month.data.monthStart);
-                const title =
-                  outing.inviteStatus === "accepted" && outing.companionName
-                    ? outingTitle(outing.placeName, { name: outing.companionName, status: "accepted" })
-                    : outing.placeName;
+                const withName =
+                  outing.companionName && outing.inviteStatus !== null ? outing.companionName : outing.guestName;
+                const title = planLine(outing.placeName, withName);
+                const box = (
+                  <span
+                    aria-hidden
+                    className={`mt-0.5 inline-flex size-5 shrink-0 items-center justify-center rounded border ${outing.status === "went" ? "border-accent bg-accent text-paper" : "border-line"}`}
+                  >
+                    {outing.status === "went" ? <Check size={14} weight="bold" /> : null}
+                  </span>
+                );
                 return (
                   <div key={outing.id} className="flex flex-col gap-2 border-b border-line px-4 py-3">
-                    <p className="text-body text-ink">{title}</p>
-                    <p className="text-small text-muted">{rangeText(outing.startsOn, outing.endsOn)}</p>
+                    <div className="flex items-start gap-3">
+                      {canMark ? (
+                        <form action={markOutingWentFromForm}>
+                          <input type="hidden" name="id" value={outing.id} />
+                          <button type="submit" aria-label={`Marcar ${outing.placeName}`} className="inline-flex">
+                            {box}
+                          </button>
+                        </form>
+                      ) : (
+                        box
+                      )}
+                      <div className="flex flex-col gap-1">
+                        <p className="text-body text-ink">{title}</p>
+                        <p className="text-small text-muted">{rangeText(outing.startsOn, outing.endsOn)}</p>
+                      </div>
+                    </div>
                     <p className="text-small text-ink">{outing.status === "went" ? "Fui" : "Planeado"}</p>
                     {outing.inviteStatus === "pending" ? <p className="text-small text-muted">Invitación pendiente</p> : null}
                     {outing.status === "planned" && !canMark ? (
                       <p className="text-small text-muted">Puedes marcar Fui desde el {dayText(outing.startsOn)}.</p>
-                    ) : null}
-                    {canMark ? (
-                      <form action={markOutingWentFromForm}>
-                        <input type="hidden" name="id" value={outing.id} />
-                        <Button type="submit">Fui</Button>
-                      </form>
                     ) : null}
                     {outing.isOwner && outing.status === "planned" && outing.inviteStatus === null ? (
                       <InviteCompanion outingId={outing.id} friends={friends} />
@@ -301,6 +338,7 @@ export default async function MapaPage({
               ))}
             </ListCard>
           ) : null}
+          <UpcomingPlans plans={map.data.upcoming} />
           {months.ok ? (
             months.data.length > 0 ? (
               <section className="flex flex-col gap-2" aria-label="Meses">
@@ -334,7 +372,7 @@ export default async function MapaPage({
             <LoadFailed href="/mapa" />
           )}
           <CreateTrip outings={[...ownOutings].map(([id, placeName]) => ({ id, placeName }))} />
-          <OutingForm month={month.data.monthStart} today={today} />
+          <OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />
         </>
       ) : (
         <>
@@ -342,11 +380,12 @@ export default async function MapaPage({
             <OutingMapLazy pins={[]} zones={[]} />
           </div>
           {!months.ok || !trips.ok ? <LoadFailed href="/mapa" /> : null}
+          <UpcomingPlans plans={map.data.upcoming} />
           <EmptyState
             mark={<CatAnimation asset="plan" width={168} />}
             title="Todavía no marcas un lugar"
             body="Busca un lugar y elige los días. Con una salida el mes queda cumplido."
-            action={<OutingForm month={month.data.monthStart} today={today} />}
+            action={<OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />}
           />
         </>
       )}

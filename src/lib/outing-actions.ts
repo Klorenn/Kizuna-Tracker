@@ -1,4 +1,4 @@
-import { datesInsideMonth, validateOutingDraft, type PlacePick } from "@/domain/outings";
+import { cleanGuestName, datesInsideMonth, validateOutingDraft, type PlacePick } from "@/domain/outings";
 import { parseTripLink } from "@/domain/trips";
 import type { LocalDate } from "@/domain/types";
 import type { NotificationType } from "@/lib/notification-copy";
@@ -9,6 +9,7 @@ export type { Rpc };
 const COPY: Record<string, string> = {
   invalid_place: "No encontramos ese lugar.",
   invalid_dates: "Esas fechas no caben en este mes.",
+  invalid_guest: "Ese nombre puede tener hasta 40 caracteres.",
   invalid_note: "La nota puede tener hasta 280 caracteres.",
   too_early: "Puedes marcar Fui desde el día en que empieza.",
   month_closed: "Ese mes ya cerró. Quedó vacío.",
@@ -38,6 +39,7 @@ type Draft = {
   endsOn: string;
   note: string;
   month: LocalDate;
+  guestName?: string;
 };
 
 export async function createOutingWith(
@@ -46,7 +48,12 @@ export async function createOutingWith(
 ): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
   const check = validateOutingDraft(input);
   if (!check.ok || !input.place) return { ok: false, error: check.ok ? GENERIC : check.error };
-  const { data, error } = await rpc("create_outing", placeArgs(input.place, input.startsOn, input.endsOn, input.note));
+  const guest = cleanGuestName(input.guestName ?? "");
+  if (!guest.ok) return { ok: false, error: guest.error };
+  const { data, error } = await rpc("create_outing", {
+    ...placeArgs(input.place, input.startsOn, input.endsOn, input.note),
+    p_guest_name: guest.name,
+  });
   if (error || typeof data !== "string" || data.length === 0) return { ok: false, error: outingErrorCopy(error?.message ?? null) };
   return { ok: true, id: data };
 }

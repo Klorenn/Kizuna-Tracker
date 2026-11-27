@@ -2998,6 +2998,7 @@ export type Database = {
       create_outing: {
         Args: {
           p_ends_on: string
+          p_guest_name: string | null
           p_lat: number
           p_lng: number
           p_note: string

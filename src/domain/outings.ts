@@ -46,6 +46,28 @@ export function monthIndexLabel(monthStart: LocalDate, completed: number): strin
   return `${monthLabel(monthStart)} · ${monthFloor(completed).label}`
 }
 
+export function upcomingMonthStarts(today: LocalDate, count = 12): LocalDate[] {
+  const months: LocalDate[] = []
+  let cursor = monthStartOf(today)
+  for (let i = 0; i < count; i++) {
+    months.push(cursor)
+    cursor = shiftMonth(cursor)
+  }
+  return months
+}
+
+export function cleanGuestName(raw: string): { ok: true; name: string | null } | { ok: false; error: string } {
+  const name = raw.trim().replace(/\s+/g, ' ')
+  if (!name) return { ok: true, name: null }
+  if (name.length > 40) return { ok: false, error: 'Ese nombre puede tener hasta 40 caracteres.' }
+  return { ok: true, name }
+}
+
+export function planLine(placeName: string, withName: string | null): string {
+  const name = withName?.trim()
+  return name ? `${placeName} · con ${name}` : placeName
+}
+
 export function shiftMonth(day: LocalDate): LocalDate {
   const [y, m, d] = day.split('-').map(Number)
   const nextYear = m === 12 ? y + 1 : y

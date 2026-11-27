@@ -47,9 +47,18 @@ export async function createOuting(input: {
   endsOn: string;
   note: string;
   month: LocalDate;
+  guestName?: string;
+  friendId?: string | null;
 }) {
   const result = await createOutingWith(await clientRpc(), input);
-  if (result.ok) refresh();
+  if (!result.ok) return result;
+  if (input.friendId) {
+    const invited = await inviteCompanionWith(await noticeDeps(), { outingId: result.id, friendId: input.friendId });
+    refresh();
+    if (!invited.ok) return invited;
+    return result;
+  }
+  refresh();
   return result;
 }
 

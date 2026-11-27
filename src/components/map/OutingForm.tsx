@@ -15,6 +15,7 @@ export function OutingForm({
   title = "Agregar salida",
   allowedMonths,
   save,
+  company,
 }: {
   month: LocalDate;
   today: LocalDate;
@@ -27,6 +28,7 @@ export function OutingForm({
     note: string;
     month: LocalDate;
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
+  company?: { friends: { id: string; name: string }[] };
 }) {
   const router = useRouter();
   const months = allowedMonths && allowedMonths.length > 0 ? allowedMonths : [month];
@@ -43,6 +45,8 @@ export function OutingForm({
   const [startsOn, setStartsOn] = useState(initialDay);
   const [endsOn, setEndsOn] = useState(initialDay);
   const [note, setNote] = useState("");
+  const [friendId, setFriendId] = useState("");
+  const [guestName, setGuestName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
@@ -96,7 +100,17 @@ export function OutingForm({
     }
     const fitted = months.find((start) => datesInsideMonth(startsOn, endsOn, start));
     if (!fitted) {
-      setError(months.length > 1 ? "Esa fecha no cae en un mes de este viaje." : "Esas fechas no caben en este mes.");
+      setError(
+        save
+          ? months.length > 1
+            ? "Esa fecha no cae en un mes de este viaje."
+            : "Esas fechas no caben en este mes."
+          : "Esas fechas tienen que caer en los próximos 12 meses.",
+      );
+      return;
+    }
+    if (!save && friendId && guestName.trim()) {
+      setError("Elige un amigo o escribe un nombre, no los dos.");
       return;
     }
     const check = validateOutingDraft({ place, startsOn, endsOn, note, month: fitted });
@@ -108,7 +122,15 @@ export function OutingForm({
     start(async () => {
       const result = save
         ? await save({ place, startsOn, endsOn, note, month: fitted })
-        : await createOuting({ place, startsOn, endsOn, note, month: fitted });
+        : await createOuting({
+            place,
+            startsOn,
+            endsOn,
+            note,
+            month: fitted,
+            guestName,
+            friendId: friendId || null,
+          });
       if (!result.ok) {
         setError(result.error);
         return;
@@ -161,6 +183,34 @@ export function OutingForm({
                 </li>
               ))}
             </ul>
+          ) : null}
+          {company ? (
+            <>
+              <label className="flex flex-col gap-2 text-small text-ink">
+                Con un amigo
+                <select
+                  name="friend"
+                  value={friendId}
+                  onChange={(event) => setFriendId(event.target.value)}
+                  className="h-12 rounded-md border border-outline-strong bg-paper px-3 text-body text-ink"
+                >
+                  <option value="">Sin amigo de la app</option>
+                  {company.friends.map((friend) => (
+                    <option key={friend.id} value={friend.id}>
+                      {friend.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <Input
+                label="O un nombre, si no tiene la app"
+                name="guest"
+                value={guestName}
+                maxLength={40}
+                placeholder="Mamá"
+                onChange={(event) => setGuestName(event.target.value)}
+              />
+            </>
           ) : null}
           <Input label="Desde" name="starts" type="date" min={boundStart} max={boundEnd} value={startsOn} onChange={(event) => setStartsOn(event.target.value)} required />
           <Input label="Hasta" name="ends" type="date" min={boundStart} max={boundEnd} value={endsOn} onChange={(event) => setEndsOn(event.target.value)} required />

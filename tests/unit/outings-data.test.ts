@@ -35,6 +35,7 @@ describe('parseMonthPayload', () => {
           note: null,
           status: 'planned',
           wentOn: null,
+          guestName: null,
           companionName: null,
           inviteStatus: null,
           isOwner: true,
@@ -88,7 +89,7 @@ describe('loadMyMonth', () => {
 
 describe('parseMapPayload', () => {
   test('la fase 1 exige plans vacío', () => {
-    expect(parseMapPayload({ pins: [], plans: [] })).toEqual({ pins: [], plans: [] })
+    expect(parseMapPayload({ pins: [], plans: [] })).toEqual({ pins: [], plans: [], upcoming: [] })
     expect(parseMapPayload({ pins: [] })).toBeNull()
   })
 
@@ -101,6 +102,43 @@ describe('parseMapPayload', () => {
     ).toEqual({
       pins: [],
       plans: [{ id: 'p', placeName: 'Pucón', lat: -39.27, lng: -71.98 }],
+      upcoming: [],
+    })
+  })
+
+  test('un plan de enero con un nombre queda en la checklist', () => {
+    expect(
+      parseMapPayload({
+        pins: [],
+        plans: [],
+        upcoming: [
+          {
+            id: 'u',
+            place_name: 'Puerto Natales',
+            lat: -51.73,
+            lng: -72.5,
+            starts_on: '2027-01-10',
+            ends_on: '2027-01-12',
+            month_start: '2027-01-01',
+            guest_name: 'Mamá',
+          },
+        ],
+      }),
+    ).toEqual({
+      pins: [],
+      plans: [],
+      upcoming: [
+        {
+          id: 'u',
+          placeName: 'Puerto Natales',
+          lat: -51.73,
+          lng: -72.5,
+          startsOn: '2027-01-10',
+          endsOn: '2027-01-12',
+          monthStart: '2027-01-01',
+          guestName: 'Mamá',
+        },
+      ],
     })
   })
 })

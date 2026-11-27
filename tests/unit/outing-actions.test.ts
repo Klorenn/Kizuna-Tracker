@@ -61,6 +61,33 @@ describe('createOutingWith', () => {
       createOutingWith(rpc, { place, startsOn: '2026-11-12', endsOn: '2026-11-14', note: '', month }),
     ).resolves.toEqual({ ok: true, id })
   })
+
+  test('un nombre largo no llama al RPC y uno recortado sí', async () => {
+    let sent: unknown = null
+    const rpc: Rpc = async (_fn, args) => {
+      sent = args
+      return { data: id, error: null }
+    }
+    const long = await createOutingWith(rpc, {
+      place,
+      startsOn: '2026-11-12',
+      endsOn: '2026-11-14',
+      note: '',
+      month,
+      guestName: 'a'.repeat(41),
+    })
+    expect(long.ok).toBe(false)
+    expect(sent).toBeNull()
+    await createOutingWith(rpc, {
+      place,
+      startsOn: '2027-01-10',
+      endsOn: '2027-01-12',
+      note: '',
+      month: '2027-01-01',
+      guestName: '  Mamá  ',
+    })
+    expect(sent).toMatchObject({ p_guest_name: 'Mamá', p_starts_on: '2027-01-10' })
+  })
 })
 
 describe('outingErrorCopy', () => {
