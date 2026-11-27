@@ -42,6 +42,7 @@ describe('la pantalla no pide ubicación ni token', () => {
     ]
     const src = files.map((f) => readFileSync(f, 'utf8')).join('\n')
     expect(src.toLowerCase()).not.toContain('geolocation')
+    expect(src).not.toContain('setProjection')
     expect(src).not.toContain('exif')
     expect(src).not.toContain('tile.openstreetmap.org')
     expect(src).not.toContain('MAPBOX')

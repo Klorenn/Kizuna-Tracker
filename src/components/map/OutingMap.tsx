@@ -106,7 +106,7 @@ function framePins(map: Map, pins: Pin[], zones: CityZone[]) {
     }
   }
   if (!any) {
-    map.jumpTo({ center: [-71.5, -30], zoom: 1.15 });
+    map.jumpTo({ center: [-71.4, -35.4], zoom: 3.2 });
     return;
   }
   map.fitBounds(bounds, { padding: 48, maxZoom: 9, duration: 0 });
@@ -125,6 +125,7 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
     let map: Map | null = null;
     let dark = themeSnapshot().dark;
     let framed = false;
+    let observerSize: ResizeObserver | null = null;
 
     void mapStyle(dark)
       .catch(() => LIGHT_STYLE)
@@ -133,22 +134,27 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
         map = new Map({
           container: node,
           style,
-          center: [-71.5, -30],
-          zoom: 1.15,
+          center: [-71.4, -35.4],
+          zoom: 3.2,
           attributionControl: { compact: true },
-          dragRotate: true,
+          dragRotate: false,
+          pitchWithRotate: false,
+          touchPitch: false,
         });
         map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+        const settle = () => map?.resize();
         map.on("style.load", () => {
           if (!map) return;
-          map.setProjection({ type: "globe" });
           paintZones(map, zones, themeSnapshot().accent);
           if (!framed) {
             framed = true;
             framePins(map, pins, zones);
           }
+          settle();
           setFailed(false);
         });
+        observerSize = new ResizeObserver(settle);
+        observerSize.observe(node);
         map.on("error", (event: { error?: unknown }) => {
           const message = event.error instanceof Error ? event.error.message : "";
           if (message.toLowerCase().includes("style")) setFailed(true);
@@ -178,6 +184,7 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
       cancelled = true;
       media.removeEventListener("change", applyTheme);
       observer.disconnect();
+      observerSize?.disconnect();
       map?.remove();
     };
     // pinKey is the pin set for this render.
