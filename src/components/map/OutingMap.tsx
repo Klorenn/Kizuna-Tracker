@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LngLatBounds, Map, NavigationControl, type GeoJSONSource } from "maplibre-gl";
+import { LngLatBounds, Map, NavigationControl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import { boundaryFeatureCollection, type CityZone } from "@/domain/map-zone";
 
@@ -10,13 +10,59 @@ type Pin = { id: string; lat: number; lng: number; title: string };
 const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/positron";
 const DARK_STYLE = "https://tiles.openfreemap.org/styles/dark";
 
-function themeSnapshot(): { style: string; accent: string } {
+const NIGHT_FILL: Record<string, string> = {
+  water: "#163044",
+  landuse_park: "#52647c",
+};
+const NIGHT_LINE: Record<string, string> = {
+  "boundary_country_z0-4": "#d5dee8",
+  "boundary_country_z5-": "#d5dee8",
+  boundary_state: "#9aabbd",
+};
+const NIGHT_TEXT: Record<string, string> = {
+  place_country_major: "#f4f7fb",
+  place_country_minor: "#e6edf5",
+  place_country_other: "#d5dee8",
+  place_state: "#c5d0dc",
+  place_city: "#e8eef4",
+  place_city_large: "#f4f7fb",
+};
+
+type StyleJson = { layers?: { id: string; paint?: Record<string, unknown> }[] };
+
+function themeSnapshot(): { dark: boolean; accent: string } {
   const root = document.documentElement;
   const mode = root.dataset.theme;
   const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
   const dark = mode === "dark" || ((mode === "system" || !mode) && systemDark);
   const accent = getComputedStyle(root).getPropertyValue("--color-accent").trim() || "#5a5ac2";
-  return { style: dark ? DARK_STYLE : LIGHT_STYLE, accent };
+  return { dark, accent };
+}
+
+let nightSource: Promise<StyleJson> | null = null;
+
+function mapStyle(dark: boolean): Promise<string | StyleSpecification> {
+  if (!dark) return Promise.resolve(LIGHT_STYLE);
+  nightSource ??= fetch(DARK_STYLE)
+    .then((response) => {
+      if (!response.ok) throw new Error("style");
+      return response.json() as Promise<StyleJson>;
+    })
+    .catch((error: unknown) => {
+      nightSource = null;
+      throw error;
+    });
+  return nightSource.then((raw) => {
+    const style = structuredClone(raw);
+    for (const layer of style.layers ?? []) {
+      if (!layer.paint) continue;
+      if (layer.id === "background") layer.paint["background-color"] = "#4a5b73";
+      if (NIGHT_FILL[layer.id]) layer.paint["fill-color"] = NIGHT_FILL[layer.id];
+      if (NIGHT_LINE[layer.id]) layer.paint["line-color"] = NIGHT_LINE[layer.id];
+      if (NIGHT_TEXT[layer.id]) layer.paint["text-color"] = NIGHT_TEXT[layer.id];
+    }
+    return style as StyleSpecification;
+  });
 }
 
 function paintZones(map: Map, zones: CityZone[], accent: string) {
@@ -75,37 +121,50 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
   useEffect(() => {
     const node = host.current;
     if (!node) return;
-    const initial = themeSnapshot();
-    let styleUrl = initial.style;
+    let cancelled = false;
+    let map: Map | null = null;
+    let dark = themeSnapshot().dark;
     let framed = false;
-    const map = new Map({
-      container: node,
-      style: styleUrl,
-      center: [-71.5, -30],
-      zoom: 1.15,
-      attributionControl: { compact: true },
-      dragRotate: true,
-    });
-    map.addControl(new NavigationControl({ showCompass: false }), "top-right");
-    map.on("style.load", () => {
-      map.setProjection({ type: "globe" });
-      paintZones(map, zones, themeSnapshot().accent);
-      if (!framed) {
-        framed = true;
-        framePins(map, pins, zones);
-      }
-      setFailed(false);
-    });
-    map.on("error", (event: { error?: unknown }) => {
-      const message = event.error instanceof Error ? event.error.message : "";
-      if (message.toLowerCase().includes("style")) setFailed(true);
-    });
+
+    void mapStyle(dark)
+      .catch(() => LIGHT_STYLE)
+      .then((style) => {
+        if (cancelled) return;
+        map = new Map({
+          container: node,
+          style,
+          center: [-71.5, -30],
+          zoom: 1.15,
+          attributionControl: { compact: true },
+          dragRotate: true,
+        });
+        map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+        map.on("style.load", () => {
+          if (!map) return;
+          map.setProjection({ type: "globe" });
+          paintZones(map, zones, themeSnapshot().accent);
+          if (!framed) {
+            framed = true;
+            framePins(map, pins, zones);
+          }
+          setFailed(false);
+        });
+        map.on("error", (event: { error?: unknown }) => {
+          const message = event.error instanceof Error ? event.error.message : "";
+          if (message.toLowerCase().includes("style")) setFailed(true);
+        });
+      });
 
     const applyTheme = () => {
       const next = themeSnapshot();
-      if (next.style !== styleUrl) {
-        styleUrl = next.style;
-        map.setStyle(next.style);
+      if (!map) return;
+      if (next.dark !== dark) {
+        dark = next.dark;
+        void mapStyle(next.dark)
+          .catch(() => LIGHT_STYLE)
+          .then((style) => {
+            map?.setStyle(style);
+          });
         return;
       }
       paintZones(map, zones, next.accent);
@@ -116,9 +175,10 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
     media.addEventListener("change", applyTheme);
 
     return () => {
+      cancelled = true;
       media.removeEventListener("change", applyTheme);
       observer.disconnect();
-      map.remove();
+      map?.remove();
     };
     // pinKey is the pin set for this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
