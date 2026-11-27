@@ -1,3 +1,4 @@
+import { outlineSpanKm, polygonsFromGeoJson, type ZonePolygon } from "@/domain/map-zone";
 import { coordPlaceKey, isPlaceKey, type PlacePick } from "@/domain/outings";
 
 const USER_AGENT = "Kizuna/0.1 (place search)";
@@ -21,19 +22,81 @@ export async function searchPlaces(query: string, fetchImpl: typeof fetch = fetc
   const q = query.trim();
   if (q.length < 3 || q.length > 80) return [];
   const nominatim = `https://nominatim.openstreetmap.org/search?format=jsonv2&addressdetails=1&limit=5&countrycodes=cl&q=${encodeURIComponent(q)}`;
+  let fromNominatim: PlacePick[] = [];
+  let nominatimDown = false;
   try {
     const response = await fetchImpl(nominatim, {
       headers: { "User-Agent": USER_AGENT, "Accept-Language": "es" },
     });
-    if (response.status === 429 || response.status >= 500) return searchPhoton(q, fetchImpl);
-    if (!response.ok) throw new PlaceSearchError();
-    const body: unknown = await response.json();
-    if (!Array.isArray(body)) throw new PlaceSearchError();
-    return body.flatMap((hit) => nominatimPlace(hit) ?? []);
+    if (response.status === 429 || response.status >= 500) nominatimDown = true;
+    else if (!response.ok) throw new PlaceSearchError();
+    else {
+      const body: unknown = await response.json();
+      if (!Array.isArray(body)) throw new PlaceSearchError();
+      fromNominatim = body.flatMap((hit) => nominatimPlace(hit) ?? []);
+    }
   } catch (error) {
     if (error instanceof PlaceSearchError) throw error;
-    return searchPhoton(q, fetchImpl);
+    nominatimDown = true;
   }
+  if (!nominatimDown && fromNominatim.length >= 5) return fromNominatim;
+  try {
+    return mergePlaces(fromNominatim, await searchPhoton(q, fetchImpl));
+  } catch (error) {
+    if (nominatimDown) throw error instanceof PlaceSearchError ? error : new PlaceSearchError();
+    return fromNominatim;
+  }
+}
+
+export type CityOutline = { id: string; polygons: ZonePolygon[] };
+
+const CITY_ZOOMS = [10, 12];
+
+/** The commune that contains the point, as its real outline. */
+export async function cityOutline(lat: number, lng: number, fetchImpl: typeof fetch = fetch): Promise<CityOutline | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  for (const zoom of CITY_ZOOMS) {
+    try {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&polygon_geojson=1&polygon_threshold=0.001&zoom=${zoom}&lat=${lat}&lon=${lng}`;
+      const response = await fetchImpl(url, {
+        headers: { "User-Agent": USER_AGENT, "Accept-Language": "es" },
+        next: { revalidate: 2_592_000 },
+      });
+      if (!response.ok) continue;
+      const outline = outlineFromReverse(await response.json());
+      if (outline) return outline;
+    } catch {
+      return null;
+    }
+  }
+  return null;
+}
+
+export async function cityZones(
+  pins: readonly { lat: number; lng: number }[],
+  fetchImpl: typeof fetch = fetch,
+): Promise<CityOutline[]> {
+  const seen = new Set<string>();
+  const zones: CityOutline[] = [];
+  for (const pin of pins) {
+    const outline = await cityOutline(pin.lat, pin.lng, fetchImpl);
+    if (!outline || seen.has(outline.id)) continue;
+    seen.add(outline.id);
+    zones.push(outline);
+  }
+  return zones;
+}
+
+function outlineFromReverse(body: unknown): CityOutline | null {
+  if (!body || typeof body !== "object") return null;
+  const row = body as Record<string, unknown>;
+  const polygons = polygonsFromGeoJson(row.geojson);
+  const span = outlineSpanKm(polygons);
+  if (polygons.length === 0 || span < 0.8 || span > 80) return null;
+  const osmType = typeof row.osm_type === "string" ? row.osm_type : "x";
+  const osmId = typeof row.osm_id === "number" || typeof row.osm_id === "string" ? String(row.osm_id) : "0";
+  return { id: `${osmType}:${osmId}`, polygons };
 }
 
 export async function placeSearchResponse(
@@ -54,7 +117,7 @@ export async function placeSearchResponse(
 }
 
 async function searchPhoton(query: string, fetchImpl: typeof fetch): Promise<PlacePick[]> {
-  const url = `https://photon.komoot.io/api/?limit=5&lang=es&lat=-35.6751&lon=-71.5430&q=${encodeURIComponent(query)}`;
+  const url = `https://photon.komoot.io/api/?limit=6&lang=default&lat=-35.6751&lon=-71.5430&q=${encodeURIComponent(query)}`;
   try {
     const response = await fetchImpl(url, { headers: { "Accept-Language": "es" } });
     if (!response.ok) throw new PlaceSearchError();
@@ -96,6 +159,7 @@ function photonPlace(feature: unknown): PlacePick | null {
   const lat = Number(coordinates[1]);
   const names = placeNames(row.properties.name, row.properties.name);
   if (!names) return null;
+  names.detail = photonDetail(row.properties);
   const key =
     osmPlaceKey(row.properties.osm_type, row.properties.osm_id) ??
     (Number.isFinite(lat) && Number.isFinite(lng) ? coordPlaceKey(lat, lng) : null);
@@ -111,6 +175,50 @@ function placeNames(name: unknown, displayName: unknown): { name: string; detail
   if (!placeName) return null;
   const rest = parts.slice(1).join(",").trim().slice(0, 120);
   return { name: placeName, detail: rest || null };
+}
+
+const PHOTON_KIND: Record<string, string> = {
+  city: "Ciudad",
+  town: "Pueblo",
+  village: "Pueblo",
+  municipality: "Comuna",
+  station: "Estación",
+  halt: "Estación",
+  suburb: "Sector",
+  neighbourhood: "Barrio",
+  residential: "Calle",
+  living_street: "Calle",
+  hamlet: "Localidad",
+};
+
+function photonDetail(props: Record<string, unknown>): string | null {
+  const kind = typeof props.osm_value === "string" ? PHOTON_KIND[props.osm_value] : "";
+  const region = typeof props.state === "string" ? props.state.trim() : "";
+  const detail = [kind, region].filter(Boolean).join(" · ").slice(0, 120);
+  return detail || null;
+}
+
+function mergePlaces(primary: PlacePick[], extra: PlacePick[]): PlacePick[] {
+  const merged = [...primary];
+  for (const place of extra) {
+    const duplicate = merged.some(
+      (current) =>
+        current.placeKey === place.placeKey ||
+        (current.name.localeCompare(place.name, "es", { sensitivity: "base" }) === 0 &&
+          kilometers(current.lat, current.lng, place.lat, place.lng) < 0.4),
+    );
+    if (!duplicate) merged.push(place);
+  }
+  return merged.slice(0, 6);
+}
+
+function kilometers(aLat: number, aLng: number, bLat: number, bLng: number): number {
+  const dLat = ((bLat - aLat) * Math.PI) / 180;
+  const dLng = ((bLng - aLng) * Math.PI) / 180;
+  const lat1 = (aLat * Math.PI) / 180;
+  const lat2 = (bLat * Math.PI) / 180;
+  const h = Math.sin(dLat / 2) ** 2 + Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * 6371 * Math.asin(Math.min(1, Math.sqrt(h)));
 }
 
 function osmPlaceKey(type: unknown, id: unknown): string | null {

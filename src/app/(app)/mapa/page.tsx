@@ -21,6 +21,7 @@ import { cancelOutingFromForm, markOutingWentFromForm, respondInviteFromForm } f
 import { loadMyMap, loadMyMonth, loadMyOutingInvite, type MapPinView, type OutingInviteView, type Rpc } from "@/lib/outings-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
+import { cityZones } from "@/lib/places";
 import { loadMyMonthIndex, loadMyTrips } from "@/lib/trips-data";
 import { getViewer, viewerMissingDestination } from "@/lib/viewer";
 
@@ -202,6 +203,7 @@ export default async function MapaPage({
   ]);
   const monthEmpty = screen.kind === "empty" || (screen.kind === "ready" && screen.showMonthEmptyCopy);
   const showPlaces = screen.kind === "ready" || map.data.plans.length > 0;
+  const zones = showPlaces ? await cityZones(map.data.pins) : [];
 
   return (
     <Shell>
@@ -212,7 +214,7 @@ export default async function MapaPage({
       </div>
       {showPlaces ? (
         <>
-          <div className="h-[280px] overflow-hidden rounded-[15px] border border-line">
+          <div className="h-[420px] overflow-hidden rounded-[15px] border border-line">
             <OutingMapLazy
               pins={map.data.pins.map((pin) => ({
                 id: pin.id,
@@ -220,6 +222,7 @@ export default async function MapaPage({
                 lng: pin.lng,
                 title: pin.placeName,
               }))}
+              zones={zones}
             />
           </div>
           {placeLabels(map.data.pins).map((label) => (
@@ -334,6 +337,9 @@ export default async function MapaPage({
         </>
       ) : (
         <>
+          <div className="h-[420px] overflow-hidden rounded-[15px] border border-line">
+            <OutingMapLazy pins={[]} zones={[]} />
+          </div>
           {!months.ok || !trips.ok ? <LoadFailed href="/mapa" /> : null}
           <EmptyState
             title="Todavía no marcas un lugar"

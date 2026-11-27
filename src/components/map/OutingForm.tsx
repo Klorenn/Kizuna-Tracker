@@ -38,6 +38,7 @@ export function OutingForm({
   const [places, setPlaces] = useState<PlacePick[]>([]);
   const [place, setPlace] = useState<PlacePick | null>(null);
   const [empty, setEmpty] = useState(false);
+  const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
   const [startsOn, setStartsOn] = useState(initialDay);
   const [endsOn, setEndsOn] = useState(initialDay);
@@ -50,14 +51,17 @@ export function OutingForm({
     if (q.length < 3) {
       setPlaces([]);
       setEmpty(false);
+      setSearching(false);
       setSearchError(null);
       return;
     }
     let ignore = false;
+    setSearching(true);
     const timer = setTimeout(() => {
       void fetch(`/api/places/search?q=${encodeURIComponent(q)}`)
         .then(async (response) => {
           if (ignore) return;
+          setSearching(false);
           if (!response.ok) {
             setPlaces([]);
             setEmpty(false);
@@ -72,6 +76,7 @@ export function OutingForm({
         })
         .catch(() => {
           if (ignore) return;
+          setSearching(false);
           setPlaces([]);
           setEmpty(false);
           setSearchError("No pudimos buscar lugares. Inténtalo de nuevo.");
@@ -131,19 +136,21 @@ export function OutingForm({
               {searchError}
             </p>
           ) : null}
+          {searching ? <p className="text-small text-muted">Buscando opciones…</p> : null}
           {empty ? (
             <p className="text-small text-ink">No encontramos ese lugar en Chile. Prueba con el nombre y la comuna.</p>
           ) : null}
           {places.length > 0 ? (
-            <ul className="flex flex-col">
+            <ul aria-label="Opciones" className="flex flex-col overflow-hidden rounded-md border border-line">
               {places.map((hit) => (
-                <li key={hit.placeKey}>
+                <li key={hit.placeKey} className="border-b border-line last:border-b-0">
                   <button
                     type="button"
-                    className="flex min-h-11 w-full flex-col items-start py-2 text-left"
+                    className="flex min-h-11 w-full flex-col items-start px-3 py-2 text-left"
                     onClick={() => {
                       setPlace(hit);
                       setPlaces([]);
+                      setSearching(false);
                       setQuery(hit.name);
                       setEmpty(false);
                     }}

@@ -1,60 +1,133 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import "leaflet/dist/leaflet.css";
+import { LngLatBounds, Map, NavigationControl, type GeoJSONSource } from "maplibre-gl";
+import "maplibre-gl/dist/maplibre-gl.css";
+import { boundaryFeatureCollection, type CityZone } from "@/domain/map-zone";
 
 type Pin = { id: string; lat: number; lng: number; title: string };
 
-export function OutingMap({ pins }: { pins: Pin[] }) {
+const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/positron";
+const DARK_STYLE = "https://tiles.openfreemap.org/styles/dark";
+
+function themeSnapshot(): { style: string; accent: string } {
+  const root = document.documentElement;
+  const mode = root.dataset.theme;
+  const systemDark = window.matchMedia("(prefers-color-scheme: dark)").matches;
+  const dark = mode === "dark" || ((mode === "system" || !mode) && systemDark);
+  const accent = getComputedStyle(root).getPropertyValue("--color-accent").trim() || "#5a5ac2";
+  return { style: dark ? DARK_STYLE : LIGHT_STYLE, accent };
+}
+
+function paintZones(map: Map, zones: CityZone[], accent: string) {
+  if (!map.isStyleLoaded()) return;
+  const data = boundaryFeatureCollection(zones);
+  const existing = map.getSource("zones");
+  if (existing) {
+    (existing as GeoJSONSource).setData(data);
+    map.setPaintProperty("zones-fill", "fill-color", accent);
+    map.setPaintProperty("zones-line", "line-color", accent);
+    return;
+  }
+  map.addSource("zones", { type: "geojson", data });
+  map.addLayer({
+    id: "zones-fill",
+    type: "fill",
+    source: "zones",
+    paint: { "fill-color": accent, "fill-opacity": 0.38 },
+  });
+  map.addLayer({
+    id: "zones-line",
+    type: "line",
+    source: "zones",
+    paint: { "line-color": accent, "line-width": 1.5 },
+  });
+}
+
+function framePins(map: Map, pins: Pin[], zones: CityZone[]) {
+  const bounds = new LngLatBounds();
+  let any = false;
+  for (const pin of pins) {
+    bounds.extend([pin.lng, pin.lat]);
+    any = true;
+  }
+  for (const zone of zones) {
+    for (const polygon of zone.polygons) {
+      for (const point of polygon[0] ?? []) {
+        bounds.extend(point);
+        any = true;
+      }
+    }
+  }
+  if (!any) {
+    map.jumpTo({ center: [-71.5, -30], zoom: 1.15 });
+    return;
+  }
+  map.fitBounds(bounds, { padding: 48, maxZoom: 9, duration: 0 });
+}
+
+export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
   const host = useRef<HTMLDivElement>(null);
-  const [tileError, setTileError] = useState(false);
+  const [failed, setFailed] = useState(false);
   const pinKey = pins.map((pin) => `${pin.id}:${pin.lat}:${pin.lng}`).join("|");
+  const zoneKey = zones.map((zone) => zone.id).join("|");
 
   useEffect(() => {
     const node = host.current;
     if (!node) return;
-    let map: import("leaflet").Map | null = null;
-    let cancelled = false;
-    void import("leaflet").then((L) => {
-      if (cancelled) return;
-      map = L.map(node);
-      const tiles = L.tileLayer("https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png", {
-        attribution: "&copy; OpenStreetMap &copy; CARTO",
-        subdomains: "abcd",
-        maxZoom: 19,
-      });
-      tiles.on("tileerror", () => setTileError(true));
-      tiles.addTo(map);
-      const icon = L.divIcon({
-        className: "",
-        iconSize: [12, 12],
-        iconAnchor: [6, 6],
-        html: '<span class="block h-3 w-3 rounded-full border border-surface bg-accent"></span>',
-      });
-      if (pins.length === 0) {
-        map.setView([-35.6751, -71.543], 4);
+    const initial = themeSnapshot();
+    let styleUrl = initial.style;
+    let framed = false;
+    const map = new Map({
+      container: node,
+      style: styleUrl,
+      center: [-71.5, -30],
+      zoom: 1.15,
+      attributionControl: { compact: true },
+      dragRotate: true,
+    });
+    map.addControl(new NavigationControl({ showCompass: false }), "top-right");
+    map.on("style.load", () => {
+      map.setProjection({ type: "globe" });
+      paintZones(map, zones, themeSnapshot().accent);
+      if (!framed) {
+        framed = true;
+        framePins(map, pins, zones);
+      }
+      setFailed(false);
+    });
+    map.on("error", (event: { error?: unknown }) => {
+      const message = event.error instanceof Error ? event.error.message : "";
+      if (message.toLowerCase().includes("style")) setFailed(true);
+    });
+
+    const applyTheme = () => {
+      const next = themeSnapshot();
+      if (next.style !== styleUrl) {
+        styleUrl = next.style;
+        map.setStyle(next.style);
         return;
       }
-      for (const pin of pins) {
-        L.marker([pin.lat, pin.lng], { icon, title: pin.title }).addTo(map);
-      }
-      map.fitBounds(
-        L.latLngBounds(pins.map((pin) => [pin.lat, pin.lng])),
-        { padding: [24, 24], maxZoom: 13 },
-      );
-    });
-    return () => {
-      cancelled = true;
-      map?.remove();
+      paintZones(map, zones, next.accent);
     };
-    // pinKey tracks the pin set. The effect reads `pins` from this render.
+    const observer = new MutationObserver(applyTheme);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-color", "class"] });
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    media.addEventListener("change", applyTheme);
+
+    return () => {
+      media.removeEventListener("change", applyTheme);
+      observer.disconnect();
+      map.remove();
+    };
+    // pinKey is the pin set for this render.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pinKey]);
+  }, [pinKey, zoneKey]);
 
   return (
     <div className="relative h-full w-full">
       <div ref={host} className="h-full w-full" />
-      {tileError ? (
+      {failed ? (
         <p role="status" className="absolute inset-x-3 bottom-3 rounded-md bg-surface px-3 py-2 text-center text-small text-ink">
           No pudimos cargar el mapa. Inténtalo de nuevo.
         </p>
