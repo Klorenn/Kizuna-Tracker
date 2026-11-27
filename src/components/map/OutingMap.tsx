@@ -1,8 +1,11 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LngLatBounds, Map, NavigationControl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
+import { LngLatBounds, Map, NavigationControl, setWorkerUrl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+
+// The bundled chunk cannot sit next to maplibre-gl-worker.mjs, so the phone's worker request 404s and the canvas stays blank.
+setWorkerUrl("/maplibre-gl-worker.mjs?v=6.20.0");
 import { boundaryFeatureCollection, type CityZone } from "@/domain/map-zone";
 
 type Pin = { id: string; lat: number; lng: number; title: string };
