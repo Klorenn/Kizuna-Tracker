@@ -1,7 +1,7 @@
 "use client";
 
 import { useFormStatus } from "react-dom";
-import { repeatOuting } from "@/app/(app)/mapa/actions";
+import { repeatOutingFromForm } from "@/app/(app)/mapa/actions";
 
 function RepeatButton() {
   const { pending } = useFormStatus();
@@ -14,7 +14,8 @@ function RepeatButton() {
 
 export function RepeatOuting({ outingId }: { outingId: string }) {
   return (
-    <form action={async () => { await repeatOuting(outingId); }}>
+    <form action={repeatOutingFromForm}>
+      <input type="hidden" name="id" value={outingId} />
       <RepeatButton />
     </form>
   );

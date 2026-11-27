@@ -17,7 +17,7 @@ import { CreateTrip } from "@/components/map/CreateTrip";
 import { OutingPhotoUpload } from "@/components/map/OutingPhotoUpload";
 import { RepeatOuting } from "@/components/map/RepeatOuting";
 import { bondStat, distinctPlaces } from "@/domain/outing-memory";
-import { cancelOuting, markOutingWent, respondInvite } from "@/app/(app)/mapa/actions";
+import { cancelOutingFromForm, markOutingWentFromForm, respondInviteFromForm } from "@/app/(app)/mapa/actions";
 import { loadMyMap, loadMyMonth, loadMyOutingInvite, type MapPinView, type OutingInviteView, type Rpc } from "@/lib/outings-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
@@ -109,10 +109,14 @@ function InviteAnswer({ invite }: { invite: OutingInviteView | null }) {
       <p className="text-small text-muted">{rangeText(invite.startsOn, invite.endsOn)}</p>
       {invite.status === "pending" ? (
         <div className="flex items-center gap-3">
-          <form action={async () => { await respondInvite(invite.inviteId, true); }}>
+          <form action={respondInviteFromForm}>
+            <input type="hidden" name="id" value={invite.inviteId} />
+            <input type="hidden" name="accept" value="1" />
             <Button type="submit">Aceptar</Button>
           </form>
-          <form action={async () => { await respondInvite(invite.inviteId, false); }}>
+          <form action={respondInviteFromForm}>
+            <input type="hidden" name="id" value={invite.inviteId} />
+            <input type="hidden" name="accept" value="0" />
             <button type="submit" className="inline-flex h-12 items-center text-body text-ink">
               Rechazar
             </button>
@@ -258,7 +262,8 @@ export default async function MapaPage({
                       <p className="text-small text-muted">Puedes marcar Fui desde el {dayText(outing.startsOn)}.</p>
                     ) : null}
                     {canMark ? (
-                      <form action={async () => { await markOutingWent(outing.id); }}>
+                      <form action={markOutingWentFromForm}>
+                        <input type="hidden" name="id" value={outing.id} />
                         <Button type="submit">Fui</Button>
                       </form>
                     ) : null}
@@ -266,7 +271,8 @@ export default async function MapaPage({
                       <InviteCompanion outingId={outing.id} friends={friends} />
                     ) : null}
                     {outing.isOwner && outing.status === "planned" ? (
-                      <form action={async () => { await cancelOuting(outing.id); }}>
+                      <form action={cancelOutingFromForm}>
+                        <input type="hidden" name="id" value={outing.id} />
                         <button type="submit" className="inline-flex h-12 items-center text-body text-ink">
                           Quitar
                         </button>

@@ -71,10 +71,22 @@ export async function markOutingWent(id: string) {
   return result;
 }
 
+export async function markOutingWentFromForm(formData: FormData) {
+  const id = formData.get("id");
+  if (typeof id !== "string" || id.length === 0) return;
+  await markOutingWent(id);
+}
+
 export async function cancelOuting(id: string) {
   const result = await cancelOutingWith(await noticeDeps(), id);
   if (result.ok) refresh();
   return result;
+}
+
+export async function cancelOutingFromForm(formData: FormData) {
+  const id = formData.get("id");
+  if (typeof id !== "string" || id.length === 0) return;
+  await cancelOuting(id);
 }
 
 export async function inviteCompanion(outingId: string, friendId: string) {
@@ -89,10 +101,22 @@ export async function respondInvite(inviteId: string, accept: boolean) {
   return result;
 }
 
+export async function respondInviteFromForm(formData: FormData) {
+  const id = formData.get("id");
+  if (typeof id !== "string" || id.length === 0) return;
+  await respondInvite(id, formData.get("accept") === "1");
+}
+
 export async function repeatOuting(id: string) {
   const result = await repeatOutingWith(await clientRpc(), id);
   if (result.ok) refresh();
   return result;
+}
+
+export async function repeatOutingFromForm(formData: FormData) {
+  const id = formData.get("id");
+  if (typeof id !== "string" || id.length === 0) return;
+  await repeatOuting(id);
 }
 
 export async function createTrip(input: { name: string; outingIds: string[] }) {
