@@ -9,6 +9,7 @@ import {
   cancelOutingWith,
   createOutingWith,
   createTripWith,
+  setTripLinkWith,
   inviteCompanionWith,
   markWentWith,
   repeatOutingWith,
@@ -122,6 +123,12 @@ export async function repeatOutingFromForm(formData: FormData) {
 export async function createTrip(input: { name: string; outingIds: string[] }) {
   const result = await createTripWith(await clientRpc(), input);
   if (result.ok) refresh(`/mapa/viajes/${result.id}`);
+  return result;
+}
+
+export async function setTripLink(tripId: string, link: string | null) {
+  const result = await setTripLinkWith(await clientRpc(), { tripId, link });
+  if (result.ok) refresh(`/mapa/viajes/${tripId}`);
   return result;
 }
 

@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { addTripStop } from "@/app/(app)/mapa/actions";
 import { LoadFailed } from "@/components/LoadFailed";
 import { OutingForm } from "@/components/map/OutingForm";
+import { TripLink } from "@/components/map/TripLink";
 import { ListCard } from "@/components/ui/ListRow";
 import { localDate } from "@/domain/dates";
 import { monthLabel, monthStartOf } from "@/domain/outings";
@@ -73,6 +74,7 @@ export default async function TripPage({ params }: { params: Promise<{ id: strin
       </Link>
       <h1 className="text-display font-semibold text-ink">{trip.name}</h1>
       {span ? <p className="text-small text-muted">{rangeText(span.startsOn, span.endsOn)}</p> : null}
+      <TripLink tripId={trip.id} link={trip.link} canEdit={trip.isOwner} />
       <ListCard>
         {trip.stops.map((stop) => (
           <div key={stop.id} className="flex flex-col gap-1 border-b border-line px-4 py-3">

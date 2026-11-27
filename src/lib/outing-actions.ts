@@ -1,4 +1,5 @@
 import { datesInsideMonth, validateOutingDraft, type PlacePick } from "@/domain/outings";
+import { parseTripLink } from "@/domain/trips";
 import type { LocalDate } from "@/domain/types";
 import type { NotificationType } from "@/lib/notification-copy";
 import type { Rpc } from "@/lib/outings-data";
@@ -18,6 +19,7 @@ const COPY: Record<string, string> = {
   trip_needs_two: "Un viaje necesita al menos dos paradas.",
   stop_month: "Esa fecha no cae en un mes de este viaje.",
   trip_name: "El nombre del viaje puede tener hasta 60 caracteres.",
+  invalid_link: "Ese link no es válido. Tiene que empezar con https://.",
 };
 
 const GENERIC = "No pudimos guardar la salida. Inténtalo de nuevo.";
@@ -178,6 +180,17 @@ export async function createTripWith(
     return { ok: false, error: outingErrorCopy(error?.message ?? null) };
   }
   return { ok: true, id: data };
+}
+
+export async function setTripLinkWith(
+  rpc: Rpc,
+  input: { tripId: string; link: string | null },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  const parsed = parseTripLink(input.link ?? "");
+  if (!parsed.ok) return { ok: false, error: parsed.error };
+  const { error } = await rpc("set_trip_link", { p_id: input.tripId, p_link: parsed.link });
+  if (error) return { ok: false, error: outingErrorCopy(error.message) };
+  return { ok: true };
 }
 
 export async function addTripStopWith(

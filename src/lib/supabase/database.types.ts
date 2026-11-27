@@ -3009,6 +3009,7 @@ export type Database = {
         Returns: string
       }
       create_trip: { Args: { p_name: string; p_outing_ids: string[] }; Returns: string }
+      set_trip_link: { Args: { p_id: string; p_link: string | null }; Returns: undefined }
       create_widget_pairing_code: {
         Args: never
         Returns: {

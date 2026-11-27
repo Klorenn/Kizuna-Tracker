@@ -3,6 +3,7 @@ import type { PlacePick } from '@/domain/outings'
 import {
   cancelOutingWith,
   createOutingWith,
+  setTripLinkWith,
   inviteCompanionWith,
   markWentWith,
   outingErrorCopy,
@@ -216,5 +217,34 @@ describe('repeatOutingWith', () => {
       error: 'No pudimos guardar la salida. Inténtalo de nuevo.',
     })
     expect(calls).toEqual(['repeat_outing'])
+  })
+})
+
+describe('setTripLinkWith', () => {
+  test('guarda el link https y manda null cuando queda vacío', async () => {
+    const calls: unknown[] = []
+    const rpc: Rpc = async (fn, args) => {
+      calls.push([fn, args])
+      return { data: null, error: null }
+    }
+    expect(await setTripLinkWith(rpc, { tripId: id, link: 'https://drive.google.com/drive/folders/abc' })).toEqual({
+      ok: true,
+    })
+    expect(await setTripLinkWith(rpc, { tripId: id, link: '  ' })).toEqual({ ok: true })
+    expect(calls).toEqual([
+      ['set_trip_link', { p_id: id, p_link: 'https://drive.google.com/drive/folders/abc' }],
+      ['set_trip_link', { p_id: id, p_link: null }],
+    ])
+  })
+
+  test('un http no llama al RPC', async () => {
+    let calls = 0
+    const rpc: Rpc = async () => {
+      calls += 1
+      return { data: null, error: null }
+    }
+    const result = await setTripLinkWith(rpc, { tripId: id, link: 'http://drive.google.com/x' })
+    expect(result.ok).toBe(false)
+    expect(calls).toBe(0)
   })
 })

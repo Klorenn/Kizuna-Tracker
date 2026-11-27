@@ -1,3 +1,4 @@
+import { parseTripLink } from "@/domain/trips";
 import type { LocalDate } from "@/domain/types";
 import type { Rpc } from "@/lib/outings-data";
 
@@ -16,6 +17,8 @@ export type TripStopView = {
 export type TripView = {
   id: string;
   name: string;
+  link: string | null;
+  isOwner: boolean;
   stops: TripStopView[];
 };
 
@@ -31,6 +34,9 @@ export function parseTripsPayload(raw: unknown): TripView[] | null {
     if (!isRecord(row)) return null;
     if (typeof row.id !== "string" || !UUID.test(row.id)) return null;
     if (typeof row.name !== "string" || row.name.trim().length < 1 || row.name.trim().length > 60) return null;
+    const link = readLink(row.link);
+    if (link === undefined) return null;
+    if (typeof row.is_owner !== "boolean") return null;
     if (!Array.isArray(row.stops)) return null;
     const stops: TripStopView[] = [];
     for (const stop of row.stops) {
@@ -38,7 +44,7 @@ export function parseTripsPayload(raw: unknown): TripView[] | null {
       if (!parsed) return null;
       stops.push(parsed);
     }
-    trips.push({ id: row.id, name: row.name, stops });
+    trips.push({ id: row.id, name: row.name, link, isOwner: row.is_owner, stops });
   }
   return trips;
 }
@@ -69,6 +75,14 @@ export async function loadMyMonthIndex(rpc: Rpc): Promise<{ ok: true; data: Mont
   const parsed = parseMonthIndex(data);
   if (!parsed) return { ok: false };
   return { ok: true, data: parsed };
+}
+
+function readLink(raw: unknown): string | null | undefined {
+  if (raw == null) return null;
+  if (typeof raw !== "string") return undefined;
+  const parsed = parseTripLink(raw);
+  if (!parsed.ok) return undefined;
+  return parsed.link;
 }
 
 function parseStop(raw: unknown): TripStopView | null {

@@ -54,6 +54,7 @@ export type Rpc = (
     | "create_trip"
     | "add_trip_stop"
     | "my_trips"
+    | "set_trip_link"
     | "my_month_index"
     | "repeat_outing"
     | "outing_photo_path",
