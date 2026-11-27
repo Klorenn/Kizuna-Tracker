@@ -1,4 +1,5 @@
 import { CaretLeft } from "@phosphor-icons/react/dist/ssr";
+import { CatAnimation } from "@/components/brand/CatAnimation";
 import type { Metadata } from "next";
 import type { ReactNode } from "react";
 import Link from "next/link";
@@ -342,6 +343,7 @@ export default async function MapaPage({
           </div>
           {!months.ok || !trips.ok ? <LoadFailed href="/mapa" /> : null}
           <EmptyState
+            mark={<CatAnimation asset="plan" width={168} />}
             title="Todavía no marcas un lugar"
             body="Busca un lugar y elige los días. Con una salida el mes queda cumplido."
             action={<OutingForm month={month.data.monthStart} today={today} />}

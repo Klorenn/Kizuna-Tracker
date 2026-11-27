@@ -137,8 +137,18 @@ describe('read, sleep (480 canvas) and code (320 canvas) cats, 73 frames x 80 ms
     expect(c.height).toBe(176)
     expect(c['--cat-mask-pos']).toBe('0px -76px')
   })
+  it('plan: 480 canvas, 60 frames x 100 ms, union box 350 x 312 at (55, 90)', () => {
+    expect(CAT_ASSETS.plan).toEqual({
+      gif: brandUrl("cat-plan.gif"),
+      still: brandUrl("cat-plan-still.png"),
+      canvas: 480,
+      box: { x: 55, y: 90, w: 350, h: 312 },
+      stillBox: { x: 0, y: 0, w: 480, h: 480 },
+      playMs: 6000,
+    })
+  })
   it('ships the files', () => {
-    for (const a of ['read', 'sleep', 'code']) {
+    for (const a of ['read', 'sleep', 'code', 'plan']) {
       expect(existsSync(`public/brand/cat-${a}.gif`)).toBe(true)
       expect(existsSync(`public/brand/cat-${a}-still.png`)).toBe(true)
     }

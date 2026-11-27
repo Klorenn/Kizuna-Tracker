@@ -70,6 +70,16 @@ export const CAT_READ = catSquare("read", 480, { x: 78, y: 94, w: 301, h: 286 })
 export const CAT_SLEEP = catSquare("sleep", 480, { x: 99, y: 65, w: 341, h: 296 });
 export const CAT_CODE = catSquare("code", 320, { x: 0, y: 76, w: 292, h: 176 });
 
+/** 480 canvas, 60 frames x 100 ms. Cream fill levelled to white, same as sleep. Box is the union of the coalesced frames. */
+export const CAT_PLAN = {
+  gif: brandUrl("cat-plan.gif"),
+  still: brandUrl("cat-plan-still.png"),
+  canvas: 480,
+  box: { x: 55, y: 90, w: 350, h: 312 },
+  stillBox: { x: 0, y: 0, w: 480, h: 480 },
+  playMs: 6000,
+} as const;
+
 export const CAT_ASSETS = {
   lift: CAT_LIFT,
   jump: CAT_JUMP,
@@ -77,6 +87,7 @@ export const CAT_ASSETS = {
   read: CAT_READ,
   sleep: CAT_SLEEP,
   code: CAT_CODE,
+  plan: CAT_PLAN,
 } as const;
 export type CatAsset = keyof typeof CAT_ASSETS;
 

@@ -33,9 +33,9 @@ describe('cat files match the canvas the mask math assumes', () => {
 })
 
 describe('cat weight budget (the GIFs are the heaviest assets in the app)', () => {
-  it('keeps the six GIFs under 2.1 MB together and each under 530 kB', () => {
+  it('keeps the GIFs under 2.4 MB together and each under 530 kB', () => {
     const sizes = assets.map(([, a]) => statSync(file(a.gif)).size)
     expect(Math.max(...sizes)).toBeLessThan(530 * 1024)
-    expect(sizes.reduce((x, y) => x + y, 0)).toBeLessThan(2.1 * 1024 * 1024)
+    expect(sizes.reduce((x, y) => x + y, 0)).toBeLessThan(2.4 * 1024 * 1024)
   })
 })
