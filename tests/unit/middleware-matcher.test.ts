@@ -12,6 +12,10 @@ describe('middleware matcher', () => {
     expect(matches('/.well-known/assetlinks.json')).toBe(false)
   })
 
+  it('skips the map worker so the phone can load it without a redirect', () => {
+    expect(matches('/maplibre-gl-worker.mjs')).toBe(false)
+  })
+
   it('still runs on app pages', () => {
     expect(matches('/dashboard')).toBe(true)
     expect(matches('/login')).toBe(true)
