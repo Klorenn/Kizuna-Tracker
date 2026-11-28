@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { LngLatBounds, Map, NavigationControl, setWorkerUrl, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
+import { LngLatBounds, Map, NavigationControl, setWorkerUrl, type ExpressionSpecification, type GeoJSONSource, type StyleSpecification } from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 // The bundled chunk cannot sit next to maplibre-gl-worker.mjs, so the phone's worker request 404s and the canvas stays blank.
@@ -73,7 +73,6 @@ function mapStyle(dark: boolean): Promise<string | StyleSpecification> {
 }
 
 function paintZones(map: Map, zones: CityZone[], accent: string) {
-  if (!map.isStyleLoaded()) return;
   const data = boundaryFeatureCollection(zones);
   const existing = map.getSource("zones");
   if (existing) {
@@ -87,24 +86,25 @@ function paintZones(map: Map, zones: CityZone[], accent: string) {
     id: "zones-fill",
     type: "fill",
     source: "zones",
-    paint: { "fill-color": accent, "fill-opacity": 0.38 },
+    paint: { "fill-color": accent, "fill-opacity": 0.55 },
   });
   map.addLayer({
     id: "zones-line",
     type: "line",
     source: "zones",
-    paint: { "line-color": accent, "line-width": 1.5 },
+    paint: { "line-color": accent, "line-width": 2.5 },
   });
 }
 
 function paintPins(map: Map, pins: Pin[], accent: string) {
-  if (!map.isStyleLoaded()) return;
   const data = mapPinCollection(pins.map((pin) => ({ ...pin, address: pin.address ?? null })));
-  const color = ["case", ["==", ["get", "visited"], true], accent, PLANNED_DOT] as unknown as string;
+  const color: ExpressionSpecification = ["case", ["==", ["get", "visited"], true], accent, PLANNED_DOT];
+  const radius: ExpressionSpecification = ["case", ["==", ["get", "visited"], true], 12, 6];
   const existing = map.getSource("places");
   if (existing) {
     (existing as GeoJSONSource).setData(data);
     map.setPaintProperty("places-dot", "circle-color", color);
+    map.setPaintProperty("places-dot", "circle-radius", radius);
     return;
   }
   map.addSource("places", { type: "geojson", data });
@@ -113,9 +113,9 @@ function paintPins(map: Map, pins: Pin[], accent: string) {
     type: "circle",
     source: "places",
     paint: {
-      "circle-radius": 7,
+      "circle-radius": radius,
       "circle-color": color,
-      "circle-stroke-width": 2,
+      "circle-stroke-width": 3,
       "circle-stroke-color": "#f7f4ef",
     },
   });
@@ -185,11 +185,20 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
         });
         map.addControl(new NavigationControl({ showCompass: false }), "top-right");
         const settle = () => map?.resize();
+        const drawMarks = () => {
+          if (!map) return;
+          const accent = themeSnapshot().accent;
+          paintZones(map, zones, accent);
+          paintPins(map, pins, accent);
+        };
         map.on("style.load", () => {
           if (!map) return;
-          paintZones(map, zones, themeSnapshot().accent);
-          paintPins(map, pins, themeSnapshot().accent);
-          if (!listening) {
+          try {
+            drawMarks();
+          } catch {
+            // Tiles can be on screen while the style still rejects new layers. idle retries.
+          }
+          if (!listening && map.getLayer("places-hit")) {
             listening = true;
             map.on("click", "places-hit", (event) => {
               const feature = event.features?.[0];
@@ -211,6 +220,14 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
               map?.getCanvas().style.removeProperty("cursor");
             });
           }
+          map.once("idle", () => {
+            if (!map || map.getSource("places")) return;
+            try {
+              drawMarks();
+            } catch {
+              // Tiles can finish before the style accepts the visited color.
+            }
+          });
           if (!framed) {
             framed = true;
             framePins(map, pins, zones);
