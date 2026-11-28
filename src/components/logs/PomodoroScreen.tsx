@@ -42,6 +42,7 @@ import {
   canOfferNotifications,
   primeAudio,
   readNotificationEnv,
+  useTimerPresence,
   useWakeLock,
   type NotificationEnv,
 } from "@/lib/pomodoro-alerts";
@@ -500,7 +501,20 @@ function Clock({ state }: { state: PomodoroState }) {
   const duration = state.mode === "stopwatch" ? block : (state.phase === "break" ? state.config.breakMin : state.config.focusMin) * MIN_MS;
   const into = state.mode === "stopwatch" ? v.elapsedMs % block : v.elapsedMs;
   const fraction = duration > 0 ? Math.min(1, Math.max(0, into / duration)) : 0;
-  return <ClockFace fraction={fraction} readout={formatReadout(v.displayMs, v.direction)} />;
+  const readout = formatReadout(v.displayMs, v.direction);
+  const live = state.phase === "focus" || state.phase === "break";
+  useTimerPresence(
+    live
+      ? {
+          title: state.mode === "timer" ? "Temporizador" : state.phase === "break" ? "Descanso" : state.mode === "stopwatch" ? "Cronómetro" : "Pomodoro",
+          readout,
+          totalSec: Math.max(1, Math.round(duration / 1000)),
+          elapsedSec: Math.max(0, Math.round(into / 1000)),
+          paused: state.pausedAt !== null,
+        }
+      : null,
+  );
+  return <ClockFace fraction={fraction} readout={readout} />;
 }
 
 /** The ring and the big figure. Hours ("1:05:09") need a smaller figure to fit inside it. */

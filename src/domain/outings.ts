@@ -63,6 +63,22 @@ export function cleanGuestName(raw: string): { ok: true; name: string | null } |
   return { ok: true, name }
 }
 
+const DAY = /^\d{4}-\d{2}-\d{2}$/
+
+/** A remembered visit day, or null when the person does not remember. Never a future day. */
+export function cleanVisitDay(
+  raw: string,
+  today: LocalDate,
+): { ok: true; day: LocalDate | null } | { ok: false; error: string } {
+  const day = raw.trim()
+  if (!day) return { ok: true, day: null }
+  if (!DAY.test(day)) return { ok: false, error: 'Esa fecha no es válida.' }
+  if (day > today) return { ok: false, error: 'Esa fecha todavía no llega.' }
+  const min = `${Number(today.slice(0, 4)) - 30}-01-01`
+  if (day < min) return { ok: false, error: 'Esa fecha es demasiado antigua.' }
+  return { ok: true, day: day as LocalDate }
+}
+
 export function planLine(placeName: string, withName: string | null): string {
   const name = withName?.trim()
   return name ? `${placeName} · con ${name}` : placeName

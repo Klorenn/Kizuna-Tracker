@@ -12,6 +12,7 @@ import {
   monthRowValue,
   monthStartOf,
   cleanGuestName,
+  cleanVisitDay,
   planLine,
   upcomingMonthStarts,
   outingTitle,
@@ -160,5 +161,11 @@ describe('planes', () => {
   test('la línea del checklist nombra a la persona', () => {
     expect(planLine('Puerto Natales', null)).toBe('Puerto Natales')
     expect(planLine('Puerto Natales', 'Mamá')).toBe('Puerto Natales · con Mamá')
+  })
+
+  test('un lugar ya visitado puede no tener fecha, y no puede ser futuro', () => {
+    expect(cleanVisitDay('  ', '2026-11-27')).toEqual({ ok: true, day: null })
+    expect(cleanVisitDay('2024-01-12', '2026-11-27')).toEqual({ ok: true, day: '2024-01-12' })
+    expect(cleanVisitDay('2027-01-10', '2026-11-27').ok).toBe(false)
   })
 })

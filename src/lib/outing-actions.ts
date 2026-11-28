@@ -1,4 +1,4 @@
-import { cleanGuestName, datesInsideMonth, validateOutingDraft, type PlacePick } from "@/domain/outings";
+import { cleanGuestName, cleanVisitDay, datesInsideMonth, validateOutingDraft, type PlacePick } from "@/domain/outings";
 import { parseTripLink } from "@/domain/trips";
 import type { LocalDate } from "@/domain/types";
 import type { NotificationType } from "@/lib/notification-copy";
@@ -10,6 +10,7 @@ const COPY: Record<string, string> = {
   invalid_place: "No encontramos ese lugar.",
   invalid_dates: "Esas fechas no caben en este mes.",
   invalid_guest: "Ese nombre puede tener hasta 40 caracteres.",
+  visit_date: "Esa fecha no sirve. Elige un día que ya pasó, o déjalo vacío.",
   invalid_note: "La nota puede tener hasta 280 caracteres.",
   too_early: "Puedes marcar Fui desde el día en que empieza.",
   month_closed: "Ese mes ya cerró. Quedó vacío.",
@@ -53,6 +54,25 @@ export async function createOutingWith(
   const { data, error } = await rpc("create_outing", {
     ...placeArgs(input.place, input.startsOn, input.endsOn, input.note),
     p_guest_name: guest.name,
+  });
+  if (error || typeof data !== "string" || data.length === 0) return { ok: false, error: outingErrorCopy(error?.message ?? null) };
+  return { ok: true, id: data };
+}
+
+export async function logVisitWith(
+  rpc: Rpc,
+  input: { place: PlacePick | null; on: string; today: LocalDate },
+): Promise<{ ok: true; id: string } | { ok: false; error: string }> {
+  if (!input.place) return { ok: false, error: "No encontramos ese lugar." };
+  const day = cleanVisitDay(input.on, input.today);
+  if (!day.ok) return { ok: false, error: day.error };
+  const { data, error } = await rpc("log_visit", {
+    p_place_name: input.place.name,
+    p_place_detail: input.place.detail,
+    p_place_key: input.place.placeKey,
+    p_lat: input.place.lat,
+    p_lng: input.place.lng,
+    p_on: day.day,
   });
   if (error || typeof data !== "string" || data.length === 0) return { ok: false, error: outingErrorCopy(error?.message ?? null) };
   return { ok: true, id: data };

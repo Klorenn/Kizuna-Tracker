@@ -2995,6 +2995,17 @@ export type Database = {
       }
       create_group_invite: { Args: { p_group_id: string }; Returns: string }
       create_invite: { Args: never; Returns: string }
+      log_visit: {
+        Args: {
+          p_lat: number
+          p_lng: number
+          p_on: string | null
+          p_place_detail: string | null
+          p_place_key: string
+          p_place_name: string
+        }
+        Returns: string
+      }
       create_outing: {
         Args: {
           p_ends_on: string

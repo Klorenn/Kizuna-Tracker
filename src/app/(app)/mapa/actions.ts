@@ -8,6 +8,7 @@ import {
   addTripStopWith,
   cancelOutingWith,
   createOutingWith,
+  logVisitWith,
   createTripWith,
   setTripLinkWith,
   inviteCompanionWith,
@@ -59,6 +60,12 @@ export async function createOuting(input: {
     return result;
   }
   refresh();
+  return result;
+}
+
+export async function logVisit(input: { place: PlacePick; on: string; today: LocalDate }) {
+  const result = await logVisitWith(await clientRpc(), input);
+  if (result.ok) refresh();
   return result;
 }
 

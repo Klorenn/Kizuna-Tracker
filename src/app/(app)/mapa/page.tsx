@@ -219,7 +219,7 @@ export default async function MapaPage({
   }
 
   const monthIds = month.data.outings.map((outing) => outing.id);
-  const remembered = [...map.data.pins, ...map.data.plans].filter((row) => !monthIds.includes(row.id));
+  const remembered = map.data.pins.filter((row) => !monthIds.includes(row.id));
   const photos = await signedPhotos(supabase, [
     ...month.data.outings.filter((outing) => outing.isOwner || outing.inviteStatus === "accepted").map((outing) => outing.id),
     ...remembered.map((row) => row.id),
@@ -263,6 +263,7 @@ export default async function MapaPage({
               {remembered.map((row) => (
                 <div key={row.id} className="flex flex-col gap-2 border-b border-line px-4 py-3">
                   <p className="text-body text-ink">{row.placeName}</p>
+                  {row.wentOn ? <p className="text-small text-muted">{dayText(row.wentOn)} de {row.wentOn.slice(0, 4)}</p> : <p className="text-small text-muted">Sin fecha</p>}
                   <OutingPhotoUpload outingId={row.id} src={photos.get(row.id) ?? null} />
                 </div>
               ))}
@@ -372,7 +373,10 @@ export default async function MapaPage({
             <LoadFailed href="/mapa" />
           )}
           <CreateTrip outings={[...ownOutings].map(([id, placeName]) => ({ id, placeName }))} />
-          <OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />
+          <div className="flex flex-wrap gap-3">
+            <OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />
+            <OutingForm month={month.data.monthStart} today={today} title="Ya estuve" memory />
+          </div>
         </>
       ) : (
         <>
@@ -385,7 +389,12 @@ export default async function MapaPage({
             mark={<CatAnimation asset="plan" width={168} />}
             title="Todavía no marcas un lugar"
             body="Busca un lugar y elige los días. Con una salida el mes queda cumplido."
-            action={<OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />}
+            action={
+              <div className="flex flex-wrap gap-3">
+                <OutingForm month={month.data.monthStart} today={today} allowedMonths={upcomingMonthStarts(today)} company={{ friends }} />
+                <OutingForm month={month.data.monthStart} today={today} title="Ya estuve" memory />
+              </div>
+            }
           />
         </>
       )}

@@ -2,8 +2,8 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createOuting } from "@/app/(app)/mapa/actions";
-import { datesInsideMonth, monthEndOf, validateOutingDraft, type PlacePick } from "@/domain/outings";
+import { createOuting, logVisit } from "@/app/(app)/mapa/actions";
+import { cleanVisitDay, datesInsideMonth, monthEndOf, validateOutingDraft, type PlacePick } from "@/domain/outings";
 import type { LocalDate } from "@/domain/types";
 import { Button } from "@/components/ui/Button";
 import { Input } from "@/components/ui/Input";
@@ -16,6 +16,7 @@ export function OutingForm({
   allowedMonths,
   save,
   company,
+  memory = false,
 }: {
   month: LocalDate;
   today: LocalDate;
@@ -29,6 +30,7 @@ export function OutingForm({
     month: LocalDate;
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
   company?: { friends: { id: string; name: string }[] };
+  memory?: boolean;
 }) {
   const router = useRouter();
   const months = allowedMonths && allowedMonths.length > 0 ? allowedMonths : [month];
@@ -47,6 +49,7 @@ export function OutingForm({
   const [note, setNote] = useState("");
   const [friendId, setFriendId] = useState("");
   const [guestName, setGuestName] = useState("");
+  const [rememberedOn, setRememberedOn] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
@@ -96,6 +99,28 @@ export function OutingForm({
     event.preventDefault();
     if (!place) {
       setError("No encontramos ese lugar.");
+      return;
+    }
+    if (memory) {
+      const day = cleanVisitDay(rememberedOn, today);
+      if (!day.ok) {
+        setError(day.error);
+        return;
+      }
+      setError(null);
+      start(async () => {
+        const result = await logVisit({ place, on: rememberedOn, today });
+        if (!result.ok) {
+          setError(result.error);
+          return;
+        }
+        setOpen(false);
+        setQuery("");
+        setPlaces([]);
+        setPlace(null);
+        setRememberedOn("");
+        router.refresh();
+      });
       return;
     }
     const fitted = months.find((start) => datesInsideMonth(startsOn, endsOn, start));
@@ -184,7 +209,18 @@ export function OutingForm({
               ))}
             </ul>
           ) : null}
-          {company ? (
+          {memory ? (
+            <Input
+              label="Si te acuerdas, ¿cuándo?"
+              name="when"
+              type="date"
+              min={`${Number(today.slice(0, 4)) - 30}-01-01`}
+              max={today}
+              value={rememberedOn}
+              onChange={(event) => setRememberedOn(event.target.value)}
+            />
+          ) : null}
+          {!memory && company ? (
             <>
               <label className="flex flex-col gap-2 text-small text-ink">
                 Con un amigo
@@ -212,9 +248,9 @@ export function OutingForm({
               />
             </>
           ) : null}
-          <Input label="Desde" name="starts" type="date" min={boundStart} max={boundEnd} value={startsOn} onChange={(event) => setStartsOn(event.target.value)} required />
-          <Input label="Hasta" name="ends" type="date" min={boundStart} max={boundEnd} value={endsOn} onChange={(event) => setEndsOn(event.target.value)} required />
-          <label className="flex flex-col gap-2 text-small text-ink">
+          {memory ? null : <Input label="Desde" name="starts" type="date" min={boundStart} max={boundEnd} value={startsOn} onChange={(event) => setStartsOn(event.target.value)} required />}
+          {memory ? null : <Input label="Hasta" name="ends" type="date" min={boundStart} max={boundEnd} value={endsOn} onChange={(event) => setEndsOn(event.target.value)} required />}
+          {memory ? null : <label className="flex flex-col gap-2 text-small text-ink">
             Nota
             <textarea
               name="note"
@@ -223,7 +259,7 @@ export function OutingForm({
               onChange={(event) => setNote(event.target.value)}
               className="min-h-24 rounded-md border border-outline-strong bg-paper px-3 py-2 text-body text-ink"
             />
-          </label>
+          </label>}
           {error ? (
             <p role="alert" className="text-small text-ink">
               {error}

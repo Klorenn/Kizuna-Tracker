@@ -34,6 +34,7 @@ export type MapPinView = {
   isOwner?: boolean;
   companionId?: string;
   companionName?: string;
+  wentOn?: LocalDate | null;
 };
 
 export type UpcomingPlan = {
@@ -59,6 +60,7 @@ export type Rpc = (
     | "my_map"
     | "my_outing_invite"
     | "create_outing"
+    | "log_visit"
     | "update_outing"
     | "mark_outing_went"
     | "cancel_outing"
@@ -290,6 +292,10 @@ function parsePin(raw: unknown): MapPinView | null {
   if ("companion_name" in raw && raw.companion_name != null) {
     if (typeof raw.companion_name !== "string") return null;
     pin.companionName = raw.companion_name;
+  }
+  if ("went_on" in raw && raw.went_on != null) {
+    if (typeof raw.went_on !== "string" || !DATE.test(raw.went_on)) return null;
+    pin.wentOn = raw.went_on;
   }
   return pin;
 }
