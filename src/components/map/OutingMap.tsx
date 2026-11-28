@@ -99,12 +99,13 @@ function paintZones(map: Map, zones: CityZone[], accent: string) {
 function paintPins(map: Map, pins: Pin[], accent: string) {
   const data = mapPinCollection(pins.map((pin) => ({ ...pin, address: pin.address ?? null })));
   const color: ExpressionSpecification = ["case", ["==", ["get", "visited"], true], accent, PLANNED_DOT];
-  const radius: ExpressionSpecification = ["case", ["==", ["get", "visited"], true], 12, 6];
+  const radius: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 2, 3, 6, 4.5, 11, 7];
   const existing = map.getSource("places");
   if (existing) {
     (existing as GeoJSONSource).setData(data);
     map.setPaintProperty("places-dot", "circle-color", color);
     map.setPaintProperty("places-dot", "circle-radius", radius);
+    map.setPaintProperty("places-dot", "circle-stroke-width", 1.5);
     return;
   }
   map.addSource("places", { type: "geojson", data });
@@ -115,7 +116,7 @@ function paintPins(map: Map, pins: Pin[], accent: string) {
     paint: {
       "circle-radius": radius,
       "circle-color": color,
-      "circle-stroke-width": 3,
+      "circle-stroke-width": 1.5,
       "circle-stroke-color": "#f7f4ef",
     },
   });
