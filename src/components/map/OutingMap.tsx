@@ -6,7 +6,7 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 // The bundled chunk cannot sit next to maplibre-gl-worker.mjs, so the phone's worker request 404s and the canvas stays blank.
 setWorkerUrl("/maplibre-gl-worker.mjs?v=6.20.0");
-import { mapPinCollection } from "@/domain/map-marks";
+import { frameTarget, mapPinCollection } from "@/domain/map-marks";
 import { boundaryFeatureCollection, type CityZone } from "@/domain/map-zone";
 import { VisitedAddress, type VisitedPlace } from "@/components/map/VisitedAddress";
 
@@ -74,11 +74,15 @@ function mapStyle(dark: boolean): Promise<string | StyleSpecification> {
 
 function paintZones(map: Map, zones: CityZone[], accent: string) {
   const data = boundaryFeatureCollection(zones);
+  const fill: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 6, 0, 8.5, 0.55];
+  const line: ExpressionSpecification = ["interpolate", ["linear"], ["zoom"], 6, 0, 8.5, 1];
   const existing = map.getSource("zones");
   if (existing) {
     (existing as GeoJSONSource).setData(data);
     map.setPaintProperty("zones-fill", "fill-color", accent);
+    map.setPaintProperty("zones-fill", "fill-opacity", fill);
     map.setPaintProperty("zones-line", "line-color", accent);
+    map.setPaintProperty("zones-line", "line-opacity", line);
     return;
   }
   map.addSource("zones", { type: "geojson", data });
@@ -86,13 +90,13 @@ function paintZones(map: Map, zones: CityZone[], accent: string) {
     id: "zones-fill",
     type: "fill",
     source: "zones",
-    paint: { "fill-color": accent, "fill-opacity": 0.55 },
+    paint: { "fill-color": accent, "fill-opacity": fill },
   });
   map.addLayer({
     id: "zones-line",
     type: "line",
     source: "zones",
-    paint: { "line-color": accent, "line-width": 2.5 },
+    paint: { "line-color": accent, "line-width": 2.5, "line-opacity": line },
   });
 }
 
@@ -124,36 +128,30 @@ function paintPins(map: Map, pins: Pin[], accent: string) {
     id: "places-hit",
     type: "circle",
     source: "places",
-    filter: ["==", ["get", "visited"], true],
-    paint: { "circle-radius": 18, "circle-color": "#000000", "circle-opacity": 0 },
+    paint: { "circle-radius": 16, "circle-color": "#000000", "circle-opacity": 0 },
   });
 }
 
-function framePins(map: Map, pins: Pin[], zones: CityZone[]) {
-  const bounds = new LngLatBounds();
-  let any = false;
-  for (const pin of pins) {
-    bounds.extend([pin.lng, pin.lat]);
-    any = true;
-  }
-  for (const zone of zones) {
-    for (const polygon of zone.polygons) {
-      for (const point of polygon[0] ?? []) {
-        bounds.extend(point);
-        any = true;
-      }
-    }
-  }
-  if (!any) {
+function framePins(map: Map, pins: Pin[]) {
+  const target = frameTarget(pins);
+  if (target.kind === "empty") {
     map.jumpTo({ center: [-71.4, -35.4], zoom: 3.2 });
     return;
   }
-  map.fitBounds(bounds, { padding: 48, maxZoom: 9, duration: 0 });
+  if (target.kind === "place") {
+    map.jumpTo({ center: [target.lng, target.lat], zoom: target.zoom });
+    return;
+  }
+  const bounds = new LngLatBounds();
+  for (const pin of pins) bounds.extend([pin.lng, pin.lat]);
+  map.fitBounds(bounds, { padding: 64, maxZoom: target.zoomCap, duration: 0 });
 }
 
-export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
+export function OutingMap({ pins, zones, onPick }: { pins: Pin[]; zones: CityZone[]; onPick?: (id: string) => void }) {
   const host = useRef<HTMLDivElement>(null);
   const pick = useRef<(place: VisitedPlace) => void>(() => {});
+  const pickId = useRef<((id: string) => void) | null>(null);
+  pickId.current = onPick ?? null;
   const [failed, setFailed] = useState(false);
   const [picked, setPicked] = useState<VisitedPlace | null>(null);
   pick.current = setPicked;
@@ -192,6 +190,34 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
           paintZones(map, zones, accent);
           paintPins(map, pins, accent);
         };
+        const listen = () => {
+          if (!map || listening || !map.getLayer("places-hit")) return;
+          listening = true;
+          map.on("click", "places-hit", (event) => {
+            const feature = event.features?.[0];
+            if (!feature || feature.geometry.type !== "Point") return;
+            const props = feature.properties ?? {};
+            const [lng, lat] = feature.geometry.coordinates;
+            const id = typeof props.id === "string" ? props.id : "";
+            if (pickId.current && id) {
+              pickId.current(id);
+              return;
+            }
+            const raw = typeof props.address === "string" ? props.address.trim() : "";
+            pick.current({
+              title: typeof props.title === "string" && props.title.trim() ? props.title.trim() : "Lugar",
+              address: raw || null,
+              lat,
+              lng,
+            });
+          });
+          map.on("mouseenter", "places-hit", () => {
+            map?.getCanvas().style.setProperty("cursor", "pointer");
+          });
+          map.on("mouseleave", "places-hit", () => {
+            map?.getCanvas().style.removeProperty("cursor");
+          });
+        };
         map.on("style.load", () => {
           if (!map) return;
           try {
@@ -199,39 +225,21 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
           } catch {
             // Tiles can be on screen while the style still rejects new layers. idle retries.
           }
-          if (!listening && map.getLayer("places-hit")) {
-            listening = true;
-            map.on("click", "places-hit", (event) => {
-              const feature = event.features?.[0];
-              if (!feature || feature.geometry.type !== "Point") return;
-              const props = feature.properties ?? {};
-              const [lng, lat] = feature.geometry.coordinates;
-              const raw = typeof props.address === "string" ? props.address.trim() : "";
-              pick.current({
-                title: typeof props.title === "string" && props.title.trim() ? props.title.trim() : "Lugar",
-                address: raw || null,
-                lat,
-                lng,
-              });
-            });
-            map.on("mouseenter", "places-hit", () => {
-              map?.getCanvas().style.setProperty("cursor", "pointer");
-            });
-            map.on("mouseleave", "places-hit", () => {
-              map?.getCanvas().style.removeProperty("cursor");
-            });
-          }
+          listen();
           map.once("idle", () => {
-            if (!map || map.getSource("places")) return;
-            try {
-              drawMarks();
-            } catch {
-              // Tiles can finish before the style accepts the visited color.
+            if (!map) return;
+            if (!map.getSource("places")) {
+              try {
+                drawMarks();
+              } catch {
+                // Tiles can finish before the style accepts the visited color.
+              }
             }
+            listen();
           });
           if (!framed) {
             framed = true;
-            framePins(map, pins, zones);
+            framePins(map, pins);
           }
           settle();
           setFailed(false);

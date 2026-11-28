@@ -6,21 +6,19 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { InviteCompanion } from "@/components/map/InviteCompanion";
+import { MapBoard, type PlaceCardData } from "@/components/map/MapBoard";
 import { OutingForm } from "@/components/map/OutingForm";
-import { PlaceAddressButton } from "@/components/map/VisitedAddress";
-import { OutingMapLazy } from "@/components/map/OutingMapLazy";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ListCard } from "@/components/ui/ListRow";
 import { localDate } from "@/domain/dates";
 import { mapMarks } from "@/domain/map-marks";
-import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, monthStartOf, planLine, upcomingMonthStarts, visitCounts, visitLabel, type PlacePick } from "@/domain/outings";
+import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, planLine, upcomingMonthStarts, visitCounts, visitLabel } from "@/domain/outings";
 import type { LocalDate } from "@/domain/types";
 import { CreateTrip } from "@/components/map/CreateTrip";
-import { OutingPhotoUpload } from "@/components/map/OutingPhotoUpload";
 import { RepeatOuting } from "@/components/map/RepeatOuting";
 import { bondStat, distinctPlaces } from "@/domain/outing-memory";
-import { cancelOutingFromForm, markOutingWentFromForm, respondInviteFromForm } from "@/app/(app)/mapa/actions";
+import { markOutingWentFromForm, respondInviteFromForm } from "@/app/(app)/mapa/actions";
 import { loadMyMap, loadMyMonth, loadMyOutingInvite, type MapPinView, type OutingInviteView, type Rpc, type UpcomingPlan } from "@/lib/outings-data";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { createServerClient } from "@/lib/supabase/server";
@@ -39,81 +37,7 @@ function rangeText(startsOn: LocalDate, endsOn: LocalDate): string {
   return startsOn === endsOn ? dayText(startsOn) : `${dayText(startsOn)} – ${dayText(endsOn)}`;
 }
 
-function asPlace(row: {
-  placeName: string;
-  lat: number;
-  lng: number;
-  placeKey?: string;
-  placeDetail?: string | null;
-}): PlacePick | null {
-  if (!row.placeKey) return null;
-  return { name: row.placeName, detail: row.placeDetail ?? null, placeKey: row.placeKey, lat: row.lat, lng: row.lng };
-}
-
-function planMonths(today: LocalDate, startsOn: LocalDate): LocalDate[] {
-  const months = upcomingMonthStarts(today);
-  const start = monthStartOf(startsOn);
-  const oldest = `${Number(today.slice(0, 4)) - 30}-01-01`;
-  if (start >= oldest && !months.includes(start)) months.push(start);
-  return months;
-}
-
-function DestinationTools({
-  id,
-  today,
-  memory,
-  placeName,
-  lat,
-  lng,
-  placeKey,
-  placeDetail,
-  startsOn,
-  endsOn,
-  note,
-  rememberedOn,
-}: {
-  id: string;
-  today: LocalDate;
-  memory: boolean;
-  placeName: string;
-  lat: number;
-  lng: number;
-  placeKey?: string;
-  placeDetail?: string | null;
-  startsOn: LocalDate;
-  endsOn: LocalDate;
-  note: string | null;
-  rememberedOn: string;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-3">
-      <OutingForm
-        quiet
-        title="Editar"
-        month={memory ? monthStartOf(today) : monthStartOf(startsOn)}
-        today={today}
-        memory={memory}
-        allowedMonths={memory ? undefined : planMonths(today, startsOn)}
-        editing={{
-          id,
-          place: asPlace({ placeName, lat, lng, placeKey, placeDetail }),
-          startsOn,
-          endsOn,
-          note: note ?? "",
-          rememberedOn,
-        }}
-      />
-      <form action={cancelOutingFromForm}>
-        <input type="hidden" name="id" value={id} />
-        <button type="submit" className="inline-flex h-12 items-center text-body text-ink">
-          Eliminar
-        </button>
-      </form>
-    </div>
-  );
-}
-
-function UpcomingPlans({ plans, today }: { plans: UpcomingPlan[]; today: LocalDate }) {
+function UpcomingPlans({ plans }: { plans: UpcomingPlan[] }) {
   if (plans.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Planes">
@@ -127,22 +51,6 @@ function UpcomingPlans({ plans, today }: { plans: UpcomingPlan[]; today: LocalDa
               <p className="text-small text-muted">
                 {monthLabel(plan.monthStart)} · {rangeText(plan.startsOn, plan.endsOn)}
               </p>
-              {plan.isOwner ? (
-                <DestinationTools
-                  id={plan.id}
-                  today={today}
-                  memory={false}
-                  placeName={plan.placeName}
-                  lat={plan.lat}
-                  lng={plan.lng}
-                  placeKey={plan.placeKey}
-                  placeDetail={plan.placeDetail}
-                  startsOn={plan.startsOn}
-                  endsOn={plan.endsOn}
-                  note={plan.note ?? null}
-                  rememberedOn=""
-                />
-              ) : null}
             </div>
           </div>
         ))}
@@ -310,11 +218,11 @@ export default async function MapaPage({
     );
   }
 
-  const monthIds = month.data.outings.map((outing) => outing.id);
-  const remembered = map.data.pins.filter((row) => !monthIds.includes(row.id));
   const photos = await signedPhotos(supabase, [
+    ...map.data.pins.map((pin) => pin.id),
+    ...map.data.plans.map((plan) => plan.id),
+    ...map.data.upcoming.map((plan) => plan.id),
     ...month.data.outings.filter((outing) => outing.isOwner || outing.inviteStatus === "accepted").map((outing) => outing.id),
-    ...remembered.map((row) => row.id),
   ]);
   const monthEmpty = screen.kind === "empty" || (screen.kind === "ready" && screen.showMonthEmptyCopy);
   const marks = mapMarks({
@@ -335,6 +243,78 @@ export default async function MapaPage({
   });
   const showPlaces = screen.kind === "ready" || marks.length > 0;
   const zones = map.data.pins.length > 0 ? await cityZones(map.data.pins) : [];
+  const cards: Record<string, PlaceCardData> = {};
+  for (const pin of map.data.pins) {
+    cards[pin.id] = {
+      id: pin.id,
+      title: pin.placeName,
+      address: pin.placeDetail ?? null,
+      lat: pin.lat,
+      lng: pin.lng,
+      when: pin.wentOn ? `${dayText(pin.wentOn)} de ${pin.wentOn.slice(0, 4)}` : "Sin fecha",
+      photo: photos.get(pin.id) ?? null,
+      owner: pin.isOwner !== false,
+      canPhoto: true,
+      memory: true,
+      placeName: pin.placeName,
+      placeKey: pin.placeKey,
+      placeDetail: pin.placeDetail,
+      startsOn: pin.wentOn ?? today,
+      endsOn: pin.wentOn ?? today,
+      note: pin.note ?? null,
+      rememberedOn: pin.wentOn ?? "",
+      today,
+    };
+  }
+  for (const outing of month.data.outings) {
+    if (cards[outing.id]) continue;
+    const withName = outing.companionName && outing.inviteStatus !== null ? outing.companionName : outing.guestName;
+    cards[outing.id] = {
+      id: outing.id,
+      title: planLine(outing.placeName, withName),
+      address: outing.placeDetail,
+      lat: outing.lat,
+      lng: outing.lng,
+      when: rangeText(outing.startsOn, outing.endsOn),
+      photo: photos.get(outing.id) ?? null,
+      owner: outing.isOwner,
+      canPhoto: outing.isOwner || outing.inviteStatus === "accepted",
+      memory: outing.status === "went",
+      placeName: outing.placeName,
+      placeKey: outing.placeKey,
+      placeDetail: outing.placeDetail,
+      startsOn: outing.startsOn,
+      endsOn: outing.endsOn,
+      note: outing.note,
+      rememberedOn: outing.wentOn ?? "",
+      today,
+    };
+  }
+  for (const plan of [...map.data.plans, ...map.data.upcoming]) {
+    if (cards[plan.id]) continue;
+    const startsOn = plan.startsOn ?? today;
+    const endsOn = plan.endsOn ?? startsOn;
+    cards[plan.id] = {
+      id: plan.id,
+      title: plan.placeName,
+      address: plan.placeDetail ?? null,
+      lat: plan.lat,
+      lng: plan.lng,
+      when: plan.startsOn && plan.endsOn ? rangeText(plan.startsOn, plan.endsOn) : "Planeado",
+      photo: photos.get(plan.id) ?? null,
+      owner: plan.isOwner !== false,
+      canPhoto: plan.isOwner !== false,
+      memory: false,
+      placeName: plan.placeName,
+      placeKey: plan.placeKey,
+      placeDetail: plan.placeDetail,
+      startsOn,
+      endsOn,
+      note: plan.note ?? null,
+      rememberedOn: "",
+      today,
+    };
+  }
 
   return (
     <Shell>
@@ -345,9 +325,7 @@ export default async function MapaPage({
       </div>
       {showPlaces ? (
         <>
-          <div className="h-[420px] overflow-hidden rounded-[15px] border border-line">
-            <OutingMapLazy pins={marks} zones={zones} />
-          </div>
+          <MapBoard pins={marks} zones={zones} cards={cards} />
           {marks.some((mark) => mark.visited) ? (
             <p className="text-small text-muted">En color están los lugares que ya visitaste.</p>
           ) : null}
@@ -361,33 +339,6 @@ export default async function MapaPage({
               {line}
             </p>
           ))}
-          {remembered.length > 0 ? (
-            <ListCard>
-              {remembered.map((row) => (
-                <div key={row.id} className="flex flex-col gap-2 border-b border-line px-4 py-3">
-                  <PlaceAddressButton place={{ title: row.placeName, address: row.placeDetail ?? null, lat: row.lat, lng: row.lng }} />
-                  {row.wentOn ? <p className="text-small text-muted">{dayText(row.wentOn)} de {row.wentOn.slice(0, 4)}</p> : <p className="text-small text-muted">Sin fecha</p>}
-                  {row.isOwner !== false ? (
-                    <DestinationTools
-                      id={row.id}
-                      today={today}
-                      memory
-                      placeName={row.placeName}
-                      lat={row.lat}
-                      lng={row.lng}
-                      placeKey={row.placeKey}
-                      placeDetail={row.placeDetail}
-                      startsOn={row.wentOn ?? today}
-                      endsOn={row.wentOn ?? today}
-                      note={row.note ?? null}
-                      rememberedOn={row.wentOn ?? ""}
-                    />
-                  ) : null}
-                  <OutingPhotoUpload outingId={row.id} src={photos.get(row.id) ?? null} />
-                </div>
-              ))}
-            </ListCard>
-          ) : null}
           <ListCard>
             {monthEmpty ? (
               <p className="px-4 py-3 text-body text-muted">Este mes todavía no tiene una salida.</p>
@@ -419,14 +370,7 @@ export default async function MapaPage({
                         box
                       )}
                       <div className="flex flex-col gap-1">
-                        {outing.status === "went" ? (
-                          <PlaceAddressButton
-                            label={title}
-                            place={{ title: outing.placeName, address: outing.placeDetail, lat: outing.lat, lng: outing.lng }}
-                          />
-                        ) : (
-                          <p className="text-body text-ink">{title}</p>
-                        )}
+                        <p className="text-body text-ink">{title}</p>
                         <p className="text-small text-muted">{rangeText(outing.startsOn, outing.endsOn)}</p>
                       </div>
                     </div>
@@ -438,58 +382,13 @@ export default async function MapaPage({
                     {outing.isOwner && outing.status === "planned" && outing.inviteStatus === null ? (
                       <InviteCompanion outingId={outing.id} friends={friends} />
                     ) : null}
-                    {outing.isOwner ? (
-                      <DestinationTools
-                        id={outing.id}
-                        today={today}
-                        memory={outing.status === "went"}
-                        placeName={outing.placeName}
-                        lat={outing.lat}
-                        lng={outing.lng}
-                        placeKey={outing.placeKey}
-                        placeDetail={outing.placeDetail}
-                        startsOn={outing.startsOn}
-                        endsOn={outing.endsOn}
-                        note={outing.note}
-                        rememberedOn={outing.wentOn ?? ""}
-                      />
-                    ) : null}
                     {outing.isOwner && outing.status === "went" ? <RepeatOuting outingId={outing.id} /> : null}
-                    {outing.isOwner || outing.inviteStatus === "accepted" ? (
-                      <OutingPhotoUpload outingId={outing.id} src={photos.get(outing.id) ?? null} />
-                    ) : null}
                   </div>
                 );
               })
             )}
           </ListCard>
-          {map.data.plans.length > 0 ? (
-            <ListCard>
-              {map.data.plans.map((plan) => (
-                <div key={plan.id} className="flex flex-col gap-1 border-b border-line px-4 py-3">
-                  <p className="text-body text-ink">{plan.placeName}</p>
-                  <p className="text-small text-muted">Planeado</p>
-                  {plan.isOwner !== false && plan.startsOn && plan.endsOn ? (
-                    <DestinationTools
-                      id={plan.id}
-                      today={today}
-                      memory={false}
-                      placeName={plan.placeName}
-                      lat={plan.lat}
-                      lng={plan.lng}
-                      placeKey={plan.placeKey}
-                      placeDetail={plan.placeDetail}
-                      startsOn={plan.startsOn}
-                      endsOn={plan.endsOn}
-                      note={plan.note ?? null}
-                      rememberedOn=""
-                    />
-                  ) : null}
-                </div>
-              ))}
-            </ListCard>
-          ) : null}
-          <UpcomingPlans plans={map.data.upcoming} today={today} />
+          <UpcomingPlans plans={map.data.upcoming} />
           {months.ok ? (
             months.data.length > 0 ? (
               <section className="flex flex-col gap-2" aria-label="Meses">
@@ -530,11 +429,9 @@ export default async function MapaPage({
         </>
       ) : (
         <>
-          <div className="h-[420px] overflow-hidden rounded-[15px] border border-line">
-            <OutingMapLazy pins={[]} zones={[]} />
-          </div>
+          <MapBoard pins={[]} zones={[]} cards={{}} />
           {!months.ok || !trips.ok ? <LoadFailed href="/mapa" /> : null}
-          <UpcomingPlans plans={map.data.upcoming} today={today} />
+          <UpcomingPlans plans={map.data.upcoming} />
           <EmptyState
             mark={<CatAnimation asset="plan" width={168} />}
             title="Todavía no marcas un lugar"

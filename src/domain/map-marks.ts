@@ -26,12 +26,18 @@ export function mapMarks(input: {
   return marks
 }
 
+export function frameTarget(pins: readonly { lat: number; lng: number }[]) {
+  if (pins.length === 0) return { kind: "empty" as const }
+  if (pins.length === 1) return { kind: "place" as const, lng: pins[0].lng, lat: pins[0].lat, zoom: 10 }
+  return { kind: "places" as const, zoomCap: 10 }
+}
+
 export function mapPinCollection(marks: readonly MapMark[]) {
   return {
     type: "FeatureCollection" as const,
     features: marks.map((mark) => ({
       type: "Feature" as const,
-      properties: { visited: mark.visited, title: mark.title, address: mark.address ?? "" },
+      properties: { id: mark.id, visited: mark.visited, title: mark.title, address: mark.address ?? "" },
       geometry: { type: "Point" as const, coordinates: [mark.lng, mark.lat] as [number, number] },
     })),
   }
