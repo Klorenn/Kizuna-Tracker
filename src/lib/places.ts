@@ -53,6 +53,25 @@ export type CityOutline = { id: string; polygons: ZonePolygon[] };
 const CITY_ZOOMS = [10, 12];
 
 /** The commune that contains the point, as its real outline. */
+/** Address of a place we already saved. Uses that place's coordinates, never the phone. */
+export async function addressAt(lat: number, lng: number, fetchImpl: typeof fetch = fetch): Promise<string | null> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
+  if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;
+  const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&zoom=18&lat=${lat}&lon=${lng}`;
+  try {
+    const response = await fetchImpl(url, { headers: { "User-Agent": USER_AGENT, "Accept-Language": "es" } });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    if (!body || typeof body !== "object") return null;
+    const display = (body as { display_name?: unknown }).display_name;
+    if (typeof display !== "string") return null;
+    const line = display.trim().slice(0, 180);
+    return line || null;
+  } catch {
+    return null;
+  }
+}
+
 export async function cityOutline(lat: number, lng: number, fetchImpl: typeof fetch = fetch): Promise<CityOutline | null> {
   if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
   if (lat < -90 || lat > 90 || lng < -180 || lng > 180) return null;

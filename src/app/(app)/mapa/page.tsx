@@ -7,6 +7,7 @@ import { redirect } from "next/navigation";
 import { LoadFailed } from "@/components/LoadFailed";
 import { InviteCompanion } from "@/components/map/InviteCompanion";
 import { OutingForm } from "@/components/map/OutingForm";
+import { PlaceAddressButton } from "@/components/map/VisitedAddress";
 import { OutingMapLazy } from "@/components/map/OutingMapLazy";
 import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
@@ -317,7 +318,13 @@ export default async function MapaPage({
   ]);
   const monthEmpty = screen.kind === "empty" || (screen.kind === "ready" && screen.showMonthEmptyCopy);
   const marks = mapMarks({
-    visited: map.data.pins.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, title: pin.placeName })),
+    visited: map.data.pins.map((pin) => ({
+      id: pin.id,
+      lat: pin.lat,
+      lng: pin.lng,
+      title: pin.placeName,
+      address: pin.placeDetail ?? null,
+    })),
     planned: [
       ...map.data.plans.map((plan) => ({ id: plan.id, lat: plan.lat, lng: plan.lng, title: plan.placeName })),
       ...month.data.outings
@@ -358,7 +365,7 @@ export default async function MapaPage({
             <ListCard>
               {remembered.map((row) => (
                 <div key={row.id} className="flex flex-col gap-2 border-b border-line px-4 py-3">
-                  <p className="text-body text-ink">{row.placeName}</p>
+                  <PlaceAddressButton place={{ title: row.placeName, address: row.placeDetail ?? null, lat: row.lat, lng: row.lng }} />
                   {row.wentOn ? <p className="text-small text-muted">{dayText(row.wentOn)} de {row.wentOn.slice(0, 4)}</p> : <p className="text-small text-muted">Sin fecha</p>}
                   {row.isOwner !== false ? (
                     <DestinationTools
@@ -412,7 +419,14 @@ export default async function MapaPage({
                         box
                       )}
                       <div className="flex flex-col gap-1">
-                        <p className="text-body text-ink">{title}</p>
+                        {outing.status === "went" ? (
+                          <PlaceAddressButton
+                            label={title}
+                            place={{ title: outing.placeName, address: outing.placeDetail, lat: outing.lat, lng: outing.lng }}
+                          />
+                        ) : (
+                          <p className="text-body text-ink">{title}</p>
+                        )}
                         <p className="text-small text-muted">{rangeText(outing.startsOn, outing.endsOn)}</p>
                       </div>
                     </div>

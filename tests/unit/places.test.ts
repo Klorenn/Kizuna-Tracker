@@ -1,6 +1,6 @@
 import { describe, expect, test } from 'vitest'
 import type { PlacePick } from '@/domain/outings'
-import { cityOutline, cityZones, PlaceSearchError, placeSearchResponse, searchPlaces } from '@/lib/places'
+import { addressAt, cityOutline, cityZones, PlaceSearchError, placeSearchResponse, searchPlaces } from '@/lib/places'
 
 const nominatimHit = {
   name: 'Termas Geométricas',
@@ -14,6 +14,22 @@ const nominatimHit = {
 function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } })
 }
+
+describe('addressAt', () => {
+  test('una coordenada inválida no llama a la red y una válida devuelve la dirección', async () => {
+    let calls = 0
+    const fetchImpl: typeof fetch = async (input) => {
+      calls += 1
+      expect(String(input)).toContain('nominatim.openstreetmap.org/reverse')
+      expect(String(input)).not.toContain('polygon')
+      return jsonResponse({ display_name: 'Puerto Natales, Última Esperanza, Magallanes, Chile' })
+    }
+    await expect(addressAt(Number.NaN, -70, fetchImpl)).resolves.toBeNull()
+    expect(calls).toBe(0)
+    await expect(addressAt(-51.73, -72.5, fetchImpl)).resolves.toBe('Puerto Natales, Última Esperanza, Magallanes, Chile')
+    expect(calls).toBe(1)
+  })
+})
 
 describe('searchPlaces', () => {
   test('una consulta corta no llama a la red', async () => {
