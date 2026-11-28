@@ -137,6 +137,7 @@ describe('parseMapPayload', () => {
           endsOn: '2027-01-12',
           monthStart: '2027-01-01',
           guestName: 'Mamá',
+          isOwner: false,
         },
       ],
     })

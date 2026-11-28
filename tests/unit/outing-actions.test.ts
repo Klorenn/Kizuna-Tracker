@@ -10,6 +10,7 @@ import {
   repeatOutingWith,
   respondInviteWith,
   updateOutingWith,
+  updateVisitWith,
   type OutingActionDeps,
   type Rpc,
 } from '@/lib/outing-actions'
@@ -229,6 +230,21 @@ describe('cancel y update', () => {
     const alone: Rpc = async () => ({ data: { invitee_id: null }, error: null })
     expect(await cancelOutingWith(quietDeps(alone, notify), id)).toEqual({ ok: true, inviteeId: null })
     expect(notices).toHaveLength(1)
+  })
+})
+
+describe('updateVisitWith', () => {
+  test('un día futuro no llama al RPC y un día vacío manda fecha nula', async () => {
+    let args: unknown
+    const rpc: Rpc = async (fn, input) => {
+      expect(fn).toBe('update_outing')
+      args = input
+      return { data: null, error: null }
+    }
+    expect(await updateVisitWith(rpc, { id, place, on: '2027-01-10', today: '2026-11-28' })).toMatchObject({ ok: false })
+    expect(args).toBeUndefined()
+    expect(await updateVisitWith(rpc, { id, place, on: '  ', today: '2026-11-28' })).toEqual({ ok: true })
+    expect(args).toMatchObject({ p_id: id, p_starts_on: null, p_ends_on: null, p_place_name: place.name })
   })
 })
 

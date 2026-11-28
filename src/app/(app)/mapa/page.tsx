@@ -12,7 +12,8 @@ import { Button } from "@/components/ui/Button";
 import { EmptyState } from "@/components/ui/EmptyState";
 import { ListCard } from "@/components/ui/ListRow";
 import { localDate } from "@/domain/dates";
-import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, planLine, upcomingMonthStarts, visitCounts, visitLabel } from "@/domain/outings";
+import { mapMarks } from "@/domain/map-marks";
+import { canMarkWent, mapScreen, monthIndexLabel, monthLabel, monthStartOf, planLine, upcomingMonthStarts, visitCounts, visitLabel, type PlacePick } from "@/domain/outings";
 import type { LocalDate } from "@/domain/types";
 import { CreateTrip } from "@/components/map/CreateTrip";
 import { OutingPhotoUpload } from "@/components/map/OutingPhotoUpload";
@@ -37,7 +38,81 @@ function rangeText(startsOn: LocalDate, endsOn: LocalDate): string {
   return startsOn === endsOn ? dayText(startsOn) : `${dayText(startsOn)} – ${dayText(endsOn)}`;
 }
 
-function UpcomingPlans({ plans }: { plans: UpcomingPlan[] }) {
+function asPlace(row: {
+  placeName: string;
+  lat: number;
+  lng: number;
+  placeKey?: string;
+  placeDetail?: string | null;
+}): PlacePick | null {
+  if (!row.placeKey) return null;
+  return { name: row.placeName, detail: row.placeDetail ?? null, placeKey: row.placeKey, lat: row.lat, lng: row.lng };
+}
+
+function planMonths(today: LocalDate, startsOn: LocalDate): LocalDate[] {
+  const months = upcomingMonthStarts(today);
+  const start = monthStartOf(startsOn);
+  const oldest = `${Number(today.slice(0, 4)) - 30}-01-01`;
+  if (start >= oldest && !months.includes(start)) months.push(start);
+  return months;
+}
+
+function DestinationTools({
+  id,
+  today,
+  memory,
+  placeName,
+  lat,
+  lng,
+  placeKey,
+  placeDetail,
+  startsOn,
+  endsOn,
+  note,
+  rememberedOn,
+}: {
+  id: string;
+  today: LocalDate;
+  memory: boolean;
+  placeName: string;
+  lat: number;
+  lng: number;
+  placeKey?: string;
+  placeDetail?: string | null;
+  startsOn: LocalDate;
+  endsOn: LocalDate;
+  note: string | null;
+  rememberedOn: string;
+}) {
+  return (
+    <div className="flex flex-wrap items-center gap-3">
+      <OutingForm
+        quiet
+        title="Editar"
+        month={memory ? monthStartOf(today) : monthStartOf(startsOn)}
+        today={today}
+        memory={memory}
+        allowedMonths={memory ? undefined : planMonths(today, startsOn)}
+        editing={{
+          id,
+          place: asPlace({ placeName, lat, lng, placeKey, placeDetail }),
+          startsOn,
+          endsOn,
+          note: note ?? "",
+          rememberedOn,
+        }}
+      />
+      <form action={cancelOutingFromForm}>
+        <input type="hidden" name="id" value={id} />
+        <button type="submit" className="inline-flex h-12 items-center text-body text-ink">
+          Eliminar
+        </button>
+      </form>
+    </div>
+  );
+}
+
+function UpcomingPlans({ plans, today }: { plans: UpcomingPlan[]; today: LocalDate }) {
   if (plans.length === 0) return null;
   return (
     <section className="flex flex-col gap-2" aria-label="Planes">
@@ -51,6 +126,22 @@ function UpcomingPlans({ plans }: { plans: UpcomingPlan[] }) {
               <p className="text-small text-muted">
                 {monthLabel(plan.monthStart)} · {rangeText(plan.startsOn, plan.endsOn)}
               </p>
+              {plan.isOwner ? (
+                <DestinationTools
+                  id={plan.id}
+                  today={today}
+                  memory={false}
+                  placeName={plan.placeName}
+                  lat={plan.lat}
+                  lng={plan.lng}
+                  placeKey={plan.placeKey}
+                  placeDetail={plan.placeDetail}
+                  startsOn={plan.startsOn}
+                  endsOn={plan.endsOn}
+                  note={plan.note ?? null}
+                  rememberedOn=""
+                />
+              ) : null}
             </div>
           </div>
         ))}
@@ -225,8 +316,18 @@ export default async function MapaPage({
     ...remembered.map((row) => row.id),
   ]);
   const monthEmpty = screen.kind === "empty" || (screen.kind === "ready" && screen.showMonthEmptyCopy);
-  const showPlaces = screen.kind === "ready" || map.data.plans.length > 0;
-  const zones = showPlaces ? await cityZones(map.data.pins) : [];
+  const marks = mapMarks({
+    visited: map.data.pins.map((pin) => ({ id: pin.id, lat: pin.lat, lng: pin.lng, title: pin.placeName })),
+    planned: [
+      ...map.data.plans.map((plan) => ({ id: plan.id, lat: plan.lat, lng: plan.lng, title: plan.placeName })),
+      ...month.data.outings
+        .filter((outing) => outing.status === "planned")
+        .map((outing) => ({ id: outing.id, lat: outing.lat, lng: outing.lng, title: outing.placeName })),
+      ...map.data.upcoming.map((plan) => ({ id: plan.id, lat: plan.lat, lng: plan.lng, title: plan.placeName })),
+    ],
+  });
+  const showPlaces = screen.kind === "ready" || marks.length > 0;
+  const zones = map.data.pins.length > 0 ? await cityZones(map.data.pins) : [];
 
   return (
     <Shell>
@@ -238,16 +339,11 @@ export default async function MapaPage({
       {showPlaces ? (
         <>
           <div className="h-[420px] overflow-hidden rounded-[15px] border border-line">
-            <OutingMapLazy
-              pins={map.data.pins.map((pin) => ({
-                id: pin.id,
-                lat: pin.lat,
-                lng: pin.lng,
-                title: pin.placeName,
-              }))}
-              zones={zones}
-            />
+            <OutingMapLazy pins={marks} zones={zones} />
           </div>
+          {marks.some((mark) => mark.visited) ? (
+            <p className="text-small text-muted">En color están los lugares que ya visitaste.</p>
+          ) : null}
           {placeLabels(map.data.pins).map((label) => (
             <p key={label} className="text-small text-muted">
               {label}
@@ -264,6 +360,22 @@ export default async function MapaPage({
                 <div key={row.id} className="flex flex-col gap-2 border-b border-line px-4 py-3">
                   <p className="text-body text-ink">{row.placeName}</p>
                   {row.wentOn ? <p className="text-small text-muted">{dayText(row.wentOn)} de {row.wentOn.slice(0, 4)}</p> : <p className="text-small text-muted">Sin fecha</p>}
+                  {row.isOwner !== false ? (
+                    <DestinationTools
+                      id={row.id}
+                      today={today}
+                      memory
+                      placeName={row.placeName}
+                      lat={row.lat}
+                      lng={row.lng}
+                      placeKey={row.placeKey}
+                      placeDetail={row.placeDetail}
+                      startsOn={row.wentOn ?? today}
+                      endsOn={row.wentOn ?? today}
+                      note={row.note ?? null}
+                      rememberedOn={row.wentOn ?? ""}
+                    />
+                  ) : null}
                   <OutingPhotoUpload outingId={row.id} src={photos.get(row.id) ?? null} />
                 </div>
               ))}
@@ -312,13 +424,21 @@ export default async function MapaPage({
                     {outing.isOwner && outing.status === "planned" && outing.inviteStatus === null ? (
                       <InviteCompanion outingId={outing.id} friends={friends} />
                     ) : null}
-                    {outing.isOwner && outing.status === "planned" ? (
-                      <form action={cancelOutingFromForm}>
-                        <input type="hidden" name="id" value={outing.id} />
-                        <button type="submit" className="inline-flex h-12 items-center text-body text-ink">
-                          Quitar
-                        </button>
-                      </form>
+                    {outing.isOwner ? (
+                      <DestinationTools
+                        id={outing.id}
+                        today={today}
+                        memory={outing.status === "went"}
+                        placeName={outing.placeName}
+                        lat={outing.lat}
+                        lng={outing.lng}
+                        placeKey={outing.placeKey}
+                        placeDetail={outing.placeDetail}
+                        startsOn={outing.startsOn}
+                        endsOn={outing.endsOn}
+                        note={outing.note}
+                        rememberedOn={outing.wentOn ?? ""}
+                      />
                     ) : null}
                     {outing.isOwner && outing.status === "went" ? <RepeatOuting outingId={outing.id} /> : null}
                     {outing.isOwner || outing.inviteStatus === "accepted" ? (
@@ -335,11 +455,27 @@ export default async function MapaPage({
                 <div key={plan.id} className="flex flex-col gap-1 border-b border-line px-4 py-3">
                   <p className="text-body text-ink">{plan.placeName}</p>
                   <p className="text-small text-muted">Planeado</p>
+                  {plan.isOwner !== false && plan.startsOn && plan.endsOn ? (
+                    <DestinationTools
+                      id={plan.id}
+                      today={today}
+                      memory={false}
+                      placeName={plan.placeName}
+                      lat={plan.lat}
+                      lng={plan.lng}
+                      placeKey={plan.placeKey}
+                      placeDetail={plan.placeDetail}
+                      startsOn={plan.startsOn}
+                      endsOn={plan.endsOn}
+                      note={plan.note ?? null}
+                      rememberedOn=""
+                    />
+                  ) : null}
                 </div>
               ))}
             </ListCard>
           ) : null}
-          <UpcomingPlans plans={map.data.upcoming} />
+          <UpcomingPlans plans={map.data.upcoming} today={today} />
           {months.ok ? (
             months.data.length > 0 ? (
               <section className="flex flex-col gap-2" aria-label="Meses">
@@ -384,7 +520,7 @@ export default async function MapaPage({
             <OutingMapLazy pins={[]} zones={[]} />
           </div>
           {!months.ok || !trips.ok ? <LoadFailed href="/mapa" /> : null}
-          <UpcomingPlans plans={map.data.upcoming} />
+          <UpcomingPlans plans={map.data.upcoming} today={today} />
           <EmptyState
             mark={<CatAnimation asset="plan" width={168} />}
             title="Todavía no marcas un lugar"

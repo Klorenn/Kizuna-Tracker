@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
-import { createOuting, logVisit } from "@/app/(app)/mapa/actions";
+import { createOuting, logVisit, updateOuting, updateVisit } from "@/app/(app)/mapa/actions";
 import { cleanVisitDay, datesInsideMonth, monthEndOf, validateOutingDraft, type PlacePick } from "@/domain/outings";
 import type { LocalDate } from "@/domain/types";
 import { Button } from "@/components/ui/Button";
@@ -17,6 +17,8 @@ export function OutingForm({
   save,
   company,
   memory = false,
+  quiet = false,
+  editing,
 }: {
   month: LocalDate;
   today: LocalDate;
@@ -31,6 +33,15 @@ export function OutingForm({
   }) => Promise<{ ok: true } | { ok: false; error: string }>;
   company?: { friends: { id: string; name: string }[] };
   memory?: boolean;
+  quiet?: boolean;
+  editing?: {
+    id: string;
+    place: PlacePick | null;
+    startsOn: string;
+    endsOn: string;
+    note: string;
+    rememberedOn?: string;
+  };
 }) {
   const router = useRouter();
   const months = allowedMonths && allowedMonths.length > 0 ? allowedMonths : [month];
@@ -38,18 +49,18 @@ export function OutingForm({
   const boundEnd = monthEndOf(months.reduce((latest, start) => (start > latest ? start : latest)));
   const initialDay = today >= boundStart && today <= boundEnd ? today : boundStart;
   const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(editing?.place?.name ?? "");
   const [places, setPlaces] = useState<PlacePick[]>([]);
-  const [place, setPlace] = useState<PlacePick | null>(null);
+  const [place, setPlace] = useState<PlacePick | null>(editing?.place ?? null);
   const [empty, setEmpty] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchError, setSearchError] = useState<string | null>(null);
-  const [startsOn, setStartsOn] = useState(initialDay);
-  const [endsOn, setEndsOn] = useState(initialDay);
-  const [note, setNote] = useState("");
+  const [startsOn, setStartsOn] = useState(editing?.startsOn || initialDay);
+  const [endsOn, setEndsOn] = useState(editing?.endsOn || initialDay);
+  const [note, setNote] = useState(editing?.note ?? "");
   const [friendId, setFriendId] = useState("");
   const [guestName, setGuestName] = useState("");
-  const [rememberedOn, setRememberedOn] = useState("");
+  const [rememberedOn, setRememberedOn] = useState(editing?.rememberedOn ?? "");
   const [error, setError] = useState<string | null>(null);
   const [busy, start] = useTransition();
 
@@ -109,7 +120,9 @@ export function OutingForm({
       }
       setError(null);
       start(async () => {
-        const result = await logVisit({ place, on: rememberedOn, today });
+        const result = editing
+          ? await updateVisit({ id: editing.id, place, on: rememberedOn, today })
+          : await logVisit({ place, on: rememberedOn, today });
         if (!result.ok) {
           setError(result.error);
           return;
@@ -145,7 +158,9 @@ export function OutingForm({
     }
     setError(null);
     start(async () => {
-      const result = save
+      const result = editing
+        ? await updateOuting({ id: editing.id, place, startsOn, endsOn, note, month: fitted })
+        : save
         ? await save({ place, startsOn, endsOn, note, month: fitted })
         : await createOuting({
             place,
@@ -171,9 +186,15 @@ export function OutingForm({
 
   return (
     <>
-      <Button type="button" onClick={() => setOpen(true)}>
-        {title}
-      </Button>
+      {quiet ? (
+        <button type="button" onClick={() => setOpen(true)} className="inline-flex h-12 items-center text-body text-ink">
+          {title}
+        </button>
+      ) : (
+        <Button type="button" onClick={() => setOpen(true)}>
+          {title}
+        </Button>
+      )}
       <Sheet open={open} title={title} onClose={() => setOpen(false)} tall>
         <form onSubmit={submit} className="flex flex-col gap-4">
           <Input label="Busca un lugar" name="place" value={query} onChange={(event) => setQuery(event.target.value)} autoComplete="off" />

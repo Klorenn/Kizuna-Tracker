@@ -31,6 +31,10 @@ export type MapPinView = {
   lat: number;
   lng: number;
   placeKey?: string;
+  placeDetail?: string | null;
+  startsOn?: LocalDate;
+  endsOn?: LocalDate;
+  note?: string | null;
   isOwner?: boolean;
   companionId?: string;
   companionName?: string;
@@ -46,6 +50,10 @@ export type UpcomingPlan = {
   endsOn: LocalDate;
   monthStart: LocalDate;
   guestName: string | null;
+  placeKey?: string;
+  placeDetail?: string | null;
+  note?: string | null;
+  isOwner: boolean;
 };
 
 export type MapPayload = {
@@ -235,7 +243,12 @@ function parseUpcoming(raw: unknown): UpcomingPlan | null {
   if (typeof raw.month_start !== "string" || !DATE.test(raw.month_start)) return null;
   const guestName = readGuest(raw);
   if (guestName === undefined) return null;
-  return {
+  let placeKey: string | undefined;
+  if ("place_key" in raw && raw.place_key != null) {
+    if (typeof raw.place_key !== "string" || !isPlaceKey(raw.place_key)) return null;
+    placeKey = raw.place_key;
+  }
+  const plan: UpcomingPlan = {
     id: raw.id,
     placeName: raw.place_name,
     lat: raw.lat,
@@ -244,7 +257,12 @@ function parseUpcoming(raw: unknown): UpcomingPlan | null {
     endsOn: raw.ends_on,
     monthStart: raw.month_start,
     guestName,
+    isOwner: raw.is_owner === true,
   };
+  if (placeKey) plan.placeKey = placeKey;
+  if (typeof raw.place_detail === "string") plan.placeDetail = raw.place_detail;
+  if (typeof raw.note === "string") plan.note = raw.note;
+  return plan;
 }
 
 function readCompanion(
@@ -296,6 +314,22 @@ function parsePin(raw: unknown): MapPinView | null {
   if ("went_on" in raw && raw.went_on != null) {
     if (typeof raw.went_on !== "string" || !DATE.test(raw.went_on)) return null;
     pin.wentOn = raw.went_on;
+  }
+  if ("place_detail" in raw && raw.place_detail != null) {
+    if (typeof raw.place_detail !== "string") return null;
+    pin.placeDetail = raw.place_detail;
+  }
+  if ("starts_on" in raw && raw.starts_on != null) {
+    if (typeof raw.starts_on !== "string" || !DATE.test(raw.starts_on)) return null;
+    pin.startsOn = raw.starts_on;
+  }
+  if ("ends_on" in raw && raw.ends_on != null) {
+    if (typeof raw.ends_on !== "string" || !DATE.test(raw.ends_on)) return null;
+    pin.endsOn = raw.ends_on;
+  }
+  if ("note" in raw && raw.note != null) {
+    if (typeof raw.note !== "string") return null;
+    pin.note = raw.note;
   }
   return pin;
 }

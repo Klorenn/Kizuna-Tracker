@@ -78,6 +78,28 @@ export async function logVisitWith(
   return { ok: true, id: data };
 }
 
+export async function updateVisitWith(
+  rpc: Rpc,
+  input: { id: string; place: PlacePick | null; on: string; today: LocalDate },
+): Promise<{ ok: true } | { ok: false; error: string }> {
+  if (!input.place) return { ok: false, error: "No encontramos ese lugar." };
+  const day = cleanVisitDay(input.on, input.today);
+  if (!day.ok) return { ok: false, error: day.error };
+  const { error } = await rpc("update_outing", {
+    p_id: input.id,
+    p_place_name: input.place.name,
+    p_place_detail: input.place.detail,
+    p_place_key: input.place.placeKey,
+    p_lat: input.place.lat,
+    p_lng: input.place.lng,
+    p_starts_on: day.day,
+    p_ends_on: day.day,
+    p_note: "",
+  });
+  if (error) return { ok: false, error: outingErrorCopy(error.message) };
+  return { ok: true };
+}
+
 export async function updateOutingWith(
   rpc: Rpc,
   input: Draft & { id: string },

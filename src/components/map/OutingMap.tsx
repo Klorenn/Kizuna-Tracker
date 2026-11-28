@@ -6,9 +6,12 @@ import "maplibre-gl/dist/maplibre-gl.css";
 
 // The bundled chunk cannot sit next to maplibre-gl-worker.mjs, so the phone's worker request 404s and the canvas stays blank.
 setWorkerUrl("/maplibre-gl-worker.mjs?v=6.20.0");
+import { mapPinCollection } from "@/domain/map-marks";
 import { boundaryFeatureCollection, type CityZone } from "@/domain/map-zone";
 
-type Pin = { id: string; lat: number; lng: number; title: string };
+type Pin = { id: string; lat: number; lng: number; title: string; visited: boolean };
+
+const PLANNED_DOT = "#8d95a8";
 
 const LIGHT_STYLE = "https://tiles.openfreemap.org/styles/positron";
 const DARK_STYLE = "https://tiles.openfreemap.org/styles/dark";
@@ -93,6 +96,30 @@ function paintZones(map: Map, zones: CityZone[], accent: string) {
   });
 }
 
+function paintPins(map: Map, pins: Pin[], accent: string) {
+  if (!map.isStyleLoaded()) return;
+  const data = mapPinCollection(pins);
+  const color = ["case", ["==", ["get", "visited"], true], accent, PLANNED_DOT] as unknown as string;
+  const existing = map.getSource("places");
+  if (existing) {
+    (existing as GeoJSONSource).setData(data);
+    map.setPaintProperty("places-dot", "circle-color", color);
+    return;
+  }
+  map.addSource("places", { type: "geojson", data });
+  map.addLayer({
+    id: "places-dot",
+    type: "circle",
+    source: "places",
+    paint: {
+      "circle-radius": 7,
+      "circle-color": color,
+      "circle-stroke-width": 2,
+      "circle-stroke-color": "#f7f4ef",
+    },
+  });
+}
+
 function framePins(map: Map, pins: Pin[], zones: CityZone[]) {
   const bounds = new LngLatBounds();
   let any = false;
@@ -118,7 +145,7 @@ function framePins(map: Map, pins: Pin[], zones: CityZone[]) {
 export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
   const host = useRef<HTMLDivElement>(null);
   const [failed, setFailed] = useState(false);
-  const pinKey = pins.map((pin) => `${pin.id}:${pin.lat}:${pin.lng}`).join("|");
+  const pinKey = pins.map((pin) => `${pin.id}:${pin.lat}:${pin.lng}:${pin.visited ? 1 : 0}`).join("|");
   const zoneKey = zones.map((zone) => zone.id).join("|");
 
   useEffect(() => {
@@ -149,6 +176,7 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
         map.on("style.load", () => {
           if (!map) return;
           paintZones(map, zones, themeSnapshot().accent);
+          paintPins(map, pins, themeSnapshot().accent);
           if (!framed) {
             framed = true;
             framePins(map, pins, zones);
@@ -177,6 +205,7 @@ export function OutingMap({ pins, zones }: { pins: Pin[]; zones: CityZone[] }) {
         return;
       }
       paintZones(map, zones, next.accent);
+      paintPins(map, pins, next.accent);
     };
     const observer = new MutationObserver(applyTheme);
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme", "data-color", "class"] });

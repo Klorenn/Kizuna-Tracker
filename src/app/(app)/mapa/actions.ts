@@ -16,6 +16,7 @@ import {
   repeatOutingWith,
   respondInviteWith,
   updateOutingWith,
+  updateVisitWith,
   type OutingActionDeps,
   type Rpc,
 } from "@/lib/outing-actions";
@@ -65,6 +66,12 @@ export async function createOuting(input: {
 
 export async function logVisit(input: { place: PlacePick; on: string; today: LocalDate }) {
   const result = await logVisitWith(await clientRpc(), input);
+  if (result.ok) refresh();
+  return result;
+}
+
+export async function updateVisit(input: { id: string; place: PlacePick; on: string; today: LocalDate }) {
+  const result = await updateVisitWith(await clientRpc(), input);
   if (result.ok) refresh();
   return result;
 }
